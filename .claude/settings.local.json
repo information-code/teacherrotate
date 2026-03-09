@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-eslint --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npm init -y)",
+      "Bash(npm pkg set name=\"trotate\" description=\"教師輪動系統\")",
+      "Bash(npm install next@14 react@18 react-dom@18 --save)",
+      "Bash(npm install typescript @types/node @types/react @types/react-dom --save-dev)",
+      "Bash(npm install @supabase/supabase-js @supabase/ssr)",
+      "Bash(npm install tailwindcss postcss autoprefixer --save-dev)",
+      "Bash(npm install @tanstack/react-table react-hook-form @hookform/resolvers zod xlsx swr server-only)",
+      "Bash(npm install clsx tailwind-merge class-variance-authority lucide-react react-dropzone)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx next build)",
+      "Bash(npm install tailwindcss@3 --save-dev)",
+      "Bash(\"c:/Users/黃政昱老師/Desktop/TRotate/app/teacher/profile/page.tsx\":*)",
+      "Bash(\"c:/Users/黃政昱老師/Desktop/TRotate/app/admin/layout.tsx\":*)"
+    ]
+  }
+}
