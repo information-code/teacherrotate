@@ -174,7 +174,7 @@ export default function TeachersClient({ profiles }: Props) {
 function TeacherResume({ profile, onToggleStatus }: { profile: Profile; onToggleStatus: () => void }) {
   const experiences = (
     Array.isArray(profile.experience) ? profile.experience : []
-  ) as ExperienceItem[]
+  ) as unknown as ExperienceItem[]
 
   const languages = [
     profile.local_language && `閩南語${profile.local_language_grade ? `（${profile.local_language_grade}）` : ''}`,
