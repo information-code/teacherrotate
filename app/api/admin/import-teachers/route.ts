@@ -75,7 +75,8 @@ export async function POST(request: Request) {
 
       // 直接用 PostgreSQL function 寫入 auth.users，完全繞過 GoTrue 的 email 驗證
       const { data: authId, error: createErr } = await admin
-        .rpc('create_teacher_account', { p_email: email, p_name: teacher.name ?? '' })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .rpc('create_teacher_account' as never, { p_email: email, p_name: teacher.name ?? '' } as never)
 
       if (createErr || !authId) {
         errors.push(`${teacher.name ? teacher.name + ' ' : ''}${email}: ${createErr?.message ?? '建立失敗'}`)
