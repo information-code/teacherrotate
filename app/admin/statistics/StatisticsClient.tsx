@@ -240,23 +240,13 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                           {group.works.map(work => (
                             <div key={work} className="flex items-center gap-2">
                               <span className="text-xs text-zinc-700 flex-1 truncate" title={work}>{work}</span>
-                              <div className="flex items-center gap-0.5 flex-shrink-0">
-                                <button
-                                  onClick={() => setQuotas(q => ({ ...q, [work]: Math.max(0, (q[work] ?? 0) - 1) }))}
-                                  className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
-                                >−</button>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={effectiveQuotas[work]}
-                                  onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
-                                  className="input w-10 text-center py-0.5 text-xs"
-                                />
-                                <button
-                                  onClick={() => setQuotas(q => ({ ...q, [work]: (q[work] ?? 0) + 1 }))}
-                                  className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
-                                >+</button>
-                              </div>
+                              <input
+                                type="number"
+                                min={0}
+                                value={effectiveQuotas[work]}
+                                onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
+                                className="input w-12 text-center py-0.5 text-xs flex-shrink-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
                             </div>
                           ))}
                         </div>
