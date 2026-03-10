@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
           await new Promise(r => setTimeout(r, 500))
         }
 
-        const dest = profile?.role === 'admin' ? '/select-role' : '/teacher'
+        const r = profile?.role
+        const dest = (r === 'admin' || r === 'superadmin') ? '/select-role' : '/teacher'
         const response = NextResponse.redirect(`${origin}${dest}`)
 
         // 把 session cookies 掛到 redirect response，瀏覽器才能在下一頁帶上 session

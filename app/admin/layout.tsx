@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .single()
 
   if (!profile) redirect('/teacher')
-  if (profile.role !== 'admin') redirect('/teacher')
+  if (profile.role !== 'admin' && profile.role !== 'superadmin') redirect('/teacher')
 
   return (
     <div className="flex h-screen bg-zinc-50 overflow-hidden">

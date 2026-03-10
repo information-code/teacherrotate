@@ -9,7 +9,7 @@ async function requireAdmin() {
   if (!user) return null
   const admin = getAdminClient()
   const { data } = await admin.from('profiles').select('role').eq('id', user.id).single()
-  return data?.role === 'admin' ? user : null
+  return (data?.role === 'admin' || data?.role === 'superadmin') ? user : null
 }
 
 export async function PUT(request: Request) {

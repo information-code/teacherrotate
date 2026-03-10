@@ -15,7 +15,7 @@ async function requireAdmin() {
     .eq('id', user.id)
     .single()
 
-  if (caller?.role !== 'admin') return null
+  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return null
   return user
 }
 

@@ -41,6 +41,7 @@ export async function recalcAllScores(): Promise<number> {
     .from('profiles')
     .select('id')
     .neq('status', 'inactive')
+    .neq('role', 'superadmin')
 
   const ids = (teachers ?? []).map((t: { id: string }) => t.id)
   await recalcTeacherScores(ids)

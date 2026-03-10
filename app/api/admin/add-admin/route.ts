@@ -8,13 +8,13 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // 驗證呼叫者是 admin
+  // 只有 superadmin 才能新增 admin
   const { data: caller } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
-  if (caller?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { email } = await request.json()
   if (!email) return NextResponse.json({ error: '請提供 email' }, { status: 400 })
@@ -33,8 +33,8 @@ export async function POST(request: Request) {
     )
   }
 
-  if (target.role === 'admin') {
-    return NextResponse.json({ error: '此帳號已具有 admin 權限' }, { status: 400 })
+  if (target.role === 'admin' || target.role === 'superadmin') {
+    return NextResponse.json({ error: '此帳號已具有管理員權限' }, { status: 400 })
   }
 
   // 升級為 admin
@@ -56,7 +56,7 @@ export async function GET() {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (caller?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data } = await supabaseAdmin
     .from('profiles')

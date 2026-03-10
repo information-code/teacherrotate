@@ -210,7 +210,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
           </div>
           <div>
             <label className="label">身份</label>
-            <input value={profile.role === 'admin' ? '管理員' : '教師'} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
+            <input value={profile.role === 'superadmin' ? '超級管理員' : profile.role === 'admin' ? '管理員' : '教師'} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
           </div>
         </div>
       </div>

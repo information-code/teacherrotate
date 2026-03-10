@@ -13,7 +13,7 @@ export async function POST() {
 
   const { data } = await supabaseAdmin
     .from('profiles').select('role').eq('id', user.id).single()
-  if (data?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (data?.role !== 'admin' && data?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const recalculated = await recalcAllScores()
   return NextResponse.json({ success: true, recalculated })

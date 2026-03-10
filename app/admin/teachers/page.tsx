@@ -8,7 +8,7 @@ export default async function TeachersPage() {
   const { data } = await admin
     .from('profiles')
     .select('*')
-    .eq('role', 'teacher')
+    .neq('role', 'superadmin')
     .order('name')
   return <TeachersClient profiles={data ?? []} />
 }

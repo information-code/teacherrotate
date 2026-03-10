@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (caller?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(request.url)
   const work = url.searchParams.get('work')

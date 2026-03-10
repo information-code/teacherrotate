@@ -45,7 +45,7 @@ export default async function TeacherLayout({ children }: { children: React.Reac
         <TopBar
           userName={profile?.name ?? profile?.email ?? user.email ?? ''}
           role="teacher"
-          isAdmin={profile?.role === 'admin'}
+          isAdmin={profile?.role === 'admin' || profile?.role === 'superadmin'}
         />
         <main className="relative flex-1 overflow-y-auto p-6">
           {children}

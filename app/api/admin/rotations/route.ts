@@ -9,7 +9,7 @@ export const maxDuration = 60
 async function checkAdmin(userId: string) {
   const { data } = await supabaseAdmin
     .from('profiles').select('role').eq('id', userId).single()
-  return data?.role === 'admin'
+  return data?.role === 'admin' || data?.role === 'superadmin'
 }
 
 export async function GET(request: Request) {

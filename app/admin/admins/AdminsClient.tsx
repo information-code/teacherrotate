@@ -11,9 +11,10 @@ interface AdminUser {
 
 interface Props {
   initialAdmins: AdminUser[]
+  isSuperAdmin: boolean
 }
 
-export default function AdminsClient({ initialAdmins }: Props) {
+export default function AdminsClient({ initialAdmins, isSuperAdmin }: Props) {
   const router = useRouter()
   const [admins, setAdmins] = useState<AdminUser[]>(initialAdmins)
 
@@ -54,33 +55,39 @@ export default function AdminsClient({ initialAdmins }: Props) {
     <div className="max-w-2xl space-y-6">
       <h2 className="page-title">Admin 管理</h2>
 
-      {/* 新增 Admin */}
-      <div className="card">
-        <h3 className="text-sm font-semibold text-zinc-700 mb-4">新增管理員</h3>
-        <p className="text-xs text-zinc-500 mb-3">輸入教師的學校 Google 信箱，即可授予管理員權限。該教師必須已登入過本系統。</p>
-        {message && (
-          <div className={`mb-4 px-4 py-2 text-sm rounded-sm border ${
-            message.type === 'success'
-              ? 'border-green-200 bg-green-50 text-green-700'
-              : 'border-red-200 bg-red-50 text-red-700'
-          }`}>
-            {message.text}
+      {/* 新增 Admin（僅 superadmin 可操作） */}
+      {isSuperAdmin ? (
+        <div className="card">
+          <h3 className="text-sm font-semibold text-zinc-700 mb-4">新增管理員</h3>
+          <p className="text-xs text-zinc-500 mb-3">輸入教師的學校 Google 信箱，即可授予管理員權限。該教師必須已登入過本系統。</p>
+          {message && (
+            <div className={`mb-4 px-4 py-2 text-sm rounded-sm border ${
+              message.type === 'success'
+                ? 'border-green-200 bg-green-50 text-green-700'
+                : 'border-red-200 bg-red-50 text-red-700'
+            }`}>
+              {message.text}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="teacher@school.edu.tw"
+              className="input flex-1"
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            />
+            <button onClick={handleAdd} disabled={loading || !email.trim()} className="btn-primary">
+              {loading ? '處理中...' : '授予權限'}
+            </button>
           </div>
-        )}
-        <div className="flex gap-3">
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="teacher@school.edu.tw"
-            className="input flex-1"
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          />
-          <button onClick={handleAdd} disabled={loading || !email.trim()} className="btn-primary">
-            {loading ? '處理中...' : '授予權限'}
-          </button>
         </div>
-      </div>
+      ) : (
+        <div className="card bg-zinc-50">
+          <p className="text-sm text-zinc-400">僅超級管理員可新增或移除管理員。</p>
+        </div>
+      )}
 
       {/* 目前 Admin 清單 */}
       <div className="card">

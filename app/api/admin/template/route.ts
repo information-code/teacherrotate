@@ -11,7 +11,7 @@ export async function GET() {
 
   const { data: caller } = await supabaseAdmin
     .from('profiles').select('role').eq('id', user.id).single()
-  if (caller?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // 取得所有在職使用者（排除 inactive 離校教師）
   const { data: teachers } = await supabaseAdmin

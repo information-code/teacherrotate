@@ -15,7 +15,7 @@ export default async function SelectRolePage() {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') redirect('/teacher')
+  if (profile?.role !== 'admin' && profile?.role !== 'superadmin') redirect('/teacher')
 
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center">

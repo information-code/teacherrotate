@@ -45,7 +45,8 @@ export async function middleware(request: NextRequest) {
       .select('role')
       .eq('id', user.id)
       .single()
-    const dest = profile?.role === 'admin' ? '/select-role' : '/teacher'
+    const role = profile?.role
+    const dest = (role === 'admin' || role === 'superadmin') ? '/select-role' : '/teacher'
     return NextResponse.redirect(new URL(dest, request.url))
   }
 
