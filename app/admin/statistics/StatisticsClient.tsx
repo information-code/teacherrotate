@@ -35,16 +35,16 @@ async function fetchDetail(work: string): Promise<DetailRow[]> {
   return res.json()
 }
 
-/** 根據教師志願與目標區塊，決定卡片顏色 class */
-function getPrefColor(t: TeacherEval, sectionId: string, isAdmin: boolean): string {
-  if (isAdmin || sectionId === 'pool') return 'bg-white border-zinc-200'
-  if (t.pref1 === sectionId) return 'bg-green-50 border-green-400'
-  if (t.pref2 === sectionId) return 'bg-sky-50 border-sky-400'
-  if (t.pref3 === sectionId) return 'bg-amber-50 border-amber-400'
-  return 'bg-red-50 border-red-300'
+/** emoji 表示志願配對程度，放在教師名字前 */
+function getPrefEmoji(t: TeacherEval, sectionId: string, isAdmin: boolean): string {
+  if (isAdmin || sectionId === 'pool') return ''
+  if (t.pref1 === sectionId) return '🥇'
+  if (t.pref2 === sectionId) return '🥈'
+  if (t.pref3 === sectionId) return '🥉'
+  return '😬'
 }
 
-/** 拖移懸停時，區塊的背景 + 邊框顏色（依志願配對） */
+/** 拖移懸停時，區塊邊框顏色（依志願配對）— 保持讓主任知道要放哪 */
 function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmin: boolean, teachers: TeacherEval[]): string {
   if (!teacherId) return 'border-zinc-400 bg-zinc-50'
   if (isAdmin || sectionId === 'pool') return 'border-zinc-500 bg-zinc-50'
@@ -160,11 +160,8 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
     if (isOver) sectionCls = hoverBorder
     else if (isOverQuota) sectionCls = 'border-red-300 bg-white'
 
-    // Preview card color (shown while hovering, before drop)
     const draggedTeacher = dragTeacherId ? initialTeachers.find(t => t.id === dragTeacherId) : null
-    const previewColor = draggedTeacher && isOver
-      ? getPrefColor(draggedTeacher, sectionId, isAdmin)
-      : null
+    const showPreview = draggedTeacher && isOver
 
     return (
       <div
@@ -197,20 +194,21 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
         {/* Cards */}
         <div className="flex flex-col gap-1.5 p-1.5 flex-1 min-h-[64px]">
           {teachers.map(t => {
-            const color = getPrefColor(t, sectionId, isAdmin)
+            const emoji = getPrefEmoji(t, sectionId, isAdmin)
             return (
               <div
                 key={t.id}
                 draggable
                 onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragTeacherId(t.id) }}
                 onDragEnd={() => { setDragTeacherId(null); setDragOver(null) }}
-                className={`relative flex items-center justify-between px-1.5 py-1 border rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${color} ${
-                  dragTeacherId === t.id ? 'opacity-40' : ''
+                className={`relative flex items-center justify-between px-1.5 py-1 border border-zinc-200 bg-white rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${
+                  dragTeacherId === t.id ? 'opacity-40' : 'hover:border-zinc-400'
                 }`}
               >
                 <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
+                  {emoji && <span className="flex-shrink-0 text-sm leading-none">{emoji}</span>}
                   <span className="font-medium truncate leading-tight">{t.name}</span>
-                  <span className="text-[10px] opacity-60 flex-shrink-0">{t.score.toFixed(2)}</span>
+                  <span className="text-[10px] text-zinc-400 flex-shrink-0">{t.score.toFixed(2)}</span>
                 </div>
                 <button
                   onMouseDown={e => e.stopPropagation()}
@@ -218,22 +216,25 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                   className={`ml-0.5 flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border text-[10px] leading-none transition-colors ${
                     detailTeacher?.id === t.id
                       ? 'border-zinc-700 bg-zinc-700 text-white'
-                      : 'border-zinc-400 text-zinc-400 hover:border-zinc-700 hover:text-zinc-700'
+                      : 'border-zinc-300 text-zinc-400 hover:border-zinc-700 hover:text-zinc-700'
                   }`}
                 >i</button>
               </div>
             )
           })}
 
-          {/* Drop preview placeholder */}
-          {previewColor && draggedTeacher && (
-            <div className={`flex items-center gap-1 px-1.5 py-1 border rounded-sm text-xs opacity-70 pointer-events-none ${previewColor}`}>
+          {/* Drop preview — shows emoji + name before releasing */}
+          {showPreview && draggedTeacher && (
+            <div className="flex items-center gap-1 px-1.5 py-1 border border-dashed border-zinc-400 bg-zinc-50 rounded-sm text-xs opacity-75 pointer-events-none">
+              {getPrefEmoji(draggedTeacher, sectionId, isAdmin) && (
+                <span className="flex-shrink-0 text-sm leading-none">{getPrefEmoji(draggedTeacher, sectionId, isAdmin)}</span>
+              )}
               <span className="font-medium truncate leading-tight">{draggedTeacher.name}</span>
-              <span className="text-[10px] opacity-60 flex-shrink-0">{draggedTeacher.score.toFixed(2)}</span>
+              <span className="text-[10px] text-zinc-400 flex-shrink-0">{draggedTeacher.score.toFixed(2)}</span>
             </div>
           )}
 
-          {teachers.length === 0 && !previewColor && (
+          {teachers.length === 0 && !showPreview && (
             <div className={`text-[11px] text-center py-4 border border-dashed rounded-sm transition-colors ${
               isOver ? 'border-current opacity-60' : 'border-zinc-200 text-zinc-400'
             }`}>
@@ -397,21 +398,10 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                   <h3 className="text-sm font-semibold text-zinc-700">Step 2 — 拖拉安排</h3>
                   {/* Legend */}
                   <div className="flex gap-3 text-[11px] text-zinc-500 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-green-50 border-green-400" />第一志願
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-sky-50 border-sky-400" />第二志願
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-amber-50 border-amber-400" />第三志願
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-red-50 border-red-300" />無志願配對
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-white border-zinc-200" />行政人員
-                    </span>
+                    <span>🥇 第一志願</span>
+                    <span>🥈 第二志願</span>
+                    <span>🥉 第三志願</span>
+                    <span>😬 無志願配對</span>
                   </div>
                 </div>
 
