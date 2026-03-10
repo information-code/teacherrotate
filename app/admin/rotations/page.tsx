@@ -1,6 +1,8 @@
 import { getAdminClient } from '@/lib/supabase/admin'
 import RotationsClient from './RotationsClient'
 
+export const dynamic = 'force-dynamic'
+
 export default async function RotationsPage() {
   const admin = getAdminClient()
   const [rotationsResult, scoresResult, profilesResult, activeTeachersResult] = await Promise.all([

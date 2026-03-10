@@ -1,6 +1,8 @@
 import { getAdminClient } from '@/lib/supabase/admin'
 import StatisticsClient from './StatisticsClient'
 
+export const dynamic = 'force-dynamic'
+
 interface StatRow {
   work: string
   pref1: number
