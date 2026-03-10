@@ -26,14 +26,23 @@ interface ImportPreviewRow {
   work: string
 }
 
+interface TeacherBasic {
+  id: string
+  name: string | null
+  email: string
+}
+
 interface Props {
   initialRotations: RotationRow[]
   initialScores: ScoreRow[]
+  activeTeachers: TeacherBasic[]
 }
 
-export default function RotationsClient({ initialRotations, initialScores }: Props) {
+export default function RotationsClient({ initialRotations, initialScores, activeTeachers }: Props) {
   const [rotations, setRotations] = useState<RotationRow[]>(initialRotations)
   const [scores, setScores] = useState<ScoreRow[]>(initialScores)
+  const [showMissing, setShowMissing] = useState(false)
+  const [missingYear, setMissingYear] = useState<string>('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editWork, setEditWork] = useState('')
   const [saving, setSaving] = useState(false)
@@ -184,11 +193,19 @@ export default function RotationsClient({ initialRotations, initialScores }: Pro
 
   const years = Array.from(new Set(rotations.map(r => r.year))).sort((a, b) => a - b)
 
+  // 計算指定年度缺少紀錄的在職教師
+  const missingTeachers = missingYear
+    ? activeTeachers.filter(t => !rotations.some(r => r.teacher_id === t.id && String(r.year) === missingYear))
+    : []
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="page-title mb-0">教師工作紀錄</h2>
         <div className="flex gap-2">
+          <button onClick={() => setShowMissing(!showMissing)} className="btn-secondary text-sm">
+            {showMissing ? '收起提醒' : '缺少紀錄提醒'}
+          </button>
           <a
             href="/api/admin/template"
             className="btn-secondary text-sm"
@@ -201,6 +218,41 @@ export default function RotationsClient({ initialRotations, initialScores }: Pro
         </div>
       </div>
 
+      {/* 缺少紀錄提醒 */}
+      {showMissing && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-zinc-700">缺少工作紀錄的教師</h3>
+            <select
+              value={missingYear}
+              onChange={e => setMissingYear(e.target.value)}
+              className="input w-32 text-sm"
+            >
+              <option value="">選擇學年度</option>
+              {years.map(y => <option key={y} value={y}>{y} 學年度</option>)}
+            </select>
+          </div>
+          {!missingYear && (
+            <p className="text-xs text-zinc-400">請選擇學年度以查看哪些在職教師尚未填入紀錄</p>
+          )}
+          {missingYear && missingTeachers.length === 0 && (
+            <p className="text-xs text-green-600">✓ 所有在職教師均有 {missingYear} 學年度紀錄</p>
+          )}
+          {missingYear && missingTeachers.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs text-amber-600 font-medium">{missingYear} 學年度尚缺 {missingTeachers.length} 位教師：</p>
+              <div className="flex flex-wrap gap-2">
+                {missingTeachers.map(t => (
+                  <span key={t.id} className="text-xs px-2 py-1 bg-amber-50 border border-amber-200 rounded-sm text-amber-800">
+                    {t.name ?? t.email}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {importResult && (
         <div className="px-4 py-2 border border-zinc-200 bg-zinc-50 text-sm text-zinc-700 rounded-sm">
           {importResult}
@@ -212,10 +264,10 @@ export default function RotationsClient({ initialRotations, initialScores }: Pro
         <div className="card space-y-4">
           <h3 className="text-sm font-semibold text-zinc-700">批次匯入工作紀錄</h3>
           <p className="text-xs text-zinc-400">
-            支援兩種格式：<br />
-            ① <strong>寬表</strong>：欄位為 <code>teacherMail</code>、<code>teacherName</code>、<code>106</code>、<code>107</code>…（直接從 Google Sheet 匯出）<br />
-            ② <strong>長表</strong>：欄位為 <code>teacherMail</code>、<code>year</code>、<code>work</code>（每行一筆）<br />
-            「無」的格子會自動略過。匯入後自動重算分數。
+            請使用右上角「下載 Excel 模板」取得格式，填入 <code>year</code>（民國年）和 <code>work</code>（職務）後上傳。<br />
+            <strong>注意：請勿修改 <code>teacher_id</code> 欄位（系統識別用）。</strong><br />
+            同一位教師有多個年度時，請複製該列並修改 <code>year</code> 和 <code>work</code>。<br />
+            <code>work</code> 留空或填「無」會自動略過。匯入後自動重算分數。
           </p>
           <div
             {...getRootProps()}
