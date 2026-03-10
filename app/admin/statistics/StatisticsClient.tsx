@@ -116,7 +116,9 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
 
   // 各區塊的教師
   const poolTeachers = useMemo(() =>
-    initialTeachers.filter(t => !tentativeAdmin.has(t.id) && !placements[t.id]),
+    initialTeachers
+      .filter(t => !tentativeAdmin.has(t.id) && !placements[t.id])
+      .sort((a, b) => b.score - a.score),
     [initialTeachers, tentativeAdmin, placements]
   )
   const adminTeachers = useMemo(() =>
