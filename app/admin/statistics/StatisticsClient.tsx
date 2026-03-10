@@ -35,49 +35,25 @@ async function fetchDetail(work: string): Promise<DetailRow[]> {
   return res.json()
 }
 
-/** 貪心分配演算法 */
-function runAssignment(
-  teachers: TeacherEval[],
-  quotas: Record<string, number>,
-  skipIds: Set<string>,
-  locked: Record<string, string>,
-) {
-  const lockedIds = new Set(Object.keys(locked))
-  const slots: Record<string, TeacherEval[]> = {}
+/** 根據教師志願與目標區塊，決定卡片顏色 class */
+function getPrefColor(t: TeacherEval, sectionId: string, isAdmin: boolean): string {
+  if (isAdmin || sectionId === 'pool') return 'bg-white border-zinc-200'
+  if (t.pref1 === sectionId) return 'bg-green-50 border-green-400'
+  if (t.pref2 === sectionId) return 'bg-sky-50 border-sky-400'
+  if (t.pref3 === sectionId) return 'bg-amber-50 border-amber-400'
+  return 'bg-red-50 border-red-300'
+}
 
-  for (const [id, work] of Object.entries(locked)) {
-    const t = teachers.find(x => x.id === id)
-    if (!t) continue
-    if (!slots[work]) slots[work] = []
-    slots[work].push(t)
-  }
-
-  const eligible = teachers.filter(t =>
-    !skipIds.has(t.id) && !lockedIds.has(t.id) && (t.pref1 || t.pref2 || t.pref3)
-  )
-  const sorted = [...eligible].sort((a, b) => b.score - a.score)
-  const unassigned: TeacherEval[] = []
-
-  for (const t of sorted) {
-    const prefs = [t.pref1, t.pref2, t.pref3].filter(Boolean) as string[]
-    let placed = false
-    for (const work of prefs) {
-      const quota = quotas[work] ?? 0
-      if (quota <= 0) continue
-      if (!slots[work]) slots[work] = []
-      if (slots[work].length < quota) {
-        slots[work].push(t)
-        placed = true
-        break
-      }
-    }
-    if (!placed) unassigned.push(t)
-  }
-
-  const noPrefs = teachers.filter(t =>
-    !skipIds.has(t.id) && !lockedIds.has(t.id) && !t.pref1 && !t.pref2 && !t.pref3
-  )
-  return { slots, unassigned: [...unassigned, ...noPrefs] }
+/** 拖移懸停時，區塊的背景 + 邊框顏色（依志願配對） */
+function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmin: boolean, teachers: TeacherEval[]): string {
+  if (!teacherId) return 'border-zinc-400 bg-zinc-50'
+  if (isAdmin || sectionId === 'pool') return 'border-zinc-500 bg-zinc-50'
+  const t = teachers.find(x => x.id === teacherId)
+  if (!t) return 'border-zinc-400 bg-zinc-50'
+  if (t.pref1 === sectionId) return 'border-green-500 bg-green-50'
+  if (t.pref2 === sectionId) return 'border-sky-500 bg-sky-50'
+  if (t.pref3 === sectionId) return 'border-amber-500 bg-amber-50'
+  return 'border-red-400 bg-red-50'
 }
 
 export default function StatisticsClient({ initialStats, initialTeachers }: Props) {
@@ -88,60 +64,39 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   const [detailLoading, setDetailLoading] = useState(false)
   const [showEval, setShowEval] = useState(false)
   const [quotas, setQuotas] = useState<Record<string, number>>({})
+
+  // 暫定行政：自動放入現任主任/組長
   const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(
-    () => new Set(initialTeachers.filter(t => t.currentWork && (t.currentWork.includes('主任') || t.currentWork.includes('組長'))).map(t => t.id))
+    () => new Set(initialTeachers.filter(t =>
+      t.currentWork && (t.currentWork.includes('主任') || t.currentWork.includes('組長'))
+    ).map(t => t.id))
   )
-  const [locked, setLocked] = useState<Record<string, string>>({})
-  // blocked: teachers manually kept in 待安排 (overrides algorithm placement)
-  const [blocked, setBlocked] = useState<Set<string>>(new Set())
+
+  // 手動分配結果：{ teacherId → work }
+  const [placements, setPlacements] = useState<Record<string, string>>({})
+
+  // Drag state
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [detailTeacher, setDetailTeacher] = useState<TeacherEval | null>(null)
 
-  function setLock(id: string, work: string | null) {
-    setLocked(prev => {
-      if (!work) { const next = { ...prev }; delete next[id]; return next }
-      return { ...prev, [id]: work }
-    })
-  }
-
-  function toggleTentativeAdmin(id: string) {
-    setTentativeAdmin(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function handleDrop(sectionId: string) {
-    const id = dragTeacherId
-    if (!id) return
-    setDragOver(null)
-    setDragTeacherId(null)
+  function place(teacherId: string, sectionId: string | null) {
     if (sectionId === 'admin') {
-      setTentativeAdmin(prev => new Set([...prev, id]))
-      setLock(id, null)
-      setBlocked(prev => { const n = new Set(prev); n.delete(id); return n })
-    } else if (sectionId === 'pool') {
-      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(id); return n })
-      setLock(id, null)
-      setBlocked(prev => new Set([...prev, id]))
+      setTentativeAdmin(prev => new Set([...prev, teacherId]))
+      setPlacements(prev => { const n = { ...prev }; delete n[teacherId]; return n })
+    } else if (sectionId === 'pool' || sectionId === null) {
+      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(teacherId); return n })
+      setPlacements(prev => { const n = { ...prev }; delete n[teacherId]; return n })
     } else {
-      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(id); return n })
-      setLock(id, sectionId)
-      setBlocked(prev => { const n = new Set(prev); n.delete(id); return n })
+      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(teacherId); return n })
+      setPlacements(prev => ({ ...prev, [teacherId]: sectionId }))
     }
   }
 
-  function getCardColor(t: TeacherEval, work: string, isAdmin: boolean): string {
-    if (isAdmin) return 'bg-white border-zinc-200'
-    if (work === 'pool') return 'bg-white border-zinc-200'
-    if (locked[t.id] === work) return 'bg-zinc-800 border-zinc-800 text-white'
-    if (t.pref1 === work) return 'bg-green-50 border-green-400'
-    if (t.pref2 === work) return 'bg-sky-50 border-sky-400'
-    if (t.pref3 === work) return 'bg-amber-50 border-amber-400'
-    return 'bg-red-50 border-red-300'
+  function handleDrop(sectionId: string) {
+    if (dragTeacherId) place(dragTeacherId, sectionId)
+    setDragTeacherId(null)
+    setDragOver(null)
   }
 
   const allWorks = useMemo(() => {
@@ -159,22 +114,18 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
     return q
   }, [allWorks, quotas])
 
-  const { slots, unassigned } = useMemo(
-    () => runAssignment(initialTeachers, effectiveQuotas, new Set([...tentativeAdmin, ...blocked]), locked),
-    [initialTeachers, effectiveQuotas, tentativeAdmin, blocked, locked]
+  // 各區塊的教師
+  const poolTeachers = useMemo(() =>
+    initialTeachers.filter(t => !tentativeAdmin.has(t.id) && !placements[t.id]),
+    [initialTeachers, tentativeAdmin, placements]
   )
-
-  const poolTeachers = useMemo(() => {
-    const blockedList = [...blocked]
-      .map(id => initialTeachers.find(t => t.id === id))
-      .filter(Boolean) as TeacherEval[]
-    return [...unassigned, ...blockedList]
-  }, [unassigned, blocked, initialTeachers])
-
-  const adminTeachers = useMemo(
-    () => initialTeachers.filter(t => tentativeAdmin.has(t.id)),
+  const adminTeachers = useMemo(() =>
+    initialTeachers.filter(t => tentativeAdmin.has(t.id)),
     [initialTeachers, tentativeAdmin]
   )
+  function getWorkTeachers(work: string) {
+    return initialTeachers.filter(t => placements[t.id] === work)
+  }
 
   useEffect(() => {
     if (initialStats.length === 0) {
@@ -192,7 +143,7 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
   const noPrefsCount = initialTeachers.filter(t => !t.pref1 && !t.pref2 && !t.pref3).length
 
-  // ── section renderer (closure, not a React component) ──
+  // ── Kanban section renderer ──
   function renderSection(
     sectionId: string,
     title: string,
@@ -202,94 +153,89 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   ) {
     const isOver = dragOver === sectionId
     const isOverQuota = quota !== null && teachers.length > quota
+    const hoverBorder = getHoverBorderColor(dragTeacherId, sectionId, isAdmin, initialTeachers)
 
-    // Tie-at-boundary detection for work sections
-    let hasTieWarning = false
-    if (!isAdmin && quota !== null && sectionId !== 'pool') {
-      const lockedCnt = teachers.filter(t => locked[t.id] === sectionId).length
-      const remaining = quota - lockedCnt
-      if (remaining > 0) {
-        const tiePool = [...initialTeachers
-          .filter(t => t.pref1 === sectionId && !tentativeAdmin.has(t.id) && !blocked.has(t.id) && locked[t.id] !== sectionId)]
-          .sort((a, b) => b.score - a.score)
-        if (tiePool.length > remaining && tiePool[remaining - 1]?.score === tiePool[remaining]?.score) {
-          hasTieWarning = true
-        }
-      }
-    }
+    // Border & bg
+    let sectionCls = 'border-zinc-200 bg-white'
+    if (isOver) sectionCls = hoverBorder
+    else if (isOverQuota) sectionCls = 'border-red-300 bg-white'
+
+    // Preview card color (shown while hovering, before drop)
+    const draggedTeacher = dragTeacherId ? initialTeachers.find(t => t.id === dragTeacherId) : null
+    const previewColor = draggedTeacher && isOver
+      ? getPrefColor(draggedTeacher, sectionId, isAdmin)
+      : null
 
     return (
       <div
         key={sectionId}
-        className={`flex flex-col flex-shrink-0 w-[148px] rounded border-2 transition-colors ${
-          isOver ? 'border-zinc-400 bg-zinc-50' : isOverQuota ? 'border-red-300 bg-white' : 'border-zinc-200 bg-white'
-        }`}
+        className={`flex flex-col flex-shrink-0 w-[148px] rounded border-2 transition-colors duration-100 ${sectionCls}`}
         onDragOver={e => { e.preventDefault(); setDragOver(sectionId) }}
         onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
         onDrop={e => { e.preventDefault(); handleDrop(sectionId) }}
       >
-        {/* Section header */}
-        <div className={`px-2 py-1.5 border-b text-xs rounded-t ${
-          isOverQuota ? 'border-red-200 bg-red-50' : hasTieWarning ? 'border-amber-200 bg-amber-50' : 'border-zinc-100 bg-zinc-50'
+        {/* Header */}
+        <div className={`px-2 py-1.5 border-b text-xs rounded-t transition-colors ${
+          isOverQuota ? 'border-red-200 bg-red-50' : isOver ? 'border-current bg-transparent' : 'border-zinc-100 bg-zinc-50'
         }`}>
           <div className="flex items-center justify-between gap-1">
-            <span className={`font-semibold truncate leading-tight ${
-              isOverQuota ? 'text-red-700' : hasTieWarning ? 'text-amber-700' : 'text-zinc-700'
-            }`} title={title}>{title}</span>
+            <span className={`font-semibold truncate leading-tight ${isOverQuota ? 'text-red-700' : 'text-zinc-700'}`} title={title}>
+              {title}
+            </span>
             {quota !== null && (
-              <span className={`flex-shrink-0 font-medium ${isOverQuota ? 'text-red-600' : 'text-zinc-500'}`}>
+              <span className={`flex-shrink-0 font-medium tabular-nums ${isOverQuota ? 'text-red-600' : 'text-zinc-500'}`}>
                 {teachers.length}/{quota}
               </span>
             )}
             {quota === null && (
-              <span className="flex-shrink-0 text-zinc-400">{teachers.length}</span>
+              <span className="flex-shrink-0 text-zinc-400 tabular-nums">{teachers.length}</span>
             )}
           </div>
-          {isOverQuota && (
-            <p className="text-red-600 mt-0.5 font-medium">超額 +{teachers.length - quota!}</p>
-          )}
-          {!isOverQuota && hasTieWarning && (
-            <p className="text-amber-600 mt-0.5">同分競爭</p>
-          )}
+          {isOverQuota && <p className="text-red-600 mt-0.5 font-medium">超額 +{teachers.length - quota!}</p>}
         </div>
 
         {/* Cards */}
         <div className="flex flex-col gap-1.5 p-1.5 flex-1 min-h-[64px]">
           {teachers.map(t => {
-            const color = getCardColor(t, sectionId, isAdmin)
-            const isBeingDragged = dragTeacherId === t.id
-            const isDetailOpen = detailTeacher?.id === t.id
+            const color = getPrefColor(t, sectionId, isAdmin)
             return (
               <div
                 key={t.id}
                 draggable
                 onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragTeacherId(t.id) }}
-                onDragEnd={() => setDragTeacherId(null)}
-                className={`relative flex items-center justify-between px-1.5 py-1 border rounded-sm cursor-grab active:cursor-grabbing text-xs select-none transition-opacity ${color} ${
-                  isBeingDragged ? 'opacity-40' : ''
+                onDragEnd={() => { setDragTeacherId(null); setDragOver(null) }}
+                className={`relative flex items-center justify-between px-1.5 py-1 border rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${color} ${
+                  dragTeacherId === t.id ? 'opacity-40' : ''
                 }`}
               >
                 <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
                   <span className="font-medium truncate leading-tight">{t.name}</span>
-                  <span className="text-[10px] opacity-70 flex-shrink-0">{t.score.toFixed(2)}</span>
+                  <span className="text-[10px] opacity-60 flex-shrink-0">{t.score.toFixed(2)}</span>
                 </div>
                 <button
                   onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); setDetailTeacher(isDetailOpen ? null : t) }}
+                  onClick={e => { e.stopPropagation(); setDetailTeacher(detailTeacher?.id === t.id ? null : t) }}
                   className={`ml-0.5 flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border text-[10px] leading-none transition-colors ${
-                    isDetailOpen
-                      ? 'border-zinc-600 bg-zinc-600 text-white'
-                      : locked[t.id] === sectionId
-                        ? 'border-white text-white opacity-70 hover:opacity-100'
-                        : 'border-zinc-400 text-zinc-500 hover:border-zinc-700 hover:text-zinc-700'
+                    detailTeacher?.id === t.id
+                      ? 'border-zinc-700 bg-zinc-700 text-white'
+                      : 'border-zinc-400 text-zinc-400 hover:border-zinc-700 hover:text-zinc-700'
                   }`}
                 >i</button>
               </div>
             )
           })}
-          {teachers.length === 0 && (
-            <div className={`text-[11px] text-zinc-400 text-center py-4 border border-dashed rounded-sm ${
-              isOver ? 'border-zinc-500 text-zinc-500 bg-zinc-50' : 'border-zinc-200'
+
+          {/* Drop preview placeholder */}
+          {previewColor && draggedTeacher && (
+            <div className={`flex items-center gap-1 px-1.5 py-1 border rounded-sm text-xs opacity-70 pointer-events-none ${previewColor}`}>
+              <span className="font-medium truncate leading-tight">{draggedTeacher.name}</span>
+              <span className="text-[10px] opacity-60 flex-shrink-0">{draggedTeacher.score.toFixed(2)}</span>
+            </div>
+          )}
+
+          {teachers.length === 0 && !previewColor && (
+            <div className={`text-[11px] text-center py-4 border border-dashed rounded-sm transition-colors ${
+              isOver ? 'border-current opacity-60' : 'border-zinc-200 text-zinc-400'
             }`}>
               拖拉至此
             </div>
@@ -405,7 +351,7 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
           <div>
             <h2 className="page-title mb-1">評估預測</h2>
             <p className="text-xs text-zinc-400">
-              先設定各職位名額，系統依近四年總分由高到低自動分配。拖拉卡片可手動調整分配結果。
+              設定各職位名額後，將待安排教師拖拉到對應職位欄。拖移時會預覽志願配對顏色。
             </p>
           </div>
 
@@ -464,14 +410,14 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                       <span className="inline-block w-3 h-3 border rounded-sm bg-red-50 border-red-300" />無志願配對
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border rounded-sm bg-zinc-800 border-zinc-800" />手動鎖定
+                      <span className="inline-block w-3 h-3 border rounded-sm bg-white border-zinc-200" />行政人員
                     </span>
                   </div>
                 </div>
 
                 {/* Teacher detail popup */}
                 {detailTeacher && (
-                  <div className="card p-3 border-zinc-300 space-y-2 text-xs bg-zinc-50">
+                  <div className="card p-3 border-zinc-300 bg-zinc-50 space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-sm text-zinc-800">{detailTeacher.name}</span>
                       <button onClick={() => setDetailTeacher(null)} className="text-zinc-400 hover:text-zinc-600 text-base leading-none">×</button>
@@ -487,40 +433,35 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                 )}
 
                 {/* Kanban board */}
-                <div
-                  className="flex gap-3 overflow-x-auto pb-3 items-start"
-                  style={{ minHeight: '200px' }}
-                >
+                <div className="flex gap-3 overflow-x-auto pb-3 items-start" style={{ minHeight: '200px' }}>
+
                   {/* 待安排 pool */}
                   {renderSection('pool', '待安排', poolTeachers, null, false)}
 
                   {/* 行政人員 */}
                   {renderSection('admin', '行政人員', adminTeachers, null, true)}
 
-                  {/* Work sections, grouped with dividers */}
+                  {/* Work sections by group */}
                   {workGroups.map(group => {
-                    const groupWorks = group.works.filter(w => effectiveQuotas[w] > 0)
-                    if (groupWorks.length === 0) return null
+                    const gWorks = group.works.filter(w => effectiveQuotas[w] > 0)
+                    if (gWorks.length === 0) return null
                     return (
                       <div key={group.label} className="flex gap-3 items-start flex-shrink-0">
-                        {/* Group divider */}
-                        <div className="flex flex-col items-center self-stretch">
-                          <div className="w-px bg-zinc-200 flex-1" />
-                        </div>
-                        {groupWorks.map(work =>
-                          renderSection(work, work, slots[work] ?? [], effectiveQuotas[work], false)
+                        <div className="self-stretch w-px bg-zinc-200 flex-shrink-0" />
+                        {gWorks.map(work =>
+                          renderSection(work, work, getWorkTeachers(work), effectiveQuotas[work], false)
                         )}
                       </div>
                     )
                   })}
 
                   {allWorks.filter(w => effectiveQuotas[w] > 0).length === 0 && (
-                    <div className="card p-4 text-xs text-zinc-400 self-center">請先在 Step 1 設定職位名額</div>
+                    <div className="card p-4 text-xs text-zinc-400 self-center ml-3">請先在 Step 1 設定職位名額</div>
                   )}
                 </div>
 
                 <p className="text-[11px] text-zinc-400">
-                  拖拉到「行政人員」= 排除分派。拖拉到「待安排」= 強制留在待安排池（不走演算法）。拖拉到職位欄 = 直接鎖定至該職位。
+                  拖到「行政人員」= 排除分派。拖回「待安排」= 取消。拖到志願配對職位會出現對應顏色提示。
                 </p>
               </div>
             </div>
