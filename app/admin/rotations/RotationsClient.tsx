@@ -75,16 +75,11 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   })
 
   // 取得近四年總分
-  // 取得某教師以指定年度為基準回推四年的總分
-  function getRecentTotal(teacherId: string, year: number): number | null {
+  // 取得該教師最新年度的近四年總分（DB 已計算好，存在最大年度那筆）
+  function getRecentTotal(teacherId: string): number | null {
     const teacherScores = scores.filter(s => s.teacher_id === teacherId)
-    if (teacherScores.length === 0) return null
-    let total = 0
-    for (let y = year; y > year - 4; y--) {
-      const s = teacherScores.find(s => s.year === y)
-      total += s?.score ?? 0
-    }
-    return total
+    const withTotal = teacherScores.find(s => s.recent_four_year_total !== null)
+    return withTotal?.recent_four_year_total ?? null
   }
 
   // 取得某教師某年分數
@@ -389,7 +384,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                   {getScore(row.teacher_id, row.year)?.toFixed(2) ?? '—'}
                 </td>
                 <td className="text-right">
-                  {getRecentTotal(row.teacher_id, row.year)?.toFixed(2) ?? '—'}
+                  {getRecentTotal(row.teacher_id)?.toFixed(2) ?? '—'}
                 </td>
                 <td>
                   {editingId === row.id ? (
