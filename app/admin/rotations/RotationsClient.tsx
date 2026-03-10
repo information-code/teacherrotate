@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
+import { sortWorks } from '@/lib/work-sort'
 
 interface RotationRow {
   id: string
@@ -54,6 +55,10 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [importErrors, setImportErrors] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
+
+  // 當 server component 重新渲染並傳入新 props 時同步 state
+  useEffect(() => { setRotations(initialRotations) }, [initialRotations])
+  useEffect(() => { setScores(initialScores) }, [initialScores])
 
   async function load() {
     const res = await fetch('/api/admin/rotations')
@@ -205,7 +210,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   }
 
   const years = Array.from(new Set(rotations.map(r => r.year))).sort((a, b) => a - b)
-  const works = Array.from(new Set(rotations.map(r => r.work))).sort()
+  const works = sortWorks(Array.from(new Set(rotations.map(r => r.work))))
 
   // 計算指定年度缺少紀錄的在職教師（條件：上一年有紀錄、本年沒有紀錄）
   const missingTeachers = missingYear

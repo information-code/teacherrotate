@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import type { TeacherEval } from './page'
+import { sortWorks, groupWorks } from '@/lib/work-sort'
 
 interface StatRow {
   work: string
@@ -77,8 +78,10 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
     const fromTeachers = initialTeachers.flatMap(t =>
       [t.pref1, t.pref2, t.pref3].filter(Boolean) as string[]
     )
-    return Array.from(new Set(fromTeachers)).sort()
+    return sortWorks(Array.from(new Set(fromTeachers)))
   }, [initialTeachers])
+
+  const workGroups = useMemo(() => groupWorks(allWorks), [allWorks])
 
   const effectiveQuotas = useMemo(() => {
     const q: Record<string, number> = {}
@@ -222,34 +225,44 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
           ) : (
             <div className="space-y-4">
               {/* Step 1: 名額設定 */}
-              <div className="card p-4 space-y-3">
+              <div className="card p-4 space-y-4">
                 <h3 className="text-sm font-semibold text-zinc-700">Step 1 — 設定各職位名額</h3>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {allWorks.map(work => (
-                    <div key={work} className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-700 flex-1 truncate" title={work}>{work}</span>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <button
-                          onClick={() => setQuotas(q => ({ ...q, [work]: Math.max(0, (q[work] ?? 0) - 1) }))}
-                          className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
-                        >−</button>
-                        <input
-                          type="number"
-                          min={0}
-                          value={effectiveQuotas[work]}
-                          onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
-                          className="input w-10 text-center py-0.5 text-xs"
-                        />
-                        <button
-                          onClick={() => setQuotas(q => ({ ...q, [work]: (q[work] ?? 0) + 1 }))}
-                          className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
-                        >+</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {allWorks.length === 0 && (
+                {allWorks.length === 0 ? (
                   <p className="text-xs text-zinc-400">尚無教師填寫志願，無法設定名額</p>
+                ) : (
+                  <div className="space-y-4">
+                    {workGroups.map(group => (
+                      <div key={group.label}>
+                        <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2 pb-1 border-b border-zinc-200">
+                          {group.label}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {group.works.map(work => (
+                            <div key={work} className="flex items-center gap-2">
+                              <span className="text-xs text-zinc-700 flex-1 truncate" title={work}>{work}</span>
+                              <div className="flex items-center gap-0.5 flex-shrink-0">
+                                <button
+                                  onClick={() => setQuotas(q => ({ ...q, [work]: Math.max(0, (q[work] ?? 0) - 1) }))}
+                                  className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
+                                >−</button>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={effectiveQuotas[work]}
+                                  onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
+                                  className="input w-10 text-center py-0.5 text-xs"
+                                />
+                                <button
+                                  onClick={() => setQuotas(q => ({ ...q, [work]: (q[work] ?? 0) + 1 }))}
+                                  className="w-5 h-5 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-xs"
+                                >+</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 

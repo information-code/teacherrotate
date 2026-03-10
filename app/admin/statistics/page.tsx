@@ -1,4 +1,5 @@
 import { getAdminClient } from '@/lib/supabase/admin'
+import { getWorkSortOrder } from '@/lib/work-sort'
 import StatisticsClient from './StatisticsClient'
 
 export const dynamic = 'force-dynamic'
@@ -128,7 +129,7 @@ export default async function StatisticsPage() {
       pref3: counts.pref3,
       total: counts.pref1 + counts.pref2 + counts.pref3,
     }))
-    .sort((a, b) => b.total - a.total)
+    .sort((a, b) => b.total - a.total || getWorkSortOrder(a.work) - getWorkSortOrder(b.work))
 
   // 建立評估資料（只含需換工作的教師）
   const profileMap = Object.fromEntries((activeProfiles ?? []).map(p => [p.id, p.name ?? '']))
