@@ -57,6 +57,8 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [importErrors, setImportErrors] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
+  const [recalcing, setRecalcing] = useState(false)
+  const [recalcResult, setRecalcResult] = useState<string | null>(null)
 
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRotations(initialRotations) }, [initialRotations])
@@ -68,6 +70,25 @@ export default function RotationsClient({ initialRotations, initialScores, activ
       const data = await res.json()
       setRotations(data.rotations ?? [])
       setScores(data.scores ?? [])
+    }
+  }
+
+  async function handleRecalcAll() {
+    setRecalcing(true)
+    setRecalcResult(null)
+    try {
+      const res = await fetch('/api/admin/recalc', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setRecalcResult(`重算完成，共 ${data.recalculated} 位教師`)
+        await load()
+      } else {
+        setRecalcResult(`重算失敗：${data.error}`)
+      }
+    } catch {
+      setRecalcResult('網路錯誤')
+    } finally {
+      setRecalcing(false)
     }
   }
 
@@ -241,8 +262,17 @@ export default function RotationsClient({ initialRotations, initialScores, activ
           <button onClick={() => setShowImport(!showImport)} className="btn-secondary">
             {showImport ? '收起匯入' : '批次匯入'}
           </button>
+          <button onClick={handleRecalcAll} disabled={recalcing} className="btn-secondary">
+            {recalcing ? '重算中...' : '重新計算所有分數'}
+          </button>
         </div>
       </div>
+      {recalcResult && (
+        <div className={`text-xs px-3 py-2 border rounded-sm ${recalcResult.includes('失敗') || recalcResult.includes('錯誤') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>
+          {recalcResult}
+          <button onClick={() => setRecalcResult(null)} className="ml-2 opacity-50 hover:opacity-100">×</button>
+        </div>
+      )}
 
       {/* 缺少紀錄提醒 */}
       {showMissing && (

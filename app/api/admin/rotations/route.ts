@@ -2,7 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { calculateTeacherScores, calcRecentFourYearTotal, buildScoreMaps } from '@/lib/score-engine'
+import { recalcTeacherScores } from '@/lib/recalc-scores'
 
 export const maxDuration = 60
 
@@ -10,41 +10,6 @@ async function checkAdmin(userId: string) {
   const { data } = await supabaseAdmin
     .from('profiles').select('role').eq('id', userId).single()
   return data?.role === 'admin'
-}
-
-/** 重新計算指定教師列表的分數並寫入 scores 表 */
-async function recalcScores(teacherIds: string[]) {
-  // 取得 scoremap
-  const { data: scoremapRows } = await supabaseAdmin
-    .from('scoremap').select('*')
-  const { scoreMap, groupMap } = buildScoreMaps(scoremapRows ?? [])
-
-  for (const teacherId of teacherIds) {
-    const { data: rotData } = await supabaseAdmin
-      .from('rotations')
-      .select('year, work')
-      .eq('teacher_id', teacherId)
-      .order('year', { ascending: true })
-
-    if (!rotData || rotData.length === 0) continue
-
-    const yearScores = calculateTeacherScores(rotData, scoreMap, groupMap)
-    const total = calcRecentFourYearTotal(yearScores)
-    const maxYear = Math.max(...Object.keys(yearScores).map(Number))
-
-    const upserts = Object.entries(yearScores).map(([y, score]) => ({
-      teacher_id: teacherId,
-      year: Number(y),
-      score,
-      recent_four_year_total: Number(y) === maxYear ? total : null,
-    }))
-
-    if (upserts.length > 0) {
-      await supabaseAdmin
-        .from('scores')
-        .upsert(upserts, { onConflict: 'teacher_id,year' })
-    }
-  }
 }
 
 export async function GET(request: Request) {
@@ -96,7 +61,7 @@ export async function PUT(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 重算此教師分數
-  await recalcScores([rotation.teacher_id])
+  await recalcTeacherScores([rotation.teacher_id])
   return NextResponse.json({ success: true })
 }
 
@@ -118,7 +83,7 @@ export async function DELETE(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await recalcScores([rotation.teacher_id])
+  await recalcTeacherScores([rotation.teacher_id])
   return NextResponse.json({ success: true })
 }
 
@@ -183,7 +148,7 @@ export async function POST(request: Request) {
   if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 })
 
   const affected = [...new Set(valid.map(r => r.teacher_id))]
-  await recalcScores(affected)
+  await recalcTeacherScores(affected)
 
   return NextResponse.json({ imported: valid.length, errors, recalculated: affected.length })
 }

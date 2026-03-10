@@ -2,6 +2,9 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { recalcAllScores } from '@/lib/recalc-scores'
+
+export const maxDuration = 60
 
 async function checkAdmin(userId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
@@ -38,7 +41,10 @@ export async function PUT(request: Request) {
     .upsert(rows, { onConflict: 'work' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+
+  // 分數對照表變更 → 重算所有教師分數
+  const recalculated = await recalcAllScores()
+  return NextResponse.json({ success: true, recalculated })
 }
 
 export async function POST(request: Request) {
