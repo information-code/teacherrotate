@@ -48,6 +48,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [saving, setSaving] = useState(false)
   const [filterTeacher, setFilterTeacher] = useState('')
   const [filterYear, setFilterYear] = useState('')
+  const [filterWork, setFilterWork] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [importRows, setImportRows] = useState<ImportPreviewRow[]>([])
   const [importErrors, setImportErrors] = useState<string[]>([])
@@ -69,7 +70,8 @@ export default function RotationsClient({ initialRotations, initialScores, activ
     const email = r.profiles?.email ?? ''
     const matchTeacher = !filterTeacher || name.includes(filterTeacher) || email.includes(filterTeacher)
     const matchYear = !filterYear || String(r.year) === filterYear
-    return matchTeacher && matchYear
+    const matchWork = !filterWork || r.work === filterWork
+    return matchTeacher && matchYear && matchWork
   })
 
   // 取得近四年總分
@@ -192,10 +194,16 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   }
 
   const years = Array.from(new Set(rotations.map(r => r.year))).sort((a, b) => a - b)
+  const works = Array.from(new Set(rotations.map(r => r.work))).sort()
 
-  // 計算指定年度缺少紀錄的在職教師
+  // 計算指定年度缺少紀錄的在職教師（條件：上一年有紀錄、本年沒有紀錄）
   const missingTeachers = missingYear
-    ? activeTeachers.filter(t => !rotations.some(r => r.teacher_id === t.id && String(r.year) === missingYear))
+    ? activeTeachers.filter(t => {
+        const prevYear = String(Number(missingYear) - 1)
+        const hadLastYear = rotations.some(r => r.teacher_id === t.id && String(r.year) === prevYear)
+        const hasThisYear = rotations.some(r => r.teacher_id === t.id && String(r.year) === missingYear)
+        return hadLastYear && !hasThisYear
+      })
     : []
 
   return (
@@ -311,6 +319,14 @@ export default function RotationsClient({ initialRotations, initialScores, activ
         >
           <option value="">全部學年</option>
           {years.map(y => <option key={y} value={y}>{y} 學年度</option>)}
+        </select>
+        <select
+          value={filterWork}
+          onChange={e => setFilterWork(e.target.value)}
+          className="input w-40"
+        >
+          <option value="">全部職務</option>
+          {works.map(w => <option key={w} value={w}>{w}</option>)}
         </select>
         <span className="text-sm text-zinc-500 flex items-center">
           共 {filtered.length} 筆
