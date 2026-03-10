@@ -13,11 +13,10 @@ export async function GET() {
     .from('profiles').select('role').eq('id', user.id).single()
   if (caller?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // 取得教師清單
+  // 取得所有使用者（teacher 和 admin）
   const { data: teachers } = await supabaseAdmin
     .from('profiles')
     .select('id, name, email')
-    .eq('role', 'teacher')
     .order('name')
 
   const wb = XLSX.utils.book_new()
