@@ -75,15 +75,31 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   })
 
   // 取得近四年總分
-  function getRecentTotal(teacherId: string): number | null {
+  // 取得某教師以指定年度為基準回推四年的總分
+  function getRecentTotal(teacherId: string, year: number): number | null {
     const teacherScores = scores.filter(s => s.teacher_id === teacherId)
-    const withTotal = teacherScores.find(s => s.recent_four_year_total !== null)
-    return withTotal?.recent_four_year_total ?? null
+    if (teacherScores.length === 0) return null
+    let total = 0
+    for (let y = year; y > year - 4; y--) {
+      const s = teacherScores.find(s => s.year === y)
+      total += s?.score ?? 0
+    }
+    return total
   }
 
   // 取得某教師某年分數
   function getScore(teacherId: string, year: number): number | undefined {
     return scores.find(s => s.teacher_id === teacherId && s.year === year)?.score
+  }
+
+  async function deleteRow(id: string, teacherName: string, year: number) {
+    if (!confirm(`確定刪除「${teacherName}」${year} 學年度的工作紀錄？`)) return
+    const res = await fetch('/api/admin/rotations', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) load()
   }
 
   async function saveEdit(id: string) {
@@ -373,7 +389,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                   {getScore(row.teacher_id, row.year)?.toFixed(2) ?? '—'}
                 </td>
                 <td className="text-right">
-                  {getRecentTotal(row.teacher_id)?.toFixed(2) ?? '—'}
+                  {getRecentTotal(row.teacher_id, row.year)?.toFixed(2) ?? '—'}
                 </td>
                 <td>
                   {editingId === row.id ? (
@@ -393,12 +409,20 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => { setEditingId(row.id); setEditWork(row.work) }}
-                      className="btn-secondary py-1 px-2 text-xs"
-                    >
-                      編輯
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => { setEditingId(row.id); setEditWork(row.work) }}
+                        className="btn-secondary py-1 px-2 text-xs"
+                      >
+                        編輯
+                      </button>
+                      <button
+                        onClick={() => deleteRow(row.id, row.profiles?.name ?? row.profiles?.email ?? '—', row.year)}
+                        className="py-1 px-2 text-xs border border-red-200 text-red-600 hover:bg-red-50 rounded-sm"
+                      >
+                        刪除
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

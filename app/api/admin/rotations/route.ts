@@ -100,6 +100,28 @@ export async function PUT(request: Request) {
   return NextResponse.json({ success: true })
 }
 
+export async function DELETE(request: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await request.json()
+  if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
+
+  const { data: rotation, error } = await supabaseAdmin
+    .from('rotations')
+    .delete()
+    .eq('id', id)
+    .select('teacher_id')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await recalcScores([rotation.teacher_id])
+  return NextResponse.json({ success: true })
+}
+
 /** 批次匯入 */
 export async function POST(request: Request) {
   const supabase = await createClient()

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import type { TeacherEval } from './page'
 
 interface StatRow {
   work: string
@@ -18,6 +19,7 @@ interface DetailRow {
 
 interface Props {
   initialStats: StatRow[]
+  initialTeachers: TeacherEval[]
 }
 
 async function fetchStats(): Promise<StatRow[]> {
@@ -32,12 +34,58 @@ async function fetchDetail(work: string): Promise<DetailRow[]> {
   return res.json()
 }
 
-export default function StatisticsClient({ initialStats }: Props) {
+/** 貪心分配演算法：依分數由高到低，依序嘗試第一、二、三志願 */
+function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>) {
+  const sorted = [...teachers].sort((a, b) => b.score - a.score)
+  const slots: Record<string, TeacherEval[]> = {}
+  const unassigned: TeacherEval[] = []
+
+  for (const t of sorted) {
+    const prefs = [t.pref1, t.pref2, t.pref3].filter(Boolean) as string[]
+    let placed = false
+    for (const work of prefs) {
+      const quota = quotas[work] ?? 1
+      if (!slots[work]) slots[work] = []
+      if (slots[work].length < quota) {
+        slots[work].push(t)
+        placed = true
+        break
+      }
+    }
+    if (!placed) unassigned.push(t)
+  }
+  return { slots, unassigned }
+}
+
+export default function StatisticsClient({ initialStats, initialTeachers }: Props) {
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
+  const [showEval, setShowEval] = useState(false)
+  const [quotas, setQuotas] = useState<Record<string, number>>({})
+
+  // 所有出現在志願中的職位（取 stats + 老師志願的聯集）
+  const allWorks = useMemo(() => {
+    const fromStats = stats.map(s => s.work)
+    const fromTeachers = initialTeachers.flatMap(t =>
+      [t.pref1, t.pref2, t.pref3].filter(Boolean) as string[]
+    )
+    return Array.from(new Set([...fromStats, ...fromTeachers])).sort()
+  }, [stats, initialTeachers])
+
+  // 預設 quota 為 1
+  const effectiveQuotas = useMemo(() => {
+    const q: Record<string, number> = {}
+    for (const w of allWorks) q[w] = quotas[w] ?? 1
+    return q
+  }, [allWorks, quotas])
+
+  const { slots, unassigned } = useMemo(
+    () => runAssignment(initialTeachers, effectiveQuotas),
+    [initialTeachers, effectiveQuotas]
+  )
 
   useEffect(() => {
     if (initialStats.length === 0) {
@@ -55,90 +103,267 @@ export default function StatisticsClient({ initialStats }: Props) {
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
 
   return (
-    <div className="flex gap-6 items-start">
-      {/* 主表格 */}
-      <div className="flex-1 space-y-6 min-w-0">
-        <div className="flex items-center justify-between">
-          <h2 className="page-title mb-0">志願統計</h2>
-          <button
-            onClick={() => fetchStats().then(setStats)}
-            className="btn-secondary"
-          >
-            重新整理
-          </button>
+    <div className="space-y-6">
+      {/* ── 志願統計 ── */}
+      <div className="flex gap-6 items-start">
+        <div className="flex-1 space-y-4 min-w-0">
+          <div className="flex items-center justify-between">
+            <h2 className="page-title mb-0">志願統計</h2>
+            <div className="flex gap-2">
+              <button onClick={() => setShowEval(!showEval)} className="btn-secondary">
+                {showEval ? '收起評估' : '評估預測'}
+              </button>
+              <button onClick={() => fetchStats().then(setStats)} className="btn-secondary">
+                重新整理
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="card text-sm text-zinc-400">載入中...</div>
+          ) : stats.length === 0 ? (
+            <div className="card text-sm text-zinc-400">尚無教師填寫志願</div>
+          ) : (
+            <div className="card p-0">
+              <table className="table-base">
+                <thead>
+                  <tr>
+                    <th>工作職位</th>
+                    <th className="text-center">第一志願</th>
+                    <th className="text-center">第二志願</th>
+                    <th className="text-center">第三志願</th>
+                    <th className="text-center">合計</th>
+                    <th className="w-40">熱門程度</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map(row => (
+                    <tr
+                      key={row.work}
+                      onClick={() => handleRowClick(row.work)}
+                      className={`cursor-pointer transition-colors ${selected === row.work ? 'bg-zinc-100' : 'hover:bg-zinc-50'}`}
+                    >
+                      <td className="font-medium">{row.work}</td>
+                      <td className="text-center">{row.pref1 || '—'}</td>
+                      <td className="text-center">{row.pref2 || '—'}</td>
+                      <td className="text-center">{row.pref3 || '—'}</td>
+                      <td className="text-center font-medium">{row.total}</td>
+                      <td>
+                        <div className="h-2 bg-zinc-100 rounded-sm overflow-hidden">
+                          <div
+                            className="h-full bg-zinc-600 transition-all"
+                            style={{ width: `${(row.total / maxTotal) * 100}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {loading ? (
-          <div className="card text-sm text-zinc-400">載入中...</div>
-        ) : stats.length === 0 ? (
-          <div className="card text-sm text-zinc-400">尚無教師填寫志願</div>
-        ) : (
-          <div className="card p-0">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>工作職位</th>
-                  <th className="text-center">第一志願</th>
-                  <th className="text-center">第二志願</th>
-                  <th className="text-center">第三志願</th>
-                  <th className="text-center">合計</th>
-                  <th className="w-40">熱門程度</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.map(row => (
-                  <tr
-                    key={row.work}
-                    onClick={() => handleRowClick(row.work)}
-                    className={`cursor-pointer transition-colors ${selected === row.work ? 'bg-zinc-100' : 'hover:bg-zinc-50'}`}
-                  >
-                    <td className="font-medium">{row.work}</td>
-                    <td className="text-center">{row.pref1 || '—'}</td>
-                    <td className="text-center">{row.pref2 || '—'}</td>
-                    <td className="text-center">{row.pref3 || '—'}</td>
-                    <td className="text-center font-medium">{row.total}</td>
-                    <td>
-                      <div className="h-2 bg-zinc-100 rounded-sm overflow-hidden">
-                        <div
-                          className="h-full bg-zinc-600 transition-all"
-                          style={{ width: `${(row.total / maxTotal) * 100}%` }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
+        {/* 詳細面板 */}
+        {selected && (
+          <div className="w-72 flex-shrink-0 card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium text-zinc-800 text-sm">{selected}</h3>
+              <button onClick={() => setSelected(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+            </div>
+            {detailLoading ? (
+              <p className="text-sm text-zinc-400">載入中...</p>
+            ) : detail.length === 0 ? (
+              <p className="text-sm text-zinc-400">無人選填</p>
+            ) : (
+              <div className="space-y-1">
+                {detail.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm py-1 border-b border-zinc-100 last:border-0">
+                    <span className={`text-xs px-1.5 py-0.5 border flex-shrink-0 ${
+                      d.rank === 1 ? 'border-zinc-800 text-zinc-800' :
+                      d.rank === 2 ? 'border-zinc-400 text-zinc-500' :
+                      'border-zinc-300 text-zinc-400'
+                    }`}>
+                      志願{d.rank}
+                    </span>
+                    <span className="text-zinc-800 font-medium truncate">{d.name}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* 詳細面板 */}
-      {selected && (
-        <div className="w-72 flex-shrink-0 card space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-zinc-800 text-sm">{selected}</h3>
-            <button onClick={() => setSelected(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+      {/* ── 評估預測 ── */}
+      {showEval && (
+        <div className="space-y-4">
+          <div className="border-t border-zinc-200 pt-4">
+            <h2 className="page-title mb-1">評估預測</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              依近四年總分由高到低分配（高分優先取得第一志願）。調整各職位名額可即時更新結果。
+            </p>
           </div>
 
-          {detailLoading ? (
-            <p className="text-sm text-zinc-400">載入中...</p>
-          ) : detail.length === 0 ? (
-            <p className="text-sm text-zinc-400">無人選填</p>
+          {initialTeachers.length === 0 ? (
+            <div className="card text-sm text-zinc-400">尚無教師填寫志願</div>
           ) : (
-            <div className="space-y-1">
-              {detail.map((d, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm py-1 border-b border-zinc-100 last:border-0">
-                  <span className={`text-xs px-1.5 py-0.5 border flex-shrink-0 ${
-                    d.rank === 1 ? 'border-zinc-800 text-zinc-800' :
-                    d.rank === 2 ? 'border-zinc-400 text-zinc-500' :
-                    'border-zinc-300 text-zinc-400'
-                  }`}>
-                    志願{d.rank}
-                  </span>
-                  <span className="text-zinc-800 font-medium truncate">{d.name}</span>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* 左側：各職位名額設定 + 預測結果 */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-zinc-700">各職位預測分派</h3>
+                {allWorks.map(work => {
+                  const assigned = slots[work] ?? []
+                  const quota = effectiveQuotas[work]
+                  const isOver = (stats.find(s => s.work === work)?.pref1 ?? 0) > quota
+                  const isFull = assigned.length >= quota
+
+                  return (
+                    <div
+                      key={work}
+                      className={`card p-3 space-y-2 ${isOver ? 'border-amber-200' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium text-sm text-zinc-800 truncate">{work}</span>
+                          {isOver && (
+                            <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm flex-shrink-0">
+                              第一志願競爭
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-xs text-zinc-500">名額</span>
+                          <button
+                            onClick={() => setQuotas(q => ({ ...q, [work]: Math.max(0, (q[work] ?? 1) - 1) }))}
+                            className="w-6 h-6 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-sm"
+                          >−</button>
+                          <input
+                            type="number"
+                            min={0}
+                            value={effectiveQuotas[work]}
+                            onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
+                            className="input w-12 text-center py-0.5 text-sm"
+                          />
+                          <button
+                            onClick={() => setQuotas(q => ({ ...q, [work]: (q[work] ?? 1) + 1 }))}
+                            className="w-6 h-6 flex items-center justify-center border border-zinc-300 rounded-sm text-zinc-600 hover:bg-zinc-100 text-sm"
+                          >+</button>
+                        </div>
+                      </div>
+
+                      {assigned.length === 0 ? (
+                        <p className="text-xs text-zinc-400">尚無教師分配至此職位</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {assigned.map((t, idx) => (
+                            <div key={t.id} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-zinc-400 w-4">{idx + 1}.</span>
+                                <span className="font-medium text-zinc-800">{t.name}</span>
+                                <span className={`px-1 py-0.5 border rounded-sm ${
+                                  t.pref1 === work ? 'border-zinc-800 text-zinc-700' :
+                                  t.pref2 === work ? 'border-zinc-400 text-zinc-500' :
+                                  'border-zinc-300 text-zinc-400'
+                                }`}>
+                                  {t.pref1 === work ? '第一志願' : t.pref2 === work ? '第二志願' : '第三志願'}
+                                </span>
+                              </div>
+                              <span className="text-zinc-500">{t.score.toFixed(2)} 分</span>
+                            </div>
+                          ))}
+                          {isFull && (
+                            <p className="text-xs text-zinc-400 pt-1">（名額已滿）</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* 右側：未能分配的教師 */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-zinc-700">
+                  待安排教師
+                  {unassigned.length > 0 && (
+                    <span className="ml-2 text-red-600">（{unassigned.length} 位）</span>
+                  )}
+                </h3>
+
+                {unassigned.length === 0 ? (
+                  <div className="card p-3 text-xs text-green-600">
+                    ✓ 所有填寫志願的教師均已分配
+                  </div>
+                ) : (
+                  <div className="card p-3 space-y-2">
+                    <p className="text-xs text-zinc-400 mb-2">以下教師的三個志願均已額滿，需主任協調安排：</p>
+                    {unassigned.map(t => (
+                      <div key={t.id} className="flex items-start justify-between text-xs py-1.5 border-b border-zinc-100 last:border-0">
+                        <div className="space-y-0.5">
+                          <span className="font-medium text-zinc-800">{t.name}</span>
+                          <div className="text-zinc-400">
+                            志願：{[t.pref1, t.pref2, t.pref3].filter(Boolean).join(' › ')}
+                          </div>
+                        </div>
+                        <span className="text-zinc-500 ml-2">{t.score.toFixed(2)} 分</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 衝突摘要 */}
+                {allWorks.some(w => (stats.find(s => s.work === w)?.pref1 ?? 0) > effectiveQuotas[w]) && (
+                  <div className="card p-3 space-y-2 border-amber-200">
+                    <h4 className="text-xs font-semibold text-amber-700">第一志願競爭職位</h4>
+                    {allWorks
+                      .filter(w => (stats.find(s => s.work === w)?.pref1 ?? 0) > effectiveQuotas[w])
+                      .map(w => {
+                        const pref1Count = stats.find(s => s.work === w)?.pref1 ?? 0
+                        const quota = effectiveQuotas[w]
+                        return (
+                          <div key={w} className="flex items-center justify-between text-xs">
+                            <span className="text-zinc-700">{w}</span>
+                            <span className="text-amber-600">
+                              {pref1Count} 人搶 {quota} 名額（{pref1Count - quota} 人需調整）
+                            </span>
+                          </div>
+                        )
+                      })
+                    }
+                  </div>
+                )}
+
+                {/* 各老師分配結果摘要 */}
+                <div className="card p-3 space-y-2">
+                  <h4 className="text-xs font-semibold text-zinc-700">所有老師分配摘要</h4>
+                  {[...initialTeachers].sort((a, b) => b.score - a.score).map(t => {
+                    const assignedWork = Object.entries(slots).find(([, teachers]) =>
+                      teachers.some(x => x.id === t.id)
+                    )?.[0]
+                    const isUnassigned = unassigned.some(u => u.id === t.id)
+                    return (
+                      <div key={t.id} className="flex items-center justify-between text-xs py-1 border-b border-zinc-100 last:border-0">
+                        <div>
+                          <span className="font-medium text-zinc-800">{t.name}</span>
+                          <span className="ml-2 text-zinc-400">{t.score.toFixed(2)} 分</span>
+                        </div>
+                        {isUnassigned ? (
+                          <span className="text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-sm">待安排</span>
+                        ) : (
+                          <span className={`px-1.5 py-0.5 border rounded-sm ${
+                            assignedWork === t.pref1 ? 'border-zinc-800 text-zinc-700' :
+                            assignedWork === t.pref2 ? 'border-zinc-400 text-zinc-500' :
+                            'border-zinc-300 text-zinc-400'
+                          }`}>
+                            {assignedWork}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </div>
