@@ -35,12 +35,31 @@ async function fetchDetail(work: string): Promise<DetailRow[]> {
   return res.json()
 }
 
-/** 貪心分配演算法：依分數由高到低，依序嘗試第一、二、三志願 */
-function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>, skipIds: Set<string>) {
-  // 排除暫定行政人員，只有填志願的教師參與分配
-  const withPrefs = teachers.filter(t => !skipIds.has(t.id) && (t.pref1 || t.pref2 || t.pref3))
-  const sorted = [...withPrefs].sort((a, b) => b.score - a.score)
+/** 貪心分配演算法：依分數由高到低，依序嘗試第一、二、三志願
+ *  locked: 主任手動鎖定的教師 { teacherId → work }，優先鎖定入槽，不走演算法
+ */
+function runAssignment(
+  teachers: TeacherEval[],
+  quotas: Record<string, number>,
+  skipIds: Set<string>,
+  locked: Record<string, string>,
+) {
+  const lockedIds = new Set(Object.keys(locked))
   const slots: Record<string, TeacherEval[]> = {}
+
+  // 1. 先放入鎖定教師
+  for (const [id, work] of Object.entries(locked)) {
+    const t = teachers.find(x => x.id === id)
+    if (!t) continue
+    if (!slots[work]) slots[work] = []
+    slots[work].push(t)
+  }
+
+  // 2. 貪心分配其餘教師（排除暫定行政、鎖定者）
+  const eligible = teachers.filter(t =>
+    !skipIds.has(t.id) && !lockedIds.has(t.id) && (t.pref1 || t.pref2 || t.pref3)
+  )
+  const sorted = [...eligible].sort((a, b) => b.score - a.score)
   const unassigned: TeacherEval[] = []
 
   for (const t of sorted) {
@@ -59,8 +78,10 @@ function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>, 
     if (!placed) unassigned.push(t)
   }
 
-  // 未填志願且非暫定行政的教師也列入待安排
-  const noPrefs = teachers.filter(t => !skipIds.has(t.id) && !t.pref1 && !t.pref2 && !t.pref3)
+  // 3. 未填志願且非暫定行政、非鎖定者也列入待安排
+  const noPrefs = teachers.filter(t =>
+    !skipIds.has(t.id) && !lockedIds.has(t.id) && !t.pref1 && !t.pref2 && !t.pref3
+  )
   return { slots, unassigned: [...unassigned, ...noPrefs] }
 }
 
@@ -73,6 +94,15 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   const [showEval, setShowEval] = useState(false)
   const [quotas, setQuotas] = useState<Record<string, number>>({})
   const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(new Set())
+  // locked: { teacherId → work }，鎖定的教師不走演算法
+  const [locked, setLocked] = useState<Record<string, string>>({})
+
+  function setLock(id: string, work: string | null) {
+    setLocked(prev => {
+      if (!work) { const next = { ...prev }; delete next[id]; return next }
+      return { ...prev, [id]: work }
+    })
+  }
 
   function toggleTentativeAdmin(id: string) {
     setTentativeAdmin(prev => {
@@ -100,8 +130,8 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   }, [allWorks, quotas])
 
   const { slots, unassigned } = useMemo(
-    () => runAssignment(initialTeachers, effectiveQuotas, tentativeAdmin),
-    [initialTeachers, effectiveQuotas, tentativeAdmin]
+    () => runAssignment(initialTeachers, effectiveQuotas, tentativeAdmin, locked),
+    [initialTeachers, effectiveQuotas, tentativeAdmin, locked]
   )
 
   useEffect(() => {
@@ -294,22 +324,29 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                           <p className="text-xs text-zinc-400">尚無教師分配至此職位</p>
                         ) : (
                           <div className="space-y-1">
-                            {assigned.map((t, idx) => (
-                              <div key={t.id} className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-zinc-400 w-4">{idx + 1}.</span>
-                                  <span className="font-medium text-zinc-800">{t.name}</span>
-                                  <span className={`px-1 py-0.5 border rounded-sm ${
-                                    t.pref1 === work ? 'border-zinc-800 text-zinc-700' :
-                                    t.pref2 === work ? 'border-zinc-400 text-zinc-500' :
-                                    'border-zinc-300 text-zinc-400'
-                                  }`}>
-                                    {t.pref1 === work ? '第一' : t.pref2 === work ? '第二' : '第三'}志願
-                                  </span>
+                            {assigned.map((t, idx) => {
+                              const isLocked = locked[t.id] === work
+                              return (
+                                <div key={t.id} className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-zinc-400 w-4">{idx + 1}.</span>
+                                    <span className="font-medium text-zinc-800">{t.name}</span>
+                                    {isLocked ? (
+                                      <span className="px-1 py-0.5 border border-zinc-800 bg-zinc-800 text-white rounded-sm">鎖定</span>
+                                    ) : (
+                                      <span className={`px-1 py-0.5 border rounded-sm ${
+                                        t.pref1 === work ? 'border-zinc-800 text-zinc-700' :
+                                        t.pref2 === work ? 'border-zinc-400 text-zinc-500' :
+                                        'border-zinc-300 text-zinc-400'
+                                      }`}>
+                                        {t.pref1 === work ? '第一' : t.pref2 === work ? '第二' : '第三'}志願
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-zinc-500">{t.score.toFixed(2)} 分</span>
                                 </div>
-                                <span className="text-zinc-500">{t.score.toFixed(2)} 分</span>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -324,20 +361,53 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-zinc-700">衝突與待安排</h3>
 
-                  {/* 衝突摘要 */}
-                  {allWorks.some(w => effectiveQuotas[w] > 0 && (stats.find(s => s.work === w)?.pref1 ?? 0) > effectiveQuotas[w]) && (
-                    <div className="card p-3 space-y-2 border-amber-200">
-                      <h4 className="text-xs font-semibold text-amber-700">第一志願超額職位</h4>
+                  {/* 衝突摘要 + 預選 */}
+                  {allWorks.some(w => effectiveQuotas[w] > 0 && initialTeachers.filter(t => t.pref1 === w && !tentativeAdmin.has(t.id)).length > effectiveQuotas[w]) && (
+                    <div className="card p-3 space-y-3 border-amber-200">
+                      <h4 className="text-xs font-semibold text-amber-700">第一志願超額職位 — 請主任預選</h4>
                       {allWorks
-                        .filter(w => effectiveQuotas[w] > 0 && (stats.find(s => s.work === w)?.pref1 ?? 0) > effectiveQuotas[w])
+                        .filter(w => effectiveQuotas[w] > 0 && initialTeachers.filter(t => t.pref1 === w && !tentativeAdmin.has(t.id)).length > effectiveQuotas[w])
                         .map(w => {
-                          const pref1Count = stats.find(s => s.work === w)?.pref1 ?? 0
+                          const quota = effectiveQuotas[w]
+                          const competitors = initialTeachers
+                            .filter(t => t.pref1 === w && !tentativeAdmin.has(t.id))
+                            .sort((a, b) => b.score - a.score)
+                          const lockedCount = competitors.filter(t => locked[t.id] === w).length
+                          const overQuota = lockedCount > quota
                           return (
-                            <div key={w} className="flex items-center justify-between text-xs">
-                              <span className="text-zinc-700">{w}</span>
-                              <span className="text-amber-600">
-                                {pref1Count} 人搶 {effectiveQuotas[w]} 名額（差 {pref1Count - effectiveQuotas[w]} 人）
-                              </span>
+                            <div key={w} className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-zinc-800">{w}</span>
+                                <span className={`text-xs ${overQuota ? 'text-red-600' : lockedCount === quota ? 'text-green-600' : 'text-amber-600'}`}>
+                                  已鎖定 {lockedCount}/{quota}
+                                  {overQuota && '（超額）'}
+                                  {!overQuota && lockedCount < quota && `（還需 ${quota - lockedCount} 位）`}
+                                </span>
+                              </div>
+                              <div className="space-y-1 pl-1">
+                                {competitors.map((t, idx) => {
+                                  const isPicked = locked[t.id] === w
+                                  return (
+                                    <div key={t.id} className={`flex items-center justify-between text-xs py-1 px-2 border rounded-sm ${isPicked ? 'border-zinc-800 bg-zinc-50' : 'border-zinc-200'}`}>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-zinc-400 w-4">{idx + 1}.</span>
+                                        <span className={`font-medium ${isPicked ? 'text-zinc-900' : 'text-zinc-600'}`}>{t.name}</span>
+                                        <span className="text-zinc-400">{t.score.toFixed(2)} 分</span>
+                                      </div>
+                                      <button
+                                        onClick={() => setLock(t.id, isPicked ? null : w)}
+                                        className={`px-2 py-0.5 border rounded-sm text-xs ${
+                                          isPicked
+                                            ? 'border-zinc-800 bg-zinc-800 text-white'
+                                            : 'border-zinc-300 text-zinc-600 hover:bg-zinc-100'
+                                        }`}
+                                      >
+                                        {isPicked ? '已鎖定 ✓' : '鎖定'}
+                                      </button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             </div>
                           )
                         })
@@ -413,28 +483,44 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                       )?.[0]
                       const isUnassigned = unassigned.some(u => u.id === t.id)
                       const isTentative = tentativeAdmin.has(t.id)
+                      const isLocked = !!locked[t.id]
                       const hasNoPrefs = !t.pref1 && !t.pref2 && !t.pref3
                       return (
-                        <div key={t.id} className="flex items-center justify-between text-xs py-1 border-b border-zinc-100 last:border-0">
-                          <div>
+                        <div key={t.id} className="flex items-center justify-between text-xs py-1 border-b border-zinc-100 last:border-0 gap-2">
+                          <div className="min-w-0">
                             <span className="font-medium text-zinc-800">{t.name}</span>
                             <span className="ml-1.5 text-zinc-400">{t.score.toFixed(2)} 分</span>
                           </div>
-                          {isTentative ? (
-                            <span className="text-zinc-600 border border-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-sm">暫定行政</span>
-                          ) : hasNoPrefs ? (
-                            <span className="text-amber-500 border border-amber-200 bg-amber-50 px-1.5 py-0.5 rounded-sm">未填志願</span>
-                          ) : isUnassigned ? (
-                            <span className="text-red-500 border border-red-200 bg-red-50 px-1.5 py-0.5 rounded-sm">待安排</span>
-                          ) : (
-                            <span className={`px-1.5 py-0.5 border rounded-sm ${
-                              assignedWork === t.pref1 ? 'border-zinc-800 text-zinc-700' :
-                              assignedWork === t.pref2 ? 'border-zinc-400 text-zinc-500' :
-                              'border-zinc-300 text-zinc-400'
-                            }`}>
-                              {assignedWork}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* 鎖定至職位下拉 */}
+                            <select
+                              value={locked[t.id] ?? ''}
+                              onChange={e => setLock(t.id, e.target.value || null)}
+                              disabled={isTentative}
+                              className="input text-xs py-0 h-6 max-w-[96px] disabled:opacity-40"
+                            >
+                              <option value="">鎖定至...</option>
+                              {allWorks.map(w => <option key={w} value={w}>{w}</option>)}
+                            </select>
+                            {/* 狀態 badge */}
+                            {isTentative ? (
+                              <span className="text-zinc-600 border border-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-sm whitespace-nowrap">暫定行政</span>
+                            ) : isLocked ? (
+                              <span className="text-zinc-800 border border-zinc-800 bg-zinc-50 px-1.5 py-0.5 rounded-sm whitespace-nowrap">鎖定</span>
+                            ) : hasNoPrefs ? (
+                              <span className="text-amber-500 border border-amber-200 bg-amber-50 px-1.5 py-0.5 rounded-sm whitespace-nowrap">未填志願</span>
+                            ) : isUnassigned ? (
+                              <span className="text-red-500 border border-red-200 bg-red-50 px-1.5 py-0.5 rounded-sm whitespace-nowrap">待安排</span>
+                            ) : (
+                              <span className={`px-1.5 py-0.5 border rounded-sm whitespace-nowrap ${
+                                assignedWork === t.pref1 ? 'border-zinc-800 text-zinc-700' :
+                                assignedWork === t.pref2 ? 'border-zinc-400 text-zinc-500' :
+                                'border-zinc-300 text-zinc-400'
+                              }`}>
+                                {assignedWork}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
