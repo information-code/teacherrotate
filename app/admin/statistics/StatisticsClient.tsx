@@ -36,9 +36,9 @@ async function fetchDetail(work: string): Promise<DetailRow[]> {
 }
 
 /** 貪心分配演算法：依分數由高到低，依序嘗試第一、二、三志願 */
-function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>) {
-  // 只有填志願的教師參與分配
-  const withPrefs = teachers.filter(t => t.pref1 || t.pref2 || t.pref3)
+function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>, skipIds: Set<string>) {
+  // 排除暫定行政人員，只有填志願的教師參與分配
+  const withPrefs = teachers.filter(t => !skipIds.has(t.id) && (t.pref1 || t.pref2 || t.pref3))
   const sorted = [...withPrefs].sort((a, b) => b.score - a.score)
   const slots: Record<string, TeacherEval[]> = {}
   const unassigned: TeacherEval[] = []
@@ -59,8 +59,8 @@ function runAssignment(teachers: TeacherEval[], quotas: Record<string, number>) 
     if (!placed) unassigned.push(t)
   }
 
-  // 未填志願的教師也列入待安排
-  const noPrefs = teachers.filter(t => !t.pref1 && !t.pref2 && !t.pref3)
+  // 未填志願且非暫定行政的教師也列入待安排
+  const noPrefs = teachers.filter(t => !skipIds.has(t.id) && !t.pref1 && !t.pref2 && !t.pref3)
   return { slots, unassigned: [...unassigned, ...noPrefs] }
 }
 
@@ -72,6 +72,16 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   const [detailLoading, setDetailLoading] = useState(false)
   const [showEval, setShowEval] = useState(false)
   const [quotas, setQuotas] = useState<Record<string, number>>({})
+  const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(new Set())
+
+  function toggleTentativeAdmin(id: string) {
+    setTentativeAdmin(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   // 所有出現在志願中的職位
   const allWorks = useMemo(() => {
@@ -90,8 +100,8 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   }, [allWorks, quotas])
 
   const { slots, unassigned } = useMemo(
-    () => runAssignment(initialTeachers, effectiveQuotas),
-    [initialTeachers, effectiveQuotas]
+    () => runAssignment(initialTeachers, effectiveQuotas, tentativeAdmin),
+    [initialTeachers, effectiveQuotas, tentativeAdmin]
   )
 
   useEffect(() => {
@@ -335,6 +345,28 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                     </div>
                   )}
 
+                  {/* 暫定行政人員 */}
+                  {tentativeAdmin.size > 0 && (
+                    <div className="card p-3 space-y-2 border-zinc-400">
+                      <h4 className="text-xs font-semibold text-zinc-700">
+                        暫定行政人員
+                        <span className="ml-1 text-zinc-500">（{tentativeAdmin.size} 位，不納入分派）</span>
+                      </h4>
+                      {initialTeachers.filter(t => tentativeAdmin.has(t.id)).map(t => (
+                        <div key={t.id} className="flex items-center justify-between text-xs py-1 border-b border-zinc-100 last:border-0">
+                          <div>
+                            <span className="font-medium text-zinc-800">{t.name}</span>
+                            <span className="ml-1.5 text-zinc-400">{t.score.toFixed(2)} 分</span>
+                          </div>
+                          <button
+                            onClick={() => toggleTentativeAdmin(t.id)}
+                            className="text-zinc-400 hover:text-zinc-600 border border-zinc-200 px-1.5 py-0.5 rounded-sm text-xs"
+                          >取消</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* 待安排 */}
                   <div className="card p-3 space-y-2">
                     <h4 className="text-xs font-semibold text-zinc-700">
@@ -360,7 +392,13 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                               <div className="text-amber-600">尚未填志願</div>
                             )}
                           </div>
-                          <span className="text-zinc-500 ml-2 flex-shrink-0">{t.score.toFixed(2)} 分</span>
+                          <div className="flex flex-col items-end gap-1 ml-2 flex-shrink-0">
+                            <span className="text-zinc-500">{t.score.toFixed(2)} 分</span>
+                            <button
+                              onClick={() => toggleTentativeAdmin(t.id)}
+                              className="text-zinc-600 border border-zinc-300 bg-zinc-50 hover:bg-zinc-100 px-1.5 py-0.5 rounded-sm text-xs whitespace-nowrap"
+                            >暫定行政</button>
+                          </div>
                         </div>
                       ))
                     )}
@@ -374,6 +412,7 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                         teachers.some(x => x.id === t.id)
                       )?.[0]
                       const isUnassigned = unassigned.some(u => u.id === t.id)
+                      const isTentative = tentativeAdmin.has(t.id)
                       const hasNoPrefs = !t.pref1 && !t.pref2 && !t.pref3
                       return (
                         <div key={t.id} className="flex items-center justify-between text-xs py-1 border-b border-zinc-100 last:border-0">
@@ -381,7 +420,9 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                             <span className="font-medium text-zinc-800">{t.name}</span>
                             <span className="ml-1.5 text-zinc-400">{t.score.toFixed(2)} 分</span>
                           </div>
-                          {hasNoPrefs ? (
+                          {isTentative ? (
+                            <span className="text-zinc-600 border border-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-sm">暫定行政</span>
+                          ) : hasNoPrefs ? (
                             <span className="text-amber-500 border border-amber-200 bg-amber-50 px-1.5 py-0.5 rounded-sm">未填志願</span>
                           ) : isUnassigned ? (
                             <span className="text-red-500 border border-red-200 bg-red-50 px-1.5 py-0.5 rounded-sm">待安排</span>
