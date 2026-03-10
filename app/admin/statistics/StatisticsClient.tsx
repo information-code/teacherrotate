@@ -93,7 +93,9 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   const [detailLoading, setDetailLoading] = useState(false)
   const [showEval, setShowEval] = useState(false)
   const [quotas, setQuotas] = useState<Record<string, number>>({})
-  const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(new Set())
+  const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(
+    () => new Set(initialTeachers.filter(t => t.currentWork && (t.currentWork.includes('主任') || t.currentWork.includes('組長'))).map(t => t.id))
+  )
   // locked: { teacherId → work }，鎖定的教師不走演算法
   const [locked, setLocked] = useState<Record<string, string>>({})
 
@@ -361,36 +363,51 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-zinc-700">衝突與待安排</h3>
 
-                  {/* 衝突摘要 + 預選 */}
-                  {allWorks.some(w => effectiveQuotas[w] > 0 && initialTeachers.filter(t => t.pref1 === w && !tentativeAdmin.has(t.id)).length > effectiveQuotas[w]) && (
-                    <div className="card p-3 space-y-3 border-amber-200">
-                      <h4 className="text-xs font-semibold text-amber-700">第一志願超額職位 — 請主任預選</h4>
-                      {allWorks
-                        .filter(w => effectiveQuotas[w] > 0 && initialTeachers.filter(t => t.pref1 === w && !tentativeAdmin.has(t.id)).length > effectiveQuotas[w])
-                        .map(w => {
+                  {/* 同分競爭（只在邊界有同分時才顯示） */}
+                  {(() => {
+                    // 計算哪些職位有真正的邊界同分衝突
+                    const conflictWorks = allWorks.filter(w => {
+                      const quota = effectiveQuotas[w]
+                      if (quota <= 0) return false
+                      const lockedForWork = initialTeachers.filter(t => locked[t.id] === w).length
+                      const remaining = quota - lockedForWork
+                      if (remaining <= 0) return false // 名額已被鎖定填滿
+                      const pool = initialTeachers
+                        .filter(t => t.pref1 === w && !tentativeAdmin.has(t.id) && locked[t.id] !== w)
+                        .sort((a, b) => b.score - a.score)
+                      if (pool.length <= remaining) return false // 人數不超過名額，無衝突
+                      // 邊界同分判斷
+                      return pool[remaining - 1]?.score === pool[remaining]?.score
+                    })
+                    if (conflictWorks.length === 0) return null
+                    return (
+                      <div className="card p-3 space-y-3 border-amber-200">
+                        <h4 className="text-xs font-semibold text-amber-700">同分競爭 — 需主任手動鎖定</h4>
+                        <p className="text-xs text-zinc-400">高分者已自動確定，以下為分數相同、需手動決定的名單。</p>
+                        {conflictWorks.map(w => {
                           const quota = effectiveQuotas[w]
-                          const competitors = initialTeachers
-                            .filter(t => t.pref1 === w && !tentativeAdmin.has(t.id))
+                          const lockedForWork = initialTeachers.filter(t => locked[t.id] === w).length
+                          const remaining = quota - lockedForWork
+                          const pool = initialTeachers
+                            .filter(t => t.pref1 === w && !tentativeAdmin.has(t.id) && locked[t.id] !== w)
                             .sort((a, b) => b.score - a.score)
-                          const lockedCount = competitors.filter(t => locked[t.id] === w).length
-                          const overQuota = lockedCount > quota
+                          const boundaryScore = pool[remaining - 1]?.score
+                          const tiedTeachers = pool.filter(t => t.score === boundaryScore)
+                          const tiedSlotsLeft = remaining - pool.filter((t, i) => i < remaining && t.score > boundaryScore).length
                           return (
                             <div key={w} className="space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-zinc-800">{w}</span>
-                                <span className={`text-xs ${overQuota ? 'text-red-600' : lockedCount === quota ? 'text-green-600' : 'text-amber-600'}`}>
-                                  已鎖定 {lockedCount}/{quota}
-                                  {overQuota && '（超額）'}
-                                  {!overQuota && lockedCount < quota && `（還需 ${quota - lockedCount} 位）`}
+                                <span className="text-xs text-amber-600">
+                                  同分搶 {tiedSlotsLeft} 個名額（共 {tiedTeachers.length} 人 / {boundaryScore.toFixed(2)} 分）
                                 </span>
                               </div>
                               <div className="space-y-1 pl-1">
-                                {competitors.map((t, idx) => {
+                                {tiedTeachers.map(t => {
                                   const isPicked = locked[t.id] === w
                                   return (
                                     <div key={t.id} className={`flex items-center justify-between text-xs py-1 px-2 border rounded-sm ${isPicked ? 'border-zinc-800 bg-zinc-50' : 'border-zinc-200'}`}>
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-zinc-400 w-4">{idx + 1}.</span>
                                         <span className={`font-medium ${isPicked ? 'text-zinc-900' : 'text-zinc-600'}`}>{t.name}</span>
                                         <span className="text-zinc-400">{t.score.toFixed(2)} 分</span>
                                       </div>
@@ -410,10 +427,10 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                               </div>
                             </div>
                           )
-                        })
-                      }
-                    </div>
-                  )}
+                        })}
+                      </div>
+                    )
+                  })()}
 
                   {/* 暫定行政人員 */}
                   {tentativeAdmin.size > 0 && (
