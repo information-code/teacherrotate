@@ -80,7 +80,22 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   // Drag state
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+
+  // 浮動資訊卡
   const [detailTeacher, setDetailTeacher] = useState<TeacherEval | null>(null)
+  const [detailPos, setDetailPos] = useState<{ x: number; y: number } | null>(null)
+
+  function showDetail(t: TeacherEval, e: React.MouseEvent) {
+    if (detailTeacher?.id === t.id) {
+      setDetailTeacher(null); setDetailPos(null); return
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const popupW = 232
+    const x = rect.right + 10 + popupW > window.innerWidth ? rect.left - popupW - 4 : rect.right + 10
+    const y = Math.min(rect.top - 4, window.innerHeight - 220)
+    setDetailTeacher(t)
+    setDetailPos({ x, y })
+  }
 
   function place(teacherId: string, sectionId: string | null) {
     if (sectionId === 'admin') {
@@ -219,7 +234,7 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                 </div>
                 <button
                   onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); setDetailTeacher(detailTeacher?.id === t.id ? null : t) }}
+                  onClick={e => { e.stopPropagation(); showDetail(t, e) }}
                   className={`ml-0.5 flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border text-[10px] leading-none transition-colors ${
                     detailTeacher?.id === t.id
                       ? 'border-zinc-700 bg-zinc-700 text-white'
@@ -412,23 +427,6 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                   </div>
                 </div>
 
-                {/* Teacher detail popup */}
-                {detailTeacher && (
-                  <div className="card p-3 border-zinc-300 bg-zinc-50 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm text-zinc-800">{detailTeacher.name}</span>
-                      <button onClick={() => setDetailTeacher(null)} className="text-zinc-400 hover:text-zinc-600 text-base leading-none">×</button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-zinc-600">
-                      <div><span className="text-zinc-400">近四年總分</span><br /><span className="font-medium text-zinc-800">{detailTeacher.score.toFixed(2)} 分</span></div>
-                      <div><span className="text-zinc-400">現任職位</span><br /><span className="font-medium text-zinc-800">{detailTeacher.currentWork ?? '—'}</span></div>
-                      <div><span className="text-zinc-400">第一志願</span><br /><span className="font-medium">{detailTeacher.pref1 ?? '—'}</span></div>
-                      <div><span className="text-zinc-400">第二志願</span><br /><span className="font-medium">{detailTeacher.pref2 ?? '—'}</span></div>
-                      <div><span className="text-zinc-400">第三志願</span><br /><span className="font-medium">{detailTeacher.pref3 ?? '—'}</span></div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Kanban board */}
                 <div className="flex gap-3 overflow-x-auto pb-3 items-start" style={{ minHeight: '200px' }}>
 
@@ -464,6 +462,49 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
             </div>
           )}
         </div>
+      )}
+
+      {/* ── 浮動教師資訊卡（固定定位，點擊背景關閉）── */}
+      {detailTeacher && detailPos && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => { setDetailTeacher(null); setDetailPos(null) }} />
+          <div
+            className="fixed z-50 w-56 bg-white border border-zinc-200 shadow-lg rounded p-3 space-y-2 text-xs"
+            style={{ left: detailPos.x, top: detailPos.y }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-sm text-zinc-800 truncate">{detailTeacher.name}</span>
+              <button
+                onClick={() => { setDetailTeacher(null); setDetailPos(null) }}
+                className="text-zinc-400 hover:text-zinc-600 text-base leading-none flex-shrink-0"
+              >×</button>
+            </div>
+            <div className="space-y-1.5 text-zinc-600">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">近四年總分</span>
+                <span className="font-medium text-zinc-800">{detailTeacher.score.toFixed(2)} 分</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">現任職位</span>
+                <span className="font-medium text-zinc-800">{detailTeacher.currentWork ?? '—'}</span>
+              </div>
+              <div className="border-t border-zinc-100 pt-1.5 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">🥇 第一志願</span>
+                  <span className="font-medium">{detailTeacher.pref1 ?? '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">🥈 第二志願</span>
+                  <span className="font-medium">{detailTeacher.pref2 ?? '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">🥉 第三志願</span>
+                  <span className="font-medium">{detailTeacher.pref3 ?? '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
