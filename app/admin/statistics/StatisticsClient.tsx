@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import type { TeacherEval } from './page'
 import { sortWorks, groupWorks } from '@/lib/work-sort'
 
@@ -57,6 +58,7 @@ function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmi
 }
 
 export default function StatisticsClient({ initialStats, initialTeachers }: Props) {
+  const router = useRouter()
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -129,11 +131,14 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
     return initialTeachers.filter(t => placements[t.id] === work)
   }
 
+  // 每次 mount 強制伺服器重跑，取得最新資料
+  useEffect(() => { router.refresh() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // props 更新時同步 state（router.refresh 觸發後）
   useEffect(() => {
-    if (initialStats.length === 0) {
-      fetchStats().then(data => { setStats(data); setLoading(false) })
-    }
-  }, [initialStats.length])
+    setStats(initialStats)
+    setLoading(false)
+  }, [initialStats])
 
   function handleRowClick(work: string) {
     if (selected === work) { setSelected(null); return }
