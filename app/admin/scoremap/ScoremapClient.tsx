@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Scoremap } from '@/types/database'
 
 const YEAR_COLS: (keyof Scoremap)[] = ['year1','year2','year3','year4','year5','year6','year7','year8']
@@ -11,7 +12,11 @@ interface Props {
 }
 
 export default function ScoremapClient({ initialRows }: Props) {
+  const router = useRouter()
   const [rows, setRows] = useState<Scoremap[]>(initialRows)
+
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setRows(initialRows) }, [initialRows])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)

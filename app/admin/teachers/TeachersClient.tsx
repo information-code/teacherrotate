@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Profile, ExperienceItem } from '@/types/database'
 
 type SpecialtyKey = keyof Pick<Profile,
@@ -54,10 +55,14 @@ interface Props {
 }
 
 export default function TeachersClient({ profiles }: Props) {
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [activeTag, setActiveTag] = useState<SpecialtyKey | null>(null)
   const [selected, setSelected] = useState<Profile | null>(null)
   const [localProfiles, setLocalProfiles] = useState<Profile[]>(profiles)
+
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setLocalProfiles(profiles) }, [profiles])
 
   const filtered = localProfiles
     .filter(p => {

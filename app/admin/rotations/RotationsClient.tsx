@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 import { sortWorks } from '@/lib/work-sort'
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export default function RotationsClient({ initialRotations, initialScores, activeTeachers }: Props) {
+  const router = useRouter()
   const [rotations, setRotations] = useState<RotationRow[]>(initialRotations)
   const [scores, setScores] = useState<ScoreRow[]>(initialScores)
   const [showMissing, setShowMissing] = useState(false)
@@ -56,7 +58,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
 
-  // 當 server component 重新渲染並傳入新 props 時同步 state
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRotations(initialRotations) }, [initialRotations])
   useEffect(() => { setScores(initialScores) }, [initialScores])
 

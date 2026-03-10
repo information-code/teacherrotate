@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface AdminUser {
   id: string
@@ -13,7 +14,11 @@ interface Props {
 }
 
 export default function AdminsClient({ initialAdmins }: Props) {
+  const router = useRouter()
   const [admins, setAdmins] = useState<AdminUser[]>(initialAdmins)
+
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setAdmins(initialAdmins) }, [initialAdmins])
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
