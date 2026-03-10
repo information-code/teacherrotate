@@ -157,8 +157,12 @@ export default function TeachersClient({ profiles }: Props) {
             </button>
           ))}
         </div>
-        <div className="p-3 border-t border-zinc-100 text-xs text-zinc-400 text-center">
-          共 {profiles.length} 位教師
+        <div className="p-3 border-t border-zinc-100 text-xs text-zinc-400">
+          <div className="flex justify-between">
+            <span>總計 <span className="font-medium text-zinc-600">{localProfiles.length}</span> 位</span>
+            <span>在校 <span className="font-medium text-zinc-600">{localProfiles.filter(p => p.status !== 'inactive').length}</span> 位</span>
+            <span>離校 <span className="font-medium text-red-400">{localProfiles.filter(p => p.status === 'inactive').length}</span> 位</span>
+          </div>
         </div>
       </div>
 
