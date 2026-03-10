@@ -23,11 +23,20 @@ export interface TeacherEval {
 export default async function StatisticsPage() {
   const admin = getAdminClient()
 
-  const [prefsResult, profilesResult, scoresResult] = await Promise.all([
-    admin.from('preferences').select('teacher_id, preference1, preference2, preference3'),
-    admin.from('profiles').select('id, name').neq('status', 'inactive'),
+  // 先取在職教師 ID，再用 .in() 過濾志願，排除離校者
+  const { data: activeProfiles } = await admin
+    .from('profiles').select('id, name').neq('status', 'inactive')
+
+  const activeIds = (activeProfiles ?? []).map(p => p.id)
+
+  const [prefsResult, scoresResult] = await Promise.all([
+    activeIds.length > 0
+      ? admin.from('preferences').select('teacher_id, preference1, preference2, preference3').in('teacher_id', activeIds)
+      : Promise.resolve({ data: [] }),
     admin.from('scores').select('teacher_id, recent_four_year_total').not('recent_four_year_total', 'is', null),
   ])
+
+  const profilesResult = { data: activeProfiles }
 
   // 統計志願
   const stats: Record<string, { pref1: number; pref2: number; pref3: number }> = {}
