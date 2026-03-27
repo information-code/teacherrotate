@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/admin/admins',     label: 'Admin 管理' },
-  { href: '/admin/whitelist',  label: '教師帳號管理' },
+  { href: '/admin/whitelist',  label: '帳號管理' },
   { href: '/admin/teachers',   label: '教師管理' },
   { href: '/admin/scoremap',   label: '分數對照表' },
   { href: '/admin/rotations',  label: '教師工作紀錄' },
