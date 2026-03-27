@@ -95,7 +95,18 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="relative space-y-4">
+      {saving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60">
+          <div className="flex items-center gap-3 px-6 py-4 bg-white border border-zinc-200 shadow-sm rounded">
+            <svg className="animate-spin h-5 w-5 text-zinc-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <span className="text-sm text-zinc-700">儲存中，請稍候...</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h2 className="page-title mb-0">分數對照表</h2>
         <div className="flex items-center gap-3">
