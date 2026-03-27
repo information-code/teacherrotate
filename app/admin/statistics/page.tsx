@@ -19,11 +19,29 @@ export interface TeacherEval {
   pref2: string | null
   pref3: string | null
   score: number
-  currentWork: string | null  // 目前職位（用於顯示）
+  currentWork: string | null
+  midLowConsecutiveYears: number  // 中低年級導師連續年數
 }
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
 const YEARLY_WORKS = ['科任', '接棒班', '組長', '主任'] // 含這些字樣的職位每年都換
+const MIDLOW_GROUP = '中低年級導師'
+
+/** 計算教師連續擔任中低年級導師的年數（留停不中斷但不計入） */
+function getMidLowConsecutiveYears(
+  rotations: { year: number; work: string }[],
+  groupMap: Record<string, string>
+): number {
+  const sorted = [...rotations].sort((a, b) => b.year - a.year)
+  let count = 0
+  for (const r of sorted) {
+    const core = r.work.replace(/\(.*?\)/g, '').trim()
+    if (SKIP_WORKS.includes(core)) continue
+    if ((groupMap[core] ?? core) === MIDLOW_GROUP) count++
+    else break
+  }
+  return count
+}
 
 /** 判斷該教師是否需要換工作（基於歷年紀錄與組別邏輯） */
 function needsToChange(
@@ -156,8 +174,16 @@ export default async function StatisticsPage() {
       pref3: pref?.preference3 ?? null,
       score: scoreMap[id] ?? 0,
       currentWork: currentWorkMap[id] ?? null,
+      midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
     }
   })
 
-  return <StatisticsClient initialStats={result} initialTeachers={teachers} />
+  // 中低年級導師組的職位清單（用於 client 端拖拉驗證）
+  const midLowWorks = new Set(
+    (scoremapResult.data ?? [])
+      .filter(r => r.group_name === MIDLOW_GROUP)
+      .map(r => r.work)
+  )
+
+  return <StatisticsClient initialStats={result} initialTeachers={teachers} midLowWorks={[...midLowWorks]} />
 }

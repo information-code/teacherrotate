@@ -2,6 +2,21 @@
 
 import { useState, useCallback, useEffect } from 'react'
 
+const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
+const MIDLOW_WORKS = ['中年級導師', '低年級導師']
+const MIDLOW_LIMIT = 8
+
+function getMidLowConsecutiveYears(rotationsForTeacher: { year: number; work: string }[]): number {
+  const sorted = [...rotationsForTeacher].sort((a, b) => b.year - a.year)
+  let count = 0
+  for (const r of sorted) {
+    if (SKIP_WORKS.includes(r.work)) continue
+    if (MIDLOW_WORKS.includes(r.work)) count++
+    else break
+  }
+  return count
+}
+
 const WORK_OPTIONS = [
   { group: '導師', items: ['高年級導師', '中年級導師', '低年級導師'] },
   { group: '接棒班', items: ['高年級接棒班', '中年級接棒班', '低年級接棒班'] },
@@ -439,6 +454,19 @@ export default function RotationsClient({ initialRotations, initialScores, activ
             </button>
           </form>
           {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
+          {(() => {
+            if (!addTeacherId || !MIDLOW_WORKS.includes(addWork)) return null
+            const teacherRots = rotations
+              .filter(r => r.teacher_id === addTeacherId)
+              .map(r => ({ year: r.year, work: r.work }))
+            const consecutiveYears = getMidLowConsecutiveYears(teacherRots)
+            if (consecutiveYears < MIDLOW_LIMIT) return null
+            return (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 mt-2">
+                ⚠ 此教師已連續 {consecutiveYears} 年擔任中低年級導師（達 {MIDLOW_LIMIT} 年上限），依規定應排高年級。
+              </p>
+            )
+          })()}
         </div>
       )}
 

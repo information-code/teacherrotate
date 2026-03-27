@@ -112,6 +112,12 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['scoremap']['Insert']>
         Relationships: []
       }
+      settings: {
+        Row: { key: string; value: string; updated_at: string }
+        Insert: { key: string; value: string; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['settings']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }
@@ -126,3 +132,4 @@ export type Preference = Database['public']['Tables']['preferences']['Row']
 export type Rotation = Database['public']['Tables']['rotations']['Row']
 export type Score = Database['public']['Tables']['scores']['Row']
 export type Scoremap = Database['public']['Tables']['scoremap']['Row']
+export type Setting = Database['public']['Tables']['settings']['Row']

@@ -22,6 +22,7 @@ interface DetailRow {
 interface Props {
   initialStats: StatRow[]
   initialTeachers: TeacherEval[]
+  midLowWorks: string[]  // 屬於中低年級導師組的職位清單
 }
 
 async function fetchStats(): Promise<StatRow[]> {
@@ -57,7 +58,10 @@ function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmi
   return 'border-red-400 bg-red-50'
 }
 
-export default function StatisticsClient({ initialStats, initialTeachers }: Props) {
+const MIDLOW_LIMIT = 8  // 連續幾年後強制離開中低年級
+
+export default function StatisticsClient({ initialStats, initialTeachers, midLowWorks }: Props) {
+  const midLowWorksSet = new Set(midLowWorks)
   const router = useRouter()
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
@@ -80,6 +84,7 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   // Drag state
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const [blockMsg, setBlockMsg] = useState<string | null>(null)
 
   // 浮動資訊卡
   const [detailTeacher, setDetailTeacher] = useState<TeacherEval | null>(null)
@@ -111,7 +116,21 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
   }
 
   function handleDrop(sectionId: string) {
-    if (dragTeacherId) place(dragTeacherId, sectionId)
+    if (dragTeacherId) {
+      const teacher = initialTeachers.find(t => t.id === dragTeacherId)
+      if (
+        teacher &&
+        teacher.midLowConsecutiveYears >= MIDLOW_LIMIT &&
+        midLowWorksSet.has(sectionId)
+      ) {
+        setBlockMsg(`${teacher.name} 已連續 ${teacher.midLowConsecutiveYears} 年中低年級，依規定須排高年級，不可排入${sectionId}`)
+        setTimeout(() => setBlockMsg(null), 5000)
+        setDragTeacherId(null)
+        setDragOver(null)
+        return
+      }
+      place(dragTeacherId, sectionId)
+    }
     setDragTeacherId(null)
     setDragOver(null)
   }
@@ -229,6 +248,9 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
               >
                 <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
                   {emoji && <span className="flex-shrink-0 text-sm leading-none">{emoji}</span>}
+                  {t.midLowConsecutiveYears >= MIDLOW_LIMIT && (
+                    <span className="flex-shrink-0 text-[10px] text-red-500 font-bold leading-none" title={`連續${t.midLowConsecutiveYears}年中低年級，須排高年級`}>🚫</span>
+                  )}
                   <span className="font-medium truncate leading-tight">{t.name}</span>
                   <span className="text-[10px] text-zinc-400 flex-shrink-0">{t.score.toFixed(2)}</span>
                 </div>
@@ -416,6 +438,12 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
 
               {/* Step 2: 拖拉安排 */}
               <div className="space-y-3">
+                {blockMsg && (
+                  <div className="px-3 py-2 bg-red-50 border border-red-200 text-xs text-red-700 rounded-sm flex items-center justify-between">
+                    <span>🚫 {blockMsg}</span>
+                    <button onClick={() => setBlockMsg(null)} className="ml-2 opacity-50 hover:opacity-100">×</button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <h3 className="text-sm font-semibold text-zinc-700">Step 2 — 拖拉安排</h3>
                   {/* Legend */}
@@ -488,6 +516,15 @@ export default function StatisticsClient({ initialStats, initialTeachers }: Prop
                 <span className="text-zinc-400">現任職位</span>
                 <span className="font-medium text-zinc-800">{detailTeacher.currentWork ?? '—'}</span>
               </div>
+              {detailTeacher.midLowConsecutiveYears > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">中低年級連續</span>
+                  <span className={`font-medium ${detailTeacher.midLowConsecutiveYears >= MIDLOW_LIMIT ? 'text-red-600' : 'text-zinc-800'}`}>
+                    {detailTeacher.midLowConsecutiveYears} 年
+                    {detailTeacher.midLowConsecutiveYears >= MIDLOW_LIMIT && '（須排高年級）'}
+                  </span>
+                </div>
+              )}
               <div className="border-t border-zinc-100 pt-1.5 space-y-1">
                 <div className="flex justify-between">
                   <span className="text-zinc-400">🥇 第一志願</span>
