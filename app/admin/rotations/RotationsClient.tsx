@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
-const MIDLOW_WORKS = ['中年級導師', '低年級導師']
+const MIDLOW_WORKS = ['中年級導師', '低年級導師', '中年級接棒班', '低年級接棒班']
 const MIDLOW_LIMIT = 8
 
 function getMidLowConsecutiveYears(rotationsForTeacher: { year: number; work: string }[]): number {
