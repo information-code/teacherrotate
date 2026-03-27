@@ -28,7 +28,7 @@ const WORK_OPTIONS = [
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
-import { sortWorks } from '@/lib/work-sort'
+import { sortWorks, buildTimeline, getWorkCategory, CATEGORY_STYLE } from '@/lib/work-sort'
 
 interface RotationRow {
   id: string
@@ -83,6 +83,10 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [importResult, setImportResult] = useState<string | null>(null)
   const [recalcing, setRecalcing] = useState(false)
   const [recalcResult, setRecalcResult] = useState<string | null>(null)
+
+  // 年資時間軸
+  const [showTimeline, setShowTimeline] = useState(false)
+  const [timelineTeacherId, setTimelineTeacherId] = useState('')
 
   // 單筆新增
   const [showAdd, setShowAdd] = useState(false)
@@ -312,6 +316,9 @@ export default function RotationsClient({ initialRotations, initialScores, activ
       <div className="flex items-center justify-between">
         <h2 className="page-title mb-0">教師工作紀錄</h2>
         <div className="flex gap-2">
+          <button onClick={() => setShowTimeline(!showTimeline)} className="btn-secondary text-sm">
+            {showTimeline ? '收起時間軸' : '年資時間軸'}
+          </button>
           <button onClick={() => setShowMissing(!showMissing)} className="btn-secondary text-sm">
             {showMissing ? '收起提醒' : `資料完整性提醒${neverRecordedTeachers.length > 0 ? `（${neverRecordedTeachers.length}）` : ''}`}
           </button>
@@ -336,6 +343,58 @@ export default function RotationsClient({ initialRotations, initialScores, activ
         <div className={`text-xs px-3 py-2 border rounded-sm ${recalcResult.includes('失敗') || recalcResult.includes('錯誤') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>
           {recalcResult}
           <button onClick={() => setRecalcResult(null)} className="ml-2 opacity-50 hover:opacity-100">×</button>
+        </div>
+      )}
+
+      {/* 年資時間軸 */}
+      {showTimeline && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-zinc-700">年資時間軸</h3>
+            <select
+              value={timelineTeacherId}
+              onChange={e => setTimelineTeacherId(e.target.value)}
+              className="input w-64 text-sm"
+            >
+              <option value="">選擇教師</option>
+              {activeTeachers
+                .slice()
+                .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'zh-TW'))
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name ?? t.email}（{t.email}）
+                  </option>
+                ))}
+            </select>
+          </div>
+          {timelineTeacherId && (() => {
+            const rots = rotations
+              .filter(r => r.teacher_id === timelineTeacherId)
+              .map(r => ({ year: r.year, work: r.work }))
+            const segments = buildTimeline(rots)
+            if (segments.length === 0) return (
+              <p className="text-xs text-zinc-400">此教師尚無工作紀錄</p>
+            )
+            return (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {segments.map((seg, i) => {
+                  const cat = getWorkCategory(seg.work)
+                  return (
+                    <span key={i} className="flex items-center gap-1.5">
+                      {i > 0 && <span className="text-zinc-400 text-xs">›</span>}
+                      <span className={`inline-flex flex-col items-center px-2.5 py-1 border rounded-sm text-xs leading-snug ${CATEGORY_STYLE[cat]}`}>
+                        <span className="font-semibold">{seg.work}</span>
+                        <span className="opacity-70">{seg.count} 年（{seg.from}～{seg.to}）</span>
+                      </span>
+                    </span>
+                  )
+                })}
+              </div>
+            )
+          })()}
+          {!timelineTeacherId && (
+            <p className="text-xs text-zinc-400">選擇教師後顯示其完整工作歷程</p>
+          )}
         </div>
       )}
 

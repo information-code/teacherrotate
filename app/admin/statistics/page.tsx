@@ -1,5 +1,5 @@
 import { getAdminClient } from '@/lib/supabase/admin'
-import { getWorkSortOrder } from '@/lib/work-sort'
+import { getWorkSortOrder, buildTimeline, type TimelineSegment } from '@/lib/work-sort'
 import StatisticsClient from './StatisticsClient'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +20,8 @@ export interface TeacherEval {
   pref3: string | null
   score: number
   currentWork: string | null
-  midLowConsecutiveYears: number  // 中低年級導師連續年數
+  midLowConsecutiveYears: number
+  timeline: TimelineSegment[]
 }
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
@@ -175,6 +176,7 @@ export default async function StatisticsPage() {
       score: scoreMap[id] ?? 0,
       currentWork: currentWorkMap[id] ?? null,
       midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
+      timeline: buildTimeline(teacherRotations[id] ?? []),
     }
   })
 

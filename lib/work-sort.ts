@@ -24,6 +24,59 @@ export function sortWorks(works: string[]): string[] {
   return [...works].sort((a, b) => getWorkSortOrder(a) - getWorkSortOrder(b))
 }
 
+// ── 時間軸工具 ──────────────────────────────────────────────
+
+export interface TimelineSegment {
+  work: string
+  count: number
+  from: number
+  to: number
+}
+
+/** 將工作紀錄轉為「連續同工作」段落 */
+export function buildTimeline(rotations: { year: number; work: string }[]): TimelineSegment[] {
+  if (rotations.length === 0) return []
+  const sorted = [...rotations].sort((a, b) => a.year - b.year)
+  const segments: TimelineSegment[] = []
+  let curWork = sorted[0].work
+  let count = 1
+  let from = sorted[0].year
+  let to = sorted[0].year
+  for (let i = 1; i < sorted.length; i++) {
+    const { year, work } = sorted[i]
+    if (work === curWork) {
+      count++
+      to = year
+    } else {
+      segments.push({ work: curWork, count, from, to })
+      curWork = work
+      count = 1
+      from = year
+      to = year
+    }
+  }
+  segments.push({ work: curWork, count, from, to })
+  return segments
+}
+
+export type WorkCategory = '中低年級' | '高年級' | '行政' | '科任' | '留停'
+
+export function getWorkCategory(work: string): WorkCategory {
+  if (work.includes('主任') || work.includes('組長')) return '行政'
+  if (work.includes('高年級')) return '高年級'
+  if (work.includes('中年級') || work.includes('低年級')) return '中低年級'
+  if (work.includes('科任')) return '科任'
+  return '留停'
+}
+
+export const CATEGORY_STYLE: Record<WorkCategory, string> = {
+  '中低年級': 'bg-zinc-700 text-white border-zinc-700',
+  '高年級':   'bg-zinc-100 text-zinc-800 border-zinc-400',
+  '行政':     'bg-amber-50 text-amber-800 border-amber-400',
+  '科任':     'bg-zinc-50  text-zinc-600  border-zinc-300',
+  '留停':     'bg-white    text-zinc-400  border-zinc-200 border-dashed',
+}
+
 /** STEP1 分組定義 */
 export type WorkGroup = { label: string; works: string[] }
 

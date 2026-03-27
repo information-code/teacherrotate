@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TeacherEval } from './page'
-import { sortWorks, groupWorks } from '@/lib/work-sort'
+import { sortWorks, groupWorks, getWorkCategory, CATEGORY_STYLE } from '@/lib/work-sort'
 
 interface StatRow {
   work: string
@@ -539,6 +539,25 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
                   <span className="font-medium">{detailTeacher.pref3 ?? '—'}</span>
                 </div>
               </div>
+              {detailTeacher.timeline.length > 0 && (
+                <div className="border-t border-zinc-100 pt-1.5">
+                  <p className="text-zinc-400 mb-1.5">年資時間軸</p>
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {detailTeacher.timeline.map((seg, i) => {
+                      const cat = getWorkCategory(seg.work)
+                      return (
+                        <span key={i} className="flex items-center gap-1">
+                          {i > 0 && <span className="text-zinc-300 text-[10px]">›</span>}
+                          <span className={`inline-flex flex-col items-center px-1.5 py-0.5 border rounded-sm text-[10px] leading-tight ${CATEGORY_STYLE[cat]}`}>
+                            <span className="font-medium">{seg.work}</span>
+                            <span className="opacity-70">{seg.count}年</span>
+                          </span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
