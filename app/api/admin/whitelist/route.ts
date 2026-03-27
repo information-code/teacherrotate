@@ -73,6 +73,34 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ...data, logged_in: false }, { status: 201 })
 }
 
+// PATCH: 更新教師 email
+export async function PATCH(request: NextRequest) {
+  const user = await requireAdmin()
+  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id, email } = await request.json()
+  if (!id || !email?.trim()) {
+    return NextResponse.json({ error: 'id 與 email 為必填' }, { status: 400 })
+  }
+
+  const admin = getAdminClient()
+  const { data, error } = await admin
+    .from('profiles')
+    .update({ email: email.trim().toLowerCase() })
+    .eq('id', id)
+    .select('id, name, email, created_at')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      return NextResponse.json({ error: '此 Email 已被其他帳號使用' }, { status: 409 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json(data)
+}
+
 // DELETE: 刪除教師 profile
 export async function DELETE(request: NextRequest) {
   const user = await requireAdmin()
