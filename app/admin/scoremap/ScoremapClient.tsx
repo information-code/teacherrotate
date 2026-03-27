@@ -41,11 +41,12 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
     setRows(prev => [...prev, newRow as Scoremap])
   }
 
-  async function deleteRow(id: string) {
+  async function deleteRow(id: string, work: string) {
     if (id.startsWith('new-')) {
       setRows(prev => prev.filter(r => r.id !== id))
       return
     }
+    if (!confirm(`確定刪除「${work}」這筆分數對照資料？此操作無法復原。`)) return
     await fetch('/api/admin/scoremap', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -170,7 +171,7 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
                 </td>
                 <td>
                   <button
-                    onClick={() => deleteRow(row.id)}
+                    onClick={() => deleteRow(row.id, row.work)}
                     className="btn-danger py-1 px-2 text-xs"
                   >
                     刪除
