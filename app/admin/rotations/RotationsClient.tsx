@@ -60,6 +60,14 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [recalcing, setRecalcing] = useState(false)
   const [recalcResult, setRecalcResult] = useState<string | null>(null)
 
+  // 單筆新增
+  const [showAdd, setShowAdd] = useState(false)
+  const [addTeacherId, setAddTeacherId] = useState('')
+  const [addYear, setAddYear] = useState('')
+  const [addWork, setAddWork] = useState('')
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
+
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRotations(initialRotations) }, [initialRotations])
   useEffect(() => { setScores(initialScores) }, [initialScores])
@@ -207,6 +215,32 @@ export default function RotationsClient({ initialRotations, initialScores, activ
     maxFiles: 1,
   })
 
+  async function handleAddSingle(e: React.FormEvent) {
+    e.preventDefault()
+    setAddError('')
+    if (!addTeacherId || !addYear || !addWork.trim()) {
+      setAddError('請填寫所有欄位')
+      return
+    }
+    setAdding(true)
+    try {
+      const res = await fetch('/api/admin/rotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [{ teacher_id: addTeacherId, year: Number(addYear), work: addWork.trim() }] }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setAddError(data.error ?? '新增失敗'); return }
+      setAddTeacherId('')
+      setAddYear('')
+      setAddWork('')
+      setShowAdd(false)
+      load()
+    } finally {
+      setAdding(false)
+    }
+  }
+
   async function handleImport() {
     if (importRows.length === 0) return
     setImporting(true)
@@ -259,7 +293,10 @@ export default function RotationsClient({ initialRotations, initialScores, activ
           >
             下載 Excel 模板
           </a>
-          <button onClick={() => setShowImport(!showImport)} className="btn-secondary">
+          <button onClick={() => { setShowAdd(!showAdd); setShowImport(false) }} className="btn-secondary">
+            {showAdd ? '收起新增' : '單筆新增'}
+          </button>
+          <button onClick={() => { setShowImport(!showImport); setShowAdd(false) }} className="btn-secondary">
             {showImport ? '收起匯入' : '批次匯入'}
           </button>
           <button onClick={handleRecalcAll} disabled={recalcing} className="btn-secondary">
@@ -306,6 +343,61 @@ export default function RotationsClient({ initialRotations, initialScores, activ
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 單筆新增 */}
+      {showAdd && (
+        <div className="card">
+          <h3 className="text-sm font-semibold text-zinc-700 mb-3">單筆新增工作紀錄</h3>
+          <form onSubmit={handleAddSingle} className="flex gap-2 items-end flex-wrap">
+            <div className="flex-[2] min-w-40">
+              <label className="block text-xs text-zinc-500 mb-1">教師</label>
+              <select
+                value={addTeacherId}
+                onChange={e => setAddTeacherId(e.target.value)}
+                required
+                className="input"
+              >
+                <option value="">請選擇教師</option>
+                {activeTeachers
+                  .slice()
+                  .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'zh-TW'))
+                  .map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name ?? t.email}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="w-28">
+              <label className="block text-xs text-zinc-500 mb-1">學年度（民國年）</label>
+              <input
+                type="number"
+                value={addYear}
+                onChange={e => setAddYear(e.target.value)}
+                placeholder="113"
+                min={100}
+                max={150}
+                required
+                className="input"
+              />
+            </div>
+            <div className="flex-[2] min-w-40">
+              <label className="block text-xs text-zinc-500 mb-1">工作職務</label>
+              <input
+                value={addWork}
+                onChange={e => setAddWork(e.target.value)}
+                placeholder="高年級導師"
+                required
+                className="input"
+              />
+            </div>
+            <button type="submit" disabled={adding} className="btn-primary whitespace-nowrap">
+              {adding ? '新增中...' : '新增'}
+            </button>
+          </form>
+          {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
         </div>
       )}
 
