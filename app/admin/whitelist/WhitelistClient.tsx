@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 interface TeacherEntry {
   id: string
-  name: string
+  name: string | null
   email: string
   created_at: string
   logged_in: boolean
