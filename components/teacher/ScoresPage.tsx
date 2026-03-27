@@ -37,7 +37,7 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPre
   const { scoreMap, groupMap } = buildScoreMaps(scoremapRows)
 
   // 這些職務由學校指派，教師不能自行填志願
-  const EXCLUDED_EXACT = ['中低轉換者', '留職停薪', '育嬰留停', '借調']
+  const EXCLUDED_EXACT = ['中低轉換者', '留職停薪', '育嬰留停', '借調', '其他領域科任']
   const EXCLUDED_CONTAINS = ['主任', '組長']
   const allWorks = scoremapRows
     .map(r => r.work)
