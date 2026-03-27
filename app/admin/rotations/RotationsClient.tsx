@@ -278,7 +278,11 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const years = Array.from(new Set(rotations.map(r => r.year))).sort((a, b) => a - b)
   const works = sortWorks(Array.from(new Set(rotations.map(r => r.work))))
 
-  // 計算指定年度缺少紀錄的在職教師（條件：上一年有紀錄、本年沒有紀錄）
+  // 從未有任何紀錄的在職教師
+  const teacherIdsWithRecords = new Set(rotations.map(r => r.teacher_id))
+  const neverRecordedTeachers = activeTeachers.filter(t => !teacherIdsWithRecords.has(t.id))
+
+  // 指定年度缺少紀錄（上一年有紀錄、本年沒有）
   const missingTeachers = missingYear
     ? activeTeachers.filter(t => {
         const prevYear = String(Number(missingYear) - 1)
@@ -294,7 +298,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
         <h2 className="page-title mb-0">教師工作紀錄</h2>
         <div className="flex gap-2">
           <button onClick={() => setShowMissing(!showMissing)} className="btn-secondary text-sm">
-            {showMissing ? '收起提醒' : '缺少紀錄提醒'}
+            {showMissing ? '收起提醒' : `資料完整性提醒${neverRecordedTeachers.length > 0 ? `（${neverRecordedTeachers.length}）` : ''}`}
           </button>
           <a
             href="/api/admin/template"
@@ -320,38 +324,58 @@ export default function RotationsClient({ initialRotations, initialScores, activ
         </div>
       )}
 
-      {/* 缺少紀錄提醒 */}
+      {/* 資料完整性提醒 */}
       {showMissing && (
-        <div className="card space-y-3">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-zinc-700">缺少工作紀錄的教師</h3>
-            <select
-              value={missingYear}
-              onChange={e => setMissingYear(e.target.value)}
-              className="input w-32 text-sm"
-            >
-              <option value="">選擇學年度</option>
-              {years.map(y => <option key={y} value={y}>{y} 學年度</option>)}
-            </select>
-          </div>
-          {!missingYear && (
-            <p className="text-xs text-zinc-400">請選擇學年度以查看哪些在職教師尚未填入紀錄</p>
-          )}
-          {missingYear && missingTeachers.length === 0 && (
-            <p className="text-xs text-green-600">✓ 所有在職教師均有 {missingYear} 學年度紀錄</p>
-          )}
-          {missingYear && missingTeachers.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-amber-600 font-medium">{missingYear} 學年度尚缺 {missingTeachers.length} 位教師：</p>
+        <div className="card space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-700">資料完整性提醒</h3>
+
+          {/* 從未有紀錄 */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-zinc-500">從未有任何工作紀錄</p>
+            {neverRecordedTeachers.length === 0 ? (
+              <p className="text-xs text-green-600">✓ 所有在職教師均有工作紀錄</p>
+            ) : (
               <div className="flex flex-wrap gap-2">
-                {missingTeachers.map(t => (
-                  <span key={t.id} className="text-xs px-2 py-1 bg-amber-50 border border-amber-200 rounded-sm text-amber-800">
+                {neverRecordedTeachers.map(t => (
+                  <span key={t.id} className="text-xs px-2 py-1 bg-red-50 border border-red-200 text-red-700">
                     {t.name ?? t.email}
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-100" />
+
+          {/* 指定年度缺少紀錄 */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-medium text-zinc-500">指定學年度缺少紀錄</p>
+              <select
+                value={missingYear}
+                onChange={e => setMissingYear(e.target.value)}
+                className="input w-32 text-xs py-1"
+              >
+                <option value="">選擇學年度</option>
+                {years.map(y => <option key={y} value={y}>{y} 學年度</option>)}
+              </select>
             </div>
-          )}
+            {!missingYear && (
+              <p className="text-xs text-zinc-400">選擇學年度後，顯示上一年有紀錄但本年尚未填入的教師</p>
+            )}
+            {missingYear && missingTeachers.length === 0 && (
+              <p className="text-xs text-green-600">✓ 所有在職教師均有 {missingYear} 學年度紀錄</p>
+            )}
+            {missingYear && missingTeachers.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {missingTeachers.map(t => (
+                  <span key={t.id} className="text-xs px-2 py-1 bg-amber-50 border border-amber-200 text-amber-800">
+                    {t.name ?? t.email}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
