@@ -18,25 +18,8 @@ export default async function TeacherLayout({ children }: { children: React.Reac
     .eq('id', user.id)
     .single()
 
-  // 若 profile 不存在（trigger 可能尚未執行），用 insert 建立（不覆蓋已有資料）
-  if (!profile) {
-    await admin
-      .from('profiles')
-      .insert({
-        id: user.id,
-        email: user.email ?? '',
-        name: (user.user_metadata?.full_name as string) ?? user.email?.split('@')[0] ?? '',
-        role: 'teacher',
-      })
-      .select('name, email, role')
-      .single()
-    const { data: created } = await admin
-      .from('profiles')
-      .select('name, email, role')
-      .eq('id', user.id)
-      .single()
-    profile = created
-  }
+  // profile 不存在 → email 不在白名單，拒絕進入
+  if (!profile) redirect('/unauthorized')
 
   return (
     <div className="flex h-screen bg-zinc-50 overflow-hidden">

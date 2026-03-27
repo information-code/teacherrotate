@@ -26,20 +26,43 @@ export async function GET(request: NextRequest) {
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        // 用 admin client 繞過 RLS 查詢 role（session cookie 尚未傳給 browser）
         const admin = getAdminClient()
-        let profile = null
-        for (let i = 0; i < 3; i++) {
-          const { data } = await admin
+
+        // 先用 id 找（已登入過的情況）
+        let { data: profile } = await admin
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        // 找不到 → 可能是第一次登入，用 email 找管理者預建的 profile
+        if (!profile && user.email) {
+          const { data: byEmail } = await admin
             .from('profiles')
             .select('role')
-            .eq('id', user.id)
+            .eq('email', user.email)
             .single()
-          if (data) { profile = data; break }
-          await new Promise(r => setTimeout(r, 500))
+
+          if (byEmail) {
+            // 將 profile.id 更新為真實 auth UUID（trigger 已處理，這裡是備援）
+            await admin
+              .from('profiles')
+              .update({ id: user.id })
+              .eq('email', user.email)
+            profile = byEmail
+          }
         }
 
-        const r = profile?.role
+        // profile 不存在 → 管理者尚未建立此帳號，拒絕進入
+        if (!profile) {
+          const response = NextResponse.redirect(`${origin}/unauthorized`)
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+          })
+          return response
+        }
+
+        const r = profile.role
         const dest = (r === 'admin' || r === 'superadmin') ? '/select-role' : '/teacher'
         const response = NextResponse.redirect(`${origin}${dest}`)
 
