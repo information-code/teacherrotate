@@ -18,6 +18,9 @@ export type YearScores = Record<number, number>
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
 
+// 中低年級導師自動轉換偵測的組別名稱
+const MIDLOW_GROUP = '中低年級導師'
+
 /** 從 scoremap DB rows 建立 ScoreMap 與 GroupMap */
 export function buildScoreMaps(rows: ScoreMapRow[]): { scoreMap: ScoreMap; groupMap: GroupMap } {
   const scoreMap: ScoreMap = {}
@@ -36,17 +39,20 @@ function getGroup(work: string, groupMap: GroupMap): string {
 
 /**
  * 計算單一教師的歷年分數
- * @param rotations 按年度升序排列的工作紀錄
- * @param scoreMap  工作 -> [8個年資分數]
- * @param groupMap  工作 -> 分組名稱
+ * @param rotations          按年度升序排列的工作紀錄
+ * @param scoreMap           工作 -> [8個年資分數]
+ * @param groupMap           工作 -> 分組名稱
+ * @param midLowSwitchScore  中低年級連續5年後轉換所得分數（預設 2）
  */
 export function calculateTeacherScores(
   rotations: Rotation[],
   scoreMap: ScoreMap,
-  groupMap: GroupMap = {}
+  groupMap: GroupMap = {},
+  midLowSwitchScore: number = 2
 ): YearScores {
   const sorted = [...rotations].sort((a, b) => a.year - b.year)
   let prevGroup = ''
+  let prevWork = ''
   let count = 0
   const scores: YearScores = {}
 
@@ -57,7 +63,7 @@ export function calculateTeacherScores(
 
     if (SKIP_WORKS.includes(coreRole)) {
       scores[year] = 0
-      // 留停不重置 prevGroup，年資繼續計算
+      // 留停不重置 prevGroup / prevWork，年資繼續計算
       continue
     }
 
@@ -68,16 +74,28 @@ export function calculateTeacherScores(
     } else {
       count = 1
     }
-    prevGroup = currentGroup
 
     let score = 0
-    const scoreList = scoreMap[coreRole]
-    if (scoreList) {
-      const idx = Math.min(count, 8) - 1
-      const value = Number(scoreList[idx])
-      score = isNaN(value) ? 0 : value
+
+    // 中低年級導師轉換獎勵：連續5年以上且本年與上年職務不同
+    if (
+      count >= 5 &&
+      currentGroup === MIDLOW_GROUP &&
+      prevWork !== '' &&
+      prevWork !== coreRole
+    ) {
+      score = midLowSwitchScore
+    } else {
+      const scoreList = scoreMap[coreRole]
+      if (scoreList) {
+        const idx = Math.min(count, 8) - 1
+        const value = Number(scoreList[idx])
+        score = isNaN(value) ? 0 : value
+      }
     }
 
+    prevGroup = currentGroup
+    prevWork = coreRole
     scores[year] = score
   }
 
@@ -101,12 +119,13 @@ export function estimatePreferenceScore(
   preferredWork: string,
   scoreMap: ScoreMap,
   groupMap: GroupMap,
-  nextYear: number
+  nextYear: number,
+  midLowSwitchScore: number = 2
 ): number {
   const tempRotations: Rotation[] = [
     ...rotations.filter(r => r.year !== nextYear),
     { year: nextYear, work: preferredWork },
   ]
-  const scores = calculateTeacherScores(tempRotations, scoreMap, groupMap)
+  const scores = calculateTeacherScores(tempRotations, scoreMap, groupMap, midLowSwitchScore)
   return scores[nextYear] ?? 0
 }

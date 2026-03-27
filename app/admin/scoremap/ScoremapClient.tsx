@@ -9,11 +9,13 @@ const YEAR_LABELS = ['第1年','第2年','第3年','第4年','第5年','第6年'
 
 interface Props {
   initialRows: Scoremap[]
+  initialMidLowSwitchScore: number
 }
 
-export default function ScoremapClient({ initialRows }: Props) {
+export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }: Props) {
   const router = useRouter()
   const [rows, setRows] = useState<Scoremap[]>(initialRows)
+  const [midLowSwitchScore, setMidLowSwitchScore] = useState<string>(String(initialMidLowSwitchScore))
 
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRows(initialRows) }, [initialRows])
@@ -67,13 +69,19 @@ export default function ScoremapClient({ initialRows }: Props) {
         group_name: r.group_name || null,
         sort_order: r.sort_order ?? 0,
       }))
-      const res = await fetch('/api/admin/scoremap', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const [res] = await Promise.all([
+        fetch('/api/admin/scoremap', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        fetch('/api/admin/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ midlow_switch_score: midLowSwitchScore }),
+        }),
+      ])
       if (!res.ok) throw new Error('儲存失敗')
-      // 重新載入
       const fresh = await fetch('/api/admin/scoremap').then(r => r.json())
       setRows(Array.isArray(fresh) ? fresh : [])
       setSaved(true)
@@ -96,6 +104,25 @@ export default function ScoremapClient({ initialRows }: Props) {
           <button onClick={save} disabled={saving} className="btn-primary">
             {saving ? '儲存中...' : '儲存變更'}
           </button>
+        </div>
+      </div>
+
+      {/* 特殊規則設定 */}
+      <div className="card flex items-center gap-4">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-zinc-700">
+            連續 5 年中低年級導師者，中低年級轉換分數為
+            <input
+              type="number"
+              step="0.25"
+              min="0"
+              value={midLowSwitchScore}
+              onChange={e => setMidLowSwitchScore(e.target.value)}
+              className="input text-center py-1 w-20 mx-2 inline-block"
+            />
+            分
+          </p>
+          <p className="text-xs text-zinc-400 mt-1">當教師在中低年級導師組連續滿 5 年後，若當年從中年級換低年級（或反之），自動套用此分數</p>
         </div>
       </div>
 

@@ -9,10 +9,11 @@ export default async function TeacherScoresPage() {
   if (!user) redirect('/login')
 
   const admin = getAdminClient()
-  const [scoresResult, prefsResult, scoremapResult] = await Promise.all([
+  const [scoresResult, prefsResult, scoremapResult, settingsResult] = await Promise.all([
     admin.from('scores').select('year, score, recent_four_year_total').eq('teacher_id', user.id).order('year'),
     admin.from('preferences').select('preference1, preference2, preference3').eq('teacher_id', user.id).single(),
     admin.from('scoremap').select('*').order('sort_order'),
+    admin.from('settings').select('key, value'),
   ])
   // also need rotations to compute work per year
   const { data: rotations } = await admin.from('rotations').select('year, work').eq('teacher_id', user.id).order('year')
@@ -20,6 +21,8 @@ export default async function TeacherScoresPage() {
   const scores = scoresResult.data ?? []
   const prefs = prefsResult.data
   const scoremap = scoremapResult.data ?? []
+  const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
+  const midLowSwitchScore = Number(settingsMap['midlow_switch_score'] ?? 2)
 
   // Build scoreHistory (merge scores + rotations)
   const rotMap: Record<number, string> = {}
@@ -40,6 +43,7 @@ export default async function TeacherScoresPage() {
       initialRecentTotal={recentTotal}
       initialPreferences={initialPreferences}
       initialScoremapRows={scoremap}
+      midLowSwitchScore={midLowSwitchScore}
     />
   )
 }

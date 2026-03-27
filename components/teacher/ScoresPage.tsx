@@ -21,9 +21,10 @@ interface Props {
   initialRecentTotal: number | null
   initialPreferences: Preferences
   initialScoremapRows: Scoremap[]
+  midLowSwitchScore: number
 }
 
-export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPreferences, initialScoremapRows }: Props) {
+export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
   const [scoreHistory, setScoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [recentTotal] = useState<number | null>(initialRecentTotal)
   const [scoremapRows] = useState<Scoremap[]>(initialScoremapRows)
@@ -54,7 +55,7 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPre
       ...rotations.filter(r => r.year !== nextYear),
       { year: nextYear, work },
     ]
-    const scores = calculateTeacherScores(tempRotations, scoreMap, groupMap)
+    const scores = calculateTeacherScores(tempRotations, scoreMap, groupMap, midLowSwitchScore)
     return {
       yearScore: scores[nextYear] ?? 0,
       newTotal: calcRecentFourYearTotal(scores),
