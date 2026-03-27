@@ -53,7 +53,6 @@ export function calculateTeacherScores(
   for (const { year, work } of sorted) {
     if (!work) continue
 
-    const isHandOver = work.includes('接棒班')
     const coreRole = work.replace(/\(.*?\)/g, '').trim()
 
     if (SKIP_WORKS.includes(coreRole)) {
@@ -72,18 +71,11 @@ export function calculateTeacherScores(
     prevGroup = currentGroup
 
     let score = 0
-
-    if (isHandOver) {
-      // 接棒班特殊規則：中/低年級導師 -> 2 分，其他 -> 3 分
-      const isMidLow = ['中年級導師', '低年級導師'].some(r => coreRole.includes(r))
-      score = isMidLow ? 2 : 3
-    } else {
-      const scoreList = scoreMap[coreRole]
-      if (scoreList) {
-        const idx = Math.min(count, 8) - 1
-        const value = Number(scoreList[idx])
-        score = isNaN(value) ? 0 : value
-      }
+    const scoreList = scoreMap[coreRole]
+    if (scoreList) {
+      const idx = Math.min(count, 8) - 1
+      const value = Number(scoreList[idx])
+      score = isNaN(value) ? 0 : value
     }
 
     scores[year] = score

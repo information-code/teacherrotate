@@ -1,0 +1,9 @@
+-- ============================================================
+-- 007: 將接棒班分數移入 scoremap，由管理者前端管理
+-- ============================================================
+
+INSERT INTO public.scoremap (work, year1, year2, year3, year4, year5, year6, year7, year8, group_name, sort_order) VALUES
+('高年級接棒班', 3, 3, 3, 3, 3, 3, 3, 3, NULL, 48),
+('中年級接棒班', 2, 2, 2, 2, 2, 2, 2, 2, NULL, 49),
+('低年級接棒班', 2, 2, 2, 2, 2, 2, 2, 2, NULL, 50)
+ON CONFLICT (work) DO NOTHING;
