@@ -365,7 +365,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                   .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'zh-TW'))
                   .map(t => (
                     <option key={t.id} value={t.id}>
-                      {t.name ?? t.email}
+                      {t.name ?? t.email}（{t.email}）
                     </option>
                   ))}
               </select>
