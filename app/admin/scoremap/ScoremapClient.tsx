@@ -56,21 +56,28 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
   }
 
   async function save() {
+    // 前端驗證：不允許空白職位名稱
+    const emptyWork = rows.find(r => !r.work.trim())
+    if (emptyWork) {
+      setError('有職位名稱尚未填寫，請填寫後再儲存')
+      return
+    }
+
     setSaving(true)
     setError(null)
     setSaved(false)
     try {
       const payload = rows.map(r => ({
         ...(r.id.startsWith('new-') ? {} : { id: r.id }),
-        work: r.work,
+        work: r.work.trim(),
         year1: Number(r.year1), year2: Number(r.year2),
         year3: Number(r.year3), year4: Number(r.year4),
         year5: Number(r.year5), year6: Number(r.year6),
         year7: Number(r.year7), year8: Number(r.year8),
-        group_name: r.group_name || null,
+        group_name: r.group_name?.trim() || null,
         sort_order: r.sort_order ?? 0,
       }))
-      const [res] = await Promise.all([
+      const [res, settingsRes] = await Promise.all([
         fetch('/api/admin/scoremap', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -82,13 +89,20 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
           body: JSON.stringify({ midlow_switch_score: midLowSwitchScore }),
         }),
       ])
-      if (!res.ok) throw new Error('儲存失敗')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? '儲存失敗')
+      }
+      if (!settingsRes.ok) {
+        const data = await settingsRes.json().catch(() => ({}))
+        throw new Error(data.error ?? '設定儲存失敗')
+      }
       const fresh = await fetch('/api/admin/scoremap').then(r => r.json())
       setRows(Array.isArray(fresh) ? fresh : [])
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-    } catch {
-      setError('儲存失敗，請稍後再試')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '儲存失敗，請稍後再試')
     } finally {
       setSaving(false)
     }
