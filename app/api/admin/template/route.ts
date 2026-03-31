@@ -14,22 +14,19 @@ export async function GET() {
   if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // 取得所有在職使用者（排除 inactive 離校教師）
-  const { data: teachers } = await supabaseAdmin
-    .from('profiles')
-    .select('id, name, email')
-    .neq('status', 'inactive')
-    .order('name')
+  const [{ data: teachers }, { data: scoremapRows }] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, name, email')
+      .neq('status', 'inactive')
+      .order('name'),
+    supabaseAdmin
+      .from('scoremap')
+      .select('work')
+      .order('sort_order', { ascending: true }),
+  ])
 
-  const WORK_LIST = [
-    '高年級導師', '中年級導師', '低年級導師',
-    '高年級接棒班', '中年級接棒班', '低年級接棒班',
-    '教務主任', '學務主任', '總務主任', '輔導主任',
-    '註冊組長', '課務組長', '課發組長', '資訊組長', '生教組長', '健體組長',
-    '活動組長', '環衛組長', '文書組長', '輔導組長', '親職組長', '特教組長',
-    '生活課程科任', '英語領域科任', '社會領域科任', '自然領域科任',
-    '體育領域科任', '藝術領域科任', '科技創新任務科任', '其他領域科任',
-    '留職停薪', '育嬰留停', '借調',
-  ]
+  const WORK_LIST = (scoremapRows ?? []).map(r => r.work)
 
   const wb = XLSX.utils.book_new()
 
