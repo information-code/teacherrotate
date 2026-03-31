@@ -92,6 +92,6 @@ export function groupWorks(works: string[]): WorkGroup[] {
   // 未被分類的
   const categorized = new Set(groups.flatMap(g => g.works))
   const others = sorted.filter(w => !categorized.has(w))
-  if (others.length > 0) groups.splice(1, 0, { label: '其他', works: others })
+  if (others.length > 0) groups.push({ label: '其他', works: others })
   return groups.filter(g => g.works.length > 0)
 }
