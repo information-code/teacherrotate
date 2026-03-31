@@ -30,30 +30,41 @@ export async function GET() {
 
   const wb = XLSX.utils.book_new()
 
-  // Sheet 1: 工作紀錄（每位教師預填一列，填入 year 和 work 即可）
+  // Sheet 1: 工作紀錄（每位教師預填一列，填入 year、work、semester 即可）
   const templateData = (teachers ?? []).map(t => ({
     teacher_id: t.id,
     name: t.name ?? '',
     year: '',
     work: '',
+    semester: '全學年',
   }))
   // 若無教師，補一列說明
   if (templateData.length === 0) {
-    templateData.push({ teacher_id: '（無教師資料）', name: '', year: '', work: '' })
+    templateData.push({ teacher_id: '（無教師資料）', name: '', year: '', work: '', semester: '全學年' })
   }
   const ws1 = XLSX.utils.json_to_sheet(templateData)
-  ws1['!cols'] = [{ wch: 38 }, { wch: 12 }, { wch: 8 }, { wch: 20 }]
+  ws1['!cols'] = [{ wch: 38 }, { wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 12 }]
 
-  // 加入 work 欄位的下拉驗證（引用隱藏的職務清單工作表）
+  // 加入下拉驗證
   const dataRows = Math.max(templateData.length, 1)
-  ws1['!validations'] = [{
-    sqref: `D2:D${dataRows + 100}`,
-    type: 'list',
-    formula1: `'職務清單'!$A$1:$A$${WORK_LIST.length}`,
-    showErrorMessage: true,
-    errorTitle: '輸入錯誤',
-    error: '請從下拉選單選取職務名稱',
-  }]
+  ws1['!validations'] = [
+    {
+      sqref: `D2:D${dataRows + 100}`,
+      type: 'list',
+      formula1: `'職務清單'!$A$1:$A$${WORK_LIST.length}`,
+      showErrorMessage: true,
+      errorTitle: '輸入錯誤',
+      error: '請從下拉選單選取職務名稱',
+    },
+    {
+      sqref: `E2:E${dataRows + 100}`,
+      type: 'list',
+      formula1: '"上學期,下學期,全學年"',
+      showErrorMessage: true,
+      errorTitle: '輸入錯誤',
+      error: '請選擇：上學期、下學期 或 全學年',
+    },
+  ]
 
   XLSX.utils.book_append_sheet(wb, ws1, '工作紀錄')
 

@@ -22,7 +22,7 @@ export async function recalcTeacherScores(teacherIds: string[]): Promise<void> {
   for (const teacherId of teacherIds) {
     const { data: rotData } = await supabaseAdmin
       .from('rotations')
-      .select('year, work')
+      .select('year, work, semester')
       .eq('teacher_id', teacherId)
       .order('year', { ascending: true })
 

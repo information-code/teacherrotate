@@ -3,7 +3,7 @@
  * 從原 Google AppScript 邏輯移植，計算教師歷年輪動分數
  */
 
-export type Rotation = { year: number; work: string }
+export type Rotation = { year: number; work: string; semester?: string }
 export type ScoreMapRow = {
   work: string
   year1: number; year2: number; year3: number; year4: number
@@ -56,7 +56,7 @@ export function calculateTeacherScores(
   let count = 0
   const scores: YearScores = {}
 
-  for (const { year, work } of sorted) {
+  for (const { year, work, semester } of sorted) {
     if (!work) continue
 
     const coreRole = work.replace(/\(.*?\)/g, '').trim()
@@ -92,6 +92,11 @@ export function calculateTeacherScores(
         const value = Number(scoreList[idx])
         score = isNaN(value) ? 0 : value
       }
+    }
+
+    // 上學期或下學期：積分減半
+    if (semester === '上學期' || semester === '下學期') {
+      score *= 0.5
     }
 
     prevGroup = currentGroup

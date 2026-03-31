@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   let rotQuery = supabaseAdmin
     .from('rotations')
-    .select('id, teacher_id, year, work')
+    .select('id, teacher_id, year, work, semester')
     .order('year', { ascending: true })
 
   if (teacherId) rotQuery = rotQuery.eq('teacher_id', teacherId)
@@ -48,12 +48,14 @@ export async function PUT(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id, work } = await request.json()
+  const { id, work, semester } = await request.json()
   if (!id || !work) return NextResponse.json({ error: '缺少必要欄位' }, { status: 400 })
+  const VALID_SEMESTERS = ['上學期', '下學期', '全學年']
+  const finalSemester = VALID_SEMESTERS.includes(semester) ? semester : '全學年'
 
   const { data: rotation, error } = await supabaseAdmin
     .from('rotations')
-    .update({ work })
+    .update({ work, semester: finalSemester })
     .eq('id', id)
     .select('teacher_id')
     .single()
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { rows } = await request.json() as {
-    rows: { teacher_id?: string; teacherMail?: string; year: number; work: string }[]
+    rows: { teacher_id?: string; teacherMail?: string; year: number; work: string; semester?: string }[]
   }
 
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -113,13 +115,16 @@ export async function POST(request: Request) {
     for (const p of profiles ?? []) emailToId[p.email] = p.id
   }
 
-  const valid: { teacher_id: string; year: number; work: string }[] = []
+  const VALID_SEMESTERS = ['上學期', '下學期', '全學年']
+  const valid: { teacher_id: string; year: number; work: string; semester: string }[] = []
   const errors: string[] = []
 
   rows.forEach((row, i) => {
     const lineNum = i + 2
     const year = Number(row.year)
     const work = String(row.work ?? '').trim()
+    const semesterRaw = String(row.semester ?? '').trim()
+    const semester = VALID_SEMESTERS.includes(semesterRaw) ? semesterRaw : '全學年'
 
     if (!work) { errors.push(`第 ${lineNum} 行：work 為空`); return }
     if (isNaN(year) || year < 100) { errors.push(`第 ${lineNum} 行：year 格式錯誤（應為民國年）`); return }
@@ -134,7 +139,7 @@ export async function POST(request: Request) {
 
     if (!teacherId) { errors.push(`第 ${lineNum} 行：缺少 teacher_id 或 teacherMail`); return }
 
-    valid.push({ teacher_id: teacherId, year, work })
+    valid.push({ teacher_id: teacherId, year, work, semester })
   })
 
   if (valid.length === 0) {

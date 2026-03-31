@@ -30,6 +30,7 @@ interface RotationRow {
   teacher_id: string
   year: number
   work: string
+  semester: string
   profiles?: { name: string | null; email: string } | null
 }
 
@@ -45,6 +46,7 @@ interface ImportPreviewRow {
   teacherMail?: string
   year: number
   work: string
+  semester?: string
 }
 
 interface TeacherBasic {
@@ -72,6 +74,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [missingYear, setMissingYear] = useState<string>('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editWork, setEditWork] = useState('')
+  const [editSemester, setEditSemester] = useState('全學年')
   const [saving, setSaving] = useState(false)
   const [filterTeacher, setFilterTeacher] = useState('')
   const [filterYear, setFilterYear] = useState('')
@@ -88,6 +91,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [addTeacherId, setAddTeacherId] = useState('')
   const [addYear, setAddYear] = useState('')
   const [addWork, setAddWork] = useState('')
+  const [addSemester, setAddSemester] = useState('全學年')
   const [addError, setAddError] = useState('')
   const [adding, setAdding] = useState(false)
 
@@ -161,7 +165,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
     const res = await fetch('/api/admin/rotations', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, work: editWork }),
+      body: JSON.stringify({ id, work: editWork, semester: editSemester }),
     })
     setSaving(false)
     if (res.ok) { setEditingId(null); load() }
@@ -185,6 +189,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
         const valid: ImportPreviewRow[] = []
         const errs: string[] = []
 
+        const VALID_SEMESTERS = ['上學期', '下學期', '全學年']
         if (isWide) {
           rows.forEach((row) => {
             const teacherMail = String(row['teacherMail'] ?? '').trim()
@@ -201,6 +206,8 @@ export default function RotationsClient({ initialRotations, initialScores, activ
             const teacherMail = String(row['teacherMail'] ?? '').trim()
             const year = Number(row['year'])
             const work = String(row['work'] ?? '').trim()
+            const semesterRaw = String(row['semester'] ?? '').trim()
+            const semester = VALID_SEMESTERS.includes(semesterRaw) ? semesterRaw : '全學年'
             if (!teacher_id && !teacherMail) {
               errs.push(`第 ${i + 2} 行：需填 teacher_id 或 teacherMail`)
             } else if (!work || work === '無') {
@@ -208,9 +215,9 @@ export default function RotationsClient({ initialRotations, initialScores, activ
             } else if (isNaN(year) || year < 100) {
               errs.push(`第 ${i + 2} 行：year 格式錯誤（應為民國年）`)
             } else if (teacher_id) {
-              valid.push({ teacher_id, year, work })
+              valid.push({ teacher_id, year, work, semester })
             } else {
-              valid.push({ teacherMail, year, work })
+              valid.push({ teacherMail, year, work, semester })
             }
           })
         }
@@ -238,13 +245,14 @@ export default function RotationsClient({ initialRotations, initialScores, activ
       const res = await fetch('/api/admin/rotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [{ teacher_id: addTeacherId, year: Number(addYear), work: addWork.trim() }] }),
+        body: JSON.stringify({ rows: [{ teacher_id: addTeacherId, year: Number(addYear), work: addWork.trim(), semester: addSemester }] }),
       })
       const data = await res.json()
       if (!res.ok) { setAddError(data.error ?? '新增失敗'); return }
       setAddTeacherId('')
       setAddYear('')
       setAddWork('')
+      setAddSemester('全學年')
       load()
     } finally {
       setAdding(false)
@@ -410,6 +418,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                   <th>教師姓名</th>
                   <th>學年度</th>
                   <th>工作職務</th>
+                  <th>工作學期</th>
                   <th className="text-right">本年積分</th>
                   <th className="text-right">近四年總分</th>
                   <th className="w-24"></th>
@@ -417,7 +426,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="text-center text-zinc-400">無資料</td></tr>
+                  <tr><td colSpan={7} className="text-center text-zinc-400">無資料</td></tr>
                 )}
                 {filtered.map(row => (
                   <tr key={row.id}>
@@ -444,6 +453,19 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                         </select>
                       ) : row.work}
                     </td>
+                    <td>
+                      {editingId === row.id ? (
+                        <select
+                          value={editSemester}
+                          onChange={e => setEditSemester(e.target.value)}
+                          className="input py-1 w-28"
+                        >
+                          <option value="全學年">全學年</option>
+                          <option value="上學期">上學期</option>
+                          <option value="下學期">下學期</option>
+                        </select>
+                      ) : (row.semester === '全學年' ? '' : row.semester)}
+                    </td>
                     <td className="text-right">{getScore(row.teacher_id, row.year)?.toFixed(2) ?? '—'}</td>
                     <td className="text-right">{getRecentTotal(row.teacher_id)?.toFixed(2) ?? '—'}</td>
                     <td>
@@ -457,7 +479,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                       ) : (
                         <div className="flex gap-1">
                           <button
-                            onClick={() => { setEditingId(row.id); setEditWork(row.work) }}
+                            onClick={() => { setEditingId(row.id); setEditWork(row.work); setEditSemester(row.semester ?? '全學年') }}
                             className="btn-secondary py-1 px-2 text-xs"
                           >編輯</button>
                           <button
@@ -587,6 +609,14 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                       ))}
                     </optgroup>
                   ))}
+                </select>
+              </div>
+              <div className="w-28">
+                <label className="block text-xs text-zinc-500 mb-1">工作學期</label>
+                <select value={addSemester} onChange={e => setAddSemester(e.target.value)} className="input">
+                  <option value="全學年">全學年</option>
+                  <option value="上學期">上學期</option>
+                  <option value="下學期">下學期</option>
                 </select>
               </div>
               <button type="submit" disabled={adding} className="btn-primary whitespace-nowrap">
