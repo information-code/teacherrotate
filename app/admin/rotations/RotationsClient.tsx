@@ -434,12 +434,20 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                     <td>{row.year} 學年度</td>
                     <td>
                       {editingId === row.id ? (
-                        <input
+                        <select
                           value={editWork}
                           onChange={e => setEditWork(e.target.value)}
-                          className="input py-1 w-40"
+                          className="input py-1 w-44"
                           autoFocus
-                        />
+                        >
+                          {WORK_OPTIONS.map(group => (
+                            <optgroup key={group.group} label={group.group}>
+                              {group.items.map(item => (
+                                <option key={item} value={item}>{item}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
                       ) : row.work}
                     </td>
                     <td className="text-right">{getScore(row.teacher_id, row.year)?.toFixed(2) ?? '—'}</td>
