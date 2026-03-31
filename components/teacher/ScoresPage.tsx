@@ -8,6 +8,7 @@ interface ScoreEntry {
   year: number
   work?: string
   score?: number
+  semester?: string
 }
 
 interface Preferences {
@@ -135,7 +136,12 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPre
                 <tr key={row.year}>
                   <td>{row.year} 學年度</td>
                   <td>{row.work ?? '—'}</td>
-                  <td className="text-right">{row.score?.toFixed(2) ?? '—'}</td>
+                  <td className="text-right">
+                    {row.score?.toFixed(2) ?? '—'}
+                    {(row.semester === '上學期' || row.semester === '下學期') && (
+                      <span className="ml-1.5 text-xs text-zinc-400 border border-zinc-300 px-1 rounded-sm">半學期</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

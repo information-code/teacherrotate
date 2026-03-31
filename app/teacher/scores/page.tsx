@@ -16,7 +16,7 @@ export default async function TeacherScoresPage() {
     admin.from('settings').select('key, value'),
   ])
   // also need rotations to compute work per year
-  const { data: rotations } = await admin.from('rotations').select('year, work').eq('teacher_id', user.id).order('year')
+  const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
 
   const scores = scoresResult.data ?? []
   const prefs = prefsResult.data
@@ -25,9 +25,14 @@ export default async function TeacherScoresPage() {
   const midLowSwitchScore = Number(settingsMap['midlow_switch_score'] ?? 2)
 
   // Build scoreHistory (merge scores + rotations)
-  const rotMap: Record<number, string> = {}
-  for (const r of rotations ?? []) rotMap[r.year] = r.work
-  const scoreHistory = scores.map(s => ({ year: s.year, work: rotMap[s.year], score: s.score }))
+  const rotMap: Record<number, { work: string; semester: string }> = {}
+  for (const r of rotations ?? []) rotMap[r.year] = { work: r.work, semester: r.semester ?? '全學年' }
+  const scoreHistory = scores.map(s => ({
+    year: s.year,
+    work: rotMap[s.year]?.work,
+    semester: rotMap[s.year]?.semester,
+    score: s.score,
+  }))
   const latest = scores[scores.length - 1]
   const recentTotal = latest?.recent_four_year_total ?? null
 
