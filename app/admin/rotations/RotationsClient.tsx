@@ -17,19 +17,11 @@ function getMidLowConsecutiveYears(rotationsForTeacher: { year: number; work: st
   return count
 }
 
-const WORK_OPTIONS = [
-  { group: '導師', items: ['高年級導師', '中年級導師', '低年級導師'] },
-  { group: '接棒班', items: ['高年級接棒班', '中年級接棒班', '低年級接棒班'] },
-  { group: '行政主任', items: ['教務主任', '學務主任', '總務主任', '輔導主任'] },
-  { group: '行政組長', items: ['註冊組長', '課務組長', '課發組長', '資訊組長', '生教組長', '健體組長', '活動組長', '環衛組長', '文書組長', '輔導組長', '親職組長', '特教組長'] },
-  { group: '科任', items: ['生活課程科任', '英語領域科任', '社會領域科任', '自然領域科任', '體育領域科任', '藝術領域科任', '科技創新任務科任', '其他領域科任'] },
-  { group: '特殊', items: ['留職停薪', '育嬰留停', '借調'] },
-]
 
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
-import { sortWorks, buildTimeline, getWorkCategory, CATEGORY_STYLE } from '@/lib/work-sort'
+import { sortWorks, buildTimeline, getWorkCategory, CATEGORY_STYLE, groupWorks } from '@/lib/work-sort'
 
 type Tab = '工作紀錄' | '工作歷程' | '工作編輯'
 
@@ -65,9 +57,11 @@ interface Props {
   initialRotations: RotationRow[]
   initialScores: ScoreRow[]
   activeTeachers: TeacherBasic[]
+  scoremapWorks: string[]
 }
 
-export default function RotationsClient({ initialRotations, initialScores, activeTeachers }: Props) {
+export default function RotationsClient({ initialRotations, initialScores, activeTeachers, scoremapWorks }: Props) {
+  const workOptions = groupWorks(scoremapWorks)
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('工作紀錄')
   const [rotations, setRotations] = useState<RotationRow[]>(initialRotations)
@@ -440,9 +434,9 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                           className="input py-1 w-44"
                           autoFocus
                         >
-                          {WORK_OPTIONS.map(group => (
-                            <optgroup key={group.group} label={group.group}>
-                              {group.items.map(item => (
+                          {workOptions.map(group => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.works.map(item => (
                                 <option key={item} value={item}>{item}</option>
                               ))}
                             </optgroup>
@@ -586,9 +580,9 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                 <label className="block text-xs text-zinc-500 mb-1">工作職務</label>
                 <select value={addWork} onChange={e => setAddWork(e.target.value)} required className="input">
                   <option value="">請選擇職務</option>
-                  {WORK_OPTIONS.map(group => (
-                    <optgroup key={group.group} label={group.group}>
-                      {group.items.map(item => (
+                  {workOptions.map(group => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.works.map(item => (
                         <option key={item} value={item}>{item}</option>
                       ))}
                     </optgroup>
