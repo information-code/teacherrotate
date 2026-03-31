@@ -68,7 +68,7 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
     setSaved(false)
     try {
       const payload = rows.map(r => ({
-        ...(r.id.startsWith('new-') ? {} : { id: r.id }),
+        id: r.id.startsWith('new-') ? crypto.randomUUID() : r.id,
         work: r.work.trim(),
         year1: Number(r.year1), year2: Number(r.year2),
         year3: Number(r.year3), year4: Number(r.year4),
