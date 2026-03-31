@@ -20,6 +20,7 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRows(initialRows) }, [initialRows])
   const [saving, setSaving] = useState(false)
+  const [recalcing, setRecalcing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -100,7 +101,11 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
       const fresh = await fetch('/api/admin/scoremap').then(r => r.json())
       setRows(Array.isArray(fresh) ? fresh : [])
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(false), 4000)
+
+      // 儲存完成後觸發重算（獨立進行，不影響儲存成功狀態）
+      setRecalcing(true)
+      fetch('/api/admin/recalc', { method: 'POST' }).finally(() => setRecalcing(false))
     } catch (e) {
       setError(e instanceof Error ? e.message : '儲存失敗，請稍後再試')
     } finally {
@@ -124,7 +129,8 @@ export default function ScoremapClient({ initialRows, initialMidLowSwitchScore }
       <div className="flex items-center justify-between">
         <h2 className="page-title mb-0">分數對照表</h2>
         <div className="flex items-center gap-3">
-          {saved && <span className="text-sm text-green-600">已儲存</span>}
+          {saved && !recalcing && <span className="text-sm text-green-600">已儲存，分數重算完成</span>}
+          {saved && recalcing && <span className="text-sm text-zinc-500">已儲存，重算分數中...</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}
           <button onClick={addRow} className="btn-secondary">+ 新增職位</button>
           <button onClick={save} disabled={saving} className="btn-primary">
