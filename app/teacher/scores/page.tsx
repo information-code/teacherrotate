@@ -9,11 +9,12 @@ export default async function TeacherScoresPage() {
   if (!user) redirect('/login')
 
   const admin = getAdminClient()
-  const [scoresResult, prefsResult, scoremapResult, settingsResult] = await Promise.all([
+  const [scoresResult, prefsResult, scoremapResult, settingsResult, profileResult] = await Promise.all([
     admin.from('scores').select('year, score, recent_four_year_total').eq('teacher_id', user.id).order('year'),
     admin.from('preferences').select('preference1, preference2, preference3').eq('teacher_id', user.id).single(),
     admin.from('scoremap').select('*').order('sort_order'),
     admin.from('settings').select('key, value'),
+    admin.from('profiles').select('score_confirmed, score_confirmed_at').eq('id', user.id).single(),
   ])
   // also need rotations to compute work per year
   const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
@@ -49,6 +50,8 @@ export default async function TeacherScoresPage() {
       initialPreferences={initialPreferences}
       initialScoremapRows={scoremap}
       midLowSwitchScore={midLowSwitchScore}
+      initialConfirmed={profileResult.data?.score_confirmed ?? false}
+      initialConfirmedAt={profileResult.data?.score_confirmed_at ?? null}
     />
   )
 }

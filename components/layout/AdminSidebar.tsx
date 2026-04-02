@@ -9,7 +9,8 @@ const navItems = [
   { href: '/admin/teachers',   label: '教師管理' },
   { href: '/admin/scoremap',   label: '分數對照表' },
   { href: '/admin/rotations',  label: '教師工作紀錄' },
-  { href: '/admin/statistics', label: '志願統計' },
+  { href: '/admin/statistics',    label: '志願統計' },
+  { href: '/admin/confirmations', label: '積分確認狀態' },
 ]
 
 export function AdminSidebar() {

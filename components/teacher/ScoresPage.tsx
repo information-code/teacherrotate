@@ -23,16 +23,35 @@ interface Props {
   initialPreferences: Preferences
   initialScoremapRows: Scoremap[]
   midLowSwitchScore: number
+  initialConfirmed: boolean
+  initialConfirmedAt: string | null
 }
 
-export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
+export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPreferences, initialScoremapRows, midLowSwitchScore, initialConfirmed, initialConfirmedAt }: Props) {
   const [scoreHistory, setScoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [recentTotal] = useState<number | null>(initialRecentTotal)
+  const [confirmed, setConfirmed] = useState(initialConfirmed)
+  const [confirmedAt] = useState(initialConfirmedAt)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [confirmSaving, setConfirmSaving] = useState(false)
   const [scoremapRows] = useState<Scoremap[]>(initialScoremapRows)
   const [preferences, setPreferences] = useState<Preferences>(initialPreferences)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  async function handleConfirm() {
+    setConfirmSaving(true)
+    try {
+      const res = await fetch('/api/teacher/confirm', { method: 'POST' })
+      if (res.ok) {
+        setConfirmed(true)
+        setShowConfirmDialog(false)
+      }
+    } finally {
+      setConfirmSaving(false)
+    }
+  }
 
   // 計算預估分數
   const rotations = scoreHistory.filter(s => s.work).map(s => ({ year: s.year, work: s.work! }))
@@ -147,7 +166,59 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialPre
             </tbody>
           </table>
         )}
+
+        {/* 確認勾選框 */}
+        <div className="mt-4 pt-4 border-t border-zinc-100">
+          {confirmed ? (
+            <div className="flex items-center gap-2 text-sm text-green-700">
+              <span className="text-green-500">☑</span>
+              <span>我已確認上方歷年工作與分數無誤。</span>
+              {confirmedAt && (
+                <span className="text-xs text-zinc-400 ml-1">
+                  （確認時間：{new Date(confirmedAt).toLocaleString('zh-TW')}）
+                </span>
+              )}
+            </div>
+          ) : (
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                checked={false}
+                onChange={() => setShowConfirmDialog(true)}
+                className="w-4 h-4 rounded border-zinc-300 cursor-pointer"
+              />
+              我已確認上方歷年工作與分數無誤。
+            </label>
+          )}
+        </div>
       </div>
+
+      {/* 確認 Dialog */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-sm shadow-lg p-6 max-w-sm w-full mx-4 space-y-4">
+            <h3 className="font-semibold text-zinc-900">確認歷年工作與分數</h3>
+            <p className="text-sm text-zinc-600">
+              確認後將被<strong>鎖定</strong>，是否確定歷年工作與分數無誤？
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                className="btn-secondary"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={confirmSaving}
+                className="btn-primary"
+              >
+                {confirmSaving ? '處理中...' : '確認'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 下學年度志願 */}
       <div className="card">

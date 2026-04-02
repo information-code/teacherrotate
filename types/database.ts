@@ -31,6 +31,7 @@ export type Database = {
           other: string | null; special_class_management: string | null
           competition_guidance: string | null; experience: Json; role: string
           status: string; created_at: string; updated_at: string
+          score_confirmed: boolean; score_confirmed_at: string | null
         }
         Insert: {
           id: string; email: string; name?: string | null; phone?: string | null
@@ -54,6 +55,7 @@ export type Database = {
           other?: string | null; special_class_management?: string | null
           competition_guidance?: string | null; experience?: Json; role?: string
           status?: string; created_at?: string; updated_at?: string
+          score_confirmed?: boolean; score_confirmed_at?: string | null
         }
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>
         Relationships: []
