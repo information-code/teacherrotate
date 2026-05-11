@@ -130,7 +130,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
     pairs.forEach(([gradeKey, boolKey]) => {
       const grade = watch(gradeKey)
       if (grade && grade.trim()) {
-        setValue(boolKey, true, { shouldDirty: true })
+        setValue(boolKey, true, { shouldDirty: false })
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
