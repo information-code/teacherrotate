@@ -71,6 +71,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
   const [bumping, setBumping] = useState(false)
+  const [unlocking, setUnlocking] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
@@ -192,6 +193,27 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
     if (year !== currentYear) params.set('year', String(year))
     const qs = params.toString()
     router.push(qs ? `/admin/statistics?${qs}` : '/admin/statistics')
+  }
+
+  async function unlockTeacher(teacherId: string, name: string) {
+    if (!confirm(`確定要解鎖「${name}」的志願？解鎖後該老師可重新修改本年度志願。`)) return
+    setUnlocking(teacherId)
+    try {
+      const res = await fetch('/api/admin/preferences/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacher_id: teacherId, year: viewYear }),
+      })
+      if (!res.ok) {
+        alert('解鎖失敗，請稍後再試')
+        return
+      }
+      setDetailTeacher(null)
+      setDetailPos(null)
+      router.refresh()
+    } finally {
+      setUnlocking(null)
+    }
   }
 
   async function bumpPreferenceYear() {
@@ -594,11 +616,30 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
                 className="text-zinc-400 hover:text-zinc-600 text-base leading-none flex-shrink-0"
               >×</button>
             </div>
-            <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className={`inline-block text-[11px] px-1.5 py-0.5 border rounded-sm ${TARGET_BADGE_STYLE[detailTeacher.targetType]}`}>
                 {detailTeacher.targetType}
               </span>
+              {detailTeacher.locked && (
+                <span className="inline-block text-[11px] px-1.5 py-0.5 border rounded-sm bg-zinc-100 border-zinc-300 text-zinc-700">
+                  🔒 已鎖定
+                </span>
+              )}
+              {detailTeacher.giveUp && (
+                <span className="inline-block text-[11px] px-1.5 py-0.5 border rounded-sm bg-amber-50 border-amber-200 text-amber-700">
+                  放棄選填
+                </span>
+              )}
             </div>
+            {detailTeacher.locked && isCurrent && (
+              <button
+                onClick={() => unlockTeacher(detailTeacher.id, detailTeacher.name)}
+                disabled={unlocking === detailTeacher.id}
+                className="btn-secondary w-full py-1 text-xs"
+              >
+                {unlocking === detailTeacher.id ? '解鎖中...' : '🔓 協助解鎖（可重填）'}
+              </button>
+            )}
             <div className="space-y-1.5 text-zinc-600">
               <div className="flex justify-between">
                 <span className="text-zinc-400">近四年總分</span>

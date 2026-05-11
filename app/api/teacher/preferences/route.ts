@@ -19,12 +19,19 @@ export async function GET() {
   const year = await getPreferenceYear()
   const { data } = await supabase
     .from('preferences')
-    .select('preference1, preference2, preference3')
+    .select('preference1, preference2, preference3, locked, give_up')
     .eq('teacher_id', user.id)
     .eq('year', year)
     .maybeSingle()
 
-  return NextResponse.json({ year, ...(data ?? { preference1: null, preference2: null, preference3: null }) })
+  return NextResponse.json({
+    year,
+    preference1: data?.preference1 ?? null,
+    preference2: data?.preference2 ?? null,
+    preference3: data?.preference3 ?? null,
+    locked: data?.locked ?? false,
+    give_up: data?.give_up ?? false,
+  })
 }
 
 export async function PUT(request: Request) {
@@ -32,18 +39,31 @@ export async function PUT(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { preference1, preference2, preference3 } = await request.json()
+  const { preference1, preference2, preference3, give_up } = await request.json()
   const year = await getPreferenceYear()
+
+  // 若該年度已鎖定，拒絕修改
+  const { data: existing } = await supabaseAdmin
+    .from('preferences')
+    .select('locked')
+    .eq('teacher_id', user.id)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (existing?.locked) {
+    return NextResponse.json(
+      { error: 'locked', message: '您的志願已鎖定，如需修改請洽管理員協助解鎖。' },
+      { status: 423 }
+    )
+  }
+
+  const payload = give_up
+    ? { teacher_id: user.id, year, preference1: null, preference2: null, preference3: null, give_up: true, locked: true }
+    : { teacher_id: user.id, year, preference1, preference2, preference3, give_up: false, locked: true }
 
   const { data, error } = await supabase
     .from('preferences')
-    .upsert({
-      teacher_id: user.id,
-      year,
-      preference1,
-      preference2,
-      preference3,
-    }, { onConflict: 'teacher_id,year' })
+    .upsert(payload, { onConflict: 'teacher_id,year' })
     .select()
     .single()
 

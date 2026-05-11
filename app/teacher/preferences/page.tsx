@@ -25,7 +25,7 @@ export default async function TeacherPreferencesPage() {
 
   const { data: prefs } = await admin
     .from('preferences')
-    .select('preference1, preference2, preference3')
+    .select('preference1, preference2, preference3, locked, give_up')
     .eq('teacher_id', user.id)
     .eq('year', targetYear)
     .maybeSingle()
@@ -53,6 +53,8 @@ export default async function TeacherPreferencesPage() {
       targetType={targetType}
       initialScoreHistory={scoreHistory}
       initialPreferences={initialPreferences}
+      initialLocked={prefs?.locked ?? false}
+      initialGiveUp={prefs?.give_up ?? false}
       initialScoremapRows={scoremap}
       midLowSwitchScore={midLowSwitchScore}
     />

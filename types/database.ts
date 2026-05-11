@@ -64,11 +64,13 @@ export type Database = {
         Row: {
           id: string; teacher_id: string; year: number
           preference1: string | null; preference2: string | null; preference3: string | null
+          locked: boolean; give_up: boolean
           updated_at: string
         }
         Insert: {
           id?: string; teacher_id: string; year: number
           preference1?: string | null; preference2?: string | null; preference3?: string | null
+          locked?: boolean; give_up?: boolean
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['preferences']['Insert']>

@@ -24,6 +24,8 @@ export interface TeacherEval {
   midLowConsecutiveYears: number
   timeline: TimelineSegment[]
   targetType: RotationTarget
+  locked: boolean
+  giveUp: boolean
 }
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調', '延長病假']
@@ -69,7 +71,7 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
   const [prefsResult, scoresResult, rotationsResult, scoremapResult] = await Promise.all([
     activeIds.length > 0
       ? admin.from('preferences')
-          .select('teacher_id, preference1, preference2, preference3')
+          .select('teacher_id, preference1, preference2, preference3, locked, give_up')
           .in('teacher_id', activeIds)
           .eq('year', viewYear)
       : Promise.resolve({ data: [] }),
@@ -164,6 +166,8 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
           midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
           timeline: buildTimeline(teacherRotations[id] ?? []),
           targetType: targetMap[id]!,
+          locked: pref?.locked ?? false,
+          giveUp: pref?.give_up ?? false,
         }
       })
     : []
