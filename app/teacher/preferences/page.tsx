@@ -16,7 +16,7 @@ export default async function TeacherPreferencesPage() {
     admin.from('settings').select('key, value'),
     admin.from('profiles').select('score_confirmed').eq('id', user.id).single(),
   ])
-  const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
+  const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
 
   const scores = scoresResult.data ?? []
   const scoremap = scoremapResult.data ?? []
@@ -46,7 +46,7 @@ export default async function TeacherPreferencesPage() {
     preference3: prefs?.preference3 ?? null,
   }
 
-  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work })))
+  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work, grade: r.grade ?? null })))
 
   return (
     <PreferencesPage

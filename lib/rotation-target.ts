@@ -5,9 +5,12 @@
  *   - 含「主任」/「組長」                                → 行政
  *   - 含「接棒班」                                        → 接棒班導師
  *   - 含「科任」                                          → 科任
- *   - 低/中/高年級導師，連續同職次數為「偶數」且 ≥ 2     → 二/四/六年級導師
- *     （連續 2/4/6… 次代表剛帶完一輪 1→2/3→4/5→6，要輪換；
- *       連續 1/3/5… 次代表正帶到 1/3/5 年級，明年才換）
+ *   - 低/中/高年級導師：
+ *       1) 若該筆有指定 grade（1-6）→ 直接看 grade：
+ *            grade 為 2/4/6 → 二/四/六年級導師（即將輪換）
+ *            grade 為 1/3/5 → null（剛接，明年才換）
+ *       2) 沒有 grade → 退回 streak 奇偶推算：連續同職偶數 ≥ 2 才是目標
+ *          （適合一般情況：1→2 為週期，奇數年首屆、偶數年結束）
  *   - 留職停薪 / 育嬰留停 / 借調 / 延長病假              → 返回安排
  *   - 其他（含跨組、奇數年首屆、新進無紀錄）              → null（不需填）
  */
@@ -29,12 +32,19 @@ const HOMEROOM_TO_TARGET: Record<string, RotationTarget> = {
   '低年級導師': '二年級導師',
 }
 
+const GRADE_TO_TARGET: Record<number, RotationTarget> = {
+  2: '二年級導師',
+  4: '四年級導師',
+  6: '六年級導師',
+}
+
 export function getRotationTarget(
-  rotations: { year: number; work: string }[]
+  rotations: { year: number; work: string; grade?: number | null }[]
 ): RotationTarget | null {
   if (rotations.length === 0) return null
   const sorted = [...rotations].sort((a, b) => b.year - a.year)
-  const w1 = sorted[0].work
+  const latest = sorted[0]
+  const w1 = latest.work
 
   if (w1.includes('主任')) return '行政'
   if (w1.includes('組長')) return '行政'
@@ -42,7 +52,11 @@ export function getRotationTarget(
   if (w1.includes('科任')) return '科任'
 
   if (w1 in HOMEROOM_TO_TARGET) {
-    // 從最新往回數連續同職的次數，遇到不同職務（含留停/育嬰/借調/延長病假）即中斷
+    // 優先：若最新一筆有指定 grade，直接依年級判斷
+    if (latest.grade != null) {
+      return GRADE_TO_TARGET[latest.grade] ?? null
+    }
+    // 否則退回 streak 奇偶推算：從最新往回數連續同職的次數
     let streak = 0
     for (const r of sorted) {
       if (r.work === w1) streak++

@@ -77,7 +77,7 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
       : Promise.resolve({ data: [] }),
     admin.from('scores').select('teacher_id, recent_four_year_total').not('recent_four_year_total', 'is', null),
     activeIds.length > 0
-      ? admin.from('rotations').select('teacher_id, year, work').in('teacher_id', activeIds).order('year', { ascending: false })
+      ? admin.from('rotations').select('teacher_id, year, work, grade').in('teacher_id', activeIds).order('year', { ascending: false })
       : Promise.resolve({ data: [] }),
     admin.from('scoremap').select('work, group_name'),
   ])
@@ -89,10 +89,10 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
   }
 
   // 每位教師的工作紀錄（分組）
-  const teacherRotations: Record<string, { year: number; work: string }[]> = {}
+  const teacherRotations: Record<string, { year: number; work: string; grade: number | null }[]> = {}
   for (const r of rotationsResult.data ?? []) {
     if (!teacherRotations[r.teacher_id]) teacherRotations[r.teacher_id] = []
-    teacherRotations[r.teacher_id].push({ year: r.year, work: r.work })
+    teacherRotations[r.teacher_id].push({ year: r.year, work: r.work, grade: r.grade ?? null })
   }
 
   // 計算每位教師的目標類別（依最新一筆 rotation 判定）

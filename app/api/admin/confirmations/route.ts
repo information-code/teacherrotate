@@ -24,7 +24,7 @@ export async function GET() {
       .not('role', 'eq', 'superadmin')
       .neq('status', 'inactive')
       .order('name'),
-    supabaseAdmin.from('rotations').select('teacher_id, year, work'),
+    supabaseAdmin.from('rotations').select('teacher_id, year, work, grade'),
     supabaseAdmin.from('settings').select('value').eq('key', 'preference_year'),
   ])
 
@@ -41,10 +41,10 @@ export async function GET() {
     (prefs ?? []).map(p => [p.teacher_id, p])
   )
 
-  const rotByTeacher: Record<string, { year: number; work: string }[]> = {}
+  const rotByTeacher: Record<string, { year: number; work: string; grade: number | null }[]> = {}
   for (const r of rotations ?? []) {
     if (!rotByTeacher[r.teacher_id]) rotByTeacher[r.teacher_id] = []
-    rotByTeacher[r.teacher_id].push({ year: r.year, work: r.work })
+    rotByTeacher[r.teacher_id].push({ year: r.year, work: r.work, grade: r.grade ?? null })
   }
 
   const teachers = (profiles ?? []).map(p => {

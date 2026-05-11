@@ -79,10 +79,12 @@ export type Database = {
       rotations: {
         Row: {
           id: string; teacher_id: string; year: number; work: string
+          grade: number | null
           semester: string; created_at: string; updated_at: string
         }
         Insert: {
           id?: string; teacher_id: string; year: number; work: string
+          grade?: number | null
           semester?: string; created_at?: string; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['rotations']['Insert']>

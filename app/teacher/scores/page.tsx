@@ -14,7 +14,7 @@ export default async function TeacherScoresPage() {
     admin.from('scores').select('year, score, recent_four_year_total').eq('teacher_id', user.id).order('year'),
     admin.from('profiles').select('score_confirmed, score_confirmed_at').eq('id', user.id).single(),
   ])
-  const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
+  const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
 
   const scores = scoresResult.data ?? []
 
@@ -28,7 +28,7 @@ export default async function TeacherScoresPage() {
   }))
   const latest = scores[scores.length - 1]
   const recentTotal = latest?.recent_four_year_total ?? null
-  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work })))
+  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work, grade: r.grade ?? null })))
 
   return (
     <ScoresPage
