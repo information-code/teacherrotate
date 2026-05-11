@@ -253,6 +253,15 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
                 </td>
                 <td>
                   <div className="flex gap-1 justify-end">
+                    {t.score_confirmed && (
+                      <button
+                        onClick={() => resetOne(t.id, t.name ?? t.email)}
+                        disabled={resetting !== null}
+                        className="btn-secondary py-1 px-2 text-xs"
+                      >
+                        {resetting === t.id ? '...' : '分數確認解鎖'}
+                      </button>
+                    )}
                     {t.prefLocked && (
                       <button
                         onClick={() => unlockPref(t.id, t.name ?? t.email)}
@@ -260,16 +269,7 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
                         className="btn-secondary py-1 px-2 text-xs"
                         title={`解鎖 ${preferenceYear} 學年度志願`}
                       >
-                        {unlocking === t.id ? '...' : '🔓 解鎖志願'}
-                      </button>
-                    )}
-                    {t.score_confirmed && (
-                      <button
-                        onClick={() => resetOne(t.id, t.name ?? t.email)}
-                        disabled={resetting !== null}
-                        className="btn-secondary py-1 px-2 text-xs"
-                      >
-                        {resetting === t.id ? '...' : '恢復確認'}
+                        {unlocking === t.id ? '...' : '志願選填解鎖'}
                       </button>
                     )}
                   </div>
