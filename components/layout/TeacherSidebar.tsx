@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/teacher/profile', label: '基本資料' },
-  { href: '/teacher/scores',  label: '輪動分數 / 志願' },
+  { href: '/teacher/profile',     label: '基本資料' },
+  { href: '/teacher/scores',      label: '輪動分數' },
+  { href: '/teacher/preferences', label: '選填志願' },
 ]
 
 export function TeacherSidebar() {
