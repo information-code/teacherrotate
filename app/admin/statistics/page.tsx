@@ -81,8 +81,21 @@ function needsToChange(
   return count >= 2
 }
 
-export default async function StatisticsPage() {
+export default async function StatisticsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const admin = getAdminClient()
+  const params = await searchParams
+
+  // 讀「目前開放填寫年度」與 preferences 中所有出現過的年度
+  const [settingsResult, prefYearsResult] = await Promise.all([
+    admin.from('settings').select('key, value').eq('key', 'preference_year').single(),
+    admin.from('preferences').select('year'),
+  ])
+  const currentYear = Number(settingsResult.data?.value ?? 115)
+  const distinctYears = Array.from(new Set((prefYearsResult.data ?? []).map(r => r.year))).sort((a, b) => b - a)
+  // 確保 currentYear 在清單裡（即使目前還沒人填）
+  const availableYears = distinctYears.includes(currentYear) ? distinctYears : [currentYear, ...distinctYears]
+  const viewYear = Number(params.year ?? currentYear)
+  const isCurrent = viewYear === currentYear
 
   // 先取在職教師 ID
   const { data: activeProfiles } = await admin
@@ -91,7 +104,10 @@ export default async function StatisticsPage() {
 
   const [prefsResult, scoresResult, rotationsResult, scoremapResult] = await Promise.all([
     activeIds.length > 0
-      ? admin.from('preferences').select('teacher_id, preference1, preference2, preference3').in('teacher_id', activeIds)
+      ? admin.from('preferences')
+          .select('teacher_id, preference1, preference2, preference3')
+          .in('teacher_id', activeIds)
+          .eq('year', viewYear)
       : Promise.resolve({ data: [] }),
     admin.from('scores').select('teacher_id, recent_four_year_total').not('recent_four_year_total', 'is', null),
     activeIds.length > 0
@@ -113,10 +129,10 @@ export default async function StatisticsPage() {
     teacherRotations[r.teacher_id].push({ year: r.year, work: r.work })
   }
 
-  // 判斷哪些在職教師需要換工作
-  const needsChangeIds = new Set(
-    activeIds.filter(id => needsToChange(teacherRotations[id] ?? [], groupMap))
-  )
+  // 只有當前年度才套用「需換工作」過濾與評估面板；歷史年度直接統計該年度所有志願
+  const filterIds: Set<string> | null = isCurrent
+    ? new Set(activeIds.filter(id => needsToChange(teacherRotations[id] ?? [], groupMap)))
+    : null
 
   // 取各教師最新職位
   const currentWorkMap: Record<string, string> = {}
@@ -125,10 +141,10 @@ export default async function StatisticsPage() {
     currentWorkMap[id] = sorted[0]?.work ?? ''
   }
 
-  // 統計志願（只統計需換工作的教師）
+  // 統計志願
   const stats: Record<string, { pref1: number; pref2: number; pref3: number }> = {}
   for (const p of prefsResult.data ?? []) {
-    if (!needsChangeIds.has(p.teacher_id)) continue
+    if (filterIds && !filterIds.has(p.teacher_id)) continue
     const fields = [
       { value: p.preference1, rank: 'pref1' as const },
       { value: p.preference2, rank: 'pref2' as const },
@@ -150,7 +166,7 @@ export default async function StatisticsPage() {
     }))
     .sort((a, b) => b.total - a.total || getWorkSortOrder(a.work) - getWorkSortOrder(b.work))
 
-  // 建立評估資料（只含需換工作的教師）
+  // 建立評估資料（只有當前年度使用）
   const profileMap = Object.fromEntries((activeProfiles ?? []).map(p => [p.id, p.name ?? '']))
   const scoreMap: Record<string, number> = {}
   for (const s of scoresResult.data ?? []) {
@@ -164,21 +180,22 @@ export default async function StatisticsPage() {
     (prefsResult.data ?? []).map(p => [p.teacher_id, p])
   )
 
-  // 評估對象：需換工作的在職教師（不論有無填志願）
-  const teachers: TeacherEval[] = [...needsChangeIds].map(id => {
-    const pref = prefMap[id]
-    return {
-      id,
-      name: profileMap[id] ?? id,
-      pref1: pref?.preference1 ?? null,
-      pref2: pref?.preference2 ?? null,
-      pref3: pref?.preference3 ?? null,
-      score: scoreMap[id] ?? 0,
-      currentWork: currentWorkMap[id] ?? null,
-      midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
-      timeline: buildTimeline(teacherRotations[id] ?? []),
-    }
-  })
+  const teachers: TeacherEval[] = filterIds
+    ? [...filterIds].map(id => {
+        const pref = prefMap[id]
+        return {
+          id,
+          name: profileMap[id] ?? id,
+          pref1: pref?.preference1 ?? null,
+          pref2: pref?.preference2 ?? null,
+          pref3: pref?.preference3 ?? null,
+          score: scoreMap[id] ?? 0,
+          currentWork: currentWorkMap[id] ?? null,
+          midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
+          timeline: buildTimeline(teacherRotations[id] ?? []),
+        }
+      })
+    : []
 
   // 中低年級導師組的職位清單（用於 client 端拖拉驗證）
   const midLowWorks = new Set(
@@ -187,5 +204,15 @@ export default async function StatisticsPage() {
       .map(r => r.work)
   )
 
-  return <StatisticsClient initialStats={result} initialTeachers={teachers} midLowWorks={[...midLowWorks]} />
+  return (
+    <StatisticsClient
+      initialStats={result}
+      initialTeachers={teachers}
+      midLowWorks={[...midLowWorks]}
+      currentYear={currentYear}
+      viewYear={viewYear}
+      availableYears={availableYears}
+      isCurrent={isCurrent}
+    />
+  )
 }

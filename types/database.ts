@@ -62,12 +62,12 @@ export type Database = {
       }
       preferences: {
         Row: {
-          id: string; teacher_id: string
+          id: string; teacher_id: string; year: number
           preference1: string | null; preference2: string | null; preference3: string | null
           updated_at: string
         }
         Insert: {
-          id?: string; teacher_id: string
+          id?: string; teacher_id: string; year: number
           preference1?: string | null; preference2?: string | null; preference3?: string | null
           updated_at?: string
         }

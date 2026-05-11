@@ -3,6 +3,15 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
+async function getDefaultYear(): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('settings')
+    .select('value')
+    .eq('key', 'preference_year')
+    .single()
+  return Number(data?.value ?? 115)
+}
+
 export async function GET(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -17,13 +26,16 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const work = url.searchParams.get('work')
+  const yearParam = url.searchParams.get('year')
+  const year = yearParam ? Number(yearParam) : await getDefaultYear()
 
   // 若帶 work 參數，回傳選了該職位的教師清單
   if (work) {
     const [{ data: prefs }, { data: profiles }] = await Promise.all([
       supabaseAdmin
         .from('preferences')
-        .select('teacher_id, preference1, preference2, preference3'),
+        .select('teacher_id, preference1, preference2, preference3')
+        .eq('year', year),
       supabaseAdmin
         .from('profiles')
         .select('id, name, email'),
@@ -44,6 +56,7 @@ export async function GET(request: Request) {
   const { data: prefs } = await supabaseAdmin
     .from('preferences')
     .select('preference1, preference2, preference3')
+    .eq('year', year)
 
   // 彙整各職位選填人數
   const stats: Record<string, { pref1: number; pref2: number; pref3: number }> = {}

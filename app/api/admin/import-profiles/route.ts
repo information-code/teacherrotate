@@ -100,6 +100,14 @@ export async function POST(request: Request) {
   }
 
   const admin = getAdminClient()
+  // 讀「目前開放填寫年度」設定，匯入的志願寫入該年度
+  const { data: prefYearSetting } = await admin
+    .from('settings')
+    .select('value')
+    .eq('key', 'preference_year')
+    .single()
+  const prefYear = Number(prefYearSetting?.value ?? 115)
+
   let updated = 0
   let notFound = 0
   const errors: string[] = []
@@ -145,14 +153,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // 志願序
+    // 志願序（寫入「目前開放填寫年度」）
     const pref1 = parseStr(row['firstChoice'])
     const pref2 = parseStr(row['secondChoice'])
     const pref3 = parseStr(row['thirdChoice'])
     if (pref1 || pref2 || pref3) {
       await admin.from('preferences').upsert(
-        { teacher_id: profile.id, preference1: pref1, preference2: pref2, preference3: pref3 },
-        { onConflict: 'teacher_id' }
+        { teacher_id: profile.id, year: prefYear, preference1: pref1, preference2: pref2, preference3: pref3 },
+        { onConflict: 'teacher_id,year' }
       )
     }
 

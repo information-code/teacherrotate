@@ -23,16 +23,20 @@ interface Props {
   initialStats: StatRow[]
   initialTeachers: TeacherEval[]
   midLowWorks: string[]  // 屬於中低年級導師組的職位清單
+  currentYear: number
+  viewYear: number
+  availableYears: number[]
+  isCurrent: boolean
 }
 
-async function fetchStats(): Promise<StatRow[]> {
-  const res = await fetch('/api/admin/statistics')
+async function fetchStats(year: number): Promise<StatRow[]> {
+  const res = await fetch(`/api/admin/statistics?year=${year}`)
   if (!res.ok) return []
   return res.json()
 }
 
-async function fetchDetail(work: string): Promise<DetailRow[]> {
-  const res = await fetch(`/api/admin/statistics?work=${encodeURIComponent(work)}`)
+async function fetchDetail(work: string, year: number): Promise<DetailRow[]> {
+  const res = await fetch(`/api/admin/statistics?work=${encodeURIComponent(work)}&year=${year}`)
   if (!res.ok) return []
   return res.json()
 }
@@ -60,11 +64,12 @@ function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmi
 
 const MIDLOW_LIMIT = 8  // 連續幾年後強制離開中低年級
 
-export default function StatisticsClient({ initialStats, initialTeachers, midLowWorks }: Props) {
+export default function StatisticsClient({ initialStats, initialTeachers, midLowWorks, currentYear, viewYear, availableYears, isCurrent }: Props) {
   const midLowWorksSet = new Set(midLowWorks)
   const router = useRouter()
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
+  const [bumping, setBumping] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
@@ -178,7 +183,35 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
     if (selected === work) { setSelected(null); return }
     setSelected(work)
     setDetailLoading(true)
-    fetchDetail(work).then(data => { setDetail(data); setDetailLoading(false) })
+    fetchDetail(work, viewYear).then(data => { setDetail(data); setDetailLoading(false) })
+  }
+
+  function switchYear(year: number) {
+    const params = new URLSearchParams()
+    if (year !== currentYear) params.set('year', String(year))
+    const qs = params.toString()
+    router.push(qs ? `/admin/statistics?${qs}` : '/admin/statistics')
+  }
+
+  async function bumpPreferenceYear() {
+    const nextYear = currentYear + 1
+    if (!confirm(`啟動 ${nextYear} 學年度的志願填寫？\n\n● 目前 ${currentYear} 學年度的志願將保留為歷史紀錄，可隨時切換年度查看。\n● 老師端會看到全新的 ${nextYear} 學年度填寫表單。\n\n此操作可在「目前開放填寫年度」設定中調整。`)) return
+    setBumping(true)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preference_year: nextYear }),
+      })
+      if (!res.ok) {
+        alert('啟動失敗，請稍後再試')
+        return
+      }
+      router.push('/admin/statistics')
+      router.refresh()
+    } finally {
+      setBumping(false)
+    }
   }
 
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
@@ -295,22 +328,55 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
       {/* ── 志願統計 ── */}
       <div className="flex gap-6 items-start">
         <div className="flex-1 space-y-4 min-w-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="page-title mb-0">志願統計</h2>
+              <h2 className="page-title mb-0">
+                志願統計
+                <span className="ml-2 text-sm font-normal text-zinc-500">{viewYear} 學年度</span>
+                {!isCurrent && <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm">歷史紀錄</span>}
+                {isCurrent && <span className="ml-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-sm">填寫中</span>}
+              </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                僅統計今年需換工作的在職教師（共 {initialTeachers.length} 位，
-                {noPrefsCount > 0 && <span className="text-amber-600">其中 {noPrefsCount} 位尚未填志願</span>}
-                {noPrefsCount === 0 && <span className="text-green-600">全員已填志願</span>}）
+                {isCurrent ? (
+                  <>
+                    僅統計今年需換工作的在職教師（共 {initialTeachers.length} 位，
+                    {noPrefsCount > 0 && <span className="text-amber-600">其中 {noPrefsCount} 位尚未填志願</span>}
+                    {noPrefsCount === 0 && <span className="text-green-600">全員已填志願</span>}）
+                  </>
+                ) : (
+                  <>顯示 {viewYear} 學年度當時所有教師填寫的志願統計（歷史檢視）</>
+                )}
               </p>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowEval(!showEval)} className="btn-secondary">
-                {showEval ? '收起評估' : '評估預測'}
-              </button>
-              <button onClick={() => fetchStats().then(setStats)} className="btn-secondary">
+            <div className="flex gap-2 items-center">
+              <label className="text-xs text-zinc-500">年度</label>
+              <select
+                value={viewYear}
+                onChange={e => switchYear(Number(e.target.value))}
+                className="input py-1 text-sm w-24"
+              >
+                {availableYears.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              {isCurrent && (
+                <button onClick={() => setShowEval(!showEval)} className="btn-secondary">
+                  {showEval ? '收起評估' : '評估預測'}
+                </button>
+              )}
+              <button onClick={() => fetchStats(viewYear).then(setStats)} className="btn-secondary">
                 重新整理
               </button>
+              {isCurrent && (
+                <button
+                  onClick={bumpPreferenceYear}
+                  disabled={bumping}
+                  className="btn-primary"
+                  title={`鎖定 ${currentYear} 學年度志願為歷史紀錄，開啟 ${currentYear + 1} 學年度新一輪填寫`}
+                >
+                  {bumping ? '處理中...' : `啟動 ${currentYear + 1} 學年度`}
+                </button>
+              )}
             </div>
           </div>
 
@@ -391,7 +457,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
       </div>
 
       {/* ── 評估預測 ── */}
-      {showEval && (
+      {isCurrent && showEval && (
         <div className="space-y-4 border-t border-zinc-200 pt-4">
           <div>
             <h2 className="page-title mb-1">評估預測</h2>

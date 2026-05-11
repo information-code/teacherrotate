@@ -18,13 +18,14 @@ interface Preferences {
 }
 
 interface Props {
+  targetYear: number
   initialScoreHistory: ScoreEntry[]
   initialPreferences: Preferences
   initialScoremapRows: Scoremap[]
   midLowSwitchScore: number
 }
 
-export function PreferencesPage({ initialScoreHistory, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
+export function PreferencesPage({ targetYear, initialScoreHistory, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
   const [scoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [scoremapRows] = useState<Scoremap[]>(initialScoremapRows)
   const [preferences, setPreferences] = useState<Preferences>(initialPreferences)
@@ -44,17 +45,15 @@ export function PreferencesPage({ initialScoreHistory, initialPreferences, initi
       !EXCLUDED_EXACT.includes(w) &&
       !EXCLUDED_CONTAINS.some(kw => w.includes(kw))
     )
-  const nextYear = Math.max(0, ...scoreHistory.map(s => s.year)) + 1
-
   function getEstimate(work: string | null): { yearScore: number; newTotal: number } | null {
     if (!work) return null
     const tempRotations = [
-      ...rotations.filter(r => r.year !== nextYear),
-      { year: nextYear, work },
+      ...rotations.filter(r => r.year !== targetYear),
+      { year: targetYear, work },
     ]
     const scores = calculateTeacherScores(tempRotations, scoreMap, groupMap, midLowSwitchScore)
     return {
-      yearScore: scores[nextYear] ?? 0,
+      yearScore: scores[targetYear] ?? 0,
       newTotal: calcRecentFourYearTotal(scores),
     }
   }
@@ -101,8 +100,8 @@ export function PreferencesPage({ initialScoreHistory, initialPreferences, initi
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-700">下學年度工作志願（{nextYear} 學年度）</h3>
-            <p className="text-xs text-zinc-400 mt-1">三個志願不可重複。右側顯示：選擇此職位後 {nextYear} 學年的本年積分，以及 {nextYear - 3}～{nextYear} 學年度的近四年預估總分</p>
+            <h3 className="text-sm font-semibold text-zinc-700">下學年度工作志願（{targetYear} 學年度）</h3>
+            <p className="text-xs text-zinc-400 mt-1">三個志願不可重複。右側顯示：選擇此職位後 {targetYear} 學年的本年積分，以及 {targetYear - 3}～{targetYear} 學年度的近四年預估總分</p>
           </div>
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm text-green-600">已儲存</span>}

@@ -9,19 +9,25 @@ export default async function TeacherPreferencesPage() {
   if (!user) redirect('/login')
 
   const admin = getAdminClient()
-  const [scoresResult, prefsResult, scoremapResult, settingsResult] = await Promise.all([
+  const [scoresResult, scoremapResult, settingsResult] = await Promise.all([
     admin.from('scores').select('year, score').eq('teacher_id', user.id).order('year'),
-    admin.from('preferences').select('preference1, preference2, preference3').eq('teacher_id', user.id).single(),
     admin.from('scoremap').select('*').order('sort_order'),
     admin.from('settings').select('key, value'),
   ])
   const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
 
   const scores = scoresResult.data ?? []
-  const prefs = prefsResult.data
   const scoremap = scoremapResult.data ?? []
   const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
   const midLowSwitchScore = Number(settingsMap['midlow_switch_score'] ?? 2)
+  const targetYear = Number(settingsMap['preference_year'] ?? Math.max(0, ...scores.map(s => s.year)) + 1)
+
+  const { data: prefs } = await admin
+    .from('preferences')
+    .select('preference1, preference2, preference3')
+    .eq('teacher_id', user.id)
+    .eq('year', targetYear)
+    .maybeSingle()
 
   const rotMap: Record<number, { work: string; semester: string }> = {}
   for (const r of rotations ?? []) rotMap[r.year] = { work: r.work, semester: r.semester ?? '全學年' }
@@ -40,6 +46,7 @@ export default async function TeacherPreferencesPage() {
 
   return (
     <PreferencesPage
+      targetYear={targetYear}
       initialScoreHistory={scoreHistory}
       initialPreferences={initialPreferences}
       initialScoremapRows={scoremap}
