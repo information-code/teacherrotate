@@ -10,10 +10,11 @@ export default async function TeacherPreferencesPage() {
   if (!user) redirect('/login')
 
   const admin = getAdminClient()
-  const [scoresResult, scoremapResult, settingsResult] = await Promise.all([
+  const [scoresResult, scoremapResult, settingsResult, profileResult] = await Promise.all([
     admin.from('scores').select('year, score').eq('teacher_id', user.id).order('year'),
     admin.from('scoremap').select('*').order('sort_order'),
     admin.from('settings').select('key, value'),
+    admin.from('profiles').select('score_confirmed').eq('id', user.id).single(),
   ])
   const { data: rotations } = await admin.from('rotations').select('year, work, semester').eq('teacher_id', user.id).order('year')
 
@@ -51,6 +52,7 @@ export default async function TeacherPreferencesPage() {
     <PreferencesPage
       targetYear={targetYear}
       targetType={targetType}
+      scoreConfirmed={profileResult.data?.score_confirmed ?? false}
       initialScoreHistory={scoreHistory}
       initialPreferences={initialPreferences}
       initialLocked={prefs?.locked ?? false}

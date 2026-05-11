@@ -29,9 +29,11 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
 
   const scoped = showNonTargets ? teachers : teachers.filter(t => t.targetType !== null)
   const confirmed = scoped.filter(t => t.score_confirmed)
-  const unconfirmed = scoped.filter(t => !t.score_confirmed)
   const total = scoped.length
   const confirmedPct = total > 0 ? Math.round((confirmed.length / total) * 100) : 0
+
+  const prefDone = scoped.filter(t => t.prefLocked)
+  const prefDonePct = total > 0 ? Math.round((prefDone.length / total) * 100) : 0
 
   const filtered = scoped.filter(t => {
     const q = search.toLowerCase()
@@ -97,12 +99,12 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="page-title mb-0">教師積分確認狀態</h2>
+          <h2 className="page-title mb-0">狀態確認</h2>
           <p className="text-xs text-zinc-400 mt-0.5">
             {showNonTargets
               ? `顯示全部 ${teachers.length} 位在職教師`
               : `僅顯示今年需確認的目標教師（${scoped.length} 位，已排除 ${nonTargetCount} 位首屆／非目標）`}
-            {' · '}志願鎖定狀態以 {preferenceYear} 學年度為準
+            {' · '}選填狀態以 {preferenceYear} 學年度為準
           </p>
         </div>
         <div className="flex gap-2">
@@ -122,27 +124,52 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
         </div>
       </div>
 
-      {/* 百分比圖 */}
-      <div className="card space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-zinc-600">確認進度</span>
-          <span className="font-semibold text-zinc-900">{confirmed.length} / {total} 位（{confirmedPct}%）</span>
+      {/* 兩張統計卡片：積分確認 + 選填確認 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold text-zinc-800">積分確認</span>
+            <span className="font-semibold text-zinc-900 tabular-nums">{confirmed.length} / {total} 位（{confirmedPct}%）</span>
+          </div>
+          <div className="w-full bg-zinc-100 rounded-full h-3 overflow-hidden">
+            <div
+              className="bg-zinc-800 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${confirmedPct}%` }}
+            />
+          </div>
+          <div className="flex gap-6 text-xs text-zinc-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-zinc-800" />
+              已確認 {confirmed.length} 位
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-zinc-100 border border-zinc-300" />
+              未確認 {total - confirmed.length} 位
+            </span>
+          </div>
         </div>
-        <div className="w-full bg-zinc-100 rounded-full h-3 overflow-hidden">
-          <div
-            className="bg-zinc-800 h-3 rounded-full transition-all duration-300"
-            style={{ width: `${confirmedPct}%` }}
-          />
-        </div>
-        <div className="flex gap-6 text-xs text-zinc-500">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full bg-zinc-800" />
-            已確認 {confirmed.length} 位
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full bg-zinc-100 border border-zinc-300" />
-            未確認 {unconfirmed.length} 位
-          </span>
+
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold text-zinc-800">選填確認</span>
+            <span className="font-semibold text-zinc-900 tabular-nums">{prefDone.length} / {total} 位（{prefDonePct}%）</span>
+          </div>
+          <div className="w-full bg-zinc-100 rounded-full h-3 overflow-hidden">
+            <div
+              className="bg-emerald-600 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${prefDonePct}%` }}
+            />
+          </div>
+          <div className="flex gap-6 text-xs text-zinc-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-emerald-600" />
+              已完成 {prefDone.length} 位
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-zinc-100 border border-zinc-300" />
+              未完成 {total - prefDone.length} 位
+            </span>
+          </div>
         </div>
       </div>
 

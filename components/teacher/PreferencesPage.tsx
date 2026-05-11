@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { buildScoreMaps, calculateTeacherScores, calcRecentFourYearTotal } from '@/lib/score-engine'
 import type { Scoremap } from '@/types/database'
 import type { RotationTarget } from '@/lib/rotation-target'
@@ -21,6 +22,7 @@ interface Preferences {
 interface Props {
   targetYear: number
   targetType: RotationTarget | null
+  scoreConfirmed: boolean
   initialScoreHistory: ScoreEntry[]
   initialPreferences: Preferences
   initialLocked: boolean
@@ -32,6 +34,7 @@ interface Props {
 export function PreferencesPage({
   targetYear,
   targetType,
+  scoreConfirmed,
   initialScoreHistory,
   initialPreferences,
   initialLocked,
@@ -115,6 +118,8 @@ export function PreferencesPage({
     setPreferences(prev => ({ ...prev, [key]: value || null }))
   }
 
+  const needsScoreConfirm = targetType !== null && !scoreConfirmed
+
   return (
     <div className="space-y-6 max-w-3xl">
       <h2 className="page-title">選填志願</h2>
@@ -131,7 +136,21 @@ export function PreferencesPage({
         </div>
       )}
 
-      {locked && (
+      {needsScoreConfirm && (
+        <div className="card border-amber-300 bg-amber-50 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-amber-900">⚠ 請先完成積分確認</p>
+            <p className="text-sm text-amber-800 mt-1">
+              選填志願前，須先到「輪動分數」頁面核對歷年積分並確認無誤。確認後即可回此頁填寫志願。
+            </p>
+          </div>
+          <Link href="/teacher/scores" className="btn-primary inline-flex w-fit">
+            前往確認積分 →
+          </Link>
+        </div>
+      )}
+
+      {!needsScoreConfirm && locked && (
         <div className="card border-zinc-300 bg-zinc-50">
           <p className="text-sm text-zinc-700">
             <span className="font-semibold">🔒 您的志願已鎖定</span>
@@ -140,6 +159,7 @@ export function PreferencesPage({
         </div>
       )}
 
+      {!needsScoreConfirm && (
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -208,6 +228,7 @@ export function PreferencesPage({
           })}
         </div>
       </div>
+      )}
 
       {/* 儲存確認 Dialog */}
       {showConfirm && (
