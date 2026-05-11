@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { TARGET_BADGE_STYLE, type RotationTarget } from '@/lib/rotation-target'
 
 interface TeacherConfirmation {
@@ -21,11 +22,16 @@ interface Props {
 }
 
 export default function ConfirmationsClient({ initialTeachers, preferenceYear }: Props) {
+  const router = useRouter()
   const [teachers, setTeachers] = useState(initialTeachers)
   const [search, setSearch] = useState('')
   const [resetting, setResetting] = useState<string | null>(null)
   const [unlocking, setUnlocking] = useState<string | null>(null)
   const [showNonTargets, setShowNonTargets] = useState(false)
+
+  // 每次 mount 強制 server 重抓，避免 Next.js router cache 顯示舊資料
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setTeachers(initialTeachers) }, [initialTeachers])
 
   const scoped = showNonTargets ? teachers : teachers.filter(t => t.targetType !== null)
   const confirmed = scoped.filter(t => t.score_confirmed)
