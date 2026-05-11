@@ -86,13 +86,6 @@ export function PreferencesPage({ targetYear, initialScoreHistory, initialPrefer
     setPreferences(prev => ({ ...prev, [key]: value || null }))
   }
 
-  function getOptions(currentKey: keyof Preferences): string[] {
-    const others = Object.entries(preferences)
-      .filter(([k, v]) => k !== currentKey && v)
-      .map(([, v]) => v as string)
-    return allWorks.filter(w => !others.includes(w))
-  }
-
   return (
     <div className="space-y-6 max-w-3xl">
       <h2 className="page-title">選填志願</h2>
@@ -101,7 +94,7 @@ export function PreferencesPage({ targetYear, initialScoreHistory, initialPrefer
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-semibold text-zinc-700">下學年度工作志願（{targetYear} 學年度）</h3>
-            <p className="text-xs text-zinc-400 mt-1">三個志願不可重複。右側顯示：選擇此職位後 {targetYear} 學年的本年積分，以及 {targetYear - 3}～{targetYear} 學年度的近四年預估總分</p>
+            <p className="text-xs text-zinc-400 mt-1">右側顯示：選擇此職位後 {targetYear} 學年的本年積分，以及 {targetYear - 3}～{targetYear} 學年度的近四年預估總分</p>
           </div>
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm text-green-600">已儲存</span>}
@@ -130,7 +123,7 @@ export function PreferencesPage({ targetYear, initialScoreHistory, initialPrefer
                   onChange={e => setPreference(key, e.target.value)}
                 >
                   <option value="">請選擇</option>
-                  {getOptions(key).map(w => (
+                  {allWorks.map(w => (
                     <option key={w} value={w}>{w}</option>
                   ))}
                 </select>
