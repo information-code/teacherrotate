@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { TARGET_BADGE_STYLE, type RotationTarget } from '@/lib/rotation-target'
 
 interface TeacherConfirmation {
   id: string
@@ -8,6 +9,7 @@ interface TeacherConfirmation {
   email: string
   score_confirmed: boolean
   score_confirmed_at: string | null
+  targetType: RotationTarget | null
 }
 
 interface Props {
@@ -17,17 +19,21 @@ interface Props {
 export default function ConfirmationsClient({ initialTeachers }: Props) {
   const [teachers, setTeachers] = useState(initialTeachers)
   const [search, setSearch] = useState('')
-  const [resetting, setResetting] = useState<string | null>(null) // id or 'all'
+  const [resetting, setResetting] = useState<string | null>(null)
+  const [showNonTargets, setShowNonTargets] = useState(false)
 
-  const confirmed = teachers.filter(t => t.score_confirmed)
-  const unconfirmed = teachers.filter(t => !t.score_confirmed)
-  const total = teachers.length
+  const scoped = showNonTargets ? teachers : teachers.filter(t => t.targetType !== null)
+  const confirmed = scoped.filter(t => t.score_confirmed)
+  const unconfirmed = scoped.filter(t => !t.score_confirmed)
+  const total = scoped.length
   const confirmedPct = total > 0 ? Math.round((confirmed.length / total) * 100) : 0
 
-  const filtered = teachers.filter(t => {
+  const filtered = scoped.filter(t => {
     const q = search.toLowerCase()
     return !q || (t.name ?? '').toLowerCase().includes(q) || t.email.toLowerCase().includes(q)
   })
+
+  const nonTargetCount = teachers.filter(t => t.targetType === null).length
 
   async function reload() {
     const res = await fetch('/api/admin/confirmations')
@@ -70,14 +76,29 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="page-title mb-0">教師積分確認狀態</h2>
-        <button
-          onClick={resetAll}
-          disabled={resetting !== null || confirmed.length === 0}
-          className="btn-secondary text-sm"
-        >
-          {resetting === 'all' ? '重置中...' : '全體恢復鎖定'}
-        </button>
+        <div>
+          <h2 className="page-title mb-0">教師積分確認狀態</h2>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            {showNonTargets
+              ? `顯示全部 ${teachers.length} 位在職教師`
+              : `僅顯示今年需確認的目標教師（${scoped.length} 位，已排除 ${nonTargetCount} 位首屆／非目標）`}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowNonTargets(v => !v)}
+            className="btn-secondary text-sm"
+          >
+            {showNonTargets ? '只看目標教師' : '顯示全部教師'}
+          </button>
+          <button
+            onClick={resetAll}
+            disabled={resetting !== null || confirmed.length === 0}
+            className="btn-secondary text-sm"
+          >
+            {resetting === 'all' ? '重置中...' : '全體恢復鎖定'}
+          </button>
+        </div>
       </div>
 
       {/* 百分比圖 */}
@@ -119,6 +140,7 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
           <thead>
             <tr>
               <th>教師姓名</th>
+              <th>類別</th>
               <th>狀態</th>
               <th>確認時間</th>
               <th className="w-24"></th>
@@ -126,13 +148,22 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={4} className="text-center text-zinc-400">無資料</td></tr>
+              <tr><td colSpan={5} className="text-center text-zinc-400">無資料</td></tr>
             )}
             {filtered.map(t => (
               <tr key={t.id}>
                 <td>
                   <div className="font-medium text-zinc-900">{t.name ?? '—'}</div>
                   <div className="text-xs text-zinc-400">{t.email}</div>
+                </td>
+                <td>
+                  {t.targetType ? (
+                    <span className={`inline-block text-[11px] px-1.5 py-0.5 border rounded-sm ${TARGET_BADGE_STYLE[t.targetType]}`}>
+                      {t.targetType}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-zinc-400">非目標</span>
+                  )}
                 </td>
                 <td>
                   {t.score_confirmed ? (

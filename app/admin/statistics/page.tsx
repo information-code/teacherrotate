@@ -1,5 +1,6 @@
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getWorkSortOrder, buildTimeline, type TimelineSegment } from '@/lib/work-sort'
+import { getRotationTarget, type RotationTarget } from '@/lib/rotation-target'
 import StatisticsClient from './StatisticsClient'
 
 export const dynamic = 'force-dynamic'
@@ -22,10 +23,10 @@ export interface TeacherEval {
   currentWork: string | null
   midLowConsecutiveYears: number
   timeline: TimelineSegment[]
+  targetType: RotationTarget
 }
 
-const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調']
-const YEARLY_WORKS = ['科任', '接棒班', '組長', '主任'] // 含這些字樣的職位每年都換
+const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調', '延長病假']
 const MIDLOW_GROUP = '中低年級導師'
 
 /** 計算教師連續擔任中低年級導師的年數（留停不中斷但不計入） */
@@ -42,43 +43,6 @@ function getMidLowConsecutiveYears(
     else break
   }
   return count
-}
-
-/** 判斷該教師是否需要換工作（基於歷年紀錄與組別邏輯） */
-function needsToChange(
-  rotations: { year: number; work: string }[],
-  groupMap: Record<string, string>
-): boolean {
-  const sorted = [...rotations].sort((a, b) => b.year - a.year)
-  if (sorted.length === 0) return false
-
-  // 找最新非留停的工作
-  const latestEntry = sorted.find(r => {
-    const core = r.work.replace(/\(.*?\)/g, '').trim()
-    return !SKIP_WORKS.includes(core)
-  })
-
-  // 最新紀錄就是留停/借調 → 明年回來需換
-  if (!latestEntry) return true
-  const coreWork = latestEntry.work.replace(/\(.*?\)/g, '').trim()
-
-  // 留停/借調/育停 → 需換
-  if (SKIP_WORKS.includes(coreWork)) return true
-
-  // 科任/接棒班 → 每年換
-  if (YEARLY_WORKS.some(k => coreWork.includes(k))) return true
-
-  // 其他（導師、組長、主任）→ 連續同組 ≥ 2 年才換
-  const currentGroup = groupMap[coreWork] ?? coreWork
-  let count = 0
-  for (const r of sorted) {
-    const core = r.work.replace(/\(.*?\)/g, '').trim()
-    if (SKIP_WORKS.includes(core)) continue // 留停不中斷連續計算
-    const g = groupMap[core] ?? core
-    if (g === currentGroup) count++
-    else break
-  }
-  return count >= 2
 }
 
 export default async function StatisticsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
@@ -129,9 +93,15 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
     teacherRotations[r.teacher_id].push({ year: r.year, work: r.work })
   }
 
-  // 只有當前年度才套用「需換工作」過濾與評估面板；歷史年度直接統計該年度所有志願
+  // 計算每位教師的目標類別（依最新一筆 rotation 判定）
+  const targetMap: Record<string, RotationTarget | null> = {}
+  for (const id of activeIds) {
+    targetMap[id] = getRotationTarget(teacherRotations[id] ?? [])
+  }
+
+  // 只有當前年度才套用「需填志願」過濾與評估面板；歷史年度直接統計該年度所有志願
   const filterIds: Set<string> | null = isCurrent
-    ? new Set(activeIds.filter(id => needsToChange(teacherRotations[id] ?? [], groupMap)))
+    ? new Set(activeIds.filter(id => targetMap[id] !== null))
     : null
 
   // 取各教師最新職位
@@ -193,6 +163,7 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
           currentWork: currentWorkMap[id] ?? null,
           midLowConsecutiveYears: getMidLowConsecutiveYears(teacherRotations[id] ?? [], groupMap),
           timeline: buildTimeline(teacherRotations[id] ?? []),
+          targetType: targetMap[id]!,
         }
       })
     : []

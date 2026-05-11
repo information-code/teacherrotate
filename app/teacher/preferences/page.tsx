@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { PreferencesPage } from '@/components/teacher/PreferencesPage'
+import { getRotationTarget } from '@/lib/rotation-target'
 
 export default async function TeacherPreferencesPage() {
   const supabase = await createClient()
@@ -44,9 +45,12 @@ export default async function TeacherPreferencesPage() {
     preference3: prefs?.preference3 ?? null,
   }
 
+  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work })))
+
   return (
     <PreferencesPage
       targetYear={targetYear}
+      targetType={targetType}
       initialScoreHistory={scoreHistory}
       initialPreferences={initialPreferences}
       initialScoremapRows={scoremap}

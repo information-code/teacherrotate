@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { buildScoreMaps, calculateTeacherScores, calcRecentFourYearTotal } from '@/lib/score-engine'
 import type { Scoremap } from '@/types/database'
+import type { RotationTarget } from '@/lib/rotation-target'
 
 interface ScoreEntry {
   year: number
@@ -19,13 +20,14 @@ interface Preferences {
 
 interface Props {
   targetYear: number
+  targetType: RotationTarget | null
   initialScoreHistory: ScoreEntry[]
   initialPreferences: Preferences
   initialScoremapRows: Scoremap[]
   midLowSwitchScore: number
 }
 
-export function PreferencesPage({ targetYear, initialScoreHistory, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
+export function PreferencesPage({ targetYear, targetType, initialScoreHistory, initialPreferences, initialScoremapRows, midLowSwitchScore }: Props) {
   const [scoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [scoremapRows] = useState<Scoremap[]>(initialScoremapRows)
   const [preferences, setPreferences] = useState<Preferences>(initialPreferences)
@@ -89,6 +91,18 @@ export function PreferencesPage({ targetYear, initialScoreHistory, initialPrefer
   return (
     <div className="space-y-6 max-w-3xl">
       <h2 className="page-title">選填志願</h2>
+
+      {targetType === null && (
+        <div className="card border-amber-200 bg-amber-50">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">您 {targetYear} 學年度不需填寫志願</span>
+            ——依您歷年輪動紀錄判定，您今年才剛接手新職務（首屆），下一年才會輪換。如有疑問請洽人事或教務處。
+          </p>
+          <p className="text-xs text-amber-700/80 mt-1">
+            您仍可瀏覽以下表單與預估分數，但不會被列入 {targetYear} 學年度的志願統計。
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <div className="flex items-center justify-between mb-4">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { RotationTarget } from '@/lib/rotation-target'
 
 interface ScoreEntry {
   year: number
@@ -10,13 +11,14 @@ interface ScoreEntry {
 }
 
 interface Props {
+  targetType: RotationTarget | null
   initialScoreHistory: ScoreEntry[]
   initialRecentTotal: number | null
   initialConfirmed: boolean
   initialConfirmedAt: string | null
 }
 
-export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialConfirmed, initialConfirmedAt }: Props) {
+export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal, initialConfirmed, initialConfirmedAt }: Props) {
   const [scoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [recentTotal] = useState<number | null>(initialRecentTotal)
   const [confirmed, setConfirmed] = useState(initialConfirmed)
@@ -42,6 +44,18 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialCon
   return (
     <div className="space-y-6 max-w-3xl">
       <h2 className="page-title">輪動分數</h2>
+
+      {targetType === null && (
+        <div className="card border-amber-200 bg-amber-50">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">您今年不在「分數確認」對象內</span>
+            ——依您歷年輪動紀錄判定為首屆（剛接手新職務），下一年才會輪換。如有疑問請洽人事或教務處。
+          </p>
+          <p className="text-xs text-amber-700/80 mt-1">
+            您仍可瀏覽歷年積分；待明年輪換時系統會自動列入確認名單。
+          </p>
+        </div>
+      )}
 
       {/* 近四年統計 */}
       <div className="card">
@@ -88,7 +102,8 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialCon
           </table>
         )}
 
-        {/* 確認勾選框 */}
+        {/* 確認勾選框（非目標教師不顯示，避免誤勾）*/}
+        {targetType !== null && (
         <div className="mt-4 pt-4 border-t border-zinc-100">
           {confirmed ? (
             <div className="flex items-center gap-2 text-sm text-green-700">
@@ -112,6 +127,7 @@ export function ScoresPage({ initialScoreHistory, initialRecentTotal, initialCon
             </label>
           )}
         </div>
+        )}
       </div>
 
       {/* 確認 Dialog */}

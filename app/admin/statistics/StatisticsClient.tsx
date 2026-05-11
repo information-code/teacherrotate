@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TeacherEval } from './page'
 import { sortWorks, groupWorks, getWorkCategory, CATEGORY_STYLE } from '@/lib/work-sort'
+import { TARGET_BADGE_STYLE } from '@/lib/rotation-target'
 
 interface StatRow {
   work: string
@@ -217,6 +218,14 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
   const noPrefsCount = initialTeachers.filter(t => !t.pref1 && !t.pref2 && !t.pref3).length
 
+  // 目標教師分類統計
+  const targetBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const t of initialTeachers) counts[t.targetType] = (counts[t.targetType] ?? 0) + 1
+    const order = ['二年級導師', '四年級導師', '六年級導師', '接棒班導師', '科任', '行政', '返回安排']
+    return order.filter(k => counts[k] > 0).map(k => ({ type: k, count: counts[k] }))
+  }, [initialTeachers])
+
   // ── Kanban section renderer ──
   function renderSection(
     sectionId: string,
@@ -339,7 +348,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isCurrent ? (
                   <>
-                    僅統計今年需換工作的在職教師（共 {initialTeachers.length} 位，
+                    僅統計今年需填志願的在職教師（共 {initialTeachers.length} 位，
                     {noPrefsCount > 0 && <span className="text-amber-600">其中 {noPrefsCount} 位尚未填志願</span>}
                     {noPrefsCount === 0 && <span className="text-green-600">全員已填志願</span>}）
                   </>
@@ -347,6 +356,18 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
                   <>顯示 {viewYear} 學年度當時所有教師填寫的志願統計（歷史檢視）</>
                 )}
               </p>
+              {isCurrent && targetBreakdown.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {targetBreakdown.map(({ type, count }) => (
+                    <span
+                      key={type}
+                      className={`inline-flex items-center text-[11px] px-1.5 py-0.5 border rounded-sm ${TARGET_BADGE_STYLE[type as keyof typeof TARGET_BADGE_STYLE]}`}
+                    >
+                      {type} <span className="ml-1 font-semibold">{count}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-2 items-center">
               <label className="text-xs text-zinc-500">年度</label>
@@ -572,6 +593,11 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
                 onClick={() => { setDetailTeacher(null); setDetailPos(null) }}
                 className="text-zinc-400 hover:text-zinc-600 text-base leading-none flex-shrink-0"
               >×</button>
+            </div>
+            <div>
+              <span className={`inline-block text-[11px] px-1.5 py-0.5 border rounded-sm ${TARGET_BADGE_STYLE[detailTeacher.targetType]}`}>
+                {detailTeacher.targetType}
+              </span>
             </div>
             <div className="space-y-1.5 text-zinc-600">
               <div className="flex justify-between">

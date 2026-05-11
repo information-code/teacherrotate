@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { ScoresPage } from '@/components/teacher/ScoresPage'
+import { getRotationTarget } from '@/lib/rotation-target'
 
 export default async function TeacherScoresPage() {
   const supabase = await createClient()
@@ -27,9 +28,11 @@ export default async function TeacherScoresPage() {
   }))
   const latest = scores[scores.length - 1]
   const recentTotal = latest?.recent_four_year_total ?? null
+  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work })))
 
   return (
     <ScoresPage
+      targetType={targetType}
       initialScoreHistory={scoreHistory}
       initialRecentTotal={recentTotal}
       initialConfirmed={profileResult.data?.score_confirmed ?? false}
