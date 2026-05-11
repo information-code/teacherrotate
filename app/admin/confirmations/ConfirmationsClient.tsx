@@ -99,7 +99,7 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="page-title mb-0">狀態確認</h2>
+          <h2 className="page-title mb-0">確認統計</h2>
           <p className="text-xs text-zinc-400 mt-0.5">
             {showNonTargets
               ? `顯示全部 ${teachers.length} 位在職教師`

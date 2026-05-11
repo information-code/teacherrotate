@@ -173,7 +173,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="page-title">帳號管理</h1>
+        <h1 className="page-title">帳號資料</h1>
         <div className="text-sm text-zinc-400">
           共 {entries.length} 位 ·
           <span className="text-zinc-600 ml-1">管理員 {entries.filter(e => e.role === 'admin').length}</span> ·

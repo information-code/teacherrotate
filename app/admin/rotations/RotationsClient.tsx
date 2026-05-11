@@ -302,7 +302,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
     <div className="space-y-4">
       {/* 標題列 */}
       <div className="flex items-center justify-between">
-        <h2 className="page-title mb-0">教師工作紀錄</h2>
+        <h2 className="page-title mb-0">工作紀錄</h2>
         <button onClick={handleRecalcAll} disabled={recalcing} className="btn-secondary text-sm">
           {recalcing ? '重算中...' : '重新計算所有分數'}
         </button>
