@@ -10,16 +10,21 @@ interface TeacherConfirmation {
   score_confirmed: boolean
   score_confirmed_at: string | null
   targetType: RotationTarget | null
+  prefLocked: boolean
+  prefGiveUp: boolean
+  prefFilled: boolean
 }
 
 interface Props {
   initialTeachers: TeacherConfirmation[]
+  preferenceYear: number
 }
 
-export default function ConfirmationsClient({ initialTeachers }: Props) {
+export default function ConfirmationsClient({ initialTeachers, preferenceYear }: Props) {
   const [teachers, setTeachers] = useState(initialTeachers)
   const [search, setSearch] = useState('')
   const [resetting, setResetting] = useState<string | null>(null)
+  const [unlocking, setUnlocking] = useState<string | null>(null)
   const [showNonTargets, setShowNonTargets] = useState(false)
 
   const scoped = showNonTargets ? teachers : teachers.filter(t => t.targetType !== null)
@@ -73,6 +78,21 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
     }
   }
 
+  async function unlockPref(id: string, name: string) {
+    if (!confirm(`確定要解鎖「${name}」${preferenceYear} 學年度志願？解鎖後該老師可重新修改志願。`)) return
+    setUnlocking(id)
+    try {
+      await fetch('/api/admin/preferences/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacher_id: id, year: preferenceYear }),
+      })
+      await reload()
+    } finally {
+      setUnlocking(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -82,6 +102,7 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
             {showNonTargets
               ? `顯示全部 ${teachers.length} 位在職教師`
               : `僅顯示今年需確認的目標教師（${scoped.length} 位，已排除 ${nonTargetCount} 位首屆／非目標）`}
+            {' · '}志願鎖定狀態以 {preferenceYear} 學年度為準
           </p>
         </div>
         <div className="flex gap-2">
@@ -141,14 +162,15 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
             <tr>
               <th>教師姓名</th>
               <th>類別</th>
-              <th>狀態</th>
+              <th>分數確認</th>
+              <th>志願狀態</th>
               <th>確認時間</th>
-              <th className="w-24"></th>
+              <th className="w-40"></th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={5} className="text-center text-zinc-400">無資料</td></tr>
+              <tr><td colSpan={6} className="text-center text-zinc-400">無資料</td></tr>
             )}
             {filtered.map(t => (
               <tr key={t.id}>
@@ -176,21 +198,54 @@ export default function ConfirmationsClient({ initialTeachers }: Props) {
                     </span>
                   )}
                 </td>
+                <td>
+                  {t.prefLocked ? (
+                    t.prefGiveUp ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-sm">
+                        🔒 放棄選填
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-zinc-100 border border-zinc-300 text-zinc-700 rounded-sm">
+                        🔒 已鎖定
+                      </span>
+                    )
+                  ) : t.prefFilled ? (
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-sky-50 border border-sky-200 text-sky-700 rounded-sm">
+                      可修改
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-zinc-50 border border-zinc-200 text-zinc-500 rounded-sm">
+                      未填
+                    </span>
+                  )}
+                </td>
                 <td className="text-sm text-zinc-500">
                   {t.score_confirmed_at
                     ? new Date(t.score_confirmed_at).toLocaleString('zh-TW')
                     : '—'}
                 </td>
                 <td>
-                  {t.score_confirmed && (
-                    <button
-                      onClick={() => resetOne(t.id, t.name ?? t.email)}
-                      disabled={resetting !== null}
-                      className="btn-secondary py-1 px-2 text-xs"
-                    >
-                      {resetting === t.id ? '...' : '恢復鎖定'}
-                    </button>
-                  )}
+                  <div className="flex gap-1 justify-end">
+                    {t.prefLocked && (
+                      <button
+                        onClick={() => unlockPref(t.id, t.name ?? t.email)}
+                        disabled={unlocking !== null}
+                        className="btn-secondary py-1 px-2 text-xs"
+                        title={`解鎖 ${preferenceYear} 學年度志願`}
+                      >
+                        {unlocking === t.id ? '...' : '🔓 解鎖志願'}
+                      </button>
+                    )}
+                    {t.score_confirmed && (
+                      <button
+                        onClick={() => resetOne(t.id, t.name ?? t.email)}
+                        disabled={resetting !== null}
+                        className="btn-secondary py-1 px-2 text-xs"
+                      >
+                        {resetting === t.id ? '...' : '恢復確認'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
