@@ -133,7 +133,22 @@
 
 @media print {
   aside, header { display: none !important; }
-  main { padding: 0 !important; overflow: visible !important; }
   body { background: white !important; }
   .print\:hidden { display: none !important; }
+
+  /* 解除所有 height/overflow 限制——admin layout 鏈用 h-screen + overflow-hidden
+     讓內容能在 viewport 內捲動，列印時這些限制會把超過第一頁的部分裁掉 */
+  html, body { height: auto !important; overflow: visible !important; }
+  .h-screen, .h-full {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .overflow-hidden, .overflow-y-auto, .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  main { padding: 0 !important; }
+
+  /* 卡片盡量不要被分頁切到中間 */
+  .card { break-inside: avoid; page-break-inside: avoid; }
 }
