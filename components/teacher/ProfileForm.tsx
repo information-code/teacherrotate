@@ -136,34 +136,17 @@ export function ProfileForm({ profile }: ProfileFormProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gradeValues])
 
-  // 離開頁面前提醒（關閉視窗 / 重新整理 / 頁內導航）
+  // 離開頁面前提醒（只攔截瀏覽器層級的關閉視窗 / 重新整理 / 跳外站）
+  // 不攔截 app 內 <a> 點擊：之前在 capture phase 用 window.confirm 攔
+  // Next.js Link 太脆弱，老師反映按側欄選填志願「沒反應」(實際上是按了取消)。
   useEffect(() => {
     if (!isDirty) return
-
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault()
       e.returnValue = ''
     }
-
-    // 在捕捉階段攔截 <a> 點擊，早於 Next.js Router 處理
-    const handleClick = (e: MouseEvent) => {
-      const anchor = (e.target as Element).closest('a')
-      if (!anchor) return
-      const href = anchor.getAttribute('href')
-      if (!href || href === window.location.pathname) return
-      if (!window.confirm('您有未儲存的變更，確定要離開此頁面嗎？')) {
-        e.preventDefault()
-        e.stopPropagation()
-      }
-    }
-
     window.addEventListener('beforeunload', handleBeforeUnload)
-    document.addEventListener('click', handleClick, true)
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      document.removeEventListener('click', handleClick, true)
-    }
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
 
   async function onSubmit(values: FormValues) {
