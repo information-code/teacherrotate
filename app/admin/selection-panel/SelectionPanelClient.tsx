@@ -43,12 +43,18 @@ const MIDLOW_LIMIT = 8
 
 const GRADE_LABEL: Record<number, string> = { 1: '一年級', 3: '三年級', 5: '五年級' }
 
+// 科任領域顯示名稱：除「科技創新任務」與「其他」外，其餘都加「領域」
+function subjectDisplayLabel(area: string): string {
+  return (area === '科技創新任務' || area === '其他') ? area : `${area}領域`
+}
+
 export default function SelectionPanelClient({ teachers, midLowWorks, preferenceYear }: Props) {
   const router = useRouter()
   const midLowSet = useMemo(() => new Set(midLowWorks), [midLowWorks])
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [quotaCollapsed, setQuotaCollapsed] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(true)
   const [quotas, setQuotas] = useState<Quotas>(DEFAULT_QUOTAS)
   const [placements, setPlacements] = useState<Record<string, string>>({}) // teacherId → slotId
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
@@ -204,10 +210,10 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
             {/* 科任名額 */}
             <div>
               <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">科任空缺數量（依領域）</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-2">
                 {SUBJECT_AREAS.map(area => (
-                  <div key={area} className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-700 flex-1 truncate" title={area}>{area}</span>
+                  <div key={area} className="flex items-center gap-1.5">
+                    <span className="text-xs text-zinc-700 whitespace-nowrap">{subjectDisplayLabel(area)}</span>
                     <input
                       type="number"
                       min={0}
@@ -270,6 +276,10 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
           <button onClick={() => setBlockMsg(null)} className="ml-2 opacity-50 hover:opacity-100">×</button>
         </div>
       )}
+
+      {/* ── 雙欄：左側空缺表 / 右側待安排教師抽屜 ── */}
+      <div className="flex gap-4 items-start">
+        <div className="flex-1 min-w-0 space-y-5">
 
       {/* ── 行政空缺 ── */}
       <div className="card p-4 space-y-3">
@@ -338,56 +348,90 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
         )}
       </div>
 
-      {/* ── 教師清單 (pool) ── */}
-      <div
-        className={`card p-4 space-y-3 ${dragOver === 'pool' ? 'border-zinc-400 bg-zinc-50' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragOver('pool') }}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
-        onDrop={e => { e.preventDefault(); handleDrop('pool') }}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-700">
-            待安排教師 <span className="text-xs font-normal text-zinc-400 ml-1">{poolTeachers.length} 位（依分數排序）</span>
-          </h3>
-          {placedCount > 0 && (
-            <button onClick={() => setPlacements({})} className="btn-secondary text-xs py-1 px-2">
-              全部還原
+        </div>
+        {/* /左側空缺表 */}
+
+        {/* ── 右側抽屜：待安排教師 ── */}
+        <aside className="flex-shrink-0 sticky top-0 self-start">
+          {drawerOpen ? (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver('pool') }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
+              onDrop={e => { e.preventDefault(); handleDrop('pool') }}
+              className={`w-60 card p-3 space-y-2 max-h-[calc(100vh-2rem)] overflow-y-auto transition-colors ${
+                dragOver === 'pool' ? 'border-zinc-500 bg-zinc-50' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-zinc-700">
+                  待安排 <span className="text-xs font-normal text-zinc-400 ml-1">{poolTeachers.length}</span>
+                </h3>
+                <div className="flex items-center gap-1">
+                  {placedCount > 0 && (
+                    <button onClick={() => setPlacements({})} className="btn-secondary text-[11px] py-0.5 px-1.5">
+                      還原
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDrawerOpen(false)}
+                    className="w-5 h-5 flex items-center justify-center rounded border border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
+                    title="收合抽屜"
+                  >›</button>
+                </div>
+              </div>
+              <p className="text-[11px] text-zinc-400">依近四年總分排序</p>
+
+              {poolTeachers.length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">已全部安排完畢</p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {poolTeachers.map(t => (
+                    <div
+                      key={t.id}
+                      draggable
+                      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragTeacherId(t.id) }}
+                      onDragEnd={() => { setDragTeacherId(null); setDragOver(null) }}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 border border-zinc-200 bg-white rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${
+                        dragTeacherId === t.id ? 'opacity-40' : 'hover:border-zinc-400'
+                      }`}
+                    >
+                      <span className={`text-[10px] px-1 py-0 border rounded-sm flex-shrink-0 ${TARGET_BADGE_STYLE[t.targetType]}`}>
+                        {t.targetType}
+                      </span>
+                      {t.midLowConsecutiveYears >= MIDLOW_LIMIT && (
+                        <span className="text-[10px] text-red-500 font-bold flex-shrink-0" title={`連續${t.midLowConsecutiveYears}年中低年級`}>🚫</span>
+                      )}
+                      <span className="font-medium truncate flex-1">{t.name}</span>
+                      <span className="text-[10px] text-zinc-400 flex-shrink-0 tabular-nums">{t.score.toFixed(2)}</span>
+                      <button
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => { e.stopPropagation(); showDetail(t, e) }}
+                        className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border border-zinc-300 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-700"
+                      >i</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              onDragOver={e => { e.preventDefault(); setDragOver('pool') }}
+              onDragLeave={() => setDragOver(null)}
+              onDrop={e => { e.preventDefault(); handleDrop('pool') }}
+              className={`w-9 card p-2 flex flex-col items-center gap-2 py-3 hover:bg-zinc-50 transition-colors ${
+                dragOver === 'pool' ? 'border-zinc-500 bg-zinc-50' : ''
+              }`}
+              title="展開待安排教師"
+              style={{ writingMode: 'vertical-rl' }}
+            >
+              <span className="text-xs text-zinc-600 font-medium">待安排 {poolTeachers.length}</span>
+              <span className="text-zinc-400 text-[10px]">‹ 展開</span>
             </button>
           )}
-        </div>
-
-        {poolTeachers.length === 0 ? (
-          <p className="text-xs text-zinc-400">所有教師都已安排完畢</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {poolTeachers.map(t => (
-              <div
-                key={t.id}
-                draggable
-                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragTeacherId(t.id) }}
-                onDragEnd={() => { setDragTeacherId(null); setDragOver(null) }}
-                className={`flex items-center gap-1 px-2 py-1 border border-zinc-200 bg-white rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${
-                  dragTeacherId === t.id ? 'opacity-40' : 'hover:border-zinc-400'
-                }`}
-              >
-                <span className={`text-[10px] px-1 py-0 border rounded-sm ${TARGET_BADGE_STYLE[t.targetType]}`}>
-                  {t.targetType}
-                </span>
-                {t.midLowConsecutiveYears >= MIDLOW_LIMIT && (
-                  <span className="text-[10px] text-red-500 font-bold" title={`連續${t.midLowConsecutiveYears}年中低年級`}>🚫</span>
-                )}
-                <span className="font-medium">{t.name}</span>
-                <span className="text-[10px] text-zinc-400">{t.score.toFixed(2)}</span>
-                <button
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); showDetail(t, e) }}
-                  className="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full border border-zinc-300 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-700"
-                >i</button>
-              </div>
-            ))}
-          </div>
-        )}
+        </aside>
       </div>
+      {/* /雙欄 */}
 
       {/* 浮動教師資訊卡 */}
       {detailTeacher && detailPos && (
