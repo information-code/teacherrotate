@@ -22,26 +22,44 @@ const ADMIN_GROUPS: { 處: string; positions: string[] }[] = [
 // 科任 領域（admin 輸入各領域名額）
 const SUBJECT_AREAS = ['科技創新任務', '體育', '英語', '社會', '自然', '音樂', '表藝', '視藝', '生活', '其他']
 
-// 導師年級
-const HOMEROOM_GRADES = [1, 3, 5] as const
+// 導師空缺：六個年級各自獨立
+//   一/三/五年級 = 一般導師（新一輪開始）
+//   二/四/六年級 = 接棒班（接續上一位導師、把學生帶到一輪結束）
+interface HomeroomSlot {
+  grade: 1 | 2 | 3 | 4 | 5 | 6
+  kind: 'normal' | 'relay'
+  work: string         // 對應 scoremap 中的職位名
+  label: string        // 顯示用：「一年級」、「二年級接棒班」…
+  shortLabel: string   // 列首顯示：「一年級」、「二年級」…
+}
+
+const HOMEROOM_SLOTS: HomeroomSlot[] = [
+  { grade: 1, kind: 'normal', work: '低年級導師', label: '低年級導師',  shortLabel: '一年級' },
+  { grade: 2, kind: 'relay',  work: '低年級接棒班', label: '低年級接棒班', shortLabel: '二年級' },
+  { grade: 3, kind: 'normal', work: '中年級導師', label: '中年級導師',  shortLabel: '三年級' },
+  { grade: 4, kind: 'relay',  work: '中年級接棒班', label: '中年級接棒班', shortLabel: '四年級' },
+  { grade: 5, kind: 'normal', work: '高年級導師', label: '高年級導師',  shortLabel: '五年級' },
+  { grade: 6, kind: 'relay',  work: '高年級接棒班', label: '高年級接棒班', shortLabel: '六年級' },
+]
+
+// quota 輸入時的成對排版：(grade1 + grade2), (grade3 + grade4), (grade5 + grade6)
+const HOMEROOM_INPUT_PAIRS: { normal: HomeroomSlot; relay: HomeroomSlot }[] = [
+  { normal: HOMEROOM_SLOTS[0], relay: HOMEROOM_SLOTS[1] },
+  { normal: HOMEROOM_SLOTS[2], relay: HOMEROOM_SLOTS[3] },
+  { normal: HOMEROOM_SLOTS[4], relay: HOMEROOM_SLOTS[5] },
+]
 
 interface Quotas {
   subjects: Record<string, number>
-  homerooms: Record<number, { normal: number; relay: number }>
+  homerooms: Record<number, number>  // grade 1..6 → count
 }
 
 const DEFAULT_QUOTAS: Quotas = {
   subjects: Object.fromEntries(SUBJECT_AREAS.map(a => [a, 0])),
-  homerooms: {
-    1: { normal: 0, relay: 0 },
-    3: { normal: 0, relay: 0 },
-    5: { normal: 0, relay: 0 },
-  },
+  homerooms: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
 }
 
 const MIDLOW_LIMIT = 8
-
-const GRADE_LABEL: Record<number, string> = { 1: '一年級', 3: '三年級', 5: '五年級' }
 
 // 科任領域顯示名稱：除「科技創新任務」與「其他」外，其餘都加「領域」
 function subjectDisplayLabel(area: string): string {
@@ -60,7 +78,9 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   const [hydrated, setHydrated] = useState(false)
 
   // ── 從 localStorage 還原 + 自動儲存（每個年度各自一份）──
-  const STORAGE_KEY = `trotate-selection-panel-${preferenceYear}`
+  // 注意：v2 schema 把 homerooms 從 {grade: {normal, relay}} 改成 {1..6: number}，
+  //       不相容 v1 → 用新 key 讓舊資料失效（使用者重新設定即可）。
+  const STORAGE_KEY = `trotate-selection-panel-v2-${preferenceYear}`
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -95,14 +115,11 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   function place(teacherId: string, slotId: string) {
     // 檢查目標槽位是否會違反中低年級規則（連續 ≥ 8 年中低）
     const teacher = teachers.find(t => t.id === teacherId)
-    if (teacher && teacher.midLowConsecutiveYears >= MIDLOW_LIMIT) {
-      // 是否為中低年級導師槽位
-      let placedWork: string | null = null
-      if (slotId.startsWith('grade-1-')) placedWork = '低年級導師'
-      else if (slotId.startsWith('grade-3-')) placedWork = '中年級導師'
-      else if (slotId.startsWith('relay-1-')) placedWork = '低年級接棒班'
-      else if (slotId.startsWith('relay-3-')) placedWork = '中年級接棒班'
-      if (placedWork && midLowSet.has(placedWork)) {
+    const gradeMatch = slotId.match(/^grade-(\d+)-/)
+    if (teacher && teacher.midLowConsecutiveYears >= MIDLOW_LIMIT && gradeMatch) {
+      const grade = Number(gradeMatch[1])
+      const slot = HOMEROOM_SLOTS.find(s => s.grade === grade)
+      if (slot && midLowSet.has(slot.work)) {
         setBlockMsg(`${teacher.name} 已連續 ${teacher.midLowConsecutiveYears} 年中低年級，依規定須排高年級`)
         setTimeout(() => setBlockMsg(null), 5000)
         return
@@ -165,7 +182,7 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   const totalSlots =
     ADMIN_GROUPS.reduce((s, g) => s + g.positions.length, 0) +
     Object.values(quotas.subjects).reduce((s, n) => s + n, 0) +
-    HOMEROOM_GRADES.reduce((s, g) => s + quotas.homerooms[g].normal + quotas.homerooms[g].relay, 0)
+    Object.values(quotas.homerooms).reduce((s, n) => s + (n ?? 0), 0)
 
   // ───── 渲染單一槽位 ─────
   function renderSlot(slotId: string, label: string) {
@@ -268,31 +285,30 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
             <div>
               <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">導師空缺數量</div>
               <div className="space-y-2">
-                {HOMEROOM_GRADES.map(g => (
-                  <div key={g} className="flex items-center gap-4">
-                    <span className="text-xs text-zinc-700 w-16 flex-shrink-0">{GRADE_LABEL[g]}</span>
+                {HOMEROOM_INPUT_PAIRS.map(({ normal, relay }) => (
+                  <div key={normal.grade} className="flex items-center gap-6 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-500">一般</span>
+                      <span className="text-xs text-zinc-700 w-24 flex-shrink-0">{normal.shortLabel}一般班</span>
                       <input
                         type="number"
                         min={0}
-                        value={quotas.homerooms[g].normal}
+                        value={quotas.homerooms[normal.grade] ?? 0}
                         onChange={e => setQuotas(q => ({
                           ...q,
-                          homerooms: { ...q.homerooms, [g]: { ...q.homerooms[g], normal: Math.max(0, Number(e.target.value)) } }
+                          homerooms: { ...q.homerooms, [normal.grade]: Math.max(0, Number(e.target.value)) }
                         }))}
                         className="input w-12 text-center py-0.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-500">接棒班</span>
+                      <span className="text-xs text-zinc-700 w-24 flex-shrink-0">{relay.shortLabel}接棒班</span>
                       <input
                         type="number"
                         min={0}
-                        value={quotas.homerooms[g].relay}
+                        value={quotas.homerooms[relay.grade] ?? 0}
                         onChange={e => setQuotas(q => ({
                           ...q,
-                          homerooms: { ...q.homerooms, [g]: { ...q.homerooms[g], relay: Math.max(0, Number(e.target.value)) } }
+                          homerooms: { ...q.homerooms, [relay.grade]: Math.max(0, Number(e.target.value)) }
                         }))}
                         className="input w-12 text-center py-0.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
@@ -356,28 +372,18 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
       {/* ── 導師空缺 ── */}
       <div className="card p-4 space-y-3">
         <h3 className="text-sm font-semibold text-zinc-700">導師空缺</h3>
-        {HOMEROOM_GRADES.every(g => quotas.homerooms[g].normal === 0 && quotas.homerooms[g].relay === 0) ? (
+        {HOMEROOM_SLOTS.every(s => (quotas.homerooms[s.grade] ?? 0) === 0) ? (
           <p className="text-xs text-zinc-400">尚未設定導師空缺數量（請至 Step 1 名額設定）</p>
         ) : (
           <div className="space-y-3">
-            {HOMEROOM_GRADES.map(g => {
-              const { normal, relay } = quotas.homerooms[g]
-              if (normal === 0 && relay === 0) return null
-              const normalLabel = g === 1 ? '低年級導師' : g === 3 ? '中年級導師' : '高年級導師'
-              const relayLabel = g === 1 ? '低年級接棒班' : g === 3 ? '中年級接棒班' : '高年級接棒班'
+            {HOMEROOM_SLOTS.map(slot => {
+              const count = quotas.homerooms[slot.grade] ?? 0
+              if (count === 0) return null
               return (
-                <div key={g} className="flex items-start gap-2 flex-wrap">
-                  <div className="text-xs font-semibold text-zinc-600 w-16 flex-shrink-0 pt-3">{GRADE_LABEL[g]}</div>
-                  {Array.from({ length: normal }).map((_, i) =>
-                    renderSlot(`grade-${g}-${i}`, normalLabel)
-                  )}
-                  {relay > 0 && (
-                    <>
-                      {normal > 0 && <div className="self-stretch w-px bg-zinc-200 mx-1" />}
-                      {Array.from({ length: relay }).map((_, i) =>
-                        renderSlot(`relay-${g}-${i}`, relayLabel)
-                      )}
-                    </>
+                <div key={slot.grade} className="flex items-start gap-2 flex-wrap">
+                  <div className="text-xs font-semibold text-zinc-600 w-16 flex-shrink-0 pt-3">{slot.shortLabel}</div>
+                  {Array.from({ length: count }).map((_, i) =>
+                    renderSlot(`grade-${slot.grade}-${i}`, slot.label)
                   )}
                 </div>
               )
