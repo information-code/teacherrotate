@@ -57,6 +57,35 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   const [drawerOpen, setDrawerOpen] = useState(true)
   const [quotas, setQuotas] = useState<Quotas>(DEFAULT_QUOTAS)
   const [placements, setPlacements] = useState<Record<string, string>>({}) // teacherId → slotId
+  const [hydrated, setHydrated] = useState(false)
+
+  // ── 從 localStorage 還原 + 自動儲存（每個年度各自一份）──
+  const STORAGE_KEY = `trotate-selection-panel-${preferenceYear}`
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw) as { quotas?: Quotas; placements?: Record<string, string> }
+        if (saved.quotas) setQuotas(saved.quotas)
+        if (saved.placements) setPlacements(saved.placements)
+      }
+    } catch {}
+    setHydrated(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ quotas, placements }))
+    } catch {}
+  }, [quotas, placements, hydrated, STORAGE_KEY])
+
+  function resetAll() {
+    if (!confirm('確定要清空所有名額設定與已分配教師？此操作無法復原。')) return
+    setQuotas(DEFAULT_QUOTAS)
+    setPlacements({})
+    try { window.localStorage.removeItem(STORAGE_KEY) } catch {}
+  }
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [blockMsg, setBlockMsg] = useState<string | null>(null)
@@ -186,13 +215,22 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   return (
     <div className="space-y-5">
       {/* ── 標題 ── */}
-      <div>
-        <h2 className="page-title mb-1">選填面板 <span className="text-sm font-normal text-zinc-500 ml-2">{preferenceYear} 學年度 撕榜</span></h2>
-        <p className="text-xs text-zinc-400">
-          設定各領域名額後，將下方教師依序拖到對應空缺。
-          <span className="ml-2 text-zinc-500">已分配 {placedCount} / 空缺總數 {totalSlots}</span>
-          <span className="ml-2 text-zinc-500">· 待安排 {poolTeachers.length}</span>
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="page-title mb-1">選填面板 <span className="text-sm font-normal text-zinc-500 ml-2">{preferenceYear} 學年度 撕榜</span></h2>
+          <p className="text-xs text-zinc-400">
+            設定各領域名額後，將下方教師依序拖到對應空缺。
+            <span className="ml-2 text-zinc-500">已分配 {placedCount} / 空缺總數 {totalSlots}</span>
+            <span className="ml-2 text-zinc-500">· 待安排 {poolTeachers.length}</span>
+          </p>
+          <p className="text-[11px] text-zinc-400 mt-1">
+            <span className="text-green-600">✓ 已自動儲存於此瀏覽器</span>
+            <span className="ml-1">（重新整理仍在；換電腦或換瀏覽器則不會同步）</span>
+          </p>
+        </div>
+        <button onClick={resetAll} className="btn-secondary text-xs py-1 px-2 flex-shrink-0">
+          清空全部
+        </button>
       </div>
 
       {/* ── Step 1: 名額設定（可折疊）── */}
