@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { Profile, ExperienceItem } from '@/types/database'
 
 type SpecialtyKey = keyof Pick<Profile,
@@ -222,30 +223,23 @@ function TeacherResume({
   onUpdateOtherSchoolYears: (years: number) => Promise<boolean>
   onUpdateKanpuSubstituteYears: (years: number) => Promise<boolean>
 }) {
-  const [otherYearsInput, setOtherYearsInput] = useState<string>(String(profile.other_school_years ?? 0))
-  const [substituteInput, setSubstituteInput] = useState<string>(String(profile.kanpu_substitute_years ?? 0))
   const [savingOther, setSavingOther] = useState(false)
   const [savingSubstitute, setSavingSubstitute] = useState(false)
   const [otherSaved, setOtherSaved] = useState(false)
   const [substituteSaved, setSubstituteSaved] = useState(false)
 
-  useEffect(() => { setOtherYearsInput(String(profile.other_school_years ?? 0)) }, [profile.id, profile.other_school_years])
-  useEffect(() => { setSubstituteInput(String(profile.kanpu_substitute_years ?? 0)) }, [profile.id, profile.kanpu_substitute_years])
+  const otherYearsNum = Number(profile.other_school_years ?? 0)
+  const substituteNum = Number(profile.kanpu_substitute_years ?? 0)
+  const kanpuTotal = kanpuYears + substituteNum
+  const seniorityScore = kanpuTotal * 0.8 + otherYearsNum * 0.2
 
-  async function saveYears(
-    input: string,
+  async function commitYears(
+    n: number,
     current: number,
-    setInput: (s: string) => void,
     setSaving: (b: boolean) => void,
     setSaved: (b: boolean) => void,
     updater: (n: number) => Promise<boolean>,
   ) {
-    const n = Number(input)
-    if (!Number.isFinite(n) || n < 0 || n > 60) {
-      alert('請輸入 0 ~ 60 之間的數值（可含小數）')
-      setInput(String(current))
-      return
-    }
     const rounded = Math.round(n * 100) / 100
     if (rounded === current) return
     setSaving(true)
@@ -258,14 +252,6 @@ function TeacherResume({
       alert('儲存失敗，請稍後再試')
     }
   }
-
-  const otherYearsNum = Number(profile.other_school_years ?? 0)
-  const substituteNum = Number(profile.kanpu_substitute_years ?? 0)
-  const kanpuTotal = kanpuYears + substituteNum
-  const seniorityScore = kanpuTotal * 0.8 + otherYearsNum * 0.2
-
-  const saveOther = () => saveYears(otherYearsInput, otherYearsNum, setOtherYearsInput, setSavingOther, setOtherSaved, onUpdateOtherSchoolYears)
-  const saveSubstitute = () => saveYears(substituteInput, substituteNum, setSubstituteInput, setSavingSubstitute, setSubstituteSaved, onUpdateKanpuSubstituteYears)
   const experiences = (
     Array.isArray(profile.experience) ? profile.experience : []
   ) as unknown as ExperienceItem[]
@@ -354,17 +340,14 @@ function TeacherResume({
             <div>
               <div className="text-xs text-zinc-500 mb-1">關埔代理年資（管理者填入）</div>
               <div className="flex items-center gap-2 print:hidden">
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={60}
                   step={0.01}
-                  value={substituteInput}
-                  onChange={e => setSubstituteInput(e.target.value)}
-                  onBlur={saveSubstitute}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                  value={substituteNum}
+                  onChange={n => commitYears(n, substituteNum, setSavingSubstitute, setSubstituteSaved, onUpdateKanpuSubstituteYears)}
                   disabled={savingSubstitute}
-                  className="input w-20 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="input w-20 text-center py-0.5 text-sm font-semibold"
                 />
                 <span className="text-xs text-zinc-500">年</span>
                 {savingSubstitute && <span className="text-xs text-zinc-400">儲存中...</span>}
@@ -375,17 +358,14 @@ function TeacherResume({
             <div>
               <div className="text-xs text-zinc-500 mb-1">他校年資（管理者填入）</div>
               <div className="flex items-center gap-2 print:hidden">
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={60}
                   step={0.01}
-                  value={otherYearsInput}
-                  onChange={e => setOtherYearsInput(e.target.value)}
-                  onBlur={saveOther}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                  value={otherYearsNum}
+                  onChange={n => commitYears(n, otherYearsNum, setSavingOther, setOtherSaved, onUpdateOtherSchoolYears)}
                   disabled={savingOther}
-                  className="input w-20 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="input w-20 text-center py-0.5 text-sm font-semibold"
                 />
                 <span className="text-xs text-zinc-500">年</span>
                 {savingOther && <span className="text-xs text-zinc-400">儲存中...</span>}

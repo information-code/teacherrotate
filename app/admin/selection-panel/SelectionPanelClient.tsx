@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { TARGET_BADGE_STYLE } from '@/lib/rotation-target'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { PanelTeacher } from './page'
 
 interface Props {
@@ -269,12 +270,11 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
                 {SUBJECT_AREAS.map(area => (
                   <div key={area} className="flex items-center gap-1.5">
                     <span className="text-xs text-zinc-700 whitespace-nowrap">{subjectDisplayLabel(area)}</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={quotas.subjects[area] ?? 0}
-                      onChange={e => setQuotas(q => ({ ...q, subjects: { ...q.subjects, [area]: Math.max(0, Number(e.target.value)) } }))}
-                      className="input w-12 text-center py-0.5 text-xs flex-shrink-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      onChange={n => setQuotas(q => ({ ...q, subjects: { ...q.subjects, [area]: n } }))}
+                      className="input w-12 text-center py-0.5 text-xs flex-shrink-0"
                     />
                   </div>
                 ))}
@@ -289,28 +289,20 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
                   <div key={normal.grade} className="flex items-center gap-6 flex-wrap">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-zinc-700 w-24 flex-shrink-0">{normal.shortLabel}一般班</span>
-                      <input
-                        type="number"
+                      <NumberInput
                         min={0}
                         value={quotas.homerooms[normal.grade] ?? 0}
-                        onChange={e => setQuotas(q => ({
-                          ...q,
-                          homerooms: { ...q.homerooms, [normal.grade]: Math.max(0, Number(e.target.value)) }
-                        }))}
-                        className="input w-12 text-center py-0.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onChange={n => setQuotas(q => ({ ...q, homerooms: { ...q.homerooms, [normal.grade]: n } }))}
+                        className="input w-12 text-center py-0.5 text-xs"
                       />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-zinc-700 w-24 flex-shrink-0">{relay.shortLabel}接棒班</span>
-                      <input
-                        type="number"
+                      <NumberInput
                         min={0}
                         value={quotas.homerooms[relay.grade] ?? 0}
-                        onChange={e => setQuotas(q => ({
-                          ...q,
-                          homerooms: { ...q.homerooms, [relay.grade]: Math.max(0, Number(e.target.value)) }
-                        }))}
-                        className="input w-12 text-center py-0.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onChange={n => setQuotas(q => ({ ...q, homerooms: { ...q.homerooms, [relay.grade]: n } }))}
+                        className="input w-12 text-center py-0.5 text-xs"
                       />
                     </div>
                   </div>
