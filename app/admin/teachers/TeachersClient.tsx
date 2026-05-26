@@ -52,9 +52,10 @@ const SPECIALTY_GROUPS: { group: string; tags: { key: SpecialtyKey; label: strin
 
 interface Props {
   profiles: Profile[]
+  kanpuYearsMap: Record<string, number>
 }
 
-export default function TeachersClient({ profiles }: Props) {
+export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [activeTag, setActiveTag] = useState<SpecialtyKey | null>(null)
@@ -173,14 +174,66 @@ export default function TeachersClient({ profiles }: Props) {
             請從左側選擇教師以查看履歷
           </div>
         ) : (
-          <TeacherResume profile={selected} onToggleStatus={() => toggleStatus(selected)} />
+          <TeacherResume
+            profile={selected}
+            kanpuYears={kanpuYearsMap[selected.id] ?? 0}
+            onToggleStatus={() => toggleStatus(selected)}
+            onUpdateOtherSchoolYears={async years => {
+              const res = await fetch('/api/admin/teacher-other-school-years', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacher_id: selected.id, other_school_years: years }),
+              })
+              if (!res.ok) return false
+              const updated = { ...selected, other_school_years: years }
+              setLocalProfiles(prev => prev.map(p => p.id === selected.id ? updated : p))
+              setSelected(updated)
+              return true
+            }}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function TeacherResume({ profile, onToggleStatus }: { profile: Profile; onToggleStatus: () => void }) {
+function TeacherResume({
+  profile,
+  kanpuYears,
+  onToggleStatus,
+  onUpdateOtherSchoolYears,
+}: {
+  profile: Profile
+  kanpuYears: number
+  onToggleStatus: () => void
+  onUpdateOtherSchoolYears: (years: number) => Promise<boolean>
+}) {
+  const [otherYearsInput, setOtherYearsInput] = useState<string>(String(profile.other_school_years ?? 0))
+  const [savingOther, setSavingOther] = useState(false)
+  const [otherSaved, setOtherSaved] = useState(false)
+
+  useEffect(() => { setOtherYearsInput(String(profile.other_school_years ?? 0)) }, [profile.id, profile.other_school_years])
+
+  async function saveOther() {
+    const n = Number(otherYearsInput)
+    if (!Number.isInteger(n) || n < 0 || n > 60) {
+      alert('請輸入 0 ~ 60 的整數')
+      setOtherYearsInput(String(profile.other_school_years ?? 0))
+      return
+    }
+    if (n === (profile.other_school_years ?? 0)) return
+    setSavingOther(true)
+    const ok = await onUpdateOtherSchoolYears(n)
+    setSavingOther(false)
+    if (ok) {
+      setOtherSaved(true)
+      setTimeout(() => setOtherSaved(false), 2000)
+    } else {
+      alert('儲存失敗，請稍後再試')
+    }
+  }
+
+  const seniorityScore = kanpuYears * 0.8 + (profile.other_school_years ?? 0) * 0.2
   const experiences = (
     Array.isArray(profile.experience) ? profile.experience : []
   ) as unknown as ExperienceItem[]
@@ -256,6 +309,42 @@ function TeacherResume({ profile, onToggleStatus }: { profile: Profile; onToggle
             {profile.phone && <span>電話：{profile.phone}</span>}
             {profile.line_id && <span>Line：{profile.line_id}</span>}
           </div>
+        </div>
+
+        {/* 年資 */}
+        <div className="card">
+          <h3 className="resume-section-title">年資</h3>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">關埔年資（依工作紀錄）</div>
+              <div className="text-lg font-semibold text-zinc-900">{kanpuYears} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">他校年資（管理者填入）</div>
+              <div className="flex items-center gap-2 print:hidden">
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={otherYearsInput}
+                  onChange={e => setOtherYearsInput(e.target.value)}
+                  onBlur={saveOther}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                  disabled={savingOther}
+                  className="input w-16 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-xs text-zinc-500">年</span>
+                {savingOther && <span className="text-xs text-zinc-400">儲存中...</span>}
+                {otherSaved && <span className="text-xs text-green-600">已儲存</span>}
+              </div>
+              <div className="hidden print:block text-lg font-semibold text-zinc-900">{profile.other_school_years ?? 0} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">年資積分（關埔×0.8 + 他校×0.2）</div>
+              <div className="text-lg font-semibold text-zinc-900">{seniorityScore.toFixed(2)}</div>
+            </div>
+          </div>
+          <p className="text-[11px] text-zinc-400 mt-2">輪動積分相同時，以年資積分高者優先。關埔年資由 rotation 紀錄自動計算（已扣除留停／育嬰／借調／延長病假）。</p>
         </div>
 
         {/* 學歷 */}

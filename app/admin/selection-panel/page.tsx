@@ -18,6 +18,9 @@ export interface PanelTeacher {
   timeline: TimelineSegment[]
   prefLocked: boolean
   prefGiveUp: boolean
+  kanpuYears: number
+  otherSchoolYears: number
+  seniorityScore: number  // 關埔×0.8 + 他校×0.2，輪動積分相同時的 tie-breaker
 }
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調', '延長病假']
@@ -42,14 +45,14 @@ export default async function SelectionPanelPage() {
   const admin = getAdminClient()
 
   const [{ data: activeProfiles }, { data: settingsRows }, { data: scoremapRows }] = await Promise.all([
-    admin.from('profiles').select('id, name').neq('status', 'inactive'),
+    admin.from('profiles').select('id, name, other_school_years').neq('status', 'inactive'),
     admin.from('settings').select('value').eq('key', 'preference_year'),
     admin.from('scoremap').select('work, group_name'),
   ])
 
   const preferenceYear = Number(settingsRows?.[0]?.value ?? 115)
   const activeIds = (activeProfiles ?? []).map(p => p.id)
-  const profileMap = Object.fromEntries((activeProfiles ?? []).map(p => [p.id, p.name ?? '']))
+  const profileMap = Object.fromEntries((activeProfiles ?? []).map(p => [p.id, p]))
 
   const groupMap: Record<string, string> = {}
   for (const row of scoremapRows ?? []) {
@@ -100,22 +103,29 @@ export default async function SelectionPanelPage() {
     .filter(id => targetMap[id] !== null)
     .map(id => {
       const pref = prefMap[id]
+      const profile = profileMap[id]
+      const rots = teacherRotations[id] ?? []
+      const kanpuYears = rots.filter(r => !SKIP_WORKS.includes(r.work)).length
+      const otherSchoolYears = profile?.other_school_years ?? 0
       return {
         id,
-        name: profileMap[id] ?? id,
+        name: profile?.name ?? id,
         pref1: pref?.preference1 ?? null,
         pref2: pref?.preference2 ?? null,
         pref3: pref?.preference3 ?? null,
         score: scoreMap[id] ?? 0,
         currentWork: currentWorkMap[id] ?? null,
         targetType: targetMap[id]!,
-        midLowConsecutiveYears: midLowConsecutive(teacherRotations[id] ?? [], groupMap),
-        timeline: buildTimeline(teacherRotations[id] ?? []),
+        midLowConsecutiveYears: midLowConsecutive(rots, groupMap),
+        timeline: buildTimeline(rots),
         prefLocked: pref?.locked ?? false,
         prefGiveUp: pref?.give_up ?? false,
+        kanpuYears,
+        otherSchoolYears,
+        seniorityScore: kanpuYears * 0.8 + otherSchoolYears * 0.2,
       }
     })
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || b.seniorityScore - a.seniorityScore)
 
   return (
     <SelectionPanelClient
