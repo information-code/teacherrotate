@@ -18,14 +18,15 @@ export async function PUT(request: Request) {
 
   const { teacher_id, other_school_years } = await request.json()
   const years = Number(other_school_years)
-  if (!teacher_id || !Number.isInteger(years) || years < 0 || years > 60) {
-    return NextResponse.json({ error: '無效參數（年資需為 0–60 整數）' }, { status: 400 })
+  if (!teacher_id || !Number.isFinite(years) || years < 0 || years > 60) {
+    return NextResponse.json({ error: '無效參數（年資需為 0–60 數值，可含小數）' }, { status: 400 })
   }
+  const rounded = Math.round(years * 100) / 100  // NUMERIC(4,2)
 
   const admin = getAdminClient()
   const { error } = await admin
     .from('profiles')
-    .update({ other_school_years: years })
+    .update({ other_school_years: rounded })
     .eq('id', teacher_id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

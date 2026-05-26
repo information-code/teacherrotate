@@ -216,14 +216,15 @@ function TeacherResume({
 
   async function saveOther() {
     const n = Number(otherYearsInput)
-    if (!Number.isInteger(n) || n < 0 || n > 60) {
-      alert('請輸入 0 ~ 60 的整數')
+    if (!Number.isFinite(n) || n < 0 || n > 60) {
+      alert('請輸入 0 ~ 60 之間的數值（可含小數）')
       setOtherYearsInput(String(profile.other_school_years ?? 0))
       return
     }
-    if (n === (profile.other_school_years ?? 0)) return
+    const rounded = Math.round(n * 100) / 100
+    if (rounded === Number(profile.other_school_years ?? 0)) return
     setSavingOther(true)
-    const ok = await onUpdateOtherSchoolYears(n)
+    const ok = await onUpdateOtherSchoolYears(rounded)
     setSavingOther(false)
     if (ok) {
       setOtherSaved(true)
@@ -233,7 +234,8 @@ function TeacherResume({
     }
   }
 
-  const seniorityScore = kanpuYears * 0.8 + (profile.other_school_years ?? 0) * 0.2
+  const otherYearsNum = Number(profile.other_school_years ?? 0)
+  const seniorityScore = kanpuYears * 0.8 + otherYearsNum * 0.2
   const experiences = (
     Array.isArray(profile.experience) ? profile.experience : []
   ) as unknown as ExperienceItem[]
@@ -326,18 +328,19 @@ function TeacherResume({
                   type="number"
                   min={0}
                   max={60}
+                  step={0.01}
                   value={otherYearsInput}
                   onChange={e => setOtherYearsInput(e.target.value)}
                   onBlur={saveOther}
                   onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
                   disabled={savingOther}
-                  className="input w-16 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="input w-20 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="text-xs text-zinc-500">年</span>
                 {savingOther && <span className="text-xs text-zinc-400">儲存中...</span>}
                 {otherSaved && <span className="text-xs text-green-600">已儲存</span>}
               </div>
-              <div className="hidden print:block text-lg font-semibold text-zinc-900">{profile.other_school_years ?? 0} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
+              <div className="hidden print:block text-lg font-semibold text-zinc-900">{otherYearsNum} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
             </div>
             <div>
               <div className="text-xs text-zinc-500 mb-1">年資積分（關埔×0.8 + 他校×0.2）</div>

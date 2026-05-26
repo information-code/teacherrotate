@@ -106,7 +106,7 @@ export default async function SelectionPanelPage() {
       const profile = profileMap[id]
       const rots = teacherRotations[id] ?? []
       const kanpuYears = rots.filter(r => !SKIP_WORKS.includes(r.work)).length
-      const otherSchoolYears = profile?.other_school_years ?? 0
+      const otherSchoolYears = Number(profile?.other_school_years ?? 0)
       return {
         id,
         name: profile?.name ?? id,
