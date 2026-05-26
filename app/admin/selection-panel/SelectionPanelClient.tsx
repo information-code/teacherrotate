@@ -43,27 +43,6 @@ const MIDLOW_LIMIT = 8
 
 const GRADE_LABEL: Record<number, string> = { 1: '一年級', 3: '三年級', 5: '五年級' }
 
-function getPrefMatch(t: PanelTeacher, slotLabel: string): 1 | 2 | 3 | null {
-  if (t.pref1 === slotLabel) return 1
-  if (t.pref2 === slotLabel) return 2
-  if (t.pref3 === slotLabel) return 3
-  return null
-}
-
-function slotMatchBg(match: 1 | 2 | 3 | null): string {
-  if (match === 1) return 'border-green-500 bg-green-50'
-  if (match === 2) return 'border-sky-500 bg-sky-50'
-  if (match === 3) return 'border-amber-500 bg-amber-50'
-  return 'border-red-300 bg-red-50'
-}
-
-function matchEmoji(match: 1 | 2 | 3 | null): string {
-  if (match === 1) return '🥇'
-  if (match === 2) return '🥈'
-  if (match === 3) return '🥉'
-  return '😬'
-}
-
 export default function SelectionPanelClient({ teachers, midLowWorks, preferenceYear }: Props) {
   const router = useRouter()
   const midLowSet = useMemo(() => new Set(midLowWorks), [midLowWorks])
@@ -157,10 +136,8 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   function renderSlot(slotId: string, label: string) {
     const t = teacherAt(slotId)
     const isOver = dragOver === slotId
-    const draggedTeacher = dragTeacherId ? teachers.find(x => x.id === dragTeacherId) : null
-    const hoverMatch = draggedTeacher ? getPrefMatch(draggedTeacher, label) : null
     const cellCls = isOver
-      ? slotMatchBg(hoverMatch)
+      ? 'border-zinc-500 bg-zinc-50'
       : t ? 'border-zinc-300 bg-white' : 'border-dashed border-zinc-300 bg-zinc-50'
 
     return (
@@ -182,9 +159,6 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
             }`}
           >
             <div className="flex items-center gap-1 min-w-0 flex-1">
-              <span className="text-xs leading-none flex-shrink-0">
-                {matchEmoji(getPrefMatch(t, label))}
-              </span>
               {t.midLowConsecutiveYears >= MIDLOW_LIMIT && (
                 <span className="text-[10px] text-red-500 font-bold flex-shrink-0" title={`連續${t.midLowConsecutiveYears}年中低年級`}>🚫</span>
               )}
@@ -209,12 +183,8 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
       <div>
         <h2 className="page-title mb-1">選填面板 <span className="text-sm font-normal text-zinc-500 ml-2">{preferenceYear} 學年度 撕榜</span></h2>
         <p className="text-xs text-zinc-400">
-          設定各領域名額後，將下方教師依序拖到對應空缺。配對顏色：
-          <span className="ml-1 text-green-700">🥇 一志</span>
-          <span className="ml-1 text-sky-700">🥈 二志</span>
-          <span className="ml-1 text-amber-700">🥉 三志</span>
-          <span className="ml-1 text-red-600">😬 無配對</span>
-          <span className="ml-2 text-zinc-500">· 已分配 {placedCount} / 空缺總數 {totalSlots}</span>
+          設定各領域名額後，將下方教師依序拖到對應空缺。
+          <span className="ml-2 text-zinc-500">已分配 {placedCount} / 空缺總數 {totalSlots}</span>
           <span className="ml-2 text-zinc-500">· 待安排 {poolTeachers.length}</span>
         </p>
       </div>
@@ -467,20 +437,6 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
                   </span>
                 </div>
               )}
-              <div className="border-t border-zinc-100 pt-1.5 space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥇 第一志願</span>
-                  <span className="font-medium">{detailTeacher.pref1 ?? '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥈 第二志願</span>
-                  <span className="font-medium">{detailTeacher.pref2 ?? '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥉 第三志願</span>
-                  <span className="font-medium">{detailTeacher.pref3 ?? '—'}</span>
-                </div>
-              </div>
             </div>
           </div>
         </>
