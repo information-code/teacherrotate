@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TeacherEval } from './page'
-import { sortWorks, groupWorks, getWorkCategory, CATEGORY_STYLE } from '@/lib/work-sort'
 import { TARGET_BADGE_STYLE } from '@/lib/rotation-target'
 
 interface StatRow {
@@ -23,7 +22,7 @@ interface DetailRow {
 interface Props {
   initialStats: StatRow[]
   initialTeachers: TeacherEval[]
-  midLowWorks: string[]  // 屬於中低年級導師組的職位清單
+  midLowWorks: string[]
   currentYear: number
   viewYear: number
   availableYears: number[]
@@ -42,140 +41,17 @@ async function fetchDetail(work: string, year: number): Promise<DetailRow[]> {
   return res.json()
 }
 
-/** emoji 表示志願配對程度，放在教師名字前 */
-function getPrefEmoji(t: TeacherEval, sectionId: string, isAdmin: boolean): string {
-  if (isAdmin || sectionId === 'pool') return ''
-  if (t.pref1 === sectionId) return '🥇'
-  if (t.pref2 === sectionId) return '🥈'
-  if (t.pref3 === sectionId) return '🥉'
-  return '😬'
-}
-
-/** 拖移懸停時，區塊邊框顏色（依志願配對）— 保持讓主任知道要放哪 */
-function getHoverBorderColor(teacherId: string | null, sectionId: string, isAdmin: boolean, teachers: TeacherEval[]): string {
-  if (!teacherId) return 'border-zinc-400 bg-zinc-50'
-  if (isAdmin || sectionId === 'pool') return 'border-zinc-500 bg-zinc-50'
-  const t = teachers.find(x => x.id === teacherId)
-  if (!t) return 'border-zinc-400 bg-zinc-50'
-  if (t.pref1 === sectionId) return 'border-green-500 bg-green-50'
-  if (t.pref2 === sectionId) return 'border-sky-500 bg-sky-50'
-  if (t.pref3 === sectionId) return 'border-amber-500 bg-amber-50'
-  return 'border-red-400 bg-red-50'
-}
-
-const MIDLOW_LIMIT = 8  // 連續幾年後強制離開中低年級
-
-export default function StatisticsClient({ initialStats, initialTeachers, midLowWorks, currentYear, viewYear, availableYears, isCurrent }: Props) {
-  const midLowWorksSet = new Set(midLowWorks)
+export default function StatisticsClient({ initialStats, initialTeachers, currentYear, viewYear, availableYears, isCurrent }: Props) {
   const router = useRouter()
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
   const [bumping, setBumping] = useState(false)
-  const [unlocking, setUnlocking] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
-  const [showEval, setShowEval] = useState(false)
-  const [quotas, setQuotas] = useState<Record<string, number>>({})
 
-  // 暫定行政：自動放入現任主任/組長
-  const [tentativeAdmin, setTentativeAdmin] = useState<Set<string>>(
-    () => new Set(initialTeachers.filter(t =>
-      t.currentWork && (t.currentWork.includes('主任') || t.currentWork.includes('組長'))
-    ).map(t => t.id))
-  )
+  useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 手動分配結果：{ teacherId → work }
-  const [placements, setPlacements] = useState<Record<string, string>>({})
-
-  // Drag state
-  const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
-  const [dragOver, setDragOver] = useState<string | null>(null)
-  const [blockMsg, setBlockMsg] = useState<string | null>(null)
-
-  // 浮動資訊卡
-  const [detailTeacher, setDetailTeacher] = useState<TeacherEval | null>(null)
-  const [detailPos, setDetailPos] = useState<{ x: number; y: number } | null>(null)
-
-  function showDetail(t: TeacherEval, e: React.MouseEvent) {
-    if (detailTeacher?.id === t.id) {
-      setDetailTeacher(null); setDetailPos(null); return
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const popupW = 232
-    const x = rect.right + 10 + popupW > window.innerWidth ? rect.left - popupW - 4 : rect.right + 10
-    const y = Math.min(rect.top - 4, window.innerHeight - 220)
-    setDetailTeacher(t)
-    setDetailPos({ x, y })
-  }
-
-  function place(teacherId: string, sectionId: string | null) {
-    if (sectionId === 'admin') {
-      setTentativeAdmin(prev => new Set([...prev, teacherId]))
-      setPlacements(prev => { const n = { ...prev }; delete n[teacherId]; return n })
-    } else if (sectionId === 'pool' || sectionId === null) {
-      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(teacherId); return n })
-      setPlacements(prev => { const n = { ...prev }; delete n[teacherId]; return n })
-    } else {
-      setTentativeAdmin(prev => { const n = new Set(prev); n.delete(teacherId); return n })
-      setPlacements(prev => ({ ...prev, [teacherId]: sectionId }))
-    }
-  }
-
-  function handleDrop(sectionId: string) {
-    if (dragTeacherId) {
-      const teacher = initialTeachers.find(t => t.id === dragTeacherId)
-      if (
-        teacher &&
-        teacher.midLowConsecutiveYears >= MIDLOW_LIMIT &&
-        midLowWorksSet.has(sectionId)
-      ) {
-        setBlockMsg(`${teacher.name} 已連續 ${teacher.midLowConsecutiveYears} 年中低年級，依規定須排高年級，不可排入${sectionId}`)
-        setTimeout(() => setBlockMsg(null), 5000)
-        setDragTeacherId(null)
-        setDragOver(null)
-        return
-      }
-      place(dragTeacherId, sectionId)
-    }
-    setDragTeacherId(null)
-    setDragOver(null)
-  }
-
-  const allWorks = useMemo(() => {
-    const fromTeachers = initialTeachers.flatMap(t =>
-      [t.pref1, t.pref2, t.pref3].filter(Boolean) as string[]
-    )
-    return sortWorks(Array.from(new Set(fromTeachers)))
-  }, [initialTeachers])
-
-  const workGroups = useMemo(() => groupWorks(allWorks), [allWorks])
-
-  const effectiveQuotas = useMemo(() => {
-    const q: Record<string, number> = {}
-    for (const w of allWorks) q[w] = quotas[w] ?? 0
-    return q
-  }, [allWorks, quotas])
-
-  // 各區塊的教師
-  const poolTeachers = useMemo(() =>
-    initialTeachers
-      .filter(t => !tentativeAdmin.has(t.id) && !placements[t.id])
-      .sort((a, b) => b.score - a.score),
-    [initialTeachers, tentativeAdmin, placements]
-  )
-  const adminTeachers = useMemo(() =>
-    initialTeachers.filter(t => tentativeAdmin.has(t.id)),
-    [initialTeachers, tentativeAdmin]
-  )
-  function getWorkTeachers(work: string) {
-    return initialTeachers.filter(t => placements[t.id] === work)
-  }
-
-  // 每次 mount 強制伺服器重跑，取得最新資料
-  useEffect(() => { router.refresh() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // props 更新時同步 state（router.refresh 觸發後）
   useEffect(() => {
     setStats(initialStats)
     setLoading(false)
@@ -193,27 +69,6 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
     if (year !== currentYear) params.set('year', String(year))
     const qs = params.toString()
     router.push(qs ? `/admin/statistics?${qs}` : '/admin/statistics')
-  }
-
-  async function unlockTeacher(teacherId: string, name: string) {
-    if (!confirm(`確定要解鎖「${name}」的志願？解鎖後該老師可重新修改本年度志願。`)) return
-    setUnlocking(teacherId)
-    try {
-      const res = await fetch('/api/admin/preferences/unlock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teacher_id: teacherId, year: viewYear }),
-      })
-      if (!res.ok) {
-        alert('解鎖失敗，請稍後再試')
-        return
-      }
-      setDetailTeacher(null)
-      setDetailPos(null)
-      router.refresh()
-    } finally {
-      setUnlocking(null)
-    }
   }
 
   async function bumpPreferenceYear() {
@@ -240,7 +95,6 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
   const noPrefsCount = initialTeachers.filter(t => !t.pref1 && !t.pref2 && !t.pref3).length
 
-  // 目標教師分類統計
   const targetBreakdown = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const t of initialTeachers) counts[t.targetType] = (counts[t.targetType] ?? 0) + 1
@@ -248,115 +102,8 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
     return order.filter(k => counts[k] > 0).map(k => ({ type: k, count: counts[k] }))
   }, [initialTeachers])
 
-  // ── Kanban section renderer ──
-  function renderSection(
-    sectionId: string,
-    title: string,
-    teachers: TeacherEval[],
-    quota: number | null,
-    isAdmin: boolean,
-  ) {
-    const isOver = dragOver === sectionId
-    const isOverQuota = quota !== null && teachers.length > quota
-    const hoverBorder = getHoverBorderColor(dragTeacherId, sectionId, isAdmin, initialTeachers)
-
-    // Border & bg
-    let sectionCls = 'border-zinc-200 bg-white'
-    if (isOver) sectionCls = hoverBorder
-    else if (isOverQuota) sectionCls = 'border-red-300 bg-white'
-
-    const draggedTeacher = dragTeacherId ? initialTeachers.find(t => t.id === dragTeacherId) : null
-    const showPreview = draggedTeacher && isOver
-
-    return (
-      <div
-        key={sectionId}
-        className={`flex flex-col flex-shrink-0 w-[148px] rounded border-2 transition-colors duration-100 ${sectionCls}`}
-        onDragOver={e => { e.preventDefault(); setDragOver(sectionId) }}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
-        onDrop={e => { e.preventDefault(); handleDrop(sectionId) }}
-      >
-        {/* Header */}
-        <div className={`px-2 py-1.5 border-b text-xs rounded-t transition-colors ${
-          isOverQuota ? 'border-red-200 bg-red-50' : isOver ? 'border-current bg-transparent' : 'border-zinc-100 bg-zinc-50'
-        }`}>
-          <div className="flex items-center justify-between gap-1">
-            <span className={`font-semibold truncate leading-tight ${isOverQuota ? 'text-red-700' : 'text-zinc-700'}`} title={title}>
-              {title}
-            </span>
-            {quota !== null && (
-              <span className={`flex-shrink-0 font-medium tabular-nums ${isOverQuota ? 'text-red-600' : 'text-zinc-500'}`}>
-                {teachers.length}/{quota}
-              </span>
-            )}
-            {quota === null && (
-              <span className="flex-shrink-0 text-zinc-400 tabular-nums">{teachers.length}</span>
-            )}
-          </div>
-          {isOverQuota && <p className="text-red-600 mt-0.5 font-medium">超額 +{teachers.length - quota!}</p>}
-        </div>
-
-        {/* Cards */}
-        <div className="flex flex-col gap-1.5 p-1.5 flex-1 min-h-[64px]">
-          {teachers.map(t => {
-            const emoji = getPrefEmoji(t, sectionId, isAdmin)
-            return (
-              <div
-                key={t.id}
-                draggable
-                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragTeacherId(t.id) }}
-                onDragEnd={() => { setDragTeacherId(null); setDragOver(null) }}
-                className={`relative flex items-center justify-between px-1.5 py-1 border border-zinc-200 bg-white rounded-sm cursor-grab active:cursor-grabbing text-xs select-none ${
-                  dragTeacherId === t.id ? 'opacity-40' : 'hover:border-zinc-400'
-                }`}
-              >
-                <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
-                  {emoji && <span className="flex-shrink-0 text-sm leading-none">{emoji}</span>}
-                  {t.midLowConsecutiveYears >= MIDLOW_LIMIT && (
-                    <span className="flex-shrink-0 text-[10px] text-red-500 font-bold leading-none" title={`連續${t.midLowConsecutiveYears}年中低年級，須排高年級`}>🚫</span>
-                  )}
-                  <span className="font-medium truncate leading-tight">{t.name}</span>
-                  <span className="text-[10px] text-zinc-400 flex-shrink-0">{t.score.toFixed(2)}</span>
-                </div>
-                <button
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); showDetail(t, e) }}
-                  className={`ml-0.5 flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border text-[10px] leading-none transition-colors ${
-                    detailTeacher?.id === t.id
-                      ? 'border-zinc-700 bg-zinc-700 text-white'
-                      : 'border-zinc-300 text-zinc-400 hover:border-zinc-700 hover:text-zinc-700'
-                  }`}
-                >i</button>
-              </div>
-            )
-          })}
-
-          {/* Drop preview — shows emoji + name before releasing */}
-          {showPreview && draggedTeacher && (
-            <div className="flex items-center gap-1 px-1.5 py-1 border border-dashed border-zinc-400 bg-zinc-50 rounded-sm text-xs opacity-75 pointer-events-none">
-              {getPrefEmoji(draggedTeacher, sectionId, isAdmin) && (
-                <span className="flex-shrink-0 text-sm leading-none">{getPrefEmoji(draggedTeacher, sectionId, isAdmin)}</span>
-              )}
-              <span className="font-medium truncate leading-tight">{draggedTeacher.name}</span>
-              <span className="text-[10px] text-zinc-400 flex-shrink-0">{draggedTeacher.score.toFixed(2)}</span>
-            </div>
-          )}
-
-          {teachers.length === 0 && !showPreview && (
-            <div className={`text-[11px] text-center py-4 border border-dashed rounded-sm transition-colors ${
-              isOver ? 'border-current opacity-60' : 'border-zinc-200 text-zinc-400'
-            }`}>
-              拖拉至此
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
-      {/* ── 志願統計 ── */}
       <div className="flex gap-6 items-start">
         <div className="flex-1 space-y-4 min-w-0">
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -402,11 +149,6 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
-              {isCurrent && (
-                <button onClick={() => setShowEval(!showEval)} className="btn-secondary">
-                  {showEval ? '收起評估' : '評估預測'}
-                </button>
-              )}
               <button onClick={() => fetchStats(viewYear).then(setStats)} className="btn-secondary">
                 重新整理
               </button>
@@ -468,7 +210,6 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
           )}
         </div>
 
-        {/* 詳細面板 */}
         {selected && (
           <div className="w-72 flex-shrink-0 card space-y-3">
             <div className="flex items-center justify-between">
@@ -498,203 +239,6 @@ export default function StatisticsClient({ initialStats, initialTeachers, midLow
           </div>
         )}
       </div>
-
-      {/* ── 評估預測 ── */}
-      {isCurrent && showEval && (
-        <div className="space-y-4 border-t border-zinc-200 pt-4">
-          <div>
-            <h2 className="page-title mb-1">評估預測</h2>
-            <p className="text-xs text-zinc-400">
-              設定各職位名額後，將待安排教師拖拉到對應職位欄。拖移時會預覽志願配對顏色。
-            </p>
-          </div>
-
-          {initialTeachers.length === 0 ? (
-            <div className="card text-sm text-zinc-400">尚無需換工作的教師</div>
-          ) : (
-            <div className="space-y-4">
-              {/* Step 1: 名額設定 */}
-              <div className="card p-4 space-y-4">
-                <h3 className="text-sm font-semibold text-zinc-700">Step 1 — 設定各職位名額</h3>
-                {allWorks.length === 0 ? (
-                  <p className="text-xs text-zinc-400">尚無教師填寫志願，無法設定名額</p>
-                ) : (
-                  <div className="space-y-4">
-                    {workGroups.map(group => (
-                      <div key={group.label}>
-                        <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2 pb-1 border-b border-zinc-200">
-                          {group.label}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {group.works.map(work => (
-                            <div key={work} className="flex items-center gap-2">
-                              <span className="text-xs text-zinc-700 flex-1 truncate" title={work}>{work}</span>
-                              <input
-                                type="number"
-                                min={0}
-                                value={effectiveQuotas[work]}
-                                onChange={e => setQuotas(q => ({ ...q, [work]: Math.max(0, Number(e.target.value)) }))}
-                                className="input w-12 text-center py-0.5 text-xs flex-shrink-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: 拖拉安排 */}
-              <div className="space-y-3">
-                {blockMsg && (
-                  <div className="px-3 py-2 bg-red-50 border border-red-200 text-xs text-red-700 rounded-sm flex items-center justify-between">
-                    <span>🚫 {blockMsg}</span>
-                    <button onClick={() => setBlockMsg(null)} className="ml-2 opacity-50 hover:opacity-100">×</button>
-                  </div>
-                )}
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <h3 className="text-sm font-semibold text-zinc-700">Step 2 — 拖拉安排</h3>
-                  {/* Legend */}
-                  <div className="flex gap-3 text-[11px] text-zinc-500 flex-wrap">
-                    <span>🥇 第一志願</span>
-                    <span>🥈 第二志願</span>
-                    <span>🥉 第三志願</span>
-                    <span>😬 無志願配對</span>
-                  </div>
-                </div>
-
-                {/* Kanban board */}
-                <div className="flex gap-3 overflow-x-auto pb-3 items-start" style={{ minHeight: '200px' }}>
-
-                  {/* 待安排 pool */}
-                  {renderSection('pool', '待安排', poolTeachers, null, false)}
-
-                  {/* 行政人員 */}
-                  {renderSection('admin', '行政人員', adminTeachers, null, true)}
-
-                  {/* Work sections by group */}
-                  {workGroups.map(group => {
-                    const gWorks = group.works.filter(w => effectiveQuotas[w] > 0)
-                    if (gWorks.length === 0) return null
-                    return (
-                      <div key={group.label} className="flex gap-3 items-start flex-shrink-0">
-                        <div className="self-stretch w-px bg-zinc-200 flex-shrink-0" />
-                        {gWorks.map(work =>
-                          renderSection(work, work, getWorkTeachers(work), effectiveQuotas[work], false)
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {allWorks.filter(w => effectiveQuotas[w] > 0).length === 0 && (
-                    <div className="card p-4 text-xs text-zinc-400 self-center ml-3">請先在 Step 1 設定職位名額</div>
-                  )}
-                </div>
-
-                <p className="text-[11px] text-zinc-400">
-                  拖到「行政人員」= 排除分派。拖回「待安排」= 取消。拖到志願配對職位會出現對應顏色提示。
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 浮動教師資訊卡（固定定位，點擊背景關閉）── */}
-      {detailTeacher && detailPos && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => { setDetailTeacher(null); setDetailPos(null) }} />
-          <div
-            className="fixed z-50 w-56 bg-white border border-zinc-200 shadow-lg rounded p-3 space-y-2 text-xs"
-            style={{ left: detailPos.x, top: detailPos.y }}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-sm text-zinc-800 truncate">{detailTeacher.name}</span>
-              <button
-                onClick={() => { setDetailTeacher(null); setDetailPos(null) }}
-                className="text-zinc-400 hover:text-zinc-600 text-base leading-none flex-shrink-0"
-              >×</button>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`inline-block text-[11px] px-1.5 py-0.5 border rounded-sm ${TARGET_BADGE_STYLE[detailTeacher.targetType]}`}>
-                {detailTeacher.targetType}
-              </span>
-              {detailTeacher.locked && (
-                <span className="inline-block text-[11px] px-1.5 py-0.5 border rounded-sm bg-zinc-100 border-zinc-300 text-zinc-700">
-                  🔒 已鎖定
-                </span>
-              )}
-              {detailTeacher.giveUp && (
-                <span className="inline-block text-[11px] px-1.5 py-0.5 border rounded-sm bg-amber-50 border-amber-200 text-amber-700">
-                  放棄選填
-                </span>
-              )}
-            </div>
-            {detailTeacher.locked && isCurrent && (
-              <button
-                onClick={() => unlockTeacher(detailTeacher.id, detailTeacher.name)}
-                disabled={unlocking === detailTeacher.id}
-                className="btn-secondary w-full py-1 text-xs"
-              >
-                {unlocking === detailTeacher.id ? '解鎖中...' : '🔓 協助解鎖（可重填）'}
-              </button>
-            )}
-            <div className="space-y-1.5 text-zinc-600">
-              <div className="flex justify-between">
-                <span className="text-zinc-400">近四年總分</span>
-                <span className="font-medium text-zinc-800">{detailTeacher.score.toFixed(2)} 分</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">現任職位</span>
-                <span className="font-medium text-zinc-800">{detailTeacher.currentWork ?? '—'}</span>
-              </div>
-              {detailTeacher.midLowConsecutiveYears > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">中低年級連續</span>
-                  <span className={`font-medium ${detailTeacher.midLowConsecutiveYears >= MIDLOW_LIMIT ? 'text-red-600' : 'text-zinc-800'}`}>
-                    {detailTeacher.midLowConsecutiveYears} 年
-                    {detailTeacher.midLowConsecutiveYears >= MIDLOW_LIMIT && '（須排高年級）'}
-                  </span>
-                </div>
-              )}
-              <div className="border-t border-zinc-100 pt-1.5 space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥇 第一志願</span>
-                  <span className="font-medium">{detailTeacher.pref1 ?? '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥈 第二志願</span>
-                  <span className="font-medium">{detailTeacher.pref2 ?? '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">🥉 第三志願</span>
-                  <span className="font-medium">{detailTeacher.pref3 ?? '—'}</span>
-                </div>
-              </div>
-              {detailTeacher.timeline.length > 0 && (
-                <div className="border-t border-zinc-100 pt-1.5">
-                  <p className="text-zinc-400 mb-1.5">年資時間軸</p>
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {detailTeacher.timeline.map((seg, i) => {
-                      const cat = getWorkCategory(seg.work)
-                      return (
-                        <span key={i} className="flex items-center gap-1">
-                          {i > 0 && <span className="text-zinc-300 text-[10px]">›</span>}
-                          <span className={`inline-flex flex-col items-center px-1.5 py-0.5 border rounded-sm text-[10px] leading-tight ${CATEGORY_STYLE[cat]}`}>
-                            <span className="font-medium">{seg.work}</span>
-                            <span className="opacity-70">{seg.count}年</span>
-                          </span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
     </div>
   )
 }

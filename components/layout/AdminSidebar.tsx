@@ -16,8 +16,9 @@ const navSections = [
   {
     title: '選填管理',
     items: [
-      { href: '/admin/confirmations', label: '確認統計' },
-      { href: '/admin/statistics',    label: '志願統計' },
+      { href: '/admin/confirmations',     label: '確認統計' },
+      { href: '/admin/statistics',        label: '志願統計' },
+      { href: '/admin/selection-panel',   label: '選填面板' },
     ],
   },
   {
