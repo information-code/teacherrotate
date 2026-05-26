@@ -190,6 +190,18 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
               setSelected(updated)
               return true
             }}
+            onUpdateKanpuSubstituteYears={async years => {
+              const res = await fetch('/api/admin/teacher-kanpu-substitute-years', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacher_id: selected.id, kanpu_substitute_years: years }),
+              })
+              if (!res.ok) return false
+              const updated = { ...selected, kanpu_substitute_years: years }
+              setLocalProfiles(prev => prev.map(p => p.id === selected.id ? updated : p))
+              setSelected(updated)
+              return true
+            }}
           />
         )}
       </div>
@@ -202,40 +214,58 @@ function TeacherResume({
   kanpuYears,
   onToggleStatus,
   onUpdateOtherSchoolYears,
+  onUpdateKanpuSubstituteYears,
 }: {
   profile: Profile
   kanpuYears: number
   onToggleStatus: () => void
   onUpdateOtherSchoolYears: (years: number) => Promise<boolean>
+  onUpdateKanpuSubstituteYears: (years: number) => Promise<boolean>
 }) {
   const [otherYearsInput, setOtherYearsInput] = useState<string>(String(profile.other_school_years ?? 0))
+  const [substituteInput, setSubstituteInput] = useState<string>(String(profile.kanpu_substitute_years ?? 0))
   const [savingOther, setSavingOther] = useState(false)
+  const [savingSubstitute, setSavingSubstitute] = useState(false)
   const [otherSaved, setOtherSaved] = useState(false)
+  const [substituteSaved, setSubstituteSaved] = useState(false)
 
   useEffect(() => { setOtherYearsInput(String(profile.other_school_years ?? 0)) }, [profile.id, profile.other_school_years])
+  useEffect(() => { setSubstituteInput(String(profile.kanpu_substitute_years ?? 0)) }, [profile.id, profile.kanpu_substitute_years])
 
-  async function saveOther() {
-    const n = Number(otherYearsInput)
+  async function saveYears(
+    input: string,
+    current: number,
+    setInput: (s: string) => void,
+    setSaving: (b: boolean) => void,
+    setSaved: (b: boolean) => void,
+    updater: (n: number) => Promise<boolean>,
+  ) {
+    const n = Number(input)
     if (!Number.isFinite(n) || n < 0 || n > 60) {
       alert('請輸入 0 ~ 60 之間的數值（可含小數）')
-      setOtherYearsInput(String(profile.other_school_years ?? 0))
+      setInput(String(current))
       return
     }
     const rounded = Math.round(n * 100) / 100
-    if (rounded === Number(profile.other_school_years ?? 0)) return
-    setSavingOther(true)
-    const ok = await onUpdateOtherSchoolYears(rounded)
-    setSavingOther(false)
+    if (rounded === current) return
+    setSaving(true)
+    const ok = await updater(rounded)
+    setSaving(false)
     if (ok) {
-      setOtherSaved(true)
-      setTimeout(() => setOtherSaved(false), 2000)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
     } else {
       alert('儲存失敗，請稍後再試')
     }
   }
 
   const otherYearsNum = Number(profile.other_school_years ?? 0)
-  const seniorityScore = kanpuYears * 0.8 + otherYearsNum * 0.2
+  const substituteNum = Number(profile.kanpu_substitute_years ?? 0)
+  const kanpuTotal = kanpuYears + substituteNum
+  const seniorityScore = kanpuTotal * 0.8 + otherYearsNum * 0.2
+
+  const saveOther = () => saveYears(otherYearsInput, otherYearsNum, setOtherYearsInput, setSavingOther, setOtherSaved, onUpdateOtherSchoolYears)
+  const saveSubstitute = () => saveYears(substituteInput, substituteNum, setSubstituteInput, setSavingSubstitute, setSubstituteSaved, onUpdateKanpuSubstituteYears)
   const experiences = (
     Array.isArray(profile.experience) ? profile.experience : []
   ) as unknown as ExperienceItem[]
@@ -316,10 +346,31 @@ function TeacherResume({
         {/* 年資 */}
         <div className="card">
           <h3 className="resume-section-title">年資</h3>
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <div className="text-xs text-zinc-500 mb-1">關埔年資（依工作紀錄）</div>
+              <div className="text-xs text-zinc-500 mb-1">關埔正式年資（依工作紀錄）</div>
               <div className="text-lg font-semibold text-zinc-900">{kanpuYears} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">關埔代理年資（管理者填入）</div>
+              <div className="flex items-center gap-2 print:hidden">
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  step={0.01}
+                  value={substituteInput}
+                  onChange={e => setSubstituteInput(e.target.value)}
+                  onBlur={saveSubstitute}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                  disabled={savingSubstitute}
+                  className="input w-20 text-center py-0.5 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-xs text-zinc-500">年</span>
+                {savingSubstitute && <span className="text-xs text-zinc-400">儲存中...</span>}
+                {substituteSaved && <span className="text-xs text-green-600">已儲存</span>}
+              </div>
+              <div className="hidden print:block text-lg font-semibold text-zinc-900">{substituteNum} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
             </div>
             <div>
               <div className="text-xs text-zinc-500 mb-1">他校年資（管理者填入）</div>
@@ -343,11 +394,12 @@ function TeacherResume({
               <div className="hidden print:block text-lg font-semibold text-zinc-900">{otherYearsNum} <span className="text-xs font-normal text-zinc-500 ml-0.5">年</span></div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500 mb-1">年資積分（關埔×0.8 + 他校×0.2）</div>
+              <div className="text-xs text-zinc-500 mb-1">年資積分</div>
               <div className="text-lg font-semibold text-zinc-900">{seniorityScore.toFixed(2)}</div>
+              <div className="text-[11px] text-zinc-400 mt-0.5">關埔 {kanpuTotal.toFixed(2)} × 0.8 + 他校 {otherYearsNum} × 0.2</div>
             </div>
           </div>
-          <p className="text-[11px] text-zinc-400 mt-2">輪動積分相同時，以年資積分高者優先。關埔年資由 rotation 紀錄自動計算（已扣除留停／育嬰／借調／延長病假）。</p>
+          <p className="text-[11px] text-zinc-400 mt-2">輪動積分相同時，以年資積分高者優先。關埔年資 = 正式（依 rotation 紀錄，已扣除留停／育嬰／借調／延長病假）+ 代理（手動填入）。</p>
         </div>
 
         {/* 學歷 */}

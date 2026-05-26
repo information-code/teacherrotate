@@ -509,7 +509,9 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
               <div className="flex justify-between">
                 <span className="text-zinc-400">年資積分</span>
                 <span className="font-medium text-zinc-800">{detailTeacher.seniorityScore.toFixed(2)}
-                  <span className="text-zinc-400 ml-1">({detailTeacher.kanpuYears}/{detailTeacher.otherSchoolYears})</span>
+                  <span className="text-zinc-400 ml-1">
+                    （關埔 {(detailTeacher.kanpuFormalYears + detailTeacher.kanpuSubstituteYears).toFixed(2)}／他校 {detailTeacher.otherSchoolYears}）
+                  </span>
                 </span>
               </div>
               <div className="flex justify-between">

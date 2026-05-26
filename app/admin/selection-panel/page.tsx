@@ -18,9 +18,10 @@ export interface PanelTeacher {
   timeline: TimelineSegment[]
   prefLocked: boolean
   prefGiveUp: boolean
-  kanpuYears: number
-  otherSchoolYears: number
-  seniorityScore: number  // 關埔×0.8 + 他校×0.2，輪動積分相同時的 tie-breaker
+  kanpuFormalYears: number       // 關埔正式年資（依 rotation 算）
+  kanpuSubstituteYears: number   // 關埔代理年資（手動填）
+  otherSchoolYears: number       // 他校年資
+  seniorityScore: number         // (正式+代理)×0.8 + 他校×0.2
 }
 
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調', '延長病假']
@@ -45,7 +46,7 @@ export default async function SelectionPanelPage() {
   const admin = getAdminClient()
 
   const [{ data: activeProfiles }, { data: settingsRows }, { data: scoremapRows }] = await Promise.all([
-    admin.from('profiles').select('id, name, other_school_years').neq('status', 'inactive'),
+    admin.from('profiles').select('id, name, other_school_years, kanpu_substitute_years').neq('status', 'inactive'),
     admin.from('settings').select('value').eq('key', 'preference_year'),
     admin.from('scoremap').select('work, group_name'),
   ])
@@ -105,8 +106,10 @@ export default async function SelectionPanelPage() {
       const pref = prefMap[id]
       const profile = profileMap[id]
       const rots = teacherRotations[id] ?? []
-      const kanpuYears = rots.filter(r => !SKIP_WORKS.includes(r.work)).length
+      const kanpuFormalYears = rots.filter(r => !SKIP_WORKS.includes(r.work)).length
+      const kanpuSubstituteYears = Number(profile?.kanpu_substitute_years ?? 0)
       const otherSchoolYears = Number(profile?.other_school_years ?? 0)
+      const kanpuTotal = kanpuFormalYears + kanpuSubstituteYears
       return {
         id,
         name: profile?.name ?? id,
@@ -120,9 +123,10 @@ export default async function SelectionPanelPage() {
         timeline: buildTimeline(rots),
         prefLocked: pref?.locked ?? false,
         prefGiveUp: pref?.give_up ?? false,
-        kanpuYears,
+        kanpuFormalYears,
+        kanpuSubstituteYears,
         otherSchoolYears,
-        seniorityScore: kanpuYears * 0.8 + otherSchoolYears * 0.2,
+        seniorityScore: kanpuTotal * 0.8 + otherSchoolYears * 0.2,
       }
     })
     .sort((a, b) => b.score - a.score || b.seniorityScore - a.seniorityScore)
