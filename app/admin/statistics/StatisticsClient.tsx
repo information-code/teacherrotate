@@ -98,7 +98,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
   const targetBreakdown = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const t of initialTeachers) counts[t.targetType] = (counts[t.targetType] ?? 0) + 1
-    const order = ['二年級導師', '四年級導師', '六年級導師', '接棒班導師', '科任', '行政', '返回安排']
+    const order = ['二年級導師', '四年級導師', '六年級導師', '接棒班導師', '科任', '行政', '返回安排', '新進']
     return order.filter(k => counts[k] > 0).map(k => ({ type: k, count: counts[k] }))
   }, [initialTeachers])
 

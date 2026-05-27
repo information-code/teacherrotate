@@ -23,6 +23,7 @@ export type RotationTarget =
   | '科任'
   | '行政'
   | '返回安排'
+  | '新進'
 
 export const SPECIAL_STATUS = ['留職停薪', '育嬰留停', '借調', '延長病假'] as const
 
@@ -41,7 +42,8 @@ const GRADE_TO_TARGET: Record<number, RotationTarget> = {
 export function getRotationTarget(
   rotations: { year: number; work: string; grade?: number | null }[]
 ): RotationTarget | null {
-  if (rotations.length === 0) return null
+  // 完全沒 rotation 紀錄 → 新進老師（仍需填志願、由校內安排首份工作）
+  if (rotations.length === 0) return '新進'
   const sorted = [...rotations].sort((a, b) => b.year - a.year)
   const latest = sorted[0]
   const w1 = latest.work
@@ -79,4 +81,5 @@ export const TARGET_BADGE_STYLE: Record<RotationTarget, string> = {
   '科任':       'bg-zinc-50 border-zinc-200 text-zinc-700',
   '行政':       'bg-orange-50 border-orange-200 text-orange-700',
   '返回安排':   'bg-rose-50 border-rose-200 text-rose-700',
+  '新進':       'bg-blue-50 border-blue-200 text-blue-700',
 }
