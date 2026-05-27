@@ -65,7 +65,7 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
 
   // 先取在職教師 ID
   const { data: activeProfiles } = await admin
-    .from('profiles').select('id, name').neq('status', 'inactive')
+    .from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin')
   const activeIds = (activeProfiles ?? []).map(p => p.id)
 
   const [prefsResult, scoresResult, rotationsResult, scoremapResult] = await Promise.all([

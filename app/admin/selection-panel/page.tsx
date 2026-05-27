@@ -46,7 +46,7 @@ export default async function SelectionPanelPage() {
   const admin = getAdminClient()
 
   const [{ data: activeProfiles }, { data: settingsRows }, { data: scoremapRows }] = await Promise.all([
-    admin.from('profiles').select('id, name, other_school_years, kanpu_substitute_years').neq('status', 'inactive'),
+    admin.from('profiles').select('id, name, other_school_years, kanpu_substitute_years').neq('status', 'inactive').neq('role', 'superadmin'),
     admin.from('settings').select('value').eq('key', 'preference_year'),
     admin.from('scoremap').select('work, group_name'),
   ])
