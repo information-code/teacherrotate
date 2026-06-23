@@ -32,11 +32,12 @@ export default async function AllocationStatisticsPage() {
 
   const [{ data: cfgRow }, { data: profiles }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
-    admin.from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin'),
+    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin'),
   ])
   const config = normalizeConfig(cfgRow?.config)
   const ids = (profiles ?? []).map(p => p.id)
   const nameMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p.name ?? '']))
+  const empMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p.employment_type]))
 
   const [{ data: rots }, { data: allocs }] = await Promise.all([
     ids.length ? admin.from('rotations').select('teacher_id, work, grade').eq('year', year).in('teacher_id', ids) : Promise.resolve({ data: [] as { teacher_id: string; work: string; grade: number | null }[] }),
@@ -47,6 +48,20 @@ export default async function AllocationStatisticsPage() {
 
   const teachers: TeacherStat[] = []
   for (const id of ids) {
+    // 代理教師：身分/年級來自其配課資料（自選），非 rotation
+    if (empMap[id] === 'substitute') {
+      const d = allocMap[id]
+      if (!d || (d.role !== 'homeroom' && d.role !== 'subject')) continue // 尚未填
+      const grade = d.role === 'homeroom' ? (d.grade ?? null) : null
+      const base = d.role === 'homeroom' ? (grade ? config.grades[grade].homeroomBase : null) : config.subjectBase
+      teachers.push({
+        id, name: nameMap[id] ?? id, role: d.role,
+        roleLabel: d.role === 'homeroom' ? '代理導師' : '代理科任',
+        work: d.work || (d.role === 'homeroom' ? '代理導師' : '代理科任'),
+        grade, base, data: d,
+      })
+      continue
+    }
     const rot = rotMap[id]
     if (!rot) continue
     const work = rot.work

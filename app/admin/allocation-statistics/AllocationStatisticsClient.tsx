@@ -63,7 +63,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
 
   const rkey = String(reduction)
   const SUBJECT_ORDER = ['生活', '英語', '社會', '自然', '體育', '視覺藝術', '表演藝術', '音樂']
-  const subjectTabs = Array.from(new Set(teachers.filter(t => t.role === 'subject').map(t => subjectAreaOf(t.work)))).filter(Boolean)
+  const isSubAgentSubject = (t: TeacherStat) => t.work === '代理科任'
+  const subjectTabs = Array.from(new Set(
+    teachers.filter(t => t.role === 'subject').flatMap(t => isSubAgentSubject(t) ? (t.data.subjects ?? []) : [subjectAreaOf(t.work)])
+  )).filter(Boolean)
     .sort((a, b) => {
       const ia = SUBJECT_ORDER.indexOf(a), ib = SUBJECT_ORDER.indexOf(b)
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b, 'zh-Hant')
@@ -77,8 +80,13 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       .reduce((s, t) => s + (Number(t.data.scenarios?.[rkey]?.breakdown?.[subj]) || 0), 0)
   }
   function subjectSupply(grade: number, subj: string) {
-    return teachers.filter(t => t.role === 'subject' && subjectAreaOf(t.work) === subj)
-      .reduce((s, t) => s + (Number(t.data.gradeHours?.[String(grade)]) || 0), 0)
+    let total = 0
+    for (const t of teachers) {
+      if (t.role !== 'subject') continue
+      if (isSubAgentSubject(t)) total += Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0
+      else if (subjectAreaOf(t.work) === subj) total += Number(t.data.gradeHours?.[String(grade)]) || 0
+    }
+    return total
   }
   function noReduce(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.extraHours || 0) }
 
@@ -90,6 +98,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
   function editGradeHours(id: string, grade: number, val: number) {
     updateTeacher(id, d => ({ ...d, gradeHours: { ...(d.gradeHours ?? {}), [String(grade)]: val } }))
+  }
+  function editSubjectGradeHours(id: string, subj: string, grade: number, val: number) {
+    updateTeacher(id, d => ({ ...d, subjectGradeHours: { ...(d.subjectGradeHours ?? {}), [subj]: { ...((d.subjectGradeHours ?? {})[subj] ?? {}), [String(grade)]: val } } }))
   }
 
   const tabCls = (active: boolean) =>
@@ -164,7 +175,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     return (
                       <tr key={t.id}>
                         <td className="sticky left-0 bg-white z-10">
-                          <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}</div>
+                          <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
+                            {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
+                          </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>
                         </td>
                         {subjects.map(s => (
@@ -217,7 +230,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {/* ── 科任檢視（依領域分表）── */}
       {view.startsWith('subj:') && (() => {
         const subj = view.slice(5)
-        const list = teachers.filter(t => t.role === 'subject' && subjectAreaOf(t.work) === subj)
+        const list = teachers.filter(t => t.role === 'subject' && (isSubAgentSubject(t) ? (t.data.subjects ?? []).includes(subj) : subjectAreaOf(t.work) === subj))
         return (
           <div className="card p-0 overflow-x-auto">
             <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 · {subj} <span className="text-xs font-normal text-zinc-400 ml-1">填入各老師授課年段與節數；下方對照各年級需求</span></div>
@@ -233,18 +246,23 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               <tbody>
                 {list.length === 0 && <tr><td colSpan={GRADES.length + 5} className="text-sm text-zinc-400 text-center py-3">無此領域科任</td></tr>}
                 {list.map(t => {
-                  const sum = GRADES.reduce((s, g) => s + (Number(t.data.gradeHours?.[String(g)]) || 0), 0)
-                  const act = noReduce(t)
+                  const isSub = isSubAgentSubject(t)
+                  const cellVal = (g: number) => isSub ? (Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0) : (Number(t.data.gradeHours?.[String(g)]) || 0)
+                  const sum = GRADES.reduce((s, g) => s + cellVal(g), 0)
+                  const act = noReduce(t)  // 代理可能跨多科，act 為其總目標
                   return (
                     <tr key={t.id}>
-                      <td className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}</td>
+                      <td className="font-medium text-zinc-800">
+                        {t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
+                        {isSub && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
+                      </td>
                       {GRADES.map(g => (
                         <td key={g} className="text-center">
-                          <NumberInput min={0} value={Number(t.data.gradeHours?.[String(g)]) || 0} onChange={n => editGradeHours(t.id, g, n)} className="input w-11 text-center py-0.5 text-xs" />
+                          <NumberInput min={0} value={cellVal(g)} onChange={n => isSub ? editSubjectGradeHours(t.id, subj, g, n) : editGradeHours(t.id, g, n)} className="input w-11 text-center py-0.5 text-xs" />
                         </td>
                       ))}
-                      <td className={`text-center font-medium ${sum === act ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
-                      <td className="text-center text-zinc-500">{act}</td>
+                      <td className={`text-center font-medium ${isSub ? 'text-zinc-700' : (sum === act ? 'text-green-700' : 'text-amber-600')}`}>{sum}</td>
+                      <td className="text-center text-zinc-500">{act}{isSub && <span className="text-[10px] text-zinc-400 ml-0.5">總</span>}</td>
                       <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-10 text-center py-0.5 text-xs" /></td>
                       <td className="text-center"><NumberInput min={0} value={t.data.extraHours || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, extraHours: n }))} className="input w-10 text-center py-0.5 text-xs" /></td>
                     </tr>
