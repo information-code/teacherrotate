@@ -2,7 +2,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import AllocationStatisticsClient from './AllocationStatisticsClient'
 import {
   normalizeConfig, allocRole, homeroomGrade, adminKind, ADMIN_KIND_LABEL,
-  baseForTeacher, gradeDemand, defaultTeacherAllocation, GRADES,
+  baseForTeacher, defaultTeacherAllocation, GRADES,
   type AllocRole, type TeacherAllocation,
 } from '@/lib/allocation'
 
@@ -19,8 +19,7 @@ export interface TeacherStat {
   data: TeacherAllocation
 }
 export interface GradeMeta {
-  subjects: string[]
-  demand: { subject: string; total: number }[]
+  subjects: string[]      // 導師可配課科目（表格欄位）
   homeroomBase: number
 }
 
@@ -63,21 +62,18 @@ export default async function AllocationStatisticsPage() {
   }
 
   const gradesMeta: Record<number, GradeMeta> = {}
-  const demandBySubject: Record<string, number> = {}
+  const demandByGradeSubject: Record<number, Record<string, number>> = {}
   for (const g of GRADES) {
     const gc = config.grades[g]
-    const hrSubjects = new Set(gc.subjects.filter(s => s.homeroom).map(s => s.name))
     gradesMeta[g] = {
       subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
-      demand: gradeDemand(gc).filter(d => d.subject && hrSubjects.has(d.subject)).map(d => ({ subject: d.subject, total: d.total })),
       homeroomBase: gc.homeroomBase,
     }
-    // 全校各領域需求總計（所有科目，含非導師科目）
-    for (const s of gc.subjects) {
-      if (!s.name) continue
-      demandBySubject[s.name] = (demandBySubject[s.name] ?? 0) + gc.classCount * s.perClass
-    }
+    // 各年級各科目需求 = 班級數 × 每班節數（所有科目，含非導師科目供科任比對）
+    const m: Record<string, number> = {}
+    for (const s of gc.subjects) { if (s.name) m[s.name] = gc.classCount * s.perClass }
+    demandByGradeSubject[g] = m
   }
 
-  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandBySubject={demandBySubject} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} />
 }

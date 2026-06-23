@@ -197,10 +197,11 @@ export interface ScenarioChoice {
 export interface TeacherAllocation {
   role: AllocRole
   work: string
-  grade: number | null                 // 導師年級（老師可於配課頁選擇）
+  grade: number | null                 // 導師年級（系統判定）
   projectReduction: number             // 專案減課
   extraHours: number                   // 自願超鐘點
   scenarios: Record<string, ScenarioChoice>  // 導師：各情境（key = "0"/"1"/"2"）的配課
+  gradeHours?: Record<string, number>  // 科任：各年級授課節數（管理者於配課統計填，key = "1".."6"）
   locked: boolean
   submittedAt: string | null
 }
