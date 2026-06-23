@@ -217,7 +217,10 @@ export interface TeacherAllocation {
   projectReduction: number             // 專案減課
   extraHours: number                   // 自願超鐘點
   scenarios: Record<string, ScenarioChoice>  // 導師：各情境（key = "0"/"1"/"2"）的配課
-  gradeHours?: Record<string, number>  // 科任：各年級授課節數（管理者於配課統計填，key = "1".."6"）
+  gradeHours?: Record<string, number>  // 科任：各年級授課節數（單一領域，key = "1".."6"）
+  // 代理專用：
+  subjects?: string[]                                          // 代理科任複選的授課科目
+  subjectGradeHours?: Record<string, Record<string, number>>  // 代理科任：科目 → 年級 → 節數
   locked: boolean
   submittedAt: string | null
 }

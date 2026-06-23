@@ -2,9 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { AllocationPage } from '@/components/teacher/AllocationPage'
+import { SubstituteAllocationPage } from '@/components/teacher/SubstituteAllocationPage'
 import {
   normalizeConfig, allocRole, homeroomGrade, adminKind, ADMIN_KIND_LABEL,
-  baseForTeacher, defaultTeacherAllocation, REDUCTIONS,
+  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, REDUCTIONS, GRADES,
   type TeacherAllocation, type AllocationPlan,
 } from '@/lib/allocation'
 
@@ -28,13 +29,36 @@ export default async function TeacherAllocationPage() {
   const year = Number(sMap['preference_year'] ?? 115)
   const closed = sMap['allocation_phase'] === 'closed'
 
-  const [{ data: rot }, { data: cfgRow }, { data: allocRow }] = await Promise.all([
+  const [{ data: rot }, { data: cfgRow }, { data: allocRow }, { data: prof }] = await Promise.all([
     admin.from('rotations').select('work, grade').eq('teacher_id', user.id).eq('year', year).maybeSingle(),
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('allocation').select('data').eq('teacher_id', user.id).eq('year', year).maybeSingle(),
+    admin.from('profiles').select('employment_type').eq('id', user.id).single(),
   ])
 
   const config = normalizeConfig(cfgRow?.config)
+
+  // 代理教師：不依 rotation，自行於頁面選身分（導師／科任）
+  if (prof?.employment_type === 'substitute') {
+    const subGrades: Record<number, HomeroomCtx> = {}
+    for (const g of GRADES) {
+      const gc = config.grades[g]
+      subGrades[g] = {
+        grade: g,
+        homeroomBase: gc.homeroomBase,
+        subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
+        scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
+      }
+    }
+    const allSubjects = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => config.grades[g].subjects.map(s => s.name)))).filter(Boolean))
+    const subInitial = (allocRow?.data as TeacherAllocation | null) ?? defaultTeacherAllocation('none', '', null)
+    return (
+      <SubstituteAllocationPage
+        year={year} closed={closed} subjectBase={config.subjectBase}
+        grades={subGrades} allSubjects={allSubjects} initial={subInitial}
+      />
+    )
+  }
   const work = rot?.work ?? ''
   const role = allocRole(work)
   const grade = role === 'homeroom' ? homeroomGrade(work, rot?.grade ?? null) : null
