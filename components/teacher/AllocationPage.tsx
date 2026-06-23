@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL, planTotal,
+  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal,
   type AllocRole, type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
@@ -37,6 +37,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     }
     return s
   })
+  const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})  // 正式科任：各年級節數（單一領域）
   const [locked, setLocked] = useState(initial.locked ?? false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +46,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   function buildData(lock: boolean): TeacherAllocation {
     return {
-      role, work, grade, projectReduction, extraHours, scenarios,
+      role, work, grade, projectReduction, extraHours, scenarios, gradeHours,
       locked: lock,
       submittedAt: lock ? new Date().toISOString() : (initial.submittedAt ?? null),
     }
@@ -77,7 +78,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectReduction, extraHours, scenarios])
+  }, [projectReduction, extraHours, scenarios, gradeHours])
 
   // 實際授課節數（某情境）
   const actual = (reduction: number) => (base ?? 0) - reduction - projectReduction + extraHours
@@ -106,6 +107,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         if (choice.planName === null && hasPlans && !(choice.reason ?? '').trim()) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：自訂配課需填寫理由`)
       }
       if (issues.length) { setError('無法送出：\n' + issues.join('\n')); return }
+    }
+    if (role === 'subject') {
+      const tgt = actual(0)
+      const sum = GRADES.reduce((s, g) => s + (Number(gradeHours[String(g)]) || 0), 0)
+      if (sum !== tgt) { setError(`各年級授課節數合計 ${sum} ≠ 實際授課節數 ${tgt}（${sum < tgt ? '不足' : '超過'} ${Math.abs(sum - tgt)}）。如需多授課請增加自願超鐘點。`); return }
     }
     if (!confirm('送出後將鎖定，無法自行修改（需洽管理員）。確定送出？')) return
     if (await put(true)) setLocked(true)
@@ -167,8 +173,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         <p className="text-[11px] text-zinc-400 mt-2">實際授課節數 = 基本授課節數 − 減課節數（情境） − 專案減課 + 自願超鐘點</p>
       </div>
 
-      {/* 科任 / 行政：只算節數（無減課） */}
-      {(role === 'subject' || role === 'admin') && (
+      {/* 行政：只算節數（無減課、不配課） */}
+      {role === 'admin' && (
         <div className="card p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm text-zinc-600">實際授課節數</span>
@@ -177,6 +183,35 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </div>
         </div>
       )}
+
+      {/* 科任：填各年級授課節數（單一領域），合計＝實際授課節數 */}
+      {role === 'subject' && (() => {
+        const tgt = actual(0)
+        const ghSum = GRADES.reduce((s, g) => s + (Number(gradeHours[String(g)]) || 0), 0)
+        return (
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-zinc-600">實際授課節數</span>
+              <span className="text-xl font-semibold text-zinc-900">{tgt}</span>
+              <span className="text-xs text-zinc-400">= 基本 {base ?? 0} − 專案減課 {projectReduction} + 自願超鐘點 {extraHours}</span>
+            </div>
+            <p className="text-xs text-zinc-500">請填各年級授課節數（合計需等於實際授課節數；要多授課請增加上方自願超鐘點）：</p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {GRADES.map(g => (
+                <label key={g} className="flex items-center gap-1.5">
+                  <span className="text-xs text-zinc-600 w-9 flex-shrink-0">{GRADE_LABEL[g]}</span>
+                  <NumberInput min={0} value={gradeHours[String(g)] ?? 0} disabled={readOnly}
+                    onChange={n => setGradeHours(prev => ({ ...prev, [String(g)]: n }))}
+                    className="input w-12 text-center py-0.5 text-xs" />
+                </label>
+              ))}
+            </div>
+            <p className={`text-xs ${ghSum === tgt ? 'text-green-600' : 'text-amber-600'}`}>
+              合計 {ghSum}{ghSum !== tgt && ` / 實際 ${tgt}（${ghSum < tgt ? '不足' : '超過'} ${Math.abs(ghSum - tgt)}）`}
+            </p>
+          </div>
+        )
+      })()}
 
       {/* 導師：各情境選方案或自配 */}
       {role === 'homeroom' && homeroom && (
