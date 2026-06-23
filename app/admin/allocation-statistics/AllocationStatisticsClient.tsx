@@ -356,6 +356,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const t = teachers.find(x => x.id === review)
         if (!t) return null
         const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
+        const projects = t.data.projects ?? []
+        const projOrder = t.data.projectOrder ?? []
+        const projTotal = projects.reduce((s, p) => s + (Number(p.hours) || 0), 0)
         return (
           <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setReview(null)}>
             <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
@@ -367,18 +370,26 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 <button onClick={() => setReview(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
               </div>
 
-              <div className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm space-y-1">
-                <div className="text-xs font-semibold text-zinc-500">老師超鐘意願</div>
+              <div className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm space-y-1.5">
+                <div className="text-xs font-semibold text-zinc-500">老師專案減課申請</div>
+                {projects.length === 0
+                  ? <div className="text-zinc-400 text-xs">未申請</div>
+                  : <ul className="space-y-0.5">
+                      {projects.map((p, i) => <li key={i} className="text-zinc-700 flex justify-between"><span>{p.name || <span className="text-zinc-400">（未命名）</span>}</span><span className="text-zinc-500">{p.hours} 節</span></li>)}
+                      <li className="text-zinc-500 text-xs border-t border-zinc-200 pt-0.5 flex justify-between"><span>合計</span><span>{projTotal} 節</span></li>
+                    </ul>}
+                <div className="text-zinc-700 text-xs">減課順序：{projOrder.length ? projOrder.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
+                <div className="text-xs font-semibold text-zinc-500 pt-1">老師超鐘意願</div>
                 <div className="text-zinc-700">願意超鐘點 <span className="font-medium">{t.data.overtimeHours || 0}</span> 節</div>
-                <div className="text-zinc-700">支援順序：{order.length ? order.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
+                <div className="text-zinc-700 text-xs">支援順序：{order.length ? order.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
               </div>
 
               <div className="space-y-3">
-                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">專案減課</span>
+                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">核定專案減課</span>
                   <NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-16 text-center py-0.5" /></label>
                 <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">核定超鐘數</span>
                   <NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-16 text-center py-0.5" /></label>
-                <p className="text-[11px] text-zinc-400">核定後將顯示於統計表「超鐘數」欄。修改即自動儲存。</p>
+                <p className="text-[11px] text-zinc-400">核定後「超鐘數」將顯示於統計表。修改即自動儲存。</p>
               </div>
 
               <div className="flex justify-end pt-1"><button onClick={() => setReview(null)} className="btn-primary text-sm">完成</button></div>

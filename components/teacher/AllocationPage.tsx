@@ -46,6 +46,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [specialtyReason, setSpecialtyReason] = useState(initial.specialtyReason ?? '')
   const [overtimeHours, setOvertimeHours] = useState(initial.overtimeHours ?? 0)
   const [overtimeOrder, setOvertimeOrder] = useState<string[]>(initial.overtimeOrder ?? [])
+  const [projects, setProjects] = useState<{ name: string; hours: number }[]>(initial.projects ?? [])
+  const [projectOrder, setProjectOrder] = useState<string[]>(initial.projectOrder ?? [])
   const [reasonModalOpen, setReasonModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [locked, setLocked] = useState(initial.locked ?? false)
@@ -67,6 +69,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function buildData(lock: boolean): TeacherAllocation {
     return {
       role, work, grade, projectReduction, extraHours: 0, scenarios, gradeHours,
+      projects, projectOrder: projectOrder.filter(Boolean),
       overtimeHours, overtimeOrder: overtimeOrder.filter(Boolean),
       principleReason, specialtyReason,
       acknowledged: lock ? true : (initial.acknowledged ?? false),
@@ -90,7 +93,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, principleReason, specialtyReason])
+  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, projects, projectOrder, principleReason, specialtyReason])
 
   const actual = (reduction: number) => (base ?? 0) - reduction   // 超鐘點與專案減課不計入教師端
 
@@ -117,6 +120,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function setOrder(i: number, val: string) {
     setOvertimeOrder(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
   }
+  function setProjOrder(i: number, val: string) {
+    setProjectOrder(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
+  }
+  function addProject() { setProjects(p => [...p, { name: '', hours: 0 }]) }
+  function removeProject(i: number) { setProjects(p => p.filter((_, idx) => idx !== i)) }
+  function setProject(i: number, patch: Partial<{ name: string; hours: number }>) { setProjects(p => p.map((x, idx) => (idx === i ? { ...x, ...patch } : x))) }
 
   // 第一頁驗證 → 理由/證照 modal 或直接第二頁
   function goNext() {
@@ -281,10 +290,46 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         )}
       </>}
 
-      {/* ════ 第二頁：超鐘意願 ════ */}
-      {step === 2 && (
+      {/* ════ 第二頁：減超鐘點申請 ════ */}
+      {step === 2 && <>
+        {/* 一、專案減課 */}
+        <div className="card p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-zinc-700">一、專案減課</h3>
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-zinc-500">基本資料</div>
+            {projects.length === 0 && <p className="text-xs text-zinc-400">如有專案減課，請按「＋ 新增專案」填寫。</p>}
+            {projects.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                <input value={p.name} disabled={readOnly} onChange={e => setProject(i, { name: e.target.value })} placeholder="專案名稱" className="input flex-1 min-w-[8rem] py-0.5 text-sm" />
+                <label className="flex items-center gap-1 text-xs text-zinc-600">減課數<NumberInput min={0} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: n })} className="input w-14 text-center py-0.5" /></label>
+                {!readOnly && <button onClick={() => removeProject(i)} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>}
+              </div>
+            ))}
+            {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
+          </div>
+          {projects.some(p => p.hours > 0) && (
+            <div className="space-y-2 pt-1">
+              <div className="text-xs font-semibold text-zinc-500">減課順序</div>
+              <p className="text-[11px] text-zinc-400">指定希望優先減課的科目（僅列非 0 節的選填／專長科目）：</p>
+              <div className="flex flex-wrap gap-3">
+                {[0, 1, 2].map(i => (
+                  <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">順序{['一', '二', '三'][i]}</span>
+                    <select value={projectOrder[i] ?? ''} disabled={readOnly} onChange={e => setProjOrder(i, e.target.value)} className="input py-1 text-sm w-32">
+                      <option value="">不指定</option>
+                      {otOptions.filter(s => !projectOrder.includes(s) || projectOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              {otOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可減的選填／專長科目。</p>}
+            </div>
+          )}
+          <p className="text-[11px] text-zinc-400">專案減課為申請項目，實際減課數由管理者審核核定，不影響上一頁的配課節數。</p>
+        </div>
+
+        {/* 二、超鐘意願 */}
         <div className="card p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-zinc-700">超鐘意願</h3>
+          <h3 className="text-sm font-semibold text-zinc-700">二、超鐘意願</h3>
           <label className="flex items-center gap-2 text-sm"><span className="text-zinc-700">願意超鐘點節數</span>
             <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
           {overtimeHours > 0 && (
@@ -305,7 +350,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           )}
           <p className="text-[11px] text-zinc-400">超鐘意願供課務組事後安排參考，不影響上一頁的配課節數。</p>
         </div>
-      )}
+      </>}
 
       {!readOnly && (
         <div className="flex items-center justify-end gap-2 pt-2">
