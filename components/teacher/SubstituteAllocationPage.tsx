@@ -95,8 +95,6 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   function setChoice(r: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setScenarios(prev => ({ ...prev, [String(r)]: fn(prev[String(r)] ?? { planName: null, breakdown: {} }) }))
   }
-  function toggleSubject(s: string) { setSubjects(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]) }
-  function setHour(subj: string, g: number, n: number) { setSgh(prev => ({ ...prev, [subj]: { ...(prev[subj] ?? {}), [String(g)]: n } })) }
   function setOrder(i: number, val: string) {
     setOvertimeOrder(prev => {
       const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']
@@ -111,7 +109,6 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   function setProject(i: number, patch: Partial<{ name: string; hours: number }>) { setProjects(p => p.map((x, idx) => (idx === i ? { ...x, ...patch } : x))) }
 
   const subjectTarget = subjectBase                       // 超鐘點與專案減課不計入教師端
-  const subjectSum = subjects.reduce((s, subj) => s + GRADES.reduce((a, g) => a + (Number(sgh[subj]?.[String(g)]) || 0), 0), 0)
 
   // 第一頁驗證 → 理由/證照 modal 或第二頁
   function goNext() {
@@ -130,10 +127,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
       }
       if (issues.length) { setError('無法繼續：\n' + issues.join('\n')); return }
     }
-    if (picked === 'subject') {
-      if (subjects.length === 0) { setError('請至少選一個授課科目'); return }
-      if (subjectSum !== subjectTarget) { setError(`各科各年級節數合計 ${subjectSum} ≠ 實際授課節數 ${subjectTarget}（${subjectSum < subjectTarget ? '不足' : '超過'} ${Math.abs(subjectSum - subjectTarget)}）。`); return }
-    }
+    // 科任：科目與節數由管理者事後填寫，教師端不需驗證
     if (wantPrinciple || wantSpecialty || certSubjects.length) setReasonModalOpen(true)
     else setStep(2)
   }
@@ -150,20 +144,19 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
     if (picked === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
     return [...present]
   })()
-  // 減課順序：選填／專長且任一情境 > 0（減課要管是不是 0）
+  // 減課順序：導師才需要（選填／專長且任一情境 > 0）；科任只能減自己領域，不需順序
   const reduceOptions = (() => {
     if (picked === 'homeroom' && gc) {
       return gc.subjects.filter(s => { const c = subjectCategory(s); return (c === 'specialty' || c === 'optional') && gc.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0) })
     }
-    if (picked === 'subject') return subjects.filter(s => subjectCategory(s) !== 'principle')
     return []
   })()
-  // 超鐘順序：專長全列（不論是否 0，因為是超鐘點）＋ 選填（>0）
+  // 超鐘順序：導師列配課科目；科任可自願支援任一科目，故列全部科目
   const overtimeOptions = (() => {
     if (picked === 'homeroom' && gc) {
       return gc.subjects.filter(s => { const c = subjectCategory(s); return c === 'specialty' || (c === 'optional' && gc.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0)) })
     }
-    if (picked === 'subject') return subjects.filter(s => subjectCategory(s) !== 'principle')
+    if (picked === 'subject') return allSubjects
     return []
   })()
 
@@ -290,44 +283,15 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
           </>
         )}
 
-        {/* 科任 */}
+        {/* 科任：與行政相同，僅顯示實際授課節數，科目與各年級節數由管理者事後填寫 */}
         {picked === 'subject' && (
-          <>
-            <div className="card p-4 flex items-center gap-6 flex-wrap text-sm">
-              <span className="text-zinc-600">實際授課節數 <span className="text-xl font-semibold text-zinc-900">{subjectTarget}</span></span>
+          <div className="card p-4 space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-zinc-600">實際授課節數</span>
+              <span className="text-2xl font-semibold text-zinc-900">{subjectTarget}</span>
             </div>
-            <div className="card p-4 space-y-2">
-              <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">授課科目（可複選）</div>
-              <div className="flex flex-wrap gap-2">
-                {allSubjects.map(s => (
-                  <label key={s} className={`flex items-center gap-1 px-2 py-1 border rounded-sm text-xs cursor-pointer ${subjects.includes(s) ? 'border-zinc-500 bg-zinc-100' : 'border-zinc-200'}`}>
-                    <input type="checkbox" checked={subjects.includes(s)} disabled={readOnly} onChange={() => toggleSubject(s)} className="w-3.5 h-3.5" />{s}
-                  </label>
-                ))}
-              </div>
-            </div>
-            {subjects.length > 0 && (
-              <div className="card p-0 overflow-x-auto">
-                <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">各科各年級授課節數</div>
-                <table className="table-base mt-2">
-                  <thead><tr><th>科目</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
-                  <tbody>
-                    {subjects.map(subj => {
-                      const rowSum = GRADES.reduce((a, g) => a + (Number(sgh[subj]?.[String(g)]) || 0), 0)
-                      return (
-                        <tr key={subj}>
-                          <td className="font-medium">{subj}</td>
-                          {GRADES.map(g => <td key={g} className="text-center"><NumberInput min={0} value={Number(sgh[subj]?.[String(g)]) || 0} disabled={readOnly} onChange={n => setHour(subj, g, n)} className="input w-11 text-center py-0.5 text-xs" /></td>)}
-                          <td className="text-center text-zinc-500">{rowSum}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-                <p className={`text-xs px-4 py-2 ${subjectSum === subjectTarget ? 'text-green-600' : 'text-amber-600'}`}>合計 {subjectSum}{subjectSum !== subjectTarget && ` / 實際授課節數 ${subjectTarget}（${subjectSum < subjectTarget ? '不足' : '超過'} ${Math.abs(subjectSum - subjectTarget)}）`}</p>
-              </div>
-            )}
-          </>
+            <p className="text-[11px] text-zinc-400">授課科目與各年級節數由管理者於後續配課時填寫。</p>
+          </div>
         )}
       </>}
 
@@ -348,7 +312,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             ))}
             {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
           </div>
-          {projects.some(p => p.hours > 0) && (
+          {picked === 'homeroom' && projects.some(p => p.hours > 0) && (
             <div className="space-y-2 pt-1">
               <div className="text-xs font-semibold text-zinc-500">減課順序</div>
               <p className="text-[11px] text-zinc-400">指定希望優先減課的科目（僅列非 0 節的選填／專長科目）：</p>
@@ -375,7 +339,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
           {overtimeHours > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；列出全部專長科目與您有配課的選填科目）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
+              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；{picked === 'subject' ? '可選任一科目' : '列出全部專長科目與您有配課的選填科目'}）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
               <div className="flex flex-wrap gap-3">
                 {[0, 1, 2].map(i => {
                   const lockedByReject = overtimeOrder.slice(0, i).includes(OVERTIME_REJECT_OTHERS)

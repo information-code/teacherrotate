@@ -37,6 +37,7 @@ export default async function TeacherAllocationPage() {
   ])
 
   const config = normalizeConfig(cfgRow?.config)
+  const allSubjects = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => config.grades[g].subjects.map(s => s.name)))).filter(Boolean))
 
   // 代理教師：不依 rotation，自行於頁面選身分（導師／科任）
   if (prof?.employment_type === 'substitute') {
@@ -50,7 +51,6 @@ export default async function TeacherAllocationPage() {
         scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
       }
     }
-    const allSubjects = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => config.grades[g].subjects.map(s => s.name)))).filter(Boolean))
     const subInitial = (allocRow?.data as TeacherAllocation | null) ?? defaultTeacherAllocation('none', '', null)
     return (
       <SubstituteAllocationPage
@@ -86,7 +86,7 @@ export default async function TeacherAllocationPage() {
   return (
     <AllocationPage
       year={year} role={role} work={work} grade={grade} roleLabel={roleLabel}
-      base={base} homeroom={homeroom} closed={closed} initial={initial}
+      base={base} homeroom={homeroom} allSubjects={allSubjects} closed={closed} initial={initial}
     />
   )
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, subjectAreaOf, OVERTIME_REJECT_OTHERS,
+  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, OVERTIME_REJECT_OTHERS,
   defaultSchedulingNeeds,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds,
 } from '@/lib/allocation'
@@ -18,11 +18,12 @@ interface Props {
   roleLabel: string
   base: number | null
   homeroom: HomeroomCtx | null
+  allSubjects: string[]
   closed: boolean
   initial: TeacherAllocation
 }
 
-export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, closed, initial }: Props) {
+export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, allSubjects, closed, initial }: Props) {
   const projectReduction = initial.projectReduction ?? 0  // 管理者事後審核用；不在教師端公式內
   const [scenarios, setScenarios] = useState<Record<string, ScenarioChoice>>(() => {
     const s: Record<string, ScenarioChoice> = { ...(initial.scenarios ?? {}) }
@@ -112,20 +113,19 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     if (role === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
     return [...present]
   })()
-  // 減課順序：選填／專長且任一情境 > 0（減課要管是不是 0）
+  // 減課順序：導師才需要（選填／專長且任一情境 > 0）；科任只能減自己領域、行政無固定領域，皆不需順序
   const reduceOptions = (() => {
     if (role === 'homeroom' && homeroom) {
       return homeroom.subjects.filter(s => { const c = subjectCategory(s); return (c === 'specialty' || c === 'optional') && homeroom.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0) })
     }
-    if (role === 'subject') { const a = subjectAreaOf(work); return subjectCategory(a) !== 'principle' ? [a] : [] }
     return []
   })()
-  // 超鐘順序：專長全列（不論是否 0，因為是超鐘點）＋ 選填（>0）
+  // 超鐘順序：導師列配課科目；科任可自願支援任一科目，故列全部科目；行政不列領域
   const overtimeOptions = (() => {
     if (role === 'homeroom' && homeroom) {
       return homeroom.subjects.filter(s => { const c = subjectCategory(s); return c === 'specialty' || (c === 'optional' && homeroom.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0)) })
     }
-    if (role === 'subject') { const a = subjectAreaOf(work); return subjectCategory(a) !== 'principle' ? [a] : [] }
+    if (role === 'subject') return allSubjects
     return []
   })()
   function setOrder(i: number, val: string) {
@@ -157,11 +157,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       }
       if (issues.length) { setError('無法繼續：\n' + issues.join('\n')); return }
     }
-    if (role === 'subject') {
-      const tgt = actual(0)
-      const sum = GRADES.reduce((s, g) => s + (Number(gradeHours[String(g)]) || 0), 0)
-      if (sum !== tgt) { setError(`各年級授課節數合計 ${sum} ≠ 實際授課節數 ${tgt}（${sum < tgt ? '不足' : '超過'} ${Math.abs(sum - tgt)}）。`); return }
-    }
+    // 科任：科目與節數由管理者事後填寫，教師端不需驗證
     if (wantPrinciple || wantSpecialty || certSubjects.length) setReasonModalOpen(true)
     else setStep(2)
   }
@@ -217,23 +213,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </div></div>
         )}
 
-        {role === 'subject' && (() => {
-          const tgt = actual(0)
-          const ghSum = GRADES.reduce((s, g) => s + (Number(gradeHours[String(g)]) || 0), 0)
-          return (
-            <div className="card p-4 space-y-3">
-              <div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-xl font-semibold text-zinc-900">{tgt}</span></div>
-              <p className="text-xs text-zinc-500">請填各年級授課節數（合計需等於實際授課節數）：</p>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {GRADES.map(g => (
-                  <label key={g} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 w-9 flex-shrink-0">{GRADE_LABEL[g]}</span>
-                    <NumberInput min={0} value={gradeHours[String(g)] ?? 0} disabled={readOnly} onChange={n => setGradeHours(prev => ({ ...prev, [String(g)]: n }))} className="input w-12 text-center py-0.5 text-xs" /></label>
-                ))}
-              </div>
-              <p className={`text-xs ${ghSum === tgt ? 'text-green-600' : 'text-amber-600'}`}>合計 {ghSum}{ghSum !== tgt && ` / 實際 ${tgt}（${ghSum < tgt ? '不足' : '超過'} ${Math.abs(ghSum - tgt)}）`}</p>
+        {/* 科任：與行政相同，僅顯示實際授課節數，科目與各年級節數由管理者事後填寫 */}
+        {role === 'subject' && (
+          <div className="card p-4 space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-zinc-600">實際授課節數</span>
+              <span className="text-2xl font-semibold text-zinc-900">{actual(0)}</span>
             </div>
-          )
-        })()}
+            <p className="text-[11px] text-zinc-400">授課科目與各年級節數由管理者於後續配課時填寫。</p>
+          </div>
+        )}
 
         {role === 'homeroom' && homeroom && (
           homeroom.scenarios.length === 0
@@ -323,7 +312,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             ))}
             {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
           </div>
-          {projects.some(p => p.hours > 0) && (
+          {role === 'homeroom' && projects.some(p => p.hours > 0) && (
             <div className="space-y-2 pt-1">
               <div className="text-xs font-semibold text-zinc-500">減課順序</div>
               <p className="text-[11px] text-zinc-400">指定希望優先減課的科目（僅列非 0 節的選填／專長科目）：</p>
@@ -348,9 +337,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           <h3 className="text-sm font-semibold text-zinc-700">二、超鐘意願</h3>
           <label className="flex items-center gap-2 text-sm"><span className="text-zinc-700">願意超鐘點節數</span>
             <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
-          {overtimeHours > 0 && (
+          {role !== 'admin' && overtimeHours > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；列出全部專長科目與您有配課的選填科目）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
+              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；{role === 'subject' ? '可選任一科目' : '列出全部專長科目與您有配課的選填科目'}）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
               <div className="flex flex-wrap gap-3">
                 {[0, 1, 2].map(i => {
                   const lockedByReject = overtimeOrder.slice(0, i).includes(OVERTIME_REJECT_OTHERS)
