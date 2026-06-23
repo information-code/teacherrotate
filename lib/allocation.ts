@@ -238,7 +238,9 @@ export interface TeacherAllocation {
   subjectGradeHours?: Record<string, Record<string, number>>  // 代理科任：科目 → 年級 → 節數
   // 送出精靈收集（教師層級）：
   overtimeHours?: number               // 願意超鐘點節數
-  overtimeSubjects?: string[]          // 願意超鐘點支援的科目
+  overtimeSubjects?: string[]          // 願意超鐘點支援的科目（舊欄位，保留相容）
+  overtimeOrder?: string[]             // 願意超鐘點支援科目（依優先順序）
+  overtimeApproved?: number            // 管理者事後審核通過的超鐘數
   principleReason?: string             // 動到原則配課的理由（提課發會）
   specialtyReason?: string             // 動到專長配課的理由（課務組排配課依據）
   acknowledged?: boolean               // 已閱讀並同意注意事項

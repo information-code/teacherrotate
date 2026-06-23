@@ -22,6 +22,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
+  const [review, setReview] = useState<string | null>(null)  // 減課／超鐘事後審核 modal（teacher id）
 
   const teachersRef = useRef(teachers)
   useEffect(() => { teachersRef.current = teachers }, [teachers])
@@ -89,8 +90,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     }
     return total
   }
-  function noReduce(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) }
-  function willingFor(subj: string) { return teachers.filter(t => (t.data.overtimeHours || 0) > 0 && (t.data.overtimeSubjects || []).includes(subj)) }
+  // 配課實際授課節數 = 基本 − 減課；專案減課／超鐘改為事後審核（不進公式）
+  function noReduce(t: TeacherStat) { return t.base ?? 0 }
+  function willingFor(subj: string) { return teachers.filter(t => (t.data.overtimeHours || 0) > 0 && (t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []).includes(subj)) }
+
+  function reasonIcon(t: TeacherStat) {
+    if (!(t.data.principleReason || t.data.specialtyReason)) return null
+    return <span className={`ml-1 cursor-help ${t.data.principleReason ? 'text-red-600' : 'text-amber-600'}`} title={[t.data.principleReason && `【提課發會】${t.data.principleReason}`, t.data.specialtyReason && `【課務組依據】${t.data.specialtyReason}`].filter(Boolean).join('\n')}>💬</span>
+  }
+  function reviewIcon(t: TeacherStat) {
+    const flagged = (t.data.overtimeHours || 0) > 0 || (t.data.projectReduction || 0) > 0 || (t.data.overtimeApproved || 0) > 0
+    return <button onClick={() => setReview(t.id)} title="減課／超鐘審核" className={`ml-1 ${flagged ? 'text-sky-600' : 'text-zinc-300'} hover:text-sky-700`}>🛠</button>
+  }
 
   function editCell(id: string, sub: string, val: number) {
     updateTeacher(id, d => {
@@ -151,7 +162,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const meta = gradesMeta[grade]
         const subjects = meta?.subjects ?? []
         const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-        const target = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0)
+        const target = (t: TeacherStat) => (t.base ?? 0) - reduction
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
         // 小結涵蓋：該年級所有有需求的科目 ∪ 導師可配課科目
         const summarySubjects = orderSubjectNames(Array.from(new Set([...Object.keys(demandByGradeSubject[grade] ?? {}), ...subjects])).filter(Boolean))
@@ -164,7 +175,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
                     {subjects.map(s => <th key={s} className="text-center whitespace-nowrap">{s}</th>)}
                     <th className="text-center">合計</th><th className="text-center">目標</th>
-                    <th className="text-center">專案<br />減課</th>
+                    <th className="text-center">超鐘數</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,7 +190,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className="sticky left-0 bg-white z-10">
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
-                            {(t.data.principleReason || t.data.specialtyReason) && <span className={`ml-1 cursor-help ${t.data.principleReason ? 'text-red-600' : 'text-amber-600'}`} title={[t.data.principleReason && `【提課發會】${t.data.principleReason}`, t.data.specialtyReason && `【課務組依據】${t.data.specialtyReason}`].filter(Boolean).join('\n')}>💬</span>}
+                            {reasonIcon(t)}{reviewIcon(t)}
                           </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>
                         </td>
@@ -190,7 +201,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         ))}
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
-                        <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-10 text-center py-0.5 text-xs" /></td>
+                        <td className="text-center text-zinc-700">{t.data.overtimeApproved || 0}</td>
                       </tr>
                     )
                   })}
@@ -239,13 +250,19 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 {willingFor(otSubj).length === 0
                   ? <p className="text-sm text-zinc-400">目前無老師於送出時表示願意超鐘點支援此科目。</p>
                   : <ul className="text-sm text-zinc-700 space-y-1">
-                      {willingFor(otSubj).map(t => (
-                        <li key={t.id} className="flex items-center gap-2">
-                          <span className="font-medium">{t.name}</span>
-                          <span className="text-xs text-zinc-500">{t.roleLabel}</span>
-                          <span className="text-xs text-amber-600">願意超鐘點 {t.data.overtimeHours} 節</span>
-                        </li>
-                      ))}
+                      {willingFor(otSubj).map(t => {
+                        const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
+                        return (
+                          <li key={t.id} className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">{t.name}</span>
+                            <span className="text-xs text-zinc-500">{t.roleLabel}</span>
+                            <span className="text-xs text-amber-600">願意超鐘點 {t.data.overtimeHours} 節</span>
+                            {order.length > 0 && <span className="text-xs text-zinc-400">順序：{order.join('＞')}</span>}
+                            {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已核定 {t.data.overtimeApproved} 節</span>}
+                            <button onClick={() => setReview(t.id)} className="text-xs text-sky-600 underline hover:text-sky-700">審核</button>
+                          </li>
+                        )
+                      })}
                     </ul>}
               </div>
             )}
@@ -266,7 +283,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <th>教師</th>
                   {GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}
                   <th className="text-center">合計</th><th className="text-center">實際</th>
-                  <th className="text-center">專案<br />減課</th>
+                  <th className="text-center">超鐘數</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,6 +298,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                       <td className="font-medium text-zinc-800">
                         {t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                         {isSub && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
+                        {reasonIcon(t)}{reviewIcon(t)}
                       </td>
                       {GRADES.map(g => (
                         <td key={g} className="text-center">
@@ -289,7 +307,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                       ))}
                       <td className={`text-center font-medium ${isSub ? 'text-zinc-700' : (sum === act ? 'text-green-700' : 'text-amber-600')}`}>{sum}</td>
                       <td className="text-center text-zinc-500">{act}{isSub && <span className="text-[10px] text-zinc-400 ml-0.5">總</span>}</td>
-                      <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-10 text-center py-0.5 text-xs" /></td>
+                      <td className="text-center text-zinc-700">{t.data.overtimeApproved || 0}</td>
                     </tr>
                   )
                 })}
@@ -316,15 +334,15 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="card p-0 overflow-x-auto">
           <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">行政 節數（無減課 · 校長→主任→組長）</div>
           <table className="table-base mt-2">
-            <thead><tr><th>教師</th><th>身分</th><th className="text-center">基本</th><th className="text-center">專案減課</th><th className="text-center">實際授課節數</th></tr></thead>
+            <thead><tr><th>教師</th><th>身分</th><th className="text-center">基本</th><th className="text-center">超鐘數</th><th className="text-center">實際授課節數</th></tr></thead>
             <tbody>
               {adminTeachers.length === 0 && <tr><td colSpan={5} className="text-sm text-zinc-400 text-center py-3">無行政資料</td></tr>}
               {adminTeachers.map(t => (
                 <tr key={t.id}>
-                  <td className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}</td>
+                  <td className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}{reasonIcon(t)}{reviewIcon(t)}</td>
                   <td className="text-zinc-600">{t.roleLabel}</td>
                   <td className="text-center text-zinc-500">{t.base ?? '—'}</td>
-                  <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5 text-xs" /></td>
+                  <td className="text-center text-zinc-700">{t.data.overtimeApproved || 0}</td>
                   <td className="text-center font-medium text-zinc-900">{noReduce(t)}</td>
                 </tr>
               ))}
@@ -332,6 +350,42 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           </table>
         </div>
       )}
+
+      {/* ── 減課／超鐘 事後審核 modal ── */}
+      {review && (() => {
+        const t = teachers.find(x => x.id === review)
+        if (!t) return null
+        const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setReview(null)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">{t.name} · 減課／超鐘審核</h3>
+                  <p className="text-xs text-zinc-500">{t.roleLabel}{t.work === '代理導師' || t.work === '代理科任' ? '（代理）' : ''}</p>
+                </div>
+                <button onClick={() => setReview(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+
+              <div className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm space-y-1">
+                <div className="text-xs font-semibold text-zinc-500">老師超鐘意願</div>
+                <div className="text-zinc-700">願意超鐘點 <span className="font-medium">{t.data.overtimeHours || 0}</span> 節</div>
+                <div className="text-zinc-700">支援順序：{order.length ? order.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">專案減課</span>
+                  <NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-16 text-center py-0.5" /></label>
+                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">核定超鐘數</span>
+                  <NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-16 text-center py-0.5" /></label>
+                <p className="text-[11px] text-zinc-400">核定後將顯示於統計表「超鐘數」欄。修改即自動儲存。</p>
+              </div>
+
+              <div className="flex justify-end pt-1"><button onClick={() => setReview(null)} className="btn-primary text-sm">完成</button></div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
