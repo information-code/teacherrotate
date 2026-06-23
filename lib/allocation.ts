@@ -186,6 +186,7 @@ export function baseForTeacher(config: AllocationConfig, work: string, grade: nu
 export interface ScenarioChoice {
   planName: string | null              // 選的方案名（null = 自配）
   breakdown: Record<string, number>    // 科目 → 節數（僅導師）
+  reason?: string                      // 自配時必填理由（供行政參考）
 }
 export interface TeacherAllocation {
   role: AllocRole
