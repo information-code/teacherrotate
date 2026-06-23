@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL,
+  REDUCTION_LABEL, GRADE_LABEL, planTotal,
   type AllocRole, type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
@@ -21,16 +21,18 @@ interface Props {
 }
 
 export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, closed, initial }: Props) {
-  const [projectReduction, setProjectReduction] = useState(initial.projectReduction ?? 0)
+  const projectReduction = initial.projectReduction ?? 0  // 由管理者設定，教師端唯讀
   const [extraHours, setExtraHours] = useState(initial.extraHours ?? 0)
-  // A. 預設選建議方案：未選過的啟用情境，先帶入第一個方案（最省力路徑＝選方案）
+  // A. 預設選建議方案：未選過的啟用情境，帶入「總數與目標相符」的第一個方案
   const [scenarios, setScenarios] = useState<Record<string, ScenarioChoice>>(() => {
     const s: Record<string, ScenarioChoice> = { ...(initial.scenarios ?? {}) }
     const ro = (initial.locked ?? false) || closed
     if (homeroom && !ro) {
       for (const sc of homeroom.scenarios) {
         const k = String(sc.reduction)
-        if (!s[k] && sc.plans.length > 0) s[k] = { planName: sc.plans[0].name, breakdown: { ...sc.plans[0].alloc } }
+        const tgt = (base ?? 0) - sc.reduction - projectReduction + (initial.extraHours ?? 0)
+        const usable = sc.plans.find(p => planTotal(p) === tgt)
+        if (!s[k] && usable) s[k] = { planName: usable.name, breakdown: { ...usable.alloc } }
       }
     }
     return s
@@ -99,7 +101,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         }
         const sum = Object.values(choice.breakdown).reduce((s, n) => s + (Number(n) || 0), 0)
         if (sum !== target) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：總節數 ${sum} ≠ 目標 ${target}`)
-        if (choice.planName === null && !(choice.reason ?? '').trim()) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：自訂配課需填寫理由`)
+        // 有相符方案卻仍自配 → 需填理由；若無相符方案（被迫自配）則不需
+        const hasPlans = sc.plans.some(p => planTotal(p) === target)
+        if (choice.planName === null && hasPlans && !(choice.reason ?? '').trim()) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：自訂配課需填寫理由`)
       }
       if (issues.length) { setError('無法送出：\n' + issues.join('\n')); return }
     }
@@ -153,9 +157,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">節數調整</div>
         <div className="flex items-center gap-6 flex-wrap text-sm">
           <span className="text-zinc-600">基本授課節數 <span className="font-medium text-zinc-900">{base ?? '—'}</span></span>
-          <label className="flex items-center gap-2"><span className="text-zinc-700">專案減課</span>
-            <NumberInput min={0} value={projectReduction} disabled={readOnly}
-              onChange={setProjectReduction} className="input w-14 text-center py-0.5" /></label>
+          <span className="flex items-center gap-2"><span className="text-zinc-700">專案減課</span>
+            <span className="font-medium text-zinc-900 w-10 text-center">{projectReduction}</span>
+            <span className="text-[11px] text-zinc-400">(管理者設定)</span></span>
           <label className="flex items-center gap-2"><span className="text-zinc-700">自願超鐘點</span>
             <NumberInput min={0} value={extraHours} disabled={readOnly}
               onChange={setExtraHours} className="input w-14 text-center py-0.5" /></label>
@@ -183,13 +187,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               const key = String(r)
               const target = actual(r)
               const choice = scenarios[key]
-              const inSelf = !!choice && choice.planName === null
-              const planName = choice?.planName ?? ''
+              const usablePlans = sc.plans.filter(p => planTotal(p) === target)  // 僅總數=目標的方案可用
+              const hasPlans = usablePlans.length > 0
+              const voluntarySelf = !!choice && choice.planName === null && hasPlans
+              const inSelf = !hasPlans || voluntarySelf   // 無相符方案 → 強制自配
+              const planName = (choice?.planName && usablePlans.some(p => p.name === choice.planName)) ? choice.planName : ''
               const sum = choice ? homeroom.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
 
               function pickPlan(v: string) {
                 if (v === '') { setScenarios(prev => { const n = { ...prev }; delete n[key]; return n }); return }
-                const plan = sc.plans.find(p => p.name === v)
+                const plan = usablePlans.find(p => p.name === v)
                 setChoice(r, () => ({ planName: v, breakdown: { ...(plan?.alloc ?? {}) } }))
               }
               function enterSelf() {
@@ -204,16 +211,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     <h3 className="text-sm font-semibold text-zinc-700">{REDUCTION_LABEL[r as 0 | 1 | 2]}
                       <span className="ml-2 text-xs font-normal text-zinc-500">目標實際授課節數 {target}</span>
                     </h3>
-                    {!inSelf && (
+                    {hasPlans && !voluntarySelf && (
                       <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
                         <option value="">請選擇方案</option>
-                        {sc.plans.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
+                        {usablePlans.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
                       </select>
                     )}
                   </div>
 
                   {/* 方案模式：唯讀顯示 */}
-                  {!inSelf && planName && choice && (
+                  {hasPlans && !voluntarySelf && planName && choice && (
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                         {homeroom.subjects.map((subj, si) => (
@@ -227,32 +234,40 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     </>
                   )}
 
-                  {/* 未選方案、非自配：引導 + 降級的自訂入口 */}
-                  {!inSelf && !planName && !readOnly && (
+                  {/* 有相符方案、未選、非自配：引導 + 降級的自訂入口 */}
+                  {hasPlans && !voluntarySelf && !planName && !readOnly && (
                     <p className="text-[11px] text-zinc-400">
                       建議直接選用上方行政方案。
                       <button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">需要自訂配課？</button>
                     </p>
                   )}
 
-                  {/* 自配模式：警語 + 必填理由 */}
-                  {inSelf && choice && (
+                  {/* 自配模式（被迫或自願） */}
+                  {inSelf && (
                     <div className="space-y-2">
-                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-1.5">
-                        ⚠ 自訂配課自由度大、可能影響全校排課，需經行政確認。如非必要，建議改選行政方案。
-                        {!readOnly && <button onClick={cancelSelf} className="ml-2 underline">改選方案</button>}
-                      </div>
-                      <label className="block text-xs">
-                        <span className="text-zinc-600">自訂理由（必填）</span>
-                        <input value={choice.reason ?? ''} disabled={readOnly}
-                          onChange={e => setChoice(r, c => ({ ...c, reason: e.target.value }))}
-                          className="input py-1 w-full mt-1" placeholder="請說明為何需要自訂配課" />
-                      </label>
+                      {hasPlans ? (
+                        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-1.5">
+                          ⚠ 自訂配課自由度大、可能影響全校排課，需經行政確認。如非必要，建議改選行政方案。
+                          {!readOnly && <button onClick={cancelSelf} className="ml-2 underline">改選方案</button>}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-2 py-1.5">
+                          您的實際授課節數為 <strong className="text-zinc-800">{target}</strong> 節（已含專案減課／超鐘點調整），與本情境的行政方案總數不同，因此由您自行配課即可，使各科合計達 {target} 節。
+                        </div>
+                      )}
+                      {hasPlans && (
+                        <label className="block text-xs">
+                          <span className="text-zinc-600">自訂理由（必填）</span>
+                          <input value={choice?.reason ?? ''} disabled={readOnly}
+                            onChange={e => setChoice(r, c => ({ ...c, reason: e.target.value }))}
+                            className="input py-1 w-full mt-1" placeholder="請說明為何需要自訂配課" />
+                        </label>
+                      )}
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                         {homeroom.subjects.map((subj, si) => (
                           <div key={si} className="flex items-center gap-1.5">
                             <span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span>
-                            <NumberInput min={0} value={choice.breakdown[subj] ?? 0} disabled={readOnly}
+                            <NumberInput min={0} value={choice?.breakdown[subj] ?? 0} disabled={readOnly}
                               onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))}
                               className="input w-12 text-center py-0.5 text-xs" />
                           </div>
