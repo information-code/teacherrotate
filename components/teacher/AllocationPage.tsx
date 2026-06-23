@@ -283,8 +283,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                   {hasPlans && !selfMode[key] && planName && choice && (
                     <>
                       {block('導師原則配課', principleSubjects, false)}
-                      {block('導師專長配課', specialtySubjects, false)}
                       {block('導師選填配課', optionalSubjects, false)}
+                      {block('導師專長配課', specialtySubjects, false)}
                     </>
                   )}
 
@@ -295,8 +295,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                         inSelf && !readOnly && !principleUnlocked[key]
                           ? <button onClick={() => setPrincipleUnlocked(m => ({ ...m, [key]: true }))} className="text-zinc-500 underline font-normal">編輯</button>
                           : null)}
-                      {block('導師專長配課', specialtySubjects, inSelf && !readOnly)}
                       {block('導師選填配課', optionalSubjects, inSelf && !readOnly)}
+                      {block('導師專長配課', specialtySubjects, inSelf && !readOnly)}
                     </>
                   )}
 
