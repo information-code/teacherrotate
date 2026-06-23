@@ -134,10 +134,10 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   const gc = picked === 'homeroom' && grade ? grades[grade] : null
   const wantPrinciple = !!gc && gc.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'principle') })
   const wantSpecialty = !!gc && gc.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'specialty') })
+  // 證照確認僅導師需要；科任不跳警告理由／證照 modal
   const certSubjects = (() => {
     const present = new Set<string>()
     if (picked === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
-    else if (picked === 'subject') { for (const cs of CERT_SUBJECTS) if (subjects.includes(cs)) present.add(cs) }
     return [...present]
   })()
   // 超鐘順序可選科目：選填＋專長

@@ -103,10 +103,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   const wantPrinciple = role === 'homeroom' && homeroom ? homeroom.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'principle') }) : false
   const wantSpecialty = role === 'homeroom' && homeroom ? homeroom.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'specialty') }) : false
+  // 證照確認僅導師需要；科任不跳警告理由／證照 modal
   const certSubjects = (() => {
     const present = new Set<string>()
     if (role === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
-    else if (role === 'subject') { const a = subjectAreaOf(work); if (CERT_SUBJECTS.includes(a)) present.add(a) }
     return [...present]
   })()
   // 超鐘順序可選科目：選填＋專長，任一情境>0
