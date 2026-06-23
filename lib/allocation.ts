@@ -40,7 +40,10 @@ export interface AllocationConfig {
   adminBase: number                     // 行政基本授課節數
 }
 
-const DEFAULT_SUBJECTS = ['國語', '數學', '英語', '生活', '健康', '綜合', '本土語', '班級活動']
+const DEFAULT_SUBJECTS = [
+  '國語', '數學', '英語', '自然', '生活', '健康', '體育',
+  '音樂', '視覺藝術', '表演藝術', '綜合', '本土語', '班級活動', '專題',
+]
 
 export function defaultGradeConfig(): GradeConfig {
   return {
