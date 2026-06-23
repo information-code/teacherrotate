@@ -2,6 +2,19 @@
 // Stage 4 統計頁共用。設定整體存於 allocation_config.config（每年度一筆 JSON）。
 
 export const GRADES = [1, 2, 3, 4, 5, 6] as const
+
+// 科目顯示順序（必修依課綱，其餘非必修排在後面、維持原順序）
+export const SUBJECT_ORDER = ['國語', '數學', '生活', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
+export function sortSubjects<T extends { name: string }>(arr: T[]): T[] {
+  const known = SUBJECT_ORDER.flatMap(m => arr.filter(s => s.name === m))
+  const unknown = arr.filter(s => !SUBJECT_ORDER.includes(s.name))
+  return [...known, ...unknown]
+}
+export function orderSubjectNames(names: string[]): string[] {
+  const known = SUBJECT_ORDER.filter(m => names.includes(m))
+  const unknown = names.filter(n => !SUBJECT_ORDER.includes(n))
+  return [...known, ...unknown]
+}
 export const GRADE_LABEL: Record<number, string> = {
   1: '一年級', 2: '二年級', 3: '三年級', 4: '四年級', 5: '五年級', 6: '六年級',
 }

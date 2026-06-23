@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
   GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, ADMIN_KIND_LABEL,
-  gradeDemand, planTotal, type AllocationConfig, type GradeConfig, type GradeScenario, type AllocationPlan, type Reduction,
+  gradeDemand, planTotal, sortSubjects, type AllocationConfig, type GradeConfig, type GradeScenario, type AllocationPlan, type Reduction,
 } from '@/lib/allocation'
 
 interface Props {
@@ -13,7 +13,15 @@ interface Props {
 }
 
 export default function AllocationConfigClient({ year, initialConfig }: Props) {
-  const [config, setConfig] = useState<AllocationConfig>(initialConfig)
+  // 載入時依課綱順序排序各年級科目（編輯中不重排；新增的科目排在最後）
+  const [config, setConfig] = useState<AllocationConfig>(() => {
+    const grades: Record<number, GradeConfig> = {}
+    for (const k of Object.keys(initialConfig.grades)) {
+      const gn = Number(k)
+      grades[gn] = { ...initialConfig.grades[gn], subjects: sortSubjects(initialConfig.grades[gn].subjects) }
+    }
+    return { ...initialConfig, grades }
+  })
   const [grade, setGrade] = useState<number>(1)
   const [dirty, setDirty] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')

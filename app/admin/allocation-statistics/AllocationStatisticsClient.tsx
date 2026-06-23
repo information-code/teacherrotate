@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
-import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, subjectAreaOf, type Reduction } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, subjectAreaOf, orderSubjectNames, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
@@ -141,7 +141,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const target = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0) + (t.data.extraHours || 0)
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
         // 小結涵蓋：該年級所有有需求的科目 ∪ 導師可配課科目
-        const summarySubjects = Array.from(new Set([...Object.keys(demandByGradeSubject[grade] ?? {}), ...subjects])).filter(Boolean)
+        const summarySubjects = orderSubjectNames(Array.from(new Set([...Object.keys(demandByGradeSubject[grade] ?? {}), ...subjects])).filter(Boolean))
         return (
           <>
             <div className="card p-0 overflow-x-auto">

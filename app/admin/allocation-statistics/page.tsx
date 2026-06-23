@@ -2,7 +2,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import AllocationStatisticsClient from './AllocationStatisticsClient'
 import {
   normalizeConfig, allocRole, homeroomGrade, adminKind, ADMIN_KIND_LABEL,
-  baseForTeacher, defaultTeacherAllocation, GRADES,
+  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, GRADES,
   type AllocRole, type TeacherAllocation,
 } from '@/lib/allocation'
 
@@ -66,7 +66,7 @@ export default async function AllocationStatisticsPage() {
   for (const g of GRADES) {
     const gc = config.grades[g]
     gradesMeta[g] = {
-      subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
+      subjects: orderSubjectNames(gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean)),
       homeroomBase: gc.homeroomBase,
     }
     // 各年級各科目需求 = 班級數 × 每班節數（所有科目，含非導師科目供科任比對）
