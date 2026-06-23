@@ -140,10 +140,18 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
     if (picked === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
     return [...present]
   })()
-  // 超鐘順序可選科目：選填＋專長
-  const otOptions = (() => {
+  // 減課順序：選填／專長且任一情境 > 0（減課要管是不是 0）
+  const reduceOptions = (() => {
     if (picked === 'homeroom' && gc) {
       return gc.subjects.filter(s => { const c = subjectCategory(s); return (c === 'specialty' || c === 'optional') && gc.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0) })
+    }
+    if (picked === 'subject') return subjects.filter(s => subjectCategory(s) !== 'principle')
+    return []
+  })()
+  // 超鐘順序：專長全列（不論是否 0，因為是超鐘點）＋ 選填（>0）
+  const overtimeOptions = (() => {
+    if (picked === 'homeroom' && gc) {
+      return gc.subjects.filter(s => { const c = subjectCategory(s); return c === 'specialty' || (c === 'optional' && gc.scenarios.some(sc => (Number(scenarios[String(sc.reduction)]?.breakdown[s]) || 0) > 0)) })
     }
     if (picked === 'subject') return subjects.filter(s => subjectCategory(s) !== 'principle')
     return []
@@ -339,12 +347,12 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                   <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">順序{['一', '二', '三'][i]}</span>
                     <select value={projectOrder[i] ?? ''} disabled={readOnly} onChange={e => setProjOrder(i, e.target.value)} className="input py-1 text-sm w-32">
                       <option value="">不指定</option>
-                      {otOptions.filter(s => !projectOrder.includes(s) || projectOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
+                      {reduceOptions.filter(s => !projectOrder.includes(s) || projectOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </label>
                 ))}
               </div>
-              {otOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可減的選填／專長科目。</p>}
+              {reduceOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可減的選填／專長科目。</p>}
             </div>
           )}
           <p className="text-[11px] text-zinc-400">專案減課為申請項目，實際減課數由管理者審核核定，不影響上一頁的配課節數。</p>
@@ -357,18 +365,18 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
           {overtimeHours > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；僅列選填／專長科目）：</p>
+              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；列出全部專長科目與您有配課的選填科目）：</p>
               <div className="flex flex-wrap gap-3">
                 {[0, 1, 2].map(i => (
                   <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">順序{['一', '二', '三'][i]}</span>
                     <select value={overtimeOrder[i] ?? ''} disabled={readOnly} onChange={e => setOrder(i, e.target.value)} className="input py-1 text-sm w-32">
                       <option value="">不指定</option>
-                      {otOptions.filter(s => !overtimeOrder.includes(s) || overtimeOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
+                      {overtimeOptions.filter(s => !overtimeOrder.includes(s) || overtimeOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </label>
                 ))}
               </div>
-              {otOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可支援的選填／專長科目。</p>}
+              {overtimeOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可支援的選填／專長科目。</p>}
             </div>
           )}
           <p className="text-[11px] text-zinc-400">超鐘意願供課務組事後安排參考，不影響上一頁的配課節數。</p>
