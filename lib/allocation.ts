@@ -33,11 +33,18 @@ export interface GradeConfig {
   scenarios: Record<Reduction, GradeScenario>
 }
 
+/** 行政基本授課節數（再細分校長/主任/組長） */
+export interface AdminBase {
+  principal: number   // 校長
+  director: number    // 主任
+  chief: number       // 組長
+}
+
 /** 整年度配課設定 */
 export interface AllocationConfig {
   grades: Record<number, GradeConfig>   // 1..6
   subjectBase: number                   // 科任基本授課節數
-  adminBase: number                     // 行政基本授課節數
+  adminBase: AdminBase                  // 行政基本授課節數（校長/主任/組長）
 }
 
 const DEFAULT_SUBJECTS = [
@@ -61,17 +68,21 @@ export function defaultGradeConfig(): GradeConfig {
 export function defaultAllocationConfig(): AllocationConfig {
   const grades: Record<number, GradeConfig> = {}
   for (const g of GRADES) grades[g] = defaultGradeConfig()
-  return { grades, subjectBase: 0, adminBase: 0 }
+  return { grades, subjectBase: 0, adminBase: { principal: 0, director: 0, chief: 0 } }
 }
 
 /** 合併資料庫讀回的（可能不完整的）config 與預設值，確保結構完整。 */
 export function normalizeConfig(raw: unknown): AllocationConfig {
   const base = defaultAllocationConfig()
   if (!raw || typeof raw !== 'object') return base
-  const r = raw as Partial<AllocationConfig>
+  const r = raw as Partial<AllocationConfig> & { adminBase?: number | Partial<AdminBase> }
+  const ab = r.adminBase
+  const adminBase: AdminBase = typeof ab === 'object' && ab !== null
+    ? { principal: Number(ab.principal ?? 0), director: Number(ab.director ?? 0), chief: Number(ab.chief ?? 0) }
+    : { principal: 0, director: 0, chief: 0 }
   const out: AllocationConfig = {
     subjectBase: Number(r.subjectBase ?? 0),
-    adminBase: Number(r.adminBase ?? 0),
+    adminBase,
     grades: {},
   }
   for (const g of GRADES) {
@@ -120,4 +131,70 @@ export function actualPeriods(opts: {
 /** 一個方案的總節數 */
 export function planTotal(plan: AllocationPlan): number {
   return Object.values(plan.alloc).reduce((s, n) => s + (Number(n) || 0), 0)
+}
+
+// ── 角色判定（依 rotation 的 work）──
+export type AllocRole = 'homeroom' | 'subject' | 'admin' | 'none'
+export type AdminKind = 'principal' | 'director' | 'chief'
+export const ADMIN_KIND_LABEL: Record<AdminKind, string> = { principal: '校長', director: '主任', chief: '組長' }
+
+/** 導師＝完整配課；科任/行政＝只算節數；其他（留停等）＝無需配課 */
+export function allocRole(work: string | null | undefined): AllocRole {
+  const w = work ?? ''
+  if (!w) return 'none'
+  if (w.includes('導師') || w.includes('接棒班')) return 'homeroom'
+  if (w.includes('科任')) return 'subject'
+  if (w.includes('校長') || w.includes('主任') || w.includes('組長')) return 'admin'
+  return 'none'
+}
+
+export function adminKind(work: string): AdminKind {
+  if (work.includes('校長')) return 'principal'
+  if (work.includes('主任')) return 'director'
+  return 'chief' // 組長
+}
+
+/**
+ * 導師年級由系統決定，不需老師選：
+ *   - 撕榜只處理一、三、五年級（grade 已寫入 1/3/5）→ 直接用。
+ *   - 其餘為連任，一定是二、四、六年級：低年段→2、中年段→4、高年段→6。
+ */
+export function homeroomGrade(work: string, grade: number | null): number | null {
+  if (grade && grade >= 1 && grade <= 6) return grade
+  if (work.includes('低年級')) return 2
+  if (work.includes('中年級')) return 4
+  if (work.includes('高年級')) return 6
+  return null
+}
+
+/** 某老師的基本授課節數（依角色）。 */
+export function baseForTeacher(config: AllocationConfig, work: string, grade: number | null): number | null {
+  const role = allocRole(work)
+  if (role === 'homeroom') {
+    const g = homeroomGrade(work, grade)
+    return g ? (config.grades[g]?.homeroomBase ?? 0) : null
+  }
+  if (role === 'subject') return config.subjectBase
+  if (role === 'admin') return config.adminBase[adminKind(work)]
+  return null
+}
+
+// ── 教師配課結果（每年每位老師一筆 JSON）──
+export interface ScenarioChoice {
+  planName: string | null              // 選的方案名（null = 自配）
+  breakdown: Record<string, number>    // 科目 → 節數（僅導師）
+}
+export interface TeacherAllocation {
+  role: AllocRole
+  work: string
+  grade: number | null                 // 導師年級（老師可於配課頁選擇）
+  projectReduction: number             // 專案減課
+  extraHours: number                   // 自願超鐘點
+  scenarios: Record<string, ScenarioChoice>  // 導師：各情境（key = "0"/"1"/"2"）的配課
+  locked: boolean
+  submittedAt: string | null
+}
+
+export function defaultTeacherAllocation(role: AllocRole, work: string, grade: number | null): TeacherAllocation {
+  return { role, work, grade, projectReduction: 0, extraHours: 0, scenarios: {}, locked: false, submittedAt: null }
 }

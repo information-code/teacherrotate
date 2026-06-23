@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL,
+  GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, ADMIN_KIND_LABEL,
   gradeDemand, planTotal, type AllocationConfig, type GradeConfig, type GradeScenario, type AllocationPlan, type Reduction,
 } from '@/lib/allocation'
 
@@ -74,13 +74,16 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
               onChange={n => { setConfig(c => ({ ...c, subjectBase: n })); setDirty(true) }}
               className="input w-16 text-center py-0.5" />
           </label>
-          <label className="flex items-center gap-2">
-            <span className="text-zinc-700">行政基本節數</span>
-            <NumberInput min={0} value={config.adminBase}
-              onChange={n => { setConfig(c => ({ ...c, adminBase: n })); setDirty(true) }}
-              className="input w-16 text-center py-0.5" />
-          </label>
-          <span className="text-[11px] text-zinc-400">導師基本節數於下方各年級分別設定</span>
+          <span className="text-zinc-700">行政基本節數</span>
+          {(['principal', 'director', 'chief'] as const).map(k => (
+            <label key={k} className="flex items-center gap-1.5">
+              <span className="text-zinc-500 text-xs">{ADMIN_KIND_LABEL[k]}</span>
+              <NumberInput min={0} value={config.adminBase[k]}
+                onChange={n => { setConfig(c => ({ ...c, adminBase: { ...c.adminBase, [k]: n } })); setDirty(true) }}
+                className="input w-14 text-center py-0.5" />
+            </label>
+          ))}
+          <span className="text-[11px] text-zinc-400 w-full">導師基本節數於下方各年級分別設定</span>
         </div>
       </div>
 

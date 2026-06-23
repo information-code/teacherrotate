@@ -138,6 +138,12 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['allocation_config']['Insert']>
         Relationships: []
       }
+      allocation: {
+        Row: { year: number; teacher_id: string; data: Json; updated_at: string }
+        Insert: { year: number; teacher_id: string; data?: Json; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['allocation']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }
