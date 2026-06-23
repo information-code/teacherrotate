@@ -1,8 +1,37 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { GRADES, GRADE_LABEL, type SchedulingNeeds } from '@/lib/allocation'
 
 export interface ReasonResult { principleReason: string; specialtyReason: string }
+
+// ── 排課需求頁（第三頁，移送課發會審議）──
+export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: SchedulingNeeds; onChange: (v: SchedulingNeeds) => void; readOnly: boolean }) {
+  const set = (patch: Partial<SchedulingNeeds>) => onChange({ ...value, ...patch })
+  return (
+    <div className="card p-4 space-y-3">
+      <h3 className="text-sm font-semibold text-zinc-700">排課需求</h3>
+      <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">下列事項將移送<strong>課發會－排配課會議審議</strong>。</div>
+      <div className="space-y-2.5 text-sm text-zinc-700">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked })} className="w-4 h-4" />公假進修</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked })} className="w-4 h-4" />輔導團共同不排課</label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValue: e.target.checked ? value.avoidChildGradeValue : null })} className="w-4 h-4" />避免授課子女班級年段</label>
+          {value.avoidChildGrade && (
+            <select value={value.avoidChildGradeValue ?? ''} disabled={readOnly} onChange={e => set({ avoidChildGradeValue: e.target.value ? Number(e.target.value) : null })} className="input py-1 text-sm w-28">
+              <option value="">請選擇年級</option>
+              {GRADES.map(g => <option key={g} value={g}>{GRADE_LABEL[g]}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="space-y-1">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.other} disabled={readOnly} onChange={e => set({ other: e.target.checked, otherText: e.target.checked ? value.otherText : '' })} className="w-4 h-4" />其他</label>
+          {value.other && <textarea value={value.otherText} disabled={readOnly} onChange={e => set({ otherText: e.target.value })} rows={2} className="input w-full" placeholder="請說明" />}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── 警告理由 + 證照 modal（第一頁→第二頁之間）──
 export function ReasonCertModal({ needPrinciple, needSpecialty, certSubjects, initial, onCancel, onDone }: {

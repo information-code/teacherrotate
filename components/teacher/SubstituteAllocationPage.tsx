@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
   REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, OVERTIME_REJECT_OTHERS,
-  type TeacherAllocation, type ScenarioChoice,
+  defaultSchedulingNeeds,
+  type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds,
 } from '@/lib/allocation'
-import { ReasonCertModal, ConfirmNotesModal, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
+import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 interface Props {
@@ -36,6 +37,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   const [overtimeOrder, setOvertimeOrder] = useState<string[]>(initial.overtimeOrder ?? [])
   const [projects, setProjects] = useState<{ name: string; hours: number }[]>(initial.projects ?? [])
   const [projectOrder, setProjectOrder] = useState<string[]>(initial.projectOrder ?? [])
+  const [scheduling, setScheduling] = useState<SchedulingNeeds>(initial.scheduling ?? defaultSchedulingNeeds())
   const [reasonModalOpen, setReasonModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [locked, setLocked] = useState(initial.locked ?? false)
@@ -63,6 +65,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
       projects, projectOrder: projectOrder.filter(Boolean),
       overtimeHours,
       overtimeOrder: overtimeOrder.filter(Boolean),
+      scheduling,
       principleReason, specialtyReason,
       acknowledged: lock ? true : (initial.acknowledged ?? false),
       locked: lock,
@@ -87,7 +90,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked, grade, scenarios, subjects, sgh, overtimeHours, overtimeOrder, projects, projectOrder, principleReason, specialtyReason])
+  }, [picked, grade, scenarios, subjects, sgh, overtimeHours, overtimeOrder, projects, projectOrder, scheduling, principleReason, specialtyReason])
 
   function setChoice(r: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setScenarios(prev => ({ ...prev, [String(r)]: fn(prev[String(r)] ?? { planName: null, breakdown: {} }) }))
@@ -169,7 +172,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度 · 代理教師</span>
-            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {step} / 2 · {step === 1 ? '配課' : '超鐘意願'}</span>}
+            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {step} / 3 · {step === 1 ? '配課' : step === 2 ? '減超鐘點申請' : '排課需求'}</span>}
           </h2>
           <p className="text-xs text-zinc-500">請先選擇您的身分,再依畫面填寫配課。</p>
         </div>
@@ -394,11 +397,18 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
         </div>
       </>}
 
+      {/* ════ 第三頁：排課需求 ════ */}
+      {step === 3 && <SchedulingNeedsCard value={scheduling} onChange={setScheduling} readOnly={readOnly} />}
+
       {!readOnly && (
         <div className="flex items-center justify-end gap-2 pt-2">
           {step === 1 && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
           {step === 2 && <>
             <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
+            <button onClick={() => setStep(3)} className="btn-primary text-sm">下一步</button>
+          </>}
+          {step === 3 && <>
+            <button onClick={() => setStep(2)} className="btn-secondary text-sm">上一步</button>
             <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>
           </>}
         </div>

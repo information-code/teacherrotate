@@ -220,6 +220,19 @@ export function baseForTeacher(config: AllocationConfig, work: string, grade: nu
   return null
 }
 
+// 排課需求（移送課發會－排配課會議審議）
+export interface SchedulingNeeds {
+  officialLeave: boolean              // 公假進修
+  counselingGroup: boolean            // 輔導團共同不排課
+  avoidChildGrade: boolean            // 避免授課子女班級年段
+  avoidChildGradeValue: number | null // 年段 1~6
+  other: boolean                      // 其他
+  otherText: string                   // 其他說明
+}
+export function defaultSchedulingNeeds(): SchedulingNeeds {
+  return { officialLeave: false, counselingGroup: false, avoidChildGrade: false, avoidChildGradeValue: null, other: false, otherText: '' }
+}
+
 // ── 教師配課結果（每年每位老師一筆 JSON）──
 export interface ScenarioChoice {
   planName: string | null              // 選的方案名（null = 自配）
@@ -247,6 +260,7 @@ export interface TeacherAllocation {
   overtimeApproved?: number            // 管理者事後審核通過的超鐘數
   principleReason?: string             // 動到原則配課的理由（提課發會）
   specialtyReason?: string             // 動到專長配課的理由（課務組排配課依據）
+  scheduling?: SchedulingNeeds         // 排課需求（移送課發會審議）
   acknowledged?: boolean               // 已閱讀並同意注意事項
   locked: boolean
   submittedAt: string | null

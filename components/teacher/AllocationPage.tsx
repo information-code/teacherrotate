@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
   REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, subjectAreaOf, OVERTIME_REJECT_OTHERS,
-  type AllocRole, type TeacherAllocation, type ScenarioChoice,
+  defaultSchedulingNeeds,
+  type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds,
 } from '@/lib/allocation'
-import { ReasonCertModal, ConfirmNotesModal, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
+import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 interface Props {
@@ -48,6 +49,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [overtimeOrder, setOvertimeOrder] = useState<string[]>(initial.overtimeOrder ?? [])
   const [projects, setProjects] = useState<{ name: string; hours: number }[]>(initial.projects ?? [])
   const [projectOrder, setProjectOrder] = useState<string[]>(initial.projectOrder ?? [])
+  const [scheduling, setScheduling] = useState<SchedulingNeeds>(initial.scheduling ?? defaultSchedulingNeeds())
   const [reasonModalOpen, setReasonModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [locked, setLocked] = useState(initial.locked ?? false)
@@ -71,6 +73,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       role, work, grade, projectReduction, extraHours: 0, scenarios, gradeHours,
       projects, projectOrder: projectOrder.filter(Boolean),
       overtimeHours, overtimeOrder: overtimeOrder.filter(Boolean),
+      scheduling,
       principleReason, specialtyReason,
       acknowledged: lock ? true : (initial.acknowledged ?? false),
       locked: lock,
@@ -93,7 +96,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, projects, projectOrder, principleReason, specialtyReason])
+  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, projects, projectOrder, scheduling, principleReason, specialtyReason])
 
   const actual = (reduction: number) => (base ?? 0) - reduction   // 超鐘點與專案減課不計入教師端
 
@@ -179,7 +182,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
-            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {step} / 2 · {step === 1 ? '配課' : '超鐘意願'}</span>}
+            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {step} / 3 · {step === 1 ? '配課' : step === 2 ? '減超鐘點申請' : '排課需求'}</span>}
           </h2>
           <p className="text-xs text-zinc-500">
             身分：<span className="font-medium text-zinc-700">{roleLabel}</span>
@@ -369,11 +372,18 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         </div>
       </>}
 
+      {/* ════ 第三頁：排課需求 ════ */}
+      {step === 3 && <SchedulingNeedsCard value={scheduling} onChange={setScheduling} readOnly={readOnly} />}
+
       {!readOnly && (
         <div className="flex items-center justify-end gap-2 pt-2">
           {step === 1 && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
           {step === 2 && <>
             <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
+            <button onClick={() => setStep(3)} className="btn-primary text-sm">下一步</button>
+          </>}
+          {step === 3 && <>
+            <button onClick={() => setStep(2)} className="btn-secondary text-sm">上一步</button>
             <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>
           </>}
         </div>
