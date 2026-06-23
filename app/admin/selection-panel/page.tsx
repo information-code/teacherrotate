@@ -98,6 +98,10 @@ export default async function SelectionPanelPage() {
     }
   }
 
+  const { data: panelRow } = await admin
+    .from('selection_panel').select('data').eq('year', preferenceYear).maybeSingle()
+  const initialData = (panelRow?.data ?? {}) as { quotas?: { subjects: Record<string, number>; homerooms: Record<number, number> }; placements?: Record<string, string> }
+
   const prefMap = Object.fromEntries((prefsResult.data ?? []).map(p => [p.teacher_id, p]))
 
   const teachers: PanelTeacher[] = activeIds
@@ -136,6 +140,7 @@ export default async function SelectionPanelPage() {
       teachers={teachers}
       midLowWorks={midLowWorks}
       preferenceYear={preferenceYear}
+      initialData={initialData}
     />
   )
 }

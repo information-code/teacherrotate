@@ -1,111 +1,85 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { TARGET_BADGE_STYLE } from '@/lib/rotation-target'
 import { NumberInput } from '@/components/ui/NumberInput'
+import {
+  ADMIN_GROUPS, SUBJECT_AREAS, HOMEROOM_SLOTS, HOMEROOM_INPUT_PAIRS,
+  DEFAULT_QUOTAS, MIDLOW_LIMIT, subjectDisplayLabel, type Quotas,
+} from '@/lib/selection-slots'
 import type { PanelTeacher } from './page'
 
 interface Props {
   teachers: PanelTeacher[]
   midLowWorks: string[]
   preferenceYear: number
+  initialData: { quotas?: Quotas; placements?: Record<string, string> }
 }
 
-// 行政空缺：固定 4 處，每職位 1 個位置
-const ADMIN_GROUPS: { 處: string; positions: string[] }[] = [
-  { 處: '教務處', positions: ['教務主任', '註冊組長', '課務組長', '課發組長', '資訊組長'] },
-  { 處: '學務處', positions: ['學務主任', '生教組長', '體健組長', '活動組長', '環衛組長'] },
-  { 處: '總務處', positions: ['總務主任', '文書組長'] },
-  { 處: '輔導處', positions: ['輔導主任', '輔導組長', '親職組長', '特教組長'] },
-]
-
-// 科任 領域（admin 輸入各領域名額）
-const SUBJECT_AREAS = ['科技創新任務', '體育', '英語', '社會', '自然', '音樂', '表藝', '視藝', '生活', '其他']
-
-// 導師空缺：六個年級各自獨立
-//   一/三/五年級 = 一般導師（新一輪開始）
-//   二/四/六年級 = 接棒班（接續上一位導師、把學生帶到一輪結束）
-interface HomeroomSlot {
-  grade: 1 | 2 | 3 | 4 | 5 | 6
-  kind: 'normal' | 'relay'
-  work: string         // 對應 scoremap 中的職位名
-  label: string        // 顯示用：「一年級」、「二年級接棒班」…
-  shortLabel: string   // 列首顯示：「一年級」、「二年級」…
-}
-
-const HOMEROOM_SLOTS: HomeroomSlot[] = [
-  { grade: 1, kind: 'normal', work: '低年級導師', label: '低年級導師',  shortLabel: '一年級' },
-  { grade: 2, kind: 'relay',  work: '低年級接棒班', label: '低年級接棒班', shortLabel: '二年級' },
-  { grade: 3, kind: 'normal', work: '中年級導師', label: '中年級導師',  shortLabel: '三年級' },
-  { grade: 4, kind: 'relay',  work: '中年級接棒班', label: '中年級接棒班', shortLabel: '四年級' },
-  { grade: 5, kind: 'normal', work: '高年級導師', label: '高年級導師',  shortLabel: '五年級' },
-  { grade: 6, kind: 'relay',  work: '高年級接棒班', label: '高年級接棒班', shortLabel: '六年級' },
-]
-
-// quota 輸入時的成對排版：(grade1 + grade2), (grade3 + grade4), (grade5 + grade6)
-const HOMEROOM_INPUT_PAIRS: { normal: HomeroomSlot; relay: HomeroomSlot }[] = [
-  { normal: HOMEROOM_SLOTS[0], relay: HOMEROOM_SLOTS[1] },
-  { normal: HOMEROOM_SLOTS[2], relay: HOMEROOM_SLOTS[3] },
-  { normal: HOMEROOM_SLOTS[4], relay: HOMEROOM_SLOTS[5] },
-]
-
-interface Quotas {
-  subjects: Record<string, number>
-  homerooms: Record<number, number>  // grade 1..6 → count
-}
-
-const DEFAULT_QUOTAS: Quotas = {
-  subjects: Object.fromEntries(SUBJECT_AREAS.map(a => [a, 0])),
-  homerooms: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
-}
-
-const MIDLOW_LIMIT = 8
-
-// 科任領域顯示名稱：除「科技創新任務」與「其他」外，其餘都加「領域」
-function subjectDisplayLabel(area: string): string {
-  return (area === '科技創新任務' || area === '其他') ? area : `${area}領域`
-}
-
-export default function SelectionPanelClient({ teachers, midLowWorks, preferenceYear }: Props) {
+export default function SelectionPanelClient({ teachers, midLowWorks, preferenceYear, initialData }: Props) {
   const router = useRouter()
   const midLowSet = useMemo(() => new Set(midLowWorks), [midLowWorks])
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [quotaCollapsed, setQuotaCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(true)
-  const [quotas, setQuotas] = useState<Quotas>(DEFAULT_QUOTAS)
-  const [placements, setPlacements] = useState<Record<string, string>>({}) // teacherId → slotId
-  const [hydrated, setHydrated] = useState(false)
+  const [quotas, setQuotas] = useState<Quotas>(initialData.quotas ?? DEFAULT_QUOTAS)
+  const [placements, setPlacements] = useState<Record<string, string>>(initialData.placements ?? {}) // teacherId → slotId
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [applying, setApplying] = useState(false)
 
-  // ── 從 localStorage 還原 + 自動儲存（每個年度各自一份）──
-  // 注意：v2 schema 把 homerooms 從 {grade: {normal, relay}} 改成 {1..6: number}，
-  //       不相容 v1 → 用新 key 讓舊資料失效（使用者重新設定即可）。
-  const STORAGE_KEY = `trotate-selection-panel-v2-${preferenceYear}`
+  // ── 變更後防抖儲存到後端（每年度一筆）──
+  const firstRun = useRef(true)
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const saved = JSON.parse(raw) as { quotas?: Quotas; placements?: Record<string, string> }
-        if (saved.quotas) setQuotas(saved.quotas)
-        if (saved.placements) setPlacements(saved.placements)
-      }
-    } catch {}
-    setHydrated(true)
+    if (firstRun.current) { firstRun.current = false; return }
+    setSaveStatus('saving')
+    const t = setTimeout(() => { void saveNow() }, 700)
+    return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  useEffect(() => {
-    if (!hydrated) return
+  }, [quotas, placements])
+
+  async function saveNow(): Promise<boolean> {
+    setSaveStatus('saving')
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ quotas, placements }))
-    } catch {}
-  }, [quotas, placements, hydrated, STORAGE_KEY])
+      const res = await fetch('/api/admin/selection-panel', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: preferenceYear, data: { quotas, placements } }),
+      })
+      setSaveStatus(res.ok ? 'saved' : 'idle')
+      return res.ok
+    } catch {
+      setSaveStatus('idle')
+      return false
+    }
+  }
 
   function resetAll() {
     if (!confirm('確定要清空所有名額設定與已分配教師？此操作無法復原。')) return
     setQuotas(DEFAULT_QUOTAS)
     setPlacements({})
-    try { window.localStorage.removeItem(STORAGE_KEY) } catch {}
+  }
+
+  async function applyToRotations() {
+    if (!confirm(`套用 ${preferenceYear} 學年度撕榜結果到工作紀錄？\n\n● 會把目前已分配的教師寫入 ${preferenceYear} 學年度工作紀錄（覆蓋該年度同一位教師的既有紀錄），並重算分數。\n● 未分配（待安排）的教師不受影響。`)) return
+    setApplying(true)
+    try {
+      await saveNow()
+      const res = await fetch('/api/admin/selection-panel/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: preferenceYear }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(data.error || '套用失敗，請稍後再試'); return }
+      // 不 router.refresh()：寫入 115 rotation 後 getRotationTarget 會變動、
+      // 已分配教師可能被面板過濾掉，造成「配置消失」的錯覺。保留目前畫面即可，
+      // 資料已寫入 DB；需要看更新後狀態可手動重新整理。
+      alert(`已套用 ${data.applied} 位教師到 ${preferenceYear} 學年度工作紀錄，分數已重算。`)
+    } finally {
+      setApplying(false)
+    }
   }
   const [dragTeacherId, setDragTeacherId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -242,13 +216,22 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
             <span className="ml-2 text-zinc-500">· 待安排 {poolTeachers.length}</span>
           </p>
           <p className="text-[11px] text-zinc-400 mt-1">
-            <span className="text-green-600">✓ 已自動儲存於此瀏覽器</span>
-            <span className="ml-1">（重新整理仍在；換電腦或換瀏覽器則不會同步）</span>
+            {saveStatus === 'saving'
+              ? <span className="text-zinc-500">儲存中…</span>
+              : saveStatus === 'saved'
+                ? <span className="text-green-600">✓ 已儲存於伺服器</span>
+                : <span className="text-green-600">✓ 自動儲存於伺服器</span>}
+            <span className="ml-1">（換電腦/瀏覽器皆同步；「套用到工作紀錄」後才會寫入分數）</span>
           </p>
         </div>
-        <button onClick={resetAll} className="btn-secondary text-xs py-1 px-2 flex-shrink-0">
-          清空全部
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={applyToRotations} disabled={applying} className="btn-primary text-xs py-1 px-2">
+            {applying ? '套用中…' : '套用到工作紀錄'}
+          </button>
+          <button onClick={resetAll} className="btn-secondary text-xs py-1 px-2">
+            清空全部
+          </button>
+        </div>
       </div>
 
       {/* ── Step 1: 名額設定（可折疊）── */}

@@ -126,6 +126,12 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['settings']['Insert']>
         Relationships: []
       }
+      selection_panel: {
+        Row: { year: number; data: Json; updated_at: string }
+        Insert: { year: number; data?: Json; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['selection_panel']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }
