@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal,
+  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, PRINCIPLE_SUBJECTS,
   type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
@@ -34,13 +34,24 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
 
   const readOnly = locked || closed
 
+  // 動到原則配課（與方案基準值不同）→ 提課發會
+  function escalateFor(reduction: number, breakdown: Record<string, number>): boolean {
+    if (picked !== 'homeroom' || !grade) return false
+    const gc = grades[grade]
+    const base = gc.scenarios.find(s => s.reduction === reduction)?.plans[0]?.alloc ?? {}
+    return gc.subjects.filter(s => PRINCIPLE_SUBJECTS.includes(s)).some(s => (Number(breakdown[s]) || 0) !== (Number(base[s]) || 0))
+  }
+
   function buildData(lock: boolean): TeacherAllocation {
+    const scen = picked === 'homeroom'
+      ? Object.fromEntries(Object.entries(scenarios).map(([k, ch]) => [k, ch.planName === null ? { ...ch, escalate: escalateFor(Number(k), ch.breakdown) } : { ...ch, escalate: false }]))
+      : {}
     return {
       role: picked || 'none',
       work: picked === 'homeroom' ? '代理導師' : picked === 'subject' ? '代理科任' : '',
       grade: picked === 'homeroom' ? grade : null,
       projectReduction, extraHours,
-      scenarios: picked === 'homeroom' ? scenarios : {},
+      scenarios: scen,
       subjects: picked === 'subject' ? subjects : [],
       subjectGradeHours: picked === 'subject' ? sgh : {},
       locked: lock,
@@ -94,6 +105,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
         if (!choice || (choice.planName === null && Object.keys(choice.breakdown).length === 0)) { issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：尚未選方案或自配`); continue }
         const sum = Object.values(choice.breakdown).reduce((s, n) => s + (Number(n) || 0), 0)
         if (sum !== target) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：合計 ${sum} ≠ 目標 ${target}`)
+        if (choice.planName === null && !(choice.reason ?? '').trim()) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：自訂配課需填寫理由`)
       }
       if (issues.length) { setError('無法送出：\n' + issues.join('\n')); return }
     }
@@ -155,6 +167,8 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
           {grade && grades[grade].scenarios.length === 0 && <div className="card text-sm text-zinc-400">管理者尚未為 {GRADE_LABEL[grade]} 啟用情境。</div>}
           {grade && grades[grade].scenarios.map(sc => {
             const gc = grades[grade]
+            const principleSubjects = gc.subjects.filter(s => PRINCIPLE_SUBJECTS.includes(s))
+            const optionalSubjects = gc.subjects.filter(s => !PRINCIPLE_SUBJECTS.includes(s))
             const r = sc.reduction
             const key = String(r)
             const target = gc.homeroomBase - r - projectReduction + extraHours
@@ -164,6 +178,25 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             const inSelf = !hasPlans || !!selfMode[key]
             const planName = (choice?.planName && usablePlans.some(p => p.name === choice.planName)) ? choice.planName : ''
             const sum = choice ? gc.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
+            const escalated = inSelf && escalateFor(r, choice?.breakdown ?? {})
+            function cellGroup(title: string, subjs: string[], editable: boolean) {
+              if (subjs.length === 0) return null
+              return (
+                <div className="space-y-1">
+                  <div className="text-[11px] font-semibold text-zinc-500">{title}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
+                    {subjs.map((subj, si) => (
+                      <div key={si} className="flex items-center gap-1.5">
+                        <span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span>
+                        {editable
+                          ? <NumberInput min={0} value={choice?.breakdown[subj] ?? 0} disabled={readOnly} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" />
+                          : <span className="w-12 text-center text-xs font-medium text-zinc-800">{choice?.breakdown[subj] ?? 0}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
             return (
               <div key={r} className="card p-4 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -178,23 +211,24 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                 </div>
                 {hasPlans && !selfMode[key] && planName && choice && (
                   <>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
-                      {gc.subjects.map((subj, si) => <div key={si} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span><span className="w-12 text-center text-xs font-medium text-zinc-800">{choice.breakdown[subj] ?? 0}</span></div>)}
-                    </div>
+                    {cellGroup('導師原則配課', principleSubjects, false)}
+                    {cellGroup('導師選填配課', optionalSubjects, false)}
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}`}</p>
                   </>
                 )}
                 {hasPlans && !selfMode[key] && !readOnly && (
-                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => { setSelfMode(m => ({ ...m, [key]: true })); setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
+                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => { if (!confirm('注意事項：\n1. 導師原則上需配課國語、數學、班級學年活動、自主學習。\n2. 任課任何領域都須依照課程計畫進行課程實施（符合教學正常化）。\n3. 同一領域若有兩位以上老師任教，進度與課程內涵需做橫向聯繫與討論，確保學生學習品質。')) return; setSelfMode(m => ({ ...m, [key]: true })); setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) }, reason: c?.reason ?? '' })) }} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
                 )}
                 {inSelf && (
                   <div className="space-y-2">
                     <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-2 py-1.5">
-                      {hasPlans ? <>自訂配課,合計需達 {target}。{!readOnly && <button onClick={() => { setSelfMode(m => ({ ...m, [key]: false })); if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } })) }} className="ml-2 underline">改選方案</button>}</> : <>無相符方案(目標 {target}),請自行配課使合計達 {target}。</>}
+                      {hasPlans ? <>自訂配課,各科合計需達 {target} 節。{!readOnly && <button onClick={() => { setSelfMode(m => ({ ...m, [key]: false })); if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } })) }} className="ml-2 underline">改選方案</button>}</> : <>無相符方案(目標 {target}),請自行配課使合計達 {target} 節。</>}
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
-                      {gc.subjects.map((subj, si) => <div key={si} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span><NumberInput min={0} value={choice?.breakdown[subj] ?? 0} disabled={readOnly} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" /></div>)}
-                    </div>
+                    {escalated && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-sm px-2 py-1.5">⚠ 您已調整「導師原則配課」科目，此情境的理由將提交「課發會－排配課會議提案討論」。</div>}
+                    <label className="block text-xs"><span className="text-zinc-600">自訂理由（必填）</span>
+                      <input value={choice?.reason ?? ''} disabled={readOnly} onChange={e => setChoice(r, c => ({ ...c, reason: e.target.value }))} className="input py-1 w-full mt-1" placeholder="請說明配課考量" /></label>
+                    {cellGroup('導師原則配課', principleSubjects, true)}
+                    {cellGroup('導師選填配課', optionalSubjects, true)}
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}（${sum < target ? '不足' : '超過'} ${Math.abs(sum - target)}）`}</p>
                   </div>
                 )}
