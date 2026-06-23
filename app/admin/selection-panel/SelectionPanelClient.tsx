@@ -62,7 +62,14 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
   }
 
   async function applyToRotations() {
-    if (!confirm(`套用 ${preferenceYear} 學年度撕榜結果到工作紀錄？\n\n● 會把目前已分配的教師寫入 ${preferenceYear} 學年度工作紀錄（覆蓋該年度同一位教師的既有紀錄），並重算分數。\n● 未分配（待安排）的教師不受影響。`)) return
+    if (!confirm(
+      `套用 ${preferenceYear} 學年度撕榜結果到工作紀錄？\n\n` +
+      `按下後會一次完成（並重算分數）：\n` +
+      `① 已分配的撕榜教師 → 寫入 ${preferenceYear} 學年度工作（覆蓋既有）。\n` +
+      `② 本輪需換工作、但這次未分配者 → 清掉其殘留的 ${preferenceYear} 紀錄。\n` +
+      `③ 其餘在校老師（連任）→ 若尚無 ${preferenceYear} 紀錄，複製其原職建立（只補不覆蓋）。\n\n` +
+      `※ 接棒班／留停等特殊個案複製後請至「工作紀錄」檢視微調。`
+    )) return
     setApplying(true)
     try {
       await saveNow()
@@ -73,10 +80,15 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { alert(data.error || '套用失敗，請稍後再試'); return }
-      // 不 router.refresh()：寫入 115 rotation 後 getRotationTarget 會變動、
+      // 不 router.refresh()：寫入當年度 rotation 後 getRotationTarget 會變動、
       // 已分配教師可能被面板過濾掉，造成「配置消失」的錯覺。保留目前畫面即可，
       // 資料已寫入 DB；需要看更新後狀態可手動重新整理。
-      alert(`已套用 ${data.applied} 位教師到 ${preferenceYear} 學年度工作紀錄，分數已重算。`)
+      alert(
+        `已套用至 ${preferenceYear} 學年度工作紀錄，分數已重算：\n` +
+        `· 撕榜寫入 ${data.applied} 位\n` +
+        `· 連任補齊 ${data.filled} 位\n` +
+        `· 清除殘留 ${data.removed} 位`
+      )
     } finally {
       setApplying(false)
     }
