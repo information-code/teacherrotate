@@ -103,8 +103,23 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
 
   async function bumpPreferenceYear() {
     const nextYear = currentYear + 1
-    if (!confirm(`啟動 ${nextYear} 學年度的志願填寫？\n\n● 目前 ${currentYear} 學年度的志願將保留為歷史紀錄，可隨時切換年度查看。\n● 老師端會看到全新的 ${nextYear} 學年度填寫表單（開放填寫）。`)) return
-    await saveSettings({ preference_year: nextYear, preference_phase: 'open' }, '啟動失敗，請稍後再試')
+    if (!confirm(`啟動 ${nextYear} 學年度的志願填寫？\n\n● 目前 ${currentYear} 學年度的志願將保留為歷史紀錄，可隨時切換年度查看（不會刪除）。\n● 老師端會看到全新的 ${nextYear} 學年度填寫表單（開放填寫）。\n● 全體老師的「分數確認」將重置，需重新核對含上一年新分數後才能填志願。`)) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/advance-year', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: nextYear }),
+      })
+      if (!res.ok) {
+        alert('啟動失敗，請稍後再試')
+        return
+      }
+      router.push('/admin/statistics')
+      router.refresh()
+    } finally {
+      setBusy(false)
+    }
   }
 
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
