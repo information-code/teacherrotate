@@ -9,13 +9,13 @@ export const SUBJECT_ORDER = ['國語', '數學', '生活', '社會', '自然', 
 // 導師配課三分類：
 //   原則配課（動到→理由提課發會）
 export const PRINCIPLE_SUBJECTS = ['國語', '數學', '班級活動', '自主學習']
-//   專長配課＝學校有科任的科目（動到→理由給課務組排配課依據）
-export const SPECIALTY_SUBJECTS = ['社會', '自然', '英語', '體育', '視覺藝術', '表演藝術', '音樂', '本土語', '專題', '國際教育']
-//   其餘（健康、綜合、生活…）為選填配課
+//   選填配課＝必修但非原則、非科任專長（由導師授課）
+export const OPTIONAL_SUBJECTS = ['健康', '綜合', '生活']
+//   其餘一律為專長配課：各科任領域，以及任何非必修／事後新增的其他課程（含專題、國際教育…）。
 export function subjectCategory(name: string): 'principle' | 'specialty' | 'optional' {
   if (PRINCIPLE_SUBJECTS.includes(name)) return 'principle'
-  if (SPECIALTY_SUBJECTS.includes(name)) return 'specialty'
-  return 'optional'
+  if (OPTIONAL_SUBJECTS.includes(name)) return 'optional'
+  return 'specialty'
 }
 // 需證照科目
 export const CERT_SUBJECTS = ['英語', '本土語']
