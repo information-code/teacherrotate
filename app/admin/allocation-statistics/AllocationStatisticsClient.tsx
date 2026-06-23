@@ -170,14 +170,14 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const meta = gradesMeta[grade]
         const subjects = meta?.subjects ?? []
         const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-        const target = (t: TeacherStat) => (t.base ?? 0) - reduction
+        // 導師目標 = 基本 − 情境減課 − 核定專案減課 + 核定超鐘
+        const target = (t: TeacherStat) => actualOf(t) - reduction
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
-        // 小結涵蓋：該年級所有有需求的科目 ∪ 導師可配課科目
-        const summarySubjects = orderSubjectNames(Array.from(new Set([...Object.keys(demandByGradeSubject[grade] ?? {}), ...subjects])).filter(Boolean))
         return (
           <>
             <div className="card p-0 overflow-x-auto">
-              <table className="table-base">
+              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">{GRADE_LABEL[grade]}導師配課與供需小結 <span className="text-xs font-normal text-zinc-400 ml-1">導師以「{REDUCTION_LABEL[reduction]}」計；下方彙整各科供給與差異</span></div>
+              <table className="table-base mt-2">
                 <thead>
                   <tr>
                     <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
@@ -216,68 +216,40 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     )
                   })}
                 </tbody>
-              </table>
-            </div>
-
-            {/* 小結：需求 vs 導師+科任供給 */}
-            <div className="card p-0 overflow-x-auto">
-              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">{GRADE_LABEL[grade]} 各科目供需小結 <span className="text-xs font-normal text-zinc-400 ml-1">導師以「{REDUCTION_LABEL[reduction]}」計</span></div>
-              <table className="table-base mt-2">
-                <thead><tr><th>科目</th><th className="text-center">需求</th><th className="text-center">導師供給</th><th className="text-center">科任供給</th><th className="text-center">行政供給</th><th className="text-center">合計供給</th><th className="text-center">差異</th></tr></thead>
-                <tbody>
-                  {summarySubjects.map(sub => {
-                    const demand = demandByGradeSubject[grade]?.[sub] ?? 0
-                    const hr = homeroomSupply(grade, sub)
-                    const sub2 = subjectSupply(grade, sub)
-                    const adm = adminSupply(grade, sub)
-                    const supply = hr + sub2 + adm
-                    const diff = supply - demand
-                    const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                    return (
-                      <tr key={sub}>
-                        <td className="font-medium">{sub}</td>
-                        <td className="text-center text-zinc-500">{demand}</td>
-                        <td className="text-center">{hr}</td>
-                        <td className="text-center">{sub2}</td>
-                        <td className="text-center">{adm}</td>
-                        <td className="text-center font-medium">{supply}</td>
-                        <td className={`text-center font-medium ${cls}`}>
+                <tfoot>
+                  <tr className="border-t-2 border-zinc-200">
+                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">科任供給</td>
+                    {subjects.map(s => <td key={s} className="text-center font-medium">{subjectSupply(grade, s)}</td>)}
+                    <td colSpan={4}></td>
+                  </tr>
+                  <tr>
+                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">行政供給</td>
+                    {subjects.map(s => <td key={s} className="text-center font-medium">{adminSupply(grade, s)}</td>)}
+                    <td colSpan={4}></td>
+                  </tr>
+                  <tr>
+                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
+                    {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
+                    <td colSpan={4}></td>
+                  </tr>
+                  <tr>
+                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
+                    {subjects.map(s => {
+                      const diff = homeroomSupply(grade, s) + subjectSupply(grade, s) + adminSupply(grade, s) - (demandByGradeSubject[grade]?.[s] ?? 0)
+                      const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                      return (
+                        <td key={s} className={`text-center font-medium ${cls}`}>
                           {diff < 0
-                            ? <button onClick={() => setOtSubj(otSubj === sub ? null : sub)} className="underline cursor-pointer">{diff}（不足）</button>
-                            : <>{diff > 0 ? `+${diff}（超支）` : diff}</>}
+                            ? <button onClick={() => setOtSubj(otSubj === s ? null : s)} className="underline cursor-pointer">{diff}</button>
+                            : (diff > 0 ? `+${diff}` : diff)}
                         </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
+                      )
+                    })}
+                    <td colSpan={4}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
-
-            {otSubj && (
-              <div className="card p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-zinc-700">「{otSubj}」願意超鐘點支援的老師</h4>
-                  <button onClick={() => setOtSubj(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
-                </div>
-                {willingFor(otSubj).length === 0
-                  ? <p className="text-sm text-zinc-400">目前無老師於送出時表示願意超鐘點支援此科目。</p>
-                  : <ul className="text-sm text-zinc-700 space-y-1">
-                      {willingFor(otSubj).map(t => {
-                        const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
-                        return (
-                          <li key={t.id} className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{t.name}</span>
-                            <span className="text-xs text-zinc-500">{t.roleLabel}</span>
-                            <span className="text-xs text-amber-600">願意超鐘點 {t.data.overtimeHours} 節</span>
-                            {order.length > 0 && <span className="text-xs text-zinc-400">順序：{order.join('＞')}</span>}
-                            {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已核定 {t.data.overtimeApproved} 節</span>}
-                            <button onClick={() => setReview(t.id)} className="text-xs text-sky-600 underline hover:text-sky-700">審核</button>
-                          </li>
-                        )
-                      })}
-                    </ul>}
-              </div>
-            )}
           </>
         )
       })()}
@@ -340,6 +312,21 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 <tr>
                   <td className="text-xs font-semibold text-zinc-600">該年級需求</td>
                   {GRADES.map(g => <td key={g} className="text-center text-zinc-500">{demandByGradeSubject[g]?.[subj] ?? 0}</td>)}
+                  <td colSpan={4}></td>
+                </tr>
+                <tr>
+                  <td className="text-xs font-semibold text-zinc-600">差異</td>
+                  {GRADES.map(g => {
+                    const diff = homeroomSupply(g, subj) + subjectSupply(g, subj) + adminSupply(g, subj) - (demandByGradeSubject[g]?.[subj] ?? 0)
+                    const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                    return (
+                      <td key={g} className={`text-center font-medium ${cls}`}>
+                        {diff < 0
+                          ? <button onClick={() => setOtSubj(otSubj === subj ? null : subj)} className="underline cursor-pointer">{diff}</button>
+                          : (diff > 0 ? `+${diff}` : diff)}
+                      </td>
+                    )
+                  })}
                   <td colSpan={4}></td>
                 </tr>
               </tfoot>
@@ -408,6 +395,33 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           </div>
         )
       })()}
+
+      {/* ── 不足科目：願意超鐘點支援的老師（導師／科任檢視共用）── */}
+      {otSubj && (
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-zinc-700">「{otSubj}」願意超鐘點支援的老師</h4>
+            <button onClick={() => setOtSubj(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+          </div>
+          {willingFor(otSubj).length === 0
+            ? <p className="text-sm text-zinc-400">目前無老師於送出時表示願意超鐘點支援此科目。</p>
+            : <ul className="text-sm text-zinc-700 space-y-1">
+                {willingFor(otSubj).map(t => {
+                  const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
+                  return (
+                    <li key={t.id} className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{t.name}</span>
+                      <span className="text-xs text-zinc-500">{t.roleLabel}</span>
+                      <span className="text-xs text-amber-600">願意超鐘點 {t.data.overtimeHours} 節</span>
+                      {order.length > 0 && <span className="text-xs text-zinc-400">順序：{order.join('＞')}</span>}
+                      {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已核定 {t.data.overtimeApproved} 節</span>}
+                      <button onClick={() => setReview(t.id)} className="text-xs text-sky-600 underline hover:text-sky-700">審核</button>
+                    </li>
+                  )
+                })}
+              </ul>}
+        </div>
+      )}
 
       {/* ── 配課理由 modal ── */}
       {reasonView && (() => {
