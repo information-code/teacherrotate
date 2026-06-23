@@ -19,6 +19,8 @@ export function subjectCategory(name: string): 'principle' | 'specialty' | 'opti
 }
 // 需證照科目
 export const CERT_SUBJECTS = ['英語', '本土語']
+// 超鐘順序的特殊終止選項：選了它代表「清單以外的領域不願意支援」，後面的志願序自動補上同值
+export const OVERTIME_REJECT_OTHERS = '其他領域不願意'
 export function sortSubjects<T extends { name: string }>(arr: T[]): T[] {
   const known = SUBJECT_ORDER.flatMap(m => arr.filter(s => s.name === m))
   const unknown = arr.filter(s => !SUBJECT_ORDER.includes(s.name))

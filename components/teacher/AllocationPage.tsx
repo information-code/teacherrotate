@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, subjectAreaOf,
+  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, subjectAreaOf, OVERTIME_REJECT_OTHERS,
   type AllocRole, type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
 import { ReasonCertModal, ConfirmNotesModal, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
@@ -126,7 +126,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     return []
   })()
   function setOrder(i: number, val: string) {
-    setOvertimeOrder(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
+    setOvertimeOrder(prev => {
+      const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']
+      if (val === OVERTIME_REJECT_OTHERS) { for (let k = i; k < 3; k++) a[k] = OVERTIME_REJECT_OTHERS }  // 之後志願序自動補上同值
+      else a[i] = val
+      return a
+    })
   }
   function setProjOrder(i: number, val: string) {
     setProjectOrder(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
@@ -342,16 +347,20 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
           {overtimeHours > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；列出全部專長科目與您有配課的選填科目）：</p>
+              <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；列出全部專長科目與您有配課的選填科目）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
               <div className="flex flex-wrap gap-3">
-                {[0, 1, 2].map(i => (
-                  <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">順序{['一', '二', '三'][i]}</span>
-                    <select value={overtimeOrder[i] ?? ''} disabled={readOnly} onChange={e => setOrder(i, e.target.value)} className="input py-1 text-sm w-32">
-                      <option value="">不指定</option>
-                      {overtimeOptions.filter(s => !overtimeOrder.includes(s) || overtimeOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </label>
-                ))}
+                {[0, 1, 2].map(i => {
+                  const lockedByReject = overtimeOrder.slice(0, i).includes(OVERTIME_REJECT_OTHERS)
+                  return (
+                    <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">順序{['一', '二', '三'][i]}</span>
+                      <select value={overtimeOrder[i] ?? ''} disabled={readOnly || lockedByReject} onChange={e => setOrder(i, e.target.value)} className="input py-1 text-sm w-40">
+                        <option value="">不指定</option>
+                        {overtimeOptions.filter(s => !overtimeOrder.includes(s) || overtimeOrder[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
+                        <option value={OVERTIME_REJECT_OTHERS}>⛔ 其他領域不願意</option>
+                      </select>
+                    </label>
+                  )
+                })}
               </div>
               {overtimeOptions.length === 0 && <p className="text-[11px] text-zinc-400">您目前的配課沒有可支援的選填／專長科目。</p>}
             </div>
