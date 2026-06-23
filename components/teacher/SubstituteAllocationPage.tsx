@@ -25,6 +25,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   const [grade, setGrade] = useState<number | null>(initial.grade ?? null)
   const [extraHours, setExtraHours] = useState(initial.extraHours ?? 0)
   const [scenarios, setScenarios] = useState<Record<string, ScenarioChoice>>(initial.scenarios ?? {})
+  const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})  // 自配為當下狀態，非從儲存推導
   const [subjects, setSubjects] = useState<string[]>(initial.subjects ?? [])
   const [sgh, setSgh] = useState<Record<string, Record<string, number>>>(initial.subjectGradeHours ?? {})
   const [locked, setLocked] = useState(initial.locked ?? false)
@@ -160,15 +161,14 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             const choice = scenarios[key]
             const usablePlans = sc.plans.filter(p => planTotal(p) === target)
             const hasPlans = usablePlans.length > 0
-            const voluntarySelf = !!choice && choice.planName === null && hasPlans
-            const inSelf = !hasPlans || voluntarySelf
+            const inSelf = !hasPlans || !!selfMode[key]
             const planName = (choice?.planName && usablePlans.some(p => p.name === choice.planName)) ? choice.planName : ''
             const sum = choice ? gc.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
             return (
               <div key={r} className="card p-4 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <h3 className="text-sm font-semibold text-zinc-700">{REDUCTION_LABEL[r as 0 | 1 | 2]}<span className="ml-2 text-xs font-normal text-zinc-500">目標 {target}</span></h3>
-                  {hasPlans && !voluntarySelf && (
+                  {hasPlans && !selfMode[key] && (
                     <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly}
                       onChange={e => { const v = e.target.value; if (!v) { setScenarios(p => { const n = { ...p }; delete n[key]; return n }) } else { const pl = usablePlans.find(p => p.name === v); setChoice(r, () => ({ planName: v, breakdown: { ...(pl?.alloc ?? {}) } })) } }}>
                       <option value="">請選擇方案</option>
@@ -176,7 +176,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                     </select>
                   )}
                 </div>
-                {hasPlans && !voluntarySelf && planName && choice && (
+                {hasPlans && !selfMode[key] && planName && choice && (
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                       {gc.subjects.map((subj, si) => <div key={si} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span><span className="w-12 text-center text-xs font-medium text-zinc-800">{choice.breakdown[subj] ?? 0}</span></div>)}
@@ -184,13 +184,13 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}`}</p>
                   </>
                 )}
-                {hasPlans && !voluntarySelf && !readOnly && (
-                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } }))} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
+                {hasPlans && !selfMode[key] && !readOnly && (
+                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => { setSelfMode(m => ({ ...m, [key]: true })); setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
                 )}
                 {inSelf && (
                   <div className="space-y-2">
                     <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-2 py-1.5">
-                      {hasPlans ? <>自訂配課,合計需達 {target}。{!readOnly && <button onClick={() => setScenarios(p => { const n = { ...p }; delete n[key]; return n })} className="ml-2 underline">改選方案</button>}</> : <>無相符方案(目標 {target}),請自行配課使合計達 {target}。</>}
+                      {hasPlans ? <>自訂配課,合計需達 {target}。{!readOnly && <button onClick={() => { setSelfMode(m => ({ ...m, [key]: false })); if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } })) }} className="ml-2 underline">改選方案</button>}</> : <>無相符方案(目標 {target}),請自行配課使合計達 {target}。</>}
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                       {gc.subjects.map((subj, si) => <div key={si} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span><NumberInput min={0} value={choice?.breakdown[subj] ?? 0} disabled={readOnly} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" /></div>)}

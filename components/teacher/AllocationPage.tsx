@@ -23,7 +23,7 @@ interface Props {
 export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, closed, initial }: Props) {
   const projectReduction = initial.projectReduction ?? 0  // 由管理者設定，教師端唯讀
   const [extraHours, setExtraHours] = useState(initial.extraHours ?? 0)
-  // A. 預設選建議方案：未選過的啟用情境，帶入「總數與目標相符」的第一個方案
+  // A. 預設選方案：只要目標對得上方案，一律預設方案（即使先前存的是自配，也回到方案）
   const [scenarios, setScenarios] = useState<Record<string, ScenarioChoice>>(() => {
     const s: Record<string, ScenarioChoice> = { ...(initial.scenarios ?? {}) }
     const ro = (initial.locked ?? false) || closed
@@ -31,12 +31,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       for (const sc of homeroom.scenarios) {
         const k = String(sc.reduction)
         const tgt = (base ?? 0) - sc.reduction - projectReduction + (initial.extraHours ?? 0)
-        const usable = sc.plans.find(p => planTotal(p) === tgt)
-        if (!s[k] && usable) s[k] = { planName: usable.name, breakdown: { ...usable.alloc } }
+        const usable = sc.plans.filter(p => planTotal(p) === tgt)
+        const cur = s[k]
+        const curIsUsablePlan = !!cur?.planName && usable.some(p => p.name === cur.planName)
+        if (usable.length > 0 && !curIsUsablePlan) s[k] = { planName: usable[0].name, breakdown: { ...usable[0].alloc } }
       }
     }
     return s
   })
+  // 自配為當下狀態（非從儲存推導）：唯有按「改為自訂」才進自配
+  const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
   const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})  // 正式科任：各年級節數（單一領域）
   const [locked, setLocked] = useState(initial.locked ?? false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -224,8 +228,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               const choice = scenarios[key]
               const usablePlans = sc.plans.filter(p => planTotal(p) === target)  // 僅總數=目標的方案可用
               const hasPlans = usablePlans.length > 0
-              const voluntarySelf = !!choice && choice.planName === null && hasPlans
-              const inSelf = !hasPlans || voluntarySelf   // 無相符方案 → 強制自配
+              const inSelf = !hasPlans || !!selfMode[key]   // 無相符方案 → 強制自配；否則唯有按鈕進自配
               const planName = (choice?.planName && usablePlans.some(p => p.name === choice.planName)) ? choice.planName : ''
               const sum = choice ? homeroom.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
 
@@ -236,9 +239,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               }
               function enterSelf() {
                 if (!confirm('自訂配課自由度較大、可能影響全校排課，且需經行政確認。\n建議優先選用行政提供的方案。確定要自訂？')) return
+                setSelfMode(m => ({ ...m, [key]: true }))
                 setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) }, reason: c?.reason ?? '' }))
               }
-              function cancelSelf() { setScenarios(prev => { const n = { ...prev }; delete n[key]; return n }) }
+              function cancelSelf() {
+                setSelfMode(m => ({ ...m, [key]: false }))
+                if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } }))
+                else setScenarios(prev => { const n = { ...prev }; delete n[key]; return n })
+              }
 
               return (
                 <div key={r} className="card p-4 space-y-3">
@@ -246,7 +254,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     <h3 className="text-sm font-semibold text-zinc-700">{REDUCTION_LABEL[r as 0 | 1 | 2]}
                       <span className="ml-2 text-xs font-normal text-zinc-500">目標實際授課節數 {target}</span>
                     </h3>
-                    {hasPlans && !voluntarySelf && (
+                    {hasPlans && !selfMode[key] && (
                       <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
                         <option value="">請選擇方案</option>
                         {usablePlans.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
@@ -255,7 +263,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                   </div>
 
                   {/* 方案模式：唯讀顯示 */}
-                  {hasPlans && !voluntarySelf && planName && choice && (
+                  {hasPlans && !selfMode[key] && planName && choice && (
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                         {homeroom.subjects.map((subj, si) => (
@@ -270,7 +278,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                   )}
 
                   {/* 有相符方案、非自配：自訂入口一直可用（即使已選方案） */}
-                  {hasPlans && !voluntarySelf && !readOnly && (
+                  {hasPlans && !selfMode[key] && !readOnly && (
                     <p className="text-[11px] text-zinc-400">
                       建議直接選用方案；如需調整可
                       <button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。
