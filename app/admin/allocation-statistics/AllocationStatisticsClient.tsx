@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
-import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, subjectAreaOf, orderSubjectNames, type Reduction } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, orderSubjectNames, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
@@ -24,6 +24,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
   const [review, setReview] = useState<string | null>(null)  // 減課／超鐘事後審核 modal（teacher id）
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
+  const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
 
   const teachersRef = useRef(teachers)
@@ -66,31 +67,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
 
   const rkey = String(reduction)
-  const SUBJECT_ORDER = ['生活', '英語', '社會', '自然', '體育', '視覺藝術', '表演藝術', '音樂']
-  const isSubAgentSubject = (t: TeacherStat) => t.work === '代理科任'
-  const subjectTabs = Array.from(new Set(
-    teachers.filter(t => t.role === 'subject').flatMap(t => isSubAgentSubject(t) ? (t.data.subjects ?? []) : [subjectAreaOf(t.work)])
-  )).filter(Boolean)
-    .sort((a, b) => {
-      const ia = SUBJECT_ORDER.indexOf(a), ib = SUBJECT_ORDER.indexOf(b)
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b, 'zh-Hant')
-    })
+  const subjectTeachers = teachers.filter(t => t.role === 'subject')
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const adminTeachers = teachers.filter(t => t.role === 'admin')
     .sort((a, b) => ADMIN_KIND_ORDER[adminKind(a.work)] - ADMIN_KIND_ORDER[adminKind(b.work)])
 
-  // 供給計算（共用）
+  // 供給計算（共用）。科任與行政皆以 subjectGradeHours（領域×年級）統計。
   function homeroomSupply(grade: number, subj: string) {
     return teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
       .reduce((s, t) => s + (Number(t.data.scenarios?.[rkey]?.breakdown?.[subj]) || 0), 0)
   }
   function subjectSupply(grade: number, subj: string) {
-    let total = 0
-    for (const t of teachers) {
-      if (t.role !== 'subject') continue
-      if (isSubAgentSubject(t)) total += Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0
-      else if (subjectAreaOf(t.work) === subj) total += Number(t.data.gradeHours?.[String(grade)]) || 0
-    }
-    return total
+    return subjectTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
   }
   // 配課實際授課節數 = 基本 − 核定專案減課 + 核定超鐘
   function actualOf(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.overtimeApproved || 0) }
@@ -117,11 +105,70 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       return { ...d, scenarios: { ...d.scenarios, [rkey]: { planName: null, breakdown: { ...cur.breakdown, [sub]: val } } } }
     })
   }
-  function editGradeHours(id: string, grade: number, val: number) {
-    updateTeacher(id, d => ({ ...d, gradeHours: { ...(d.gradeHours ?? {}), [String(grade)]: val } }))
-  }
   function editSubjectGradeHours(id: string, subj: string, grade: number, val: number) {
     updateTeacher(id, d => ({ ...d, subjectGradeHours: { ...(d.subjectGradeHours ?? {}), [subj]: { ...((d.subjectGradeHours ?? {})[subj] ?? {}), [String(grade)]: val } } }))
+  }
+
+  // 科任／行政共用：下拉選人 + 年級×領域雙向表，合計需等於 基本−減課+超鐘=實際。
+  // 以函式（非元件）回傳 JSX，避免每次輸入造成輸入框重新掛載而失焦。
+  function gradeSubjectGrid(list: TeacherStat[], sel: string | null, setSel: (id: string) => void, kindLabel: string) {
+    if (list.length === 0) return <div className="card text-sm text-zinc-400 text-center py-3">無{kindLabel}資料</div>
+    const cur = sel && list.some(t => t.id === sel) ? sel : list[0].id
+    const t = list.find(x => x.id === cur)!
+    const act = actualOf(t)
+    const cell = (subj: string, g: number) => Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0
+    const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined
+    const total = allSubjectsList.reduce((s, subj) => s + GRADES.reduce((a, g) => a + cell(subj, g), 0), 0)
+    const mismatch = total !== act
+    return (
+      <div className="space-y-4">
+        <div className="card p-4 flex items-center gap-3 flex-wrap">
+          <span className="text-sm text-zinc-600">選擇{kindLabel}教師</span>
+          <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-56">
+            {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
+          </select>
+          {reasonIcon(t)}{reviewIcon(t)}
+          {t.data.locked && <span className="text-[10px]">🔒</span>}
+          <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
+        </div>
+        <div className="card p-0 overflow-x-auto">
+          <div className="px-4 pt-3 flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm font-semibold text-zinc-700">{t.name} · 各領域×年級配課
+              <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　+超鐘 {t.data.overtimeApproved || 0}　= 實際 {act}</span>
+            </div>
+            <div className={`text-sm font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>合計 {total} / 實際 {act}{mismatch && `（${total < act ? '不足' : '超過'} ${Math.abs(total - act)}）`}</div>
+          </div>
+          <table className="table-base mt-2">
+            <thead><tr><th>領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
+            <tbody>
+              {allSubjectsList.map(subj => {
+                const rowSum = GRADES.reduce((a, g) => a + cell(subj, g), 0)
+                return (
+                  <tr key={subj}>
+                    <td className="font-medium">{subj}</td>
+                    {GRADES.map(g => (
+                      <td key={g} className="text-center">
+                        {offered(subj, g)
+                          ? <NumberInput min={0} value={cell(subj, g)} onChange={n => editSubjectGradeHours(t.id, subj, g, n)} className="input w-11 text-center py-0.5 text-xs" />
+                          : <span className="text-zinc-300">—</span>}
+                      </td>
+                    ))}
+                    <td className="text-center text-zinc-500">{rowSum}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className={`border-t-2 border-zinc-200 ${mismatch ? 'bg-red-50' : ''}`}>
+                <td className="text-xs font-semibold text-zinc-600">合計</td>
+                {GRADES.map(g => <td key={g} className="text-center font-medium">{allSubjectsList.reduce((a, subj) => a + cell(subj, g), 0)}</td>)}
+                <td className={`text-center font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>{total}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    )
   }
 
   const tabCls = (active: boolean) =>
@@ -137,7 +184,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               ? <span className="ml-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-sm">填報中</span>
               : <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm">已截止</span>}
           </h2>
-          <p className="text-xs text-zinc-400">各年級看導師配課與小結（含科任、行政供給）是否足夠；科任分領域填各年段節數；行政為候補、可跨領域×年級補課。可直接編輯（最高權限）。合計≠實際者以底色標示。</p>
+          <p className="text-xs text-zinc-400">各年級看導師配課與小結（含科任、行政供給）是否足夠；科任、行政皆為候補式，下拉選人後填年級×領域雙向表。可直接編輯（最高權限）。合計≠實際者以底色標示。</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {savingId && <span className="text-xs text-zinc-500">儲存中…</span>}
@@ -158,8 +205,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="flex gap-1 flex-wrap items-center">
           {GRADES.map(g => <button key={g} onClick={() => setView(String(g))} className={tabCls(view === String(g))}>{GRADE_LABEL[g]}</button>)}
           <span className="mx-1 text-zinc-300">|</span>
-          {subjectTabs.map(s => <button key={s} onClick={() => setView('subj:' + s)} className={tabCls(view === 'subj:' + s)}>{s}</button>)}
-          <span className="mx-1 text-zinc-300">|</span>
+          <button onClick={() => setView('subject')} className={tabCls(view === 'subject')}>科任</button>
           <button onClick={() => setView('admin')} className={tabCls(view === 'admin')}>行政</button>
         </div>
       </div>
@@ -254,147 +300,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         )
       })()}
 
-      {/* ── 科任檢視（依領域分表）── */}
-      {view.startsWith('subj:') && (() => {
-        const subj = view.slice(5)
-        const list = teachers.filter(t => t.role === 'subject' && (isSubAgentSubject(t) ? (t.data.subjects ?? []).includes(subj) : subjectAreaOf(t.work) === subj))
-        return (
-          <div className="card p-0 overflow-x-auto">
-            <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 · {subj} <span className="text-xs font-normal text-zinc-400 ml-1">填入各老師授課年段與節數；下方對照各年級需求</span></div>
-            <table className="table-base mt-2">
-              <thead>
-                <tr>
-                  <th>教師</th>
-                  {GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}
-                  <th className="text-center">合計</th><th className="text-center">實際</th>
-                  <th className="text-center">減課數</th><th className="text-center">超鐘數</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.length === 0 && <tr><td colSpan={GRADES.length + 5} className="text-sm text-zinc-400 text-center py-3">無此領域科任</td></tr>}
-                {list.map(t => {
-                  const isSub = isSubAgentSubject(t)
-                  const cellVal = (g: number) => isSub ? (Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0) : (Number(t.data.gradeHours?.[String(g)]) || 0)
-                  const sum = GRADES.reduce((s, g) => s + cellVal(g), 0)
-                  const act = actualOf(t)  // 代理可能跨多科，act 為其總實際
-                  const mismatch = !isSub && sum !== act  // 代理跨多科，單科表不比對、不上色
-                  return (
-                    <tr key={t.id} className={mismatch ? 'bg-red-50' : ''}>
-                      <td className="font-medium text-zinc-800">
-                        {t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
-                        {isSub && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
-                        {reasonIcon(t)}{reviewIcon(t)}
-                      </td>
-                      {GRADES.map(g => (
-                        <td key={g} className="text-center">
-                          <NumberInput min={0} value={cellVal(g)} onChange={n => isSub ? editSubjectGradeHours(t.id, subj, g, n) : editGradeHours(t.id, g, n)} className="input w-11 text-center py-0.5 text-xs" />
-                        </td>
-                      ))}
-                      <td className={`text-center font-medium ${isSub ? 'text-zinc-700' : (sum === act ? 'text-green-700' : 'text-amber-600')}`}>{sum}</td>
-                      <td className="text-center text-zinc-500">{act}{isSub && <span className="text-[10px] text-zinc-400 ml-0.5">總</span>}</td>
-                      <td className="text-center text-zinc-700">{t.data.projectReduction || 0}</td>
-                      <td className="text-center text-zinc-700">{t.data.overtimeApproved || 0}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-zinc-200">
-                  <td className="text-xs font-semibold text-zinc-600">科任供給加總</td>
-                  {GRADES.map(g => <td key={g} className="text-center font-medium">{subjectSupply(g, subj)}</td>)}
-                  <td colSpan={4}></td>
-                </tr>
-                <tr>
-                  <td className="text-xs font-semibold text-zinc-600">行政供給</td>
-                  {GRADES.map(g => <td key={g} className="text-center font-medium">{adminSupply(g, subj)}</td>)}
-                  <td colSpan={4}></td>
-                </tr>
-                <tr>
-                  <td className="text-xs font-semibold text-zinc-600">該年級需求</td>
-                  {GRADES.map(g => <td key={g} className="text-center text-zinc-500">{demandByGradeSubject[g]?.[subj] ?? 0}</td>)}
-                  <td colSpan={4}></td>
-                </tr>
-                <tr>
-                  <td className="text-xs font-semibold text-zinc-600">差異</td>
-                  {GRADES.map(g => {
-                    const diff = homeroomSupply(g, subj) + subjectSupply(g, subj) + adminSupply(g, subj) - (demandByGradeSubject[g]?.[subj] ?? 0)
-                    const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                    return (
-                      <td key={g} className={`text-center font-medium ${cls}`}>
-                        {diff < 0
-                          ? <button onClick={() => setOtSubj(otSubj === subj ? null : subj)} className="underline cursor-pointer">{diff}</button>
-                          : (diff > 0 ? `+${diff}` : diff)}
-                      </td>
-                    )
-                  })}
-                  <td colSpan={4}></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )
-      })()}
+      {/* ── 科任檢視（候補式：下拉選人 + 年級×領域雙向表）── */}
+      {view === 'subject' && gradeSubjectGrid(subjectTeachers, subjSel, setSubjSel, '科任')}
 
       {/* ── 行政檢視（候補：可跨領域×年級補課，合計需等於實際）── */}
-      {view === 'admin' && (() => {
-        if (adminTeachers.length === 0) return <div className="card text-sm text-zinc-400 text-center py-3">無行政資料</div>
-        const sel = adminSel && adminTeachers.some(t => t.id === adminSel) ? adminSel : adminTeachers[0].id
-        const t = adminTeachers.find(x => x.id === sel)!
-        const act = actualOf(t)
-        const cell = (subj: string, g: number) => Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0
-        const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined
-        const total = allSubjectsList.reduce((s, subj) => s + GRADES.reduce((a, g) => a + cell(subj, g), 0), 0)
-        const mismatch = total !== act
-        return (
-          <div className="space-y-4">
-            <div className="card p-4 flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-zinc-600">選擇行政教師</span>
-              <select value={sel} onChange={e => setAdminSel(e.target.value)} className="input py-1 text-sm w-56">
-                {adminTeachers.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
-              </select>
-              {reasonIcon(t)}{reviewIcon(t)}
-              {t.data.locked && <span className="text-[10px]">🔒</span>}
-              <span className="text-xs text-zinc-400 ml-1">行政為候補概念，可跨領域×年級補課。</span>
-            </div>
-            <div className="card p-0 overflow-x-auto">
-              <div className="px-4 pt-3 flex items-center justify-between flex-wrap gap-2">
-                <div className="text-sm font-semibold text-zinc-700">{t.name} · 各領域×年級配課
-                  <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　+超鐘 {t.data.overtimeApproved || 0}　= 實際 {act}</span>
-                </div>
-                <div className={`text-sm font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>合計 {total} / 實際 {act}{mismatch && `（${total < act ? '不足' : '超過'} ${Math.abs(total - act)}）`}</div>
-              </div>
-              <table className="table-base mt-2">
-                <thead><tr><th>領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
-                <tbody>
-                  {allSubjectsList.map(subj => {
-                    const rowSum = GRADES.reduce((a, g) => a + cell(subj, g), 0)
-                    return (
-                      <tr key={subj}>
-                        <td className="font-medium">{subj}</td>
-                        {GRADES.map(g => (
-                          <td key={g} className="text-center">
-                            {offered(subj, g)
-                              ? <NumberInput min={0} value={cell(subj, g)} onChange={n => editSubjectGradeHours(t.id, subj, g, n)} className="input w-11 text-center py-0.5 text-xs" />
-                              : <span className="text-zinc-300">—</span>}
-                          </td>
-                        ))}
-                        <td className="text-center text-zinc-500">{rowSum}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className={`border-t-2 border-zinc-200 ${mismatch ? 'bg-red-50' : ''}`}>
-                    <td className="text-xs font-semibold text-zinc-600">合計</td>
-                    {GRADES.map(g => <td key={g} className="text-center font-medium">{allSubjectsList.reduce((a, subj) => a + cell(subj, g), 0)}</td>)}
-                    <td className={`text-center font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>{total}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )
-      })()}
+      {view === 'admin' && gradeSubjectGrid(adminTeachers, adminSel, setAdminSel, '行政')}
 
       {/* ── 不足科目：願意超鐘點支援的老師（導師／科任檢視共用）── */}
       {otSubj && (
