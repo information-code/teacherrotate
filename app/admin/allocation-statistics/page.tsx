@@ -63,6 +63,7 @@ export default async function AllocationStatisticsPage() {
   }
 
   const gradesMeta: Record<number, GradeMeta> = {}
+  const demandBySubject: Record<string, number> = {}
   for (const g of GRADES) {
     const gc = config.grades[g]
     const hrSubjects = new Set(gc.subjects.filter(s => s.homeroom).map(s => s.name))
@@ -71,7 +72,12 @@ export default async function AllocationStatisticsPage() {
       demand: gradeDemand(gc).filter(d => d.subject && hrSubjects.has(d.subject)).map(d => ({ subject: d.subject, total: d.total })),
       homeroomBase: gc.homeroomBase,
     }
+    // 全校各領域需求總計（所有科目，含非導師科目）
+    for (const s of gc.subjects) {
+      if (!s.name) continue
+      demandBySubject[s.name] = (demandBySubject[s.name] ?? 0) + gc.classCount * s.perClass
+    }
   }
 
-  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandBySubject={demandBySubject} />
 }

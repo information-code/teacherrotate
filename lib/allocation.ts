@@ -156,6 +156,12 @@ export function adminKind(work: string): AdminKind {
   if (work.includes('主任')) return 'director'
   return 'chief' // 組長
 }
+export const ADMIN_KIND_ORDER: Record<AdminKind, number> = { principal: 0, director: 1, chief: 2 }
+
+/** 從科任職稱取領域名：「英語領域科任」→「英語」、「生活課程科任」→「生活」。用於按名稱對應配課科目。 */
+export function subjectAreaOf(work: string): string {
+  return work.replace(/領域科任$/, '').replace(/課程科任$/, '').replace(/科任$/, '')
+}
 
 /**
  * 導師年級由系統決定，不需老師選：

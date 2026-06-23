@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
-import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, type Reduction } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, subjectAreaOf, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   phase: 'open' | 'closed'
   teachers: TeacherStat[]
   gradesMeta: Record<number, GradeMeta>
+  demandBySubject: Record<string, number>
 }
 
-export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta }: Props) {
+export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandBySubject }: Props) {
   const router = useRouter()
   const [teachers, setTeachers] = useState<TeacherStat[]>(initial)
   const [grade, setGrade] = useState<number>(1)
@@ -64,7 +65,26 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const meta = gradesMeta[grade]
   const subjects = meta?.subjects ?? []
   const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-  const otherTeachers = teachers.filter(t => t.role === 'subject' || t.role === 'admin')
+  const subjectTeachers = teachers.filter(t => t.role === 'subject')
+  const adminTeachers = teachers.filter(t => t.role === 'admin')
+    .sort((a, b) => ADMIN_KIND_ORDER[adminKind(a.work)] - ADMIN_KIND_ORDER[adminKind(b.work)])
+
+  // 科任/行政實際節數（無減課）
+  function noReduce(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.extraHours || 0) }
+
+  // 全校各領域供需：需求(全校) vs 導師供給(全年級該科，選定情境) + 科任供給(該領域科任，無減課)
+  const supplyRows = Array.from(new Set([
+    ...Object.keys(demandBySubject),
+    ...subjectTeachers.map(t => subjectAreaOf(t.work)),
+  ])).filter(Boolean).map(subj => {
+    const demand = demandBySubject[subj] ?? 0
+    const homeroomSupply = teachers.filter(t => t.role === 'homeroom')
+      .reduce((s, t) => s + (Number(t.data.scenarios?.[rkey]?.breakdown?.[subj]) || 0), 0)
+    const subjectSupply = subjectTeachers.filter(t => subjectAreaOf(t.work) === subj)
+      .reduce((s, t) => s + noReduce(t), 0)
+    const supply = homeroomSupply + subjectSupply
+    return { subj, demand, homeroomSupply, subjectSupply, supply, diff: supply - demand }
+  }).filter(r => r.demand > 0 || r.supply > 0)
 
   function breakdown(t: TeacherStat) { return t.data.scenarios?.[rkey]?.breakdown ?? {} }
   function rowSum(t: TeacherStat) { return subjects.reduce((s, sub) => s + (Number(breakdown(t)[sub]) || 0), 0) }
@@ -192,27 +212,68 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </table>
       </div>
 
-      {/* 科任 / 行政 節數 */}
+      {/* 全校領域供需（導師+科任一起算） */}
       <div className="card p-0 overflow-x-auto">
-        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 / 行政 節數（無減課）</div>
+        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">全校領域供需
+          <span className="text-xs font-normal text-zinc-400 ml-2">導師假設皆為「{REDUCTION_LABEL[reduction]}」加總；科任以無減課計（行政不綁領域，不計入供給）</span>
+        </div>
+        <table className="table-base mt-2">
+          <thead><tr><th>領域</th><th className="text-center">需求(全校)</th><th className="text-center">導師供給</th><th className="text-center">科任供給</th><th className="text-center">合計供給</th><th className="text-center">差異</th></tr></thead>
+          <tbody>
+            {supplyRows.length === 0 && <tr><td colSpan={6} className="text-sm text-zinc-400 text-center py-3">尚無資料（請先設定需求並讓老師配課）</td></tr>}
+            {supplyRows.map(r => {
+              const cls = r.diff === 0 ? 'text-green-700' : r.diff < 0 ? 'text-red-600' : 'text-amber-600'
+              return (
+                <tr key={r.subj}>
+                  <td className="font-medium">{r.subj}</td>
+                  <td className="text-center text-zinc-500">{r.demand}</td>
+                  <td className="text-center">{r.homeroomSupply}</td>
+                  <td className="text-center">{r.subjectSupply}</td>
+                  <td className="text-center font-medium">{r.supply}</td>
+                  <td className={`text-center font-medium ${cls}`}>{r.diff > 0 ? `+${r.diff}` : r.diff}{r.diff < 0 ? '（不足）' : r.diff > 0 ? '（超支）' : ''}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 科任 */}
+      <div className="card p-0 overflow-x-auto">
+        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 節數（無減課）</div>
+        <table className="table-base mt-2">
+          <thead><tr><th>教師</th><th>領域</th><th className="text-center">基本</th><th className="text-center">專案減課</th><th className="text-center">超鐘點</th><th className="text-center">實際授課節數</th></tr></thead>
+          <tbody>
+            {subjectTeachers.length === 0 && <tr><td colSpan={6} className="text-sm text-zinc-400 text-center py-3">無科任資料</td></tr>}
+            {subjectTeachers.map(t => (
+              <tr key={t.id}>
+                <td className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}</td>
+                <td className="text-zinc-600">{subjectAreaOf(t.work)}</td>
+                <td className="text-center text-zinc-500">{t.base ?? '—'}</td>
+                <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5 text-xs" /></td>
+                <td className="text-center"><NumberInput min={0} value={t.data.extraHours || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, extraHours: n }))} className="input w-12 text-center py-0.5 text-xs" /></td>
+                <td className="text-center font-medium text-zinc-900">{noReduce(t)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 行政（校長→主任→組長） */}
+      <div className="card p-0 overflow-x-auto">
+        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">行政 節數（無減課 · 校長→主任→組長）</div>
         <table className="table-base mt-2">
           <thead><tr><th>教師</th><th>身分</th><th className="text-center">基本</th><th className="text-center">專案減課</th><th className="text-center">超鐘點</th><th className="text-center">實際授課節數</th></tr></thead>
           <tbody>
-            {otherTeachers.length === 0 && <tr><td colSpan={6} className="text-sm text-zinc-400 text-center py-3">無科任／行政資料</td></tr>}
-            {otherTeachers.map(t => (
+            {adminTeachers.length === 0 && <tr><td colSpan={6} className="text-sm text-zinc-400 text-center py-3">無行政資料</td></tr>}
+            {adminTeachers.map(t => (
               <tr key={t.id}>
                 <td className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}</td>
                 <td className="text-zinc-600">{t.roleLabel}</td>
                 <td className="text-center text-zinc-500">{t.base ?? '—'}</td>
-                <td className="text-center">
-                  <NumberInput min={0} value={t.data.projectReduction || 0}
-                    onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5 text-xs" />
-                </td>
-                <td className="text-center">
-                  <NumberInput min={0} value={t.data.extraHours || 0}
-                    onChange={n => updateTeacher(t.id, d => ({ ...d, extraHours: n }))} className="input w-12 text-center py-0.5 text-xs" />
-                </td>
-                <td className="text-center font-medium text-zinc-900">{(t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.extraHours || 0)}</td>
+                <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5 text-xs" /></td>
+                <td className="text-center"><NumberInput min={0} value={t.data.extraHours || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, extraHours: n }))} className="input w-12 text-center py-0.5 text-xs" /></td>
+                <td className="text-center font-medium text-zinc-900">{noReduce(t)}</td>
               </tr>
             ))}
           </tbody>
