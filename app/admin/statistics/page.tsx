@@ -53,10 +53,12 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
 
   // 讀「目前開放填寫年度」與 preferences 中所有出現過的年度
   const [settingsResult, prefYearsResult] = await Promise.all([
-    admin.from('settings').select('key, value').eq('key', 'preference_year').single(),
+    admin.from('settings').select('key, value').in('key', ['preference_year', 'preference_phase']),
     admin.from('preferences').select('year'),
   ])
-  const currentYear = Number(settingsResult.data?.value ?? 115)
+  const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
+  const currentYear = Number(settingsMap['preference_year'] ?? 115)
+  const phase: 'open' | 'closed' = settingsMap['preference_phase'] === 'closed' ? 'closed' : 'open'
   const distinctYears = Array.from(new Set((prefYearsResult.data ?? []).map(r => r.year))).sort((a, b) => b - a)
   // 確保 currentYear 在清單裡（即使目前還沒人填）
   const availableYears = distinctYears.includes(currentYear) ? distinctYears : [currentYear, ...distinctYears]
@@ -188,6 +190,7 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
       viewYear={viewYear}
       availableYears={availableYears}
       isCurrent={isCurrent}
+      phase={phase}
     />
   )
 }

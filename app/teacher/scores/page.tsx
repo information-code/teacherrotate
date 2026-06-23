@@ -10,10 +10,12 @@ export default async function TeacherScoresPage() {
   if (!user) redirect('/login')
 
   const admin = getAdminClient()
-  const [scoresResult, profileResult] = await Promise.all([
+  const [scoresResult, profileResult, phaseResult] = await Promise.all([
     admin.from('scores').select('year, score, recent_four_year_total').eq('teacher_id', user.id).order('year'),
     admin.from('profiles').select('score_confirmed, score_confirmed_at').eq('id', user.id).single(),
+    admin.from('settings').select('value').eq('key', 'preference_phase').maybeSingle(),
   ])
+  const closed = phaseResult.data?.value === 'closed'
   const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
 
   const scores = scoresResult.data ?? []
@@ -37,6 +39,7 @@ export default async function TeacherScoresPage() {
       initialRecentTotal={recentTotal}
       initialConfirmed={profileResult.data?.score_confirmed ?? false}
       initialConfirmedAt={profileResult.data?.score_confirmed_at ?? null}
+      closed={closed}
     />
   )
 }

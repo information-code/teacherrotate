@@ -29,6 +29,7 @@ interface Props {
   initialGiveUp: boolean
   initialScoremapRows: Scoremap[]
   midLowSwitchScore: number
+  closed: boolean
 }
 
 export function PreferencesPage({
@@ -41,6 +42,7 @@ export function PreferencesPage({
   initialGiveUp,
   initialScoremapRows,
   midLowSwitchScore,
+  closed,
 }: Props) {
   const [scoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [scoremapRows] = useState<Scoremap[]>(initialScoremapRows)
@@ -65,7 +67,7 @@ export function PreferencesPage({
       !EXCLUDED_CONTAINS.some(kw => w.includes(kw))
     )
 
-  const disabled = locked || giveUp
+  const disabled = locked || giveUp || closed
 
   function getEstimate(work: string | null): { yearScore: number; newTotal: number } | null {
     if (!work) return null
@@ -82,6 +84,7 @@ export function PreferencesPage({
 
   function requestSave() {
     setError(null)
+    if (closed) return
     if (!giveUp && (!preferences.preference1 || !preferences.preference2 || !preferences.preference3)) {
       setError('請填寫三個志願，或勾選「放棄選填志願」')
       return
@@ -123,6 +126,15 @@ export function PreferencesPage({
   return (
     <div className="space-y-6 max-w-3xl">
       <h2 className="page-title">選填志願</h2>
+
+      {closed && (
+        <div className="card border-amber-200 bg-amber-50">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">📋 本學年度選填志願已截止</span>
+            ——目前為唯讀狀態，無法新增或修改志願。下一年度開放時即可填寫新一輪。如有疑問請洽管理員。
+          </p>
+        </div>
+      )}
 
       {targetType === null && (
         <div className="card border-amber-200 bg-amber-50">
@@ -169,8 +181,8 @@ export function PreferencesPage({
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm text-green-600">已儲存</span>}
             {error && <span className="text-sm text-red-600">{error}</span>}
-            <button onClick={requestSave} disabled={saving || locked} className="btn-primary">
-              {saving ? '儲存中...' : locked ? '已鎖定' : '儲存志願'}
+            <button onClick={requestSave} disabled={saving || locked || closed} className="btn-primary">
+              {saving ? '儲存中...' : closed ? '已截止' : locked ? '已鎖定' : '儲存志願'}
             </button>
           </div>
         </div>
@@ -178,11 +190,11 @@ export function PreferencesPage({
         {/* 放棄選填志願 */}
         <label className={`flex items-start gap-2 mb-5 p-3 border rounded-sm select-none transition ${
           giveUp ? 'border-amber-300 bg-amber-50' : 'border-zinc-200 bg-zinc-50'
-        } ${locked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        } ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
             checked={giveUp}
-            disabled={locked}
+            disabled={disabled}
             onChange={e => setGiveUp(e.target.checked)}
             className="w-4 h-4 mt-0.5 flex-shrink-0"
           />

@@ -16,9 +16,10 @@ interface Props {
   initialRecentTotal: number | null
   initialConfirmed: boolean
   initialConfirmedAt: string | null
+  closed: boolean
 }
 
-export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal, initialConfirmed, initialConfirmedAt }: Props) {
+export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal, initialConfirmed, initialConfirmedAt, closed }: Props) {
   const [scoreHistory] = useState<ScoreEntry[]>(initialScoreHistory)
   const [recentTotal] = useState<number | null>(initialRecentTotal)
   const [confirmed, setConfirmed] = useState(initialConfirmed)
@@ -115,6 +116,10 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
                 </span>
               )}
             </div>
+          ) : closed ? (
+            <p className="text-sm text-amber-700">
+              目前非開放期間，暫停分數確認。下一年度開放時即可確認。如有疑問請洽管理員。
+            </p>
           ) : (
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-zinc-700">
               <input

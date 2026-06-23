@@ -23,6 +23,7 @@ export default async function TeacherPreferencesPage() {
   const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
   const midLowSwitchScore = Number(settingsMap['midlow_switch_score'] ?? 2)
   const targetYear = Number(settingsMap['preference_year'] ?? Math.max(0, ...scores.map(s => s.year)) + 1)
+  const closed = settingsMap['preference_phase'] === 'closed'
 
   const { data: prefs } = await admin
     .from('preferences')
@@ -59,6 +60,7 @@ export default async function TeacherPreferencesPage() {
       initialGiveUp={prefs?.give_up ?? false}
       initialScoremapRows={scoremap}
       midLowSwitchScore={midLowSwitchScore}
+      closed={closed}
     />
   )
 }

@@ -11,6 +11,15 @@ async function getPreferenceYear(): Promise<number> {
   return Number(data?.value ?? 115)
 }
 
+async function getPreferencePhase(): Promise<'open' | 'closed'> {
+  const { data } = await supabaseAdmin
+    .from('settings')
+    .select('value')
+    .eq('key', 'preference_phase')
+    .maybeSingle()
+  return data?.value === 'closed' ? 'closed' : 'open'
+}
+
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,6 +49,15 @@ export async function PUT(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { preference1, preference2, preference3, give_up } = await request.json()
+
+  // 若整輪已截止（撕榜期 / 年度之間的暫停），拒絕修改
+  if ((await getPreferencePhase()) === 'closed') {
+    return NextResponse.json(
+      { error: 'closed', message: '本學年度選填志願已截止，目前無法新增或修改志願。如有疑問請洽管理員。' },
+      { status: 423 }
+    )
+  }
+
   const year = await getPreferenceYear()
 
   // 若該年度已鎖定，拒絕修改

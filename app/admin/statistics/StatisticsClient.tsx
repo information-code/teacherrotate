@@ -27,6 +27,7 @@ interface Props {
   viewYear: number
   availableYears: number[]
   isCurrent: boolean
+  phase: 'open' | 'closed'
 }
 
 async function fetchStats(year: number): Promise<StatRow[]> {
@@ -41,11 +42,11 @@ async function fetchDetail(work: string, year: number): Promise<DetailRow[]> {
   return res.json()
 }
 
-export default function StatisticsClient({ initialStats, initialTeachers, currentYear, viewYear, availableYears, isCurrent }: Props) {
+export default function StatisticsClient({ initialStats, initialTeachers, currentYear, viewYear, availableYears, isCurrent, phase }: Props) {
   const router = useRouter()
   const [stats, setStats] = useState<StatRow[]>(initialStats)
   const [loading, setLoading] = useState(initialStats.length === 0)
-  const [bumping, setBumping] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
@@ -71,25 +72,39 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
     router.push(qs ? `/admin/statistics?${qs}` : '/admin/statistics')
   }
 
-  async function bumpPreferenceYear() {
-    const nextYear = currentYear + 1
-    if (!confirm(`啟動 ${nextYear} 學年度的志願填寫？\n\n● 目前 ${currentYear} 學年度的志願將保留為歷史紀錄，可隨時切換年度查看。\n● 老師端會看到全新的 ${nextYear} 學年度填寫表單。\n\n此操作可在「目前開放填寫年度」設定中調整。`)) return
-    setBumping(true)
+  async function saveSettings(updates: Record<string, string | number>, failMsg: string) {
+    setBusy(true)
     try {
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preference_year: nextYear }),
+        body: JSON.stringify(updates),
       })
       if (!res.ok) {
-        alert('啟動失敗，請稍後再試')
+        alert(failMsg)
         return
       }
       router.push('/admin/statistics')
       router.refresh()
     } finally {
-      setBumping(false)
+      setBusy(false)
     }
+  }
+
+  async function closeRound() {
+    if (!confirm(`截止 ${currentYear} 學年度選填？\n\n● 老師端的選填志願與分數確認將立即轉為唯讀，無法再新增或修改。\n● 你可在此期間進行撕榜分配。\n● 之後可「重新開放填寫」或「啟動下一年度」。`)) return
+    await saveSettings({ preference_phase: 'closed' }, '截止失敗，請稍後再試')
+  }
+
+  async function reopenRound() {
+    if (!confirm(`重新開放 ${currentYear} 學年度選填？\n\n老師端將恢復可填寫/修改志願與確認分數。`)) return
+    await saveSettings({ preference_phase: 'open' }, '開放失敗，請稍後再試')
+  }
+
+  async function bumpPreferenceYear() {
+    const nextYear = currentYear + 1
+    if (!confirm(`啟動 ${nextYear} 學年度的志願填寫？\n\n● 目前 ${currentYear} 學年度的志願將保留為歷史紀錄，可隨時切換年度查看。\n● 老師端會看到全新的 ${nextYear} 學年度填寫表單（開放填寫）。`)) return
+    await saveSettings({ preference_year: nextYear, preference_phase: 'open' }, '啟動失敗，請稍後再試')
   }
 
   const maxTotal = Math.max(1, ...stats.map(s => s.total))
@@ -112,7 +127,8 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
                 志願統計
                 <span className="ml-2 text-sm font-normal text-zinc-500">{viewYear} 學年度</span>
                 {!isCurrent && <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm">歷史紀錄</span>}
-                {isCurrent && <span className="ml-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-sm">填寫中</span>}
+                {isCurrent && phase === 'open' && <span className="ml-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-sm">填寫中</span>}
+                {isCurrent && phase === 'closed' && <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm">已截止</span>}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isCurrent ? (
@@ -152,15 +168,30 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
               <button onClick={() => fetchStats(viewYear).then(setStats)} className="btn-secondary">
                 重新整理
               </button>
-              {isCurrent && (
+              {isCurrent && phase === 'open' && (
                 <button
-                  onClick={bumpPreferenceYear}
-                  disabled={bumping}
+                  onClick={closeRound}
+                  disabled={busy}
                   className="btn-primary"
-                  title={`鎖定 ${currentYear} 學年度志願為歷史紀錄，開啟 ${currentYear + 1} 學年度新一輪填寫`}
+                  title={`截止 ${currentYear} 學年度選填，老師端轉為唯讀，以便進行撕榜`}
                 >
-                  {bumping ? '處理中...' : `啟動 ${currentYear + 1} 學年度`}
+                  {busy ? '處理中...' : '截止本年度選填'}
                 </button>
+              )}
+              {isCurrent && phase === 'closed' && (
+                <>
+                  <button onClick={reopenRound} disabled={busy} className="btn-secondary">
+                    {busy ? '處理中...' : '重新開放填寫'}
+                  </button>
+                  <button
+                    onClick={bumpPreferenceYear}
+                    disabled={busy}
+                    className="btn-primary"
+                    title={`開啟 ${currentYear + 1} 學年度新一輪填寫`}
+                  >
+                    {busy ? '處理中...' : `啟動 ${currentYear + 1} 學年度`}
+                  </button>
+                </>
               )}
             </div>
           </div>

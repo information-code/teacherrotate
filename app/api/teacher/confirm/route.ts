@@ -9,6 +9,16 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // 整輪已截止時，暫停分數確認（與選填志願一致）
+  const { data: phaseRow } = await supabaseAdmin
+    .from('settings').select('value').eq('key', 'preference_phase').maybeSingle()
+  if (phaseRow?.value === 'closed') {
+    return NextResponse.json(
+      { error: 'closed', message: '目前非開放期間，暫停分數確認。如有疑問請洽管理員。' },
+      { status: 423 }
+    )
+  }
+
   const { error } = await supabaseAdmin
     .from('profiles')
     .update({
