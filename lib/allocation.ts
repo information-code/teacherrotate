@@ -49,16 +49,19 @@ export interface AllocationConfig {
   adminBase: AdminBase                  // 行政基本授課節數（校長/主任/組長）
 }
 
-// homeroom=false 者預設不出現在導師配課選填（只算需求）
-const DEFAULT_SUBJECTS: { name: string; homeroom: boolean }[] = [
-  '國語', '數學', '英語', '自然', '生活', '健康', '體育',
-  '音樂', '視覺藝術', '表演藝術', '綜合', '本土語', '班級活動',
-].map(name => ({ name, homeroom: true })).concat([{ name: '專題', homeroom: false }])
+// 各年級必修課（前端預設）。低年級(1-2) 有「生活」、無社會/自然/英語；
+// 中高年級(3-6) 有社會/自然/英語、無生活。其餘共同必修各年級皆有。
+// homeroom 預設 true（導師可配）；科任授課的科目請於「配課設定」取消勾選。
+function defaultSubjectsFor(grade: number): string[] {
+  return grade <= 2
+    ? ['國語', '數學', '生活', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '本土語']
+    : ['國語', '數學', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '本土語']
+}
 
-export function defaultGradeConfig(): GradeConfig {
+export function defaultGradeConfig(grade: number): GradeConfig {
   return {
     classCount: 0,
-    subjects: DEFAULT_SUBJECTS.map(s => ({ name: s.name, perClass: 0, homeroom: s.homeroom })),
+    subjects: defaultSubjectsFor(grade).map(name => ({ name, perClass: 0, homeroom: true })),
     homeroomBase: 0,
     scenarios: {
       0: { enabled: true, plans: [] },
@@ -70,7 +73,7 @@ export function defaultGradeConfig(): GradeConfig {
 
 export function defaultAllocationConfig(): AllocationConfig {
   const grades: Record<number, GradeConfig> = {}
-  for (const g of GRADES) grades[g] = defaultGradeConfig()
+  for (const g of GRADES) grades[g] = defaultGradeConfig(g)
   return { grades, subjectBase: 0, adminBase: { principal: 0, director: 0, chief: 0 } }
 }
 
