@@ -146,6 +146,18 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['allocation']['Insert']>
         Relationships: []
       }
+      schedule_config: {
+        Row: { year: number; config: Json; updated_at: string }
+        Insert: { year: number; config?: Json; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['schedule_config']['Insert']>
+        Relationships: []
+      }
+      schedule_plan: {
+        Row: { year: number; plan: Json; generated_at: string }
+        Insert: { year: number; plan?: Json; generated_at?: string }
+        Update: Partial<Database['public']['Tables']['schedule_plan']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }

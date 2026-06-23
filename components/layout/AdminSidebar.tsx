@@ -29,6 +29,12 @@ const navSections = [
     ],
   },
   {
+    title: '排課管理',
+    items: [
+      { href: '/admin/schedule-config', label: '排課設定' },
+    ],
+  },
+  {
     title: '規則設定',
     items: [
       { href: '/admin/scoremap', label: '分數對照表' },
