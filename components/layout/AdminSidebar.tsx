@@ -25,7 +25,7 @@ const navSections = [
     title: '配課管理',
     items: [
       { href: '/admin/allocation-config', label: '配課設定' },
-      // 配課統計 於 Stage 4 加入
+      { href: '/admin/allocation-statistics', label: '配課統計' },
     ],
   },
   {
