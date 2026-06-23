@@ -54,7 +54,7 @@ export interface AllocationConfig {
 // homeroom 預設 true（導師可配）；科任授課的科目請於「配課設定」取消勾選。
 function defaultSubjectsFor(grade: number): string[] {
   return grade <= 2
-    ? ['國語', '數學', '生活', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
+    ? ['國語', '數學', '生活', '健康', '體育', '本土語']
     : ['國語', '數學', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
 }
 
