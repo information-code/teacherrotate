@@ -5,6 +5,9 @@ export const GRADES = [1, 2, 3, 4, 5, 6] as const
 
 // 科目顯示順序（必修依課綱，其餘非必修排在後面、維持原順序）
 export const SUBJECT_ORDER = ['國語', '數學', '生活', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
+
+// 導師原則配課科目（自配時若動到這些，理由將提課發會）；其餘為導師選填配課
+export const PRINCIPLE_SUBJECTS = ['國語', '數學', '班級活動', '自主學習']
 export function sortSubjects<T extends { name: string }>(arr: T[]): T[] {
   const known = SUBJECT_ORDER.flatMap(m => arr.filter(s => s.name === m))
   const unknown = arr.filter(s => !SUBJECT_ORDER.includes(s.name))
@@ -209,6 +212,7 @@ export interface ScenarioChoice {
   planName: string | null              // 選的方案名（null = 自配）
   breakdown: Record<string, number>    // 科目 → 節數（僅導師）
   reason?: string                      // 自配時必填理由（供行政參考）
+  escalate?: boolean                   // 自配動到原則配課 → 理由提課發會
 }
 export interface TeacherAllocation {
   role: AllocRole

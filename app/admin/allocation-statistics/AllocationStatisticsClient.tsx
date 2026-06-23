@@ -177,7 +177,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className="sticky left-0 bg-white z-10">
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
-                            {tag === '自選' && (ch?.reason ?? '').trim() && <span className="ml-1 cursor-help text-amber-600" title={`自訂理由：${ch!.reason}`}>💬</span>}
+                            {tag === '自選' && (ch?.reason ?? '').trim() && <span className={`ml-1 cursor-help ${ch!.escalate ? 'text-red-600' : 'text-amber-600'}`} title={`${ch!.escalate ? '【提課發會】' : ''}自訂理由：${ch!.reason}`}>💬</span>}
                           </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>
                         </td>
