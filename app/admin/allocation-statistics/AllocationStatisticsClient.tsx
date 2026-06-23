@@ -165,7 +165,7 @@ export default function AllocationStatisticsClient({ year, teachers: initial, gr
 
       {/* 科任 / 行政 節數 */}
       <div className="card p-0 overflow-x-auto">
-        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 / 行政 節數（{REDUCTION_LABEL[reduction]}）</div>
+        <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">科任 / 行政 節數（無減課）</div>
         <table className="table-base mt-2">
           <thead><tr><th>教師</th><th>身分</th><th className="text-center">基本</th><th className="text-center">專案減課</th><th className="text-center">超鐘點</th><th className="text-center">實際授課節數</th></tr></thead>
           <tbody>
@@ -183,7 +183,7 @@ export default function AllocationStatisticsClient({ year, teachers: initial, gr
                   <NumberInput min={0} value={t.data.extraHours || 0}
                     onChange={n => updateTeacher(t.id, d => ({ ...d, extraHours: n }))} className="input w-12 text-center py-0.5 text-xs" />
                 </td>
-                <td className="text-center font-medium text-zinc-900">{(t.base ?? 0) - reduction - (t.data.projectReduction || 0) + (t.data.extraHours || 0)}</td>
+                <td className="text-center font-medium text-zinc-900">{(t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.extraHours || 0)}</td>
               </tr>
             ))}
           </tbody>

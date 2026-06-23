@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTIONS, REDUCTION_LABEL, GRADE_LABEL,
-  type AllocRole, type TeacherAllocation, type ScenarioChoice, type AllocationPlan,
+  REDUCTION_LABEL, GRADE_LABEL,
+  type AllocRole, type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
@@ -153,21 +153,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         <p className="text-[11px] text-zinc-400 mt-2">實際授課節數 = 基本授課節數 − 減課節數（情境） − 專案減課 + 自願超鐘點</p>
       </div>
 
-      {/* 科任 / 行政：只算節數 */}
+      {/* 科任 / 行政：只算節數（無減課） */}
       {(role === 'subject' || role === 'admin') && (
-        <div className="card p-0">
-          <table className="table-base">
-            <thead><tr><th>情境</th><th className="text-center">減課節數</th><th className="text-center">實際授課節數</th></tr></thead>
-            <tbody>
-              {REDUCTIONS.map(r => (
-                <tr key={r}>
-                  <td>{REDUCTION_LABEL[r]}</td>
-                  <td className="text-center">{r}</td>
-                  <td className="text-center font-medium text-zinc-900">{actual(r)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card p-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-zinc-600">實際授課節數</span>
+            <span className="text-2xl font-semibold text-zinc-900">{actual(0)}</span>
+            <span className="text-xs text-zinc-400">= 基本 {base ?? 0} − 專案減課 {projectReduction} + 自願超鐘點 {extraHours}</span>
+          </div>
         </div>
       )}
 
