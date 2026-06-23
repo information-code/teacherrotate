@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, PRINCIPLE_SUBJECTS,
+  REDUCTION_LABEL, GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS,
   type TeacherAllocation, type ScenarioChoice,
 } from '@/lib/allocation'
+import { AllocationSubmitWizard, type WizardResult } from '@/components/teacher/AllocationSubmitWizard'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 interface Props {
@@ -20,50 +21,51 @@ interface Props {
 type Picked = '' | 'homeroom' | 'subject'
 
 export function SubstituteAllocationPage({ year, closed, subjectBase, grades, allSubjects, initial }: Props) {
-  const projectReduction = initial.projectReduction ?? 0 // 管理者設定，唯讀
+  const projectReduction = initial.projectReduction ?? 0
   const [picked, setPicked] = useState<Picked>(initial.role === 'homeroom' || initial.role === 'subject' ? initial.role : '')
   const [grade, setGrade] = useState<number | null>(initial.grade ?? null)
-  const [extraHours, setExtraHours] = useState(initial.extraHours ?? 0)
   const [scenarios, setScenarios] = useState<Record<string, ScenarioChoice>>(initial.scenarios ?? {})
-  const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})  // 自配為當下狀態，非從儲存推導
+  const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
+  const [principleUnlocked, setPrincipleUnlocked] = useState<Record<string, boolean>>({})
   const [subjects, setSubjects] = useState<string[]>(initial.subjects ?? [])
   const [sgh, setSgh] = useState<Record<string, Record<string, number>>>(initial.subjectGradeHours ?? {})
   const [locked, setLocked] = useState(initial.locked ?? false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   const readOnly = locked || closed
 
-  // 動到原則配課（與方案基準值不同）→ 提課發會
-  function escalateFor(reduction: number, breakdown: Record<string, number>): boolean {
-    if (picked !== 'homeroom' || !grade) return false
+  function deviates(reduction: number, breakdown: Record<string, number>, cat: 'principle' | 'specialty'): boolean {
+    if (!grade) return false
     const gc = grades[grade]
     const base = gc.scenarios.find(s => s.reduction === reduction)?.plans[0]?.alloc ?? {}
-    return gc.subjects.filter(s => PRINCIPLE_SUBJECTS.includes(s)).some(s => (Number(breakdown[s]) || 0) !== (Number(base[s]) || 0))
+    return gc.subjects.filter(s => subjectCategory(s) === cat).some(s => (Number(breakdown[s]) || 0) !== (Number(base[s]) || 0))
   }
 
-  function buildData(lock: boolean): TeacherAllocation {
-    const scen = picked === 'homeroom'
-      ? Object.fromEntries(Object.entries(scenarios).map(([k, ch]) => [k, ch.planName === null ? { ...ch, escalate: escalateFor(Number(k), ch.breakdown) } : { ...ch, escalate: false }]))
-      : {}
+  function buildData(lock: boolean, extra?: WizardResult): TeacherAllocation {
     return {
       role: picked || 'none',
       work: picked === 'homeroom' ? '代理導師' : picked === 'subject' ? '代理科任' : '',
       grade: picked === 'homeroom' ? grade : null,
-      projectReduction, extraHours,
-      scenarios: scen,
+      projectReduction, extraHours: 0,
+      scenarios: picked === 'homeroom' ? scenarios : {},
       subjects: picked === 'subject' ? subjects : [],
       subjectGradeHours: picked === 'subject' ? sgh : {},
+      overtimeHours: extra?.overtimeHours ?? initial.overtimeHours ?? 0,
+      overtimeSubjects: extra?.overtimeSubjects ?? initial.overtimeSubjects ?? [],
+      principleReason: extra?.principleReason ?? initial.principleReason ?? '',
+      specialtyReason: extra?.specialtyReason ?? initial.specialtyReason ?? '',
+      acknowledged: extra?.acknowledged ?? initial.acknowledged ?? false,
       locked: lock,
       submittedAt: lock ? new Date().toISOString() : (initial.submittedAt ?? null),
     }
   }
-  async function put(lock: boolean): Promise<boolean> {
+  async function put(lock: boolean, extra?: WizardResult): Promise<boolean> {
     setSaveStatus('saving')
     try {
       const res = await fetch('/api/teacher/allocation', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: buildData(lock) }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: buildData(lock, extra) }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.message ?? '儲存失敗'); setSaveStatus('idle'); return false }
       setSaveStatus('saved'); setError(null); return true
@@ -77,22 +79,18 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked, grade, extraHours, scenarios, subjects, sgh])
+  }, [picked, grade, scenarios, subjects, sgh])
 
   function setChoice(r: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setScenarios(prev => ({ ...prev, [String(r)]: fn(prev[String(r)] ?? { planName: null, breakdown: {} }) }))
   }
-  function toggleSubject(s: string) {
-    setSubjects(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
-  }
-  function setHour(subj: string, g: number, n: number) {
-    setSgh(prev => ({ ...prev, [subj]: { ...(prev[subj] ?? {}), [String(g)]: n } }))
-  }
+  function toggleSubject(s: string) { setSubjects(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]) }
+  function setHour(subj: string, g: number, n: number) { setSgh(prev => ({ ...prev, [subj]: { ...(prev[subj] ?? {}), [String(g)]: n } })) }
 
-  const subjectTarget = subjectBase - projectReduction + extraHours
+  const subjectTarget = subjectBase - projectReduction
   const subjectSum = subjects.reduce((s, subj) => s + GRADES.reduce((a, g) => a + (Number(sgh[subj]?.[String(g)]) || 0), 0), 0)
 
-  async function submit() {
+  function submit() {
     setError(null)
     if (!picked) { setError('請先選擇身分（導師／科任）'); return }
     if (picked === 'homeroom') {
@@ -100,22 +98,36 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
       const gc = grades[grade]
       const issues: string[] = []
       for (const sc of gc.scenarios) {
-        const target = gc.homeroomBase - sc.reduction - projectReduction + extraHours
+        const target = gc.homeroomBase - sc.reduction - projectReduction
         const choice = scenarios[String(sc.reduction)]
         if (!choice || (choice.planName === null && Object.keys(choice.breakdown).length === 0)) { issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：尚未選方案或自配`); continue }
         const sum = Object.values(choice.breakdown).reduce((s, n) => s + (Number(n) || 0), 0)
         if (sum !== target) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：合計 ${sum} ≠ 目標 ${target}`)
-        if (choice.planName === null && !(choice.reason ?? '').trim()) issues.push(`${REDUCTION_LABEL[sc.reduction as 0 | 1 | 2]}：自訂配課需填寫理由`)
       }
       if (issues.length) { setError('無法送出：\n' + issues.join('\n')); return }
     }
     if (picked === 'subject') {
       if (subjects.length === 0) { setError('請至少選一個授課科目'); return }
-      if (subjectSum !== subjectTarget) { setError(`各科各年級節數合計 ${subjectSum} ≠ 實際授課節數 ${subjectTarget}（${subjectSum < subjectTarget ? '不足' : '超過'} ${Math.abs(subjectSum - subjectTarget)}）。要多授課請增加自願超鐘點。`); return }
+      if (subjectSum !== subjectTarget) { setError(`各科各年級節數合計 ${subjectSum} ≠ 實際授課節數 ${subjectTarget}（${subjectSum < subjectTarget ? '不足' : '超過'} ${Math.abs(subjectSum - subjectTarget)}）。`); return }
     }
-    if (!confirm('送出後將鎖定，無法自行修改（需洽管理員）。確定送出？')) return
-    if (await put(true)) setLocked(true)
+    setWizardOpen(true)
   }
+  async function finalizeSubmit(result: WizardResult) {
+    setWizardOpen(false)
+    if (await put(true, result)) setLocked(true)
+  }
+
+  // 精靈情境
+  const gc = picked === 'homeroom' && grade ? grades[grade] : null
+  const wantPrinciple = !!gc && gc.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'principle') })
+  const wantSpecialty = !!gc && gc.scenarios.some(sc => { const ch = scenarios[String(sc.reduction)]; return !!ch && ch.planName === null && deviates(sc.reduction, ch.breakdown, 'specialty') })
+  const certSubjects = (() => {
+    const present = new Set<string>()
+    if (picked === 'homeroom') { for (const ch of Object.values(scenarios)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs) }
+    else if (picked === 'subject') { for (const cs of CERT_SUBJECTS) if (subjects.includes(cs)) present.add(cs) }
+    return [...present]
+  })()
+  const overtimeOptions = gc ? gc.subjects : (picked === 'subject' ? allSubjects : [])
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -135,16 +147,12 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
       {locked && !closed && <div className="card border-zinc-300 bg-zinc-50"><p className="text-sm text-zinc-700"><span className="font-semibold">🔒 已送出鎖定</span>——如需修改請洽管理員。</p></div>}
       {error && <div className="card border-red-200 bg-red-50"><p className="text-sm text-red-700 whitespace-pre-line">{error}</p></div>}
 
-      {/* 身分選擇 */}
       <div className="card p-4">
         <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">身分</div>
         <div className="flex gap-2">
           {([['homeroom', '導師'], ['subject', '科任']] as const).map(([v, label]) => (
-            <button key={v} disabled={readOnly}
-              onClick={() => setPicked(v)}
-              className={`px-4 py-1.5 text-sm rounded-sm border ${picked === v ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
-              {label}
-            </button>
+            <button key={v} disabled={readOnly} onClick={() => setPicked(v)}
+              className={`px-4 py-1.5 text-sm rounded-sm border ${picked === v ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>{label}</button>
           ))}
         </div>
       </div>
@@ -160,36 +168,35 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
               </select>
             </label>
             <span className="flex items-center gap-2"><span className="text-zinc-700">專案減課</span><span className="font-medium w-8 text-center">{projectReduction}</span><span className="text-[11px] text-zinc-400">(管理者設定)</span></span>
-            <label className="flex items-center gap-2"><span className="text-zinc-700">自願超鐘點</span>
-              <NumberInput min={0} value={extraHours} disabled={readOnly} onChange={setExtraHours} className="input w-14 text-center py-0.5" /></label>
           </div>
 
           {grade && grades[grade].scenarios.length === 0 && <div className="card text-sm text-zinc-400">管理者尚未為 {GRADE_LABEL[grade]} 啟用情境。</div>}
           {grade && grades[grade].scenarios.map(sc => {
-            const gc = grades[grade]
-            const principleSubjects = gc.subjects.filter(s => PRINCIPLE_SUBJECTS.includes(s))
-            const optionalSubjects = gc.subjects.filter(s => !PRINCIPLE_SUBJECTS.includes(s))
+            const g = grades[grade]
+            const principleSubjects = g.subjects.filter(s => subjectCategory(s) === 'principle')
+            const specialtySubjects = g.subjects.filter(s => subjectCategory(s) === 'specialty')
+            const optionalSubjects = g.subjects.filter(s => subjectCategory(s) === 'optional')
             const r = sc.reduction
             const key = String(r)
-            const target = gc.homeroomBase - r - projectReduction + extraHours
+            const target = g.homeroomBase - r - projectReduction
             const choice = scenarios[key]
             const usablePlans = sc.plans.filter(p => planTotal(p) === target)
             const hasPlans = usablePlans.length > 0
             const inSelf = !hasPlans || !!selfMode[key]
             const planName = (choice?.planName && usablePlans.some(p => p.name === choice.planName)) ? choice.planName : ''
-            const sum = choice ? gc.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
-            const escalated = inSelf && escalateFor(r, choice?.breakdown ?? {})
-            function cellGroup(title: string, subjs: string[], editable: boolean) {
+            const sum = choice ? g.subjects.reduce((s, subj) => s + (Number(choice.breakdown[subj]) || 0), 0) : 0
+            const principleEditable = inSelf && !readOnly && !!principleUnlocked[key]
+            function block(title: string, subjs: string[], editable: boolean, extra?: ReactNode) {
               if (subjs.length === 0) return null
               return (
                 <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-zinc-500">{title}</div>
+                  <div className="text-[11px] font-semibold text-zinc-500 flex items-center gap-2">{title}{extra}</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
                     {subjs.map((subj, si) => (
                       <div key={si} className="flex items-center gap-1.5">
                         <span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span>
                         {editable
-                          ? <NumberInput min={0} value={choice?.breakdown[subj] ?? 0} disabled={readOnly} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" />
+                          ? <NumberInput min={0} value={choice?.breakdown[subj] ?? 0} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" />
                           : <span className="w-12 text-center text-xs font-medium text-zinc-800">{choice?.breakdown[subj] ?? 0}</span>}
                       </div>
                     ))}
@@ -211,24 +218,24 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                 </div>
                 {hasPlans && !selfMode[key] && planName && choice && (
                   <>
-                    {cellGroup('導師原則配課', principleSubjects, false)}
-                    {cellGroup('導師選填配課', optionalSubjects, false)}
+                    {block('導師原則配課', principleSubjects, false)}
+                    {block('導師專長配課', specialtySubjects, false)}
+                    {block('導師選填配課', optionalSubjects, false)}
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}`}</p>
                   </>
                 )}
                 {hasPlans && !selfMode[key] && !readOnly && (
-                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => { if (!confirm('注意事項：\n1. 導師原則上需配課國語、數學、班級學年活動、自主學習。\n2. 任課任何領域都須依照課程計畫進行課程實施（符合教學正常化）。\n3. 同一領域若有兩位以上老師任教，進度與課程內涵需做橫向聯繫與討論，確保學生學習品質。')) return; setSelfMode(m => ({ ...m, [key]: true })); setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) }, reason: c?.reason ?? '' })) }} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
+                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => { setSelfMode(m => ({ ...m, [key]: true })); setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
                 )}
                 {inSelf && (
-                  <div className="space-y-2">
-                    <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-2 py-1.5">
-                      {hasPlans ? <>自訂配課,各科合計需達 {target} 節。{!readOnly && <button onClick={() => { setSelfMode(m => ({ ...m, [key]: false })); if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } })) }} className="ml-2 underline">改選方案</button>}</> : <>無相符方案(目標 {target}),請自行配課使合計達 {target} 節。</>}
-                    </div>
-                    {escalated && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-sm px-2 py-1.5">⚠ 您已調整「導師原則配課」科目，此情境的理由將提交「課發會－排配課會議提案討論」。</div>}
-                    <label className="block text-xs"><span className="text-zinc-600">自訂理由（必填）</span>
-                      <input value={choice?.reason ?? ''} disabled={readOnly} onChange={e => setChoice(r, c => ({ ...c, reason: e.target.value }))} className="input py-1 w-full mt-1" placeholder="請說明配課考量" /></label>
-                    {cellGroup('導師原則配課', principleSubjects, true)}
-                    {cellGroup('導師選填配課', optionalSubjects, true)}
+                  <div className="space-y-3">
+                    {hasPlans
+                      ? !readOnly && <p className="text-[11px] text-zinc-400">自訂配課,各科合計需達 {target} 節。<button onClick={() => { setSelfMode(m => ({ ...m, [key]: false })); setPrincipleUnlocked(m => ({ ...m, [key]: false })); if (usablePlans[0]) setChoice(r, () => ({ planName: usablePlans[0].name, breakdown: { ...usablePlans[0].alloc } })) }} className="text-zinc-500 underline">改選方案</button></p>
+                      : <p className="text-[11px] text-zinc-500">您的實際授課節數為 {target} 節,與行政方案總數不同,請自行配課使合計達 {target} 節。</p>}
+                    {block('導師原則配課', principleSubjects, principleEditable,
+                      inSelf && !readOnly && !principleUnlocked[key] ? <button onClick={() => setPrincipleUnlocked(m => ({ ...m, [key]: true }))} className="text-zinc-500 underline font-normal">編輯</button> : null)}
+                    {block('導師專長配課', specialtySubjects, inSelf && !readOnly)}
+                    {block('導師選填配課', optionalSubjects, inSelf && !readOnly)}
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}（${sum < target ? '不足' : '超過'} ${Math.abs(sum - target)}）`}</p>
                   </div>
                 )}
@@ -243,26 +250,21 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
         <>
           <div className="card p-4 flex items-center gap-6 flex-wrap text-sm">
             <span className="text-zinc-600">實際授課節數 <span className="text-xl font-semibold text-zinc-900">{subjectTarget}</span></span>
-            <span className="text-xs text-zinc-400">= 基本 {subjectBase} − 專案減課 {projectReduction} + 自願超鐘點 {extraHours}</span>
-            <label className="flex items-center gap-2"><span className="text-zinc-700">自願超鐘點</span>
-              <NumberInput min={0} value={extraHours} disabled={readOnly} onChange={setExtraHours} className="input w-14 text-center py-0.5" /></label>
+            <span className="text-xs text-zinc-400">= 基本 {subjectBase} − 專案減課 {projectReduction}</span>
           </div>
-
           <div className="card p-4 space-y-2">
             <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">授課科目（可複選）</div>
             <div className="flex flex-wrap gap-2">
               {allSubjects.map(s => (
                 <label key={s} className={`flex items-center gap-1 px-2 py-1 border rounded-sm text-xs cursor-pointer ${subjects.includes(s) ? 'border-zinc-500 bg-zinc-100' : 'border-zinc-200'}`}>
-                  <input type="checkbox" checked={subjects.includes(s)} disabled={readOnly} onChange={() => toggleSubject(s)} className="w-3.5 h-3.5" />
-                  {s}
+                  <input type="checkbox" checked={subjects.includes(s)} disabled={readOnly} onChange={() => toggleSubject(s)} className="w-3.5 h-3.5" />{s}
                 </label>
               ))}
             </div>
           </div>
-
           {subjects.length > 0 && (
             <div className="card p-0 overflow-x-auto">
-              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">各科各年級授課節數（跨年級/跨科）</div>
+              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">各科各年級授課節數</div>
               <table className="table-base mt-2">
                 <thead><tr><th>科目</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
                 <tbody>
@@ -282,6 +284,18 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
             </div>
           )}
         </>
+      )}
+
+      {wizardOpen && (
+        <AllocationSubmitWizard
+          needPrinciple={wantPrinciple}
+          needSpecialty={wantSpecialty}
+          certSubjects={certSubjects}
+          overtimeSubjectOptions={overtimeOptions}
+          initial={{ principleReason: initial.principleReason, specialtyReason: initial.specialtyReason, overtimeHours: initial.overtimeHours, overtimeSubjects: initial.overtimeSubjects }}
+          onCancel={() => setWizardOpen(false)}
+          onConfirm={finalizeSubmit}
+        />
       )}
     </div>
   )

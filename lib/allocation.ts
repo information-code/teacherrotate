@@ -6,8 +6,19 @@ export const GRADES = [1, 2, 3, 4, 5, 6] as const
 // 科目顯示順序（必修依課綱，其餘非必修排在後面、維持原順序）
 export const SUBJECT_ORDER = ['國語', '數學', '生活', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
 
-// 導師原則配課科目（自配時若動到這些，理由將提課發會）；其餘為導師選填配課
+// 導師配課三分類：
+//   原則配課（動到→理由提課發會）
 export const PRINCIPLE_SUBJECTS = ['國語', '數學', '班級活動', '自主學習']
+//   專長配課＝學校有科任的科目（動到→理由給課務組排配課依據）
+export const SPECIALTY_SUBJECTS = ['社會', '自然', '英語', '體育', '視覺藝術', '表演藝術', '音樂', '本土語', '專題', '國際教育']
+//   其餘（健康、綜合、生活…）為選填配課
+export function subjectCategory(name: string): 'principle' | 'specialty' | 'optional' {
+  if (PRINCIPLE_SUBJECTS.includes(name)) return 'principle'
+  if (SPECIALTY_SUBJECTS.includes(name)) return 'specialty'
+  return 'optional'
+}
+// 需證照科目
+export const CERT_SUBJECTS = ['英語', '本土語']
 export function sortSubjects<T extends { name: string }>(arr: T[]): T[] {
   const known = SUBJECT_ORDER.flatMap(m => arr.filter(s => s.name === m))
   const unknown = arr.filter(s => !SUBJECT_ORDER.includes(s.name))
@@ -225,6 +236,12 @@ export interface TeacherAllocation {
   // 代理專用：
   subjects?: string[]                                          // 代理科任複選的授課科目
   subjectGradeHours?: Record<string, Record<string, number>>  // 代理科任：科目 → 年級 → 節數
+  // 送出精靈收集（教師層級）：
+  overtimeHours?: number               // 願意超鐘點節數
+  overtimeSubjects?: string[]          // 願意超鐘點支援的科目
+  principleReason?: string             // 動到原則配課的理由（提課發會）
+  specialtyReason?: string             // 動到專長配課的理由（課務組排配課依據）
+  acknowledged?: boolean               // 已閱讀並同意注意事項
   locked: boolean
   submittedAt: string | null
 }
