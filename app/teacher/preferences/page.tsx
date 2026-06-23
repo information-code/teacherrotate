@@ -18,12 +18,16 @@ export default async function TeacherPreferencesPage() {
   ])
   const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
 
-  const scores = scoresResult.data ?? []
+  const allScores = scoresResult.data ?? []
   const scoremap = scoremapResult.data ?? []
   const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
   const midLowSwitchScore = Number(settingsMap['midlow_switch_score'] ?? 2)
-  const targetYear = Number(settingsMap['preference_year'] ?? Math.max(0, ...scores.map(s => s.year)) + 1)
+  const targetYear = Number(settingsMap['preference_year'] ?? Math.max(0, ...allScores.map(s => s.year)) + 1)
   const closed = settingsMap['preference_phase'] === 'closed'
+  // 目標年度開放前，老師端只看得到該年度之前的分數與工作（不因管理者已套用撕榜而提前看到），
+  // 也讓本輪選填判定不受套用影響。
+  const scores = allScores.filter(s => s.year < targetYear)
+  const cappedRotations = (rotations ?? []).filter(r => r.year < targetYear)
 
   const { data: prefs } = await admin
     .from('preferences')
@@ -33,7 +37,7 @@ export default async function TeacherPreferencesPage() {
     .maybeSingle()
 
   const rotMap: Record<number, { work: string; semester: string }> = {}
-  for (const r of rotations ?? []) rotMap[r.year] = { work: r.work, semester: r.semester ?? '全學年' }
+  for (const r of cappedRotations) rotMap[r.year] = { work: r.work, semester: r.semester ?? '全學年' }
   const scoreHistory = scores.map(s => ({
     year: s.year,
     work: rotMap[s.year]?.work,
@@ -47,7 +51,7 @@ export default async function TeacherPreferencesPage() {
     preference3: prefs?.preference3 ?? null,
   }
 
-  const targetType = getRotationTarget((rotations ?? []).map(r => ({ year: r.year, work: r.work, grade: r.grade ?? null })))
+  const targetType = getRotationTarget(cappedRotations.map(r => ({ year: r.year, work: r.work, grade: r.grade ?? null })))
 
   return (
     <PreferencesPage
