@@ -47,7 +47,7 @@ export default async function TeacherAllocationPage() {
     homeroom = {
       grade,
       homeroomBase: gc.homeroomBase,
-      subjects: gc.subjects.map(s => s.name).filter(Boolean),
+      subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
       scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
     }
   }

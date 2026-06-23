@@ -28,7 +28,9 @@ export interface GradeScenario {
 /** 某年級的設定 */
 export interface GradeConfig {
   classCount: number                          // 班級數
-  subjects: { name: string; perClass: number }[]  // 各科每班基本節數（→ 需求 = classCount × perClass）
+  // 各科每班基本節數（→ 需求 = classCount × perClass）。homeroom=false 的科目只算需求，
+  // 不出現在導師的配課選填（例如國際教育/專題/其它，由科任或特殊安排）。
+  subjects: { name: string; perClass: number; homeroom: boolean }[]
   homeroomBase: number                        // 該年級導師基本授課節數
   scenarios: Record<Reduction, GradeScenario>
 }
@@ -47,15 +49,16 @@ export interface AllocationConfig {
   adminBase: AdminBase                  // 行政基本授課節數（校長/主任/組長）
 }
 
-const DEFAULT_SUBJECTS = [
+// homeroom=false 者預設不出現在導師配課選填（只算需求）
+const DEFAULT_SUBJECTS: { name: string; homeroom: boolean }[] = [
   '國語', '數學', '英語', '自然', '生活', '健康', '體育',
-  '音樂', '視覺藝術', '表演藝術', '綜合', '本土語', '班級活動', '專題',
-]
+  '音樂', '視覺藝術', '表演藝術', '綜合', '本土語', '班級活動',
+].map(name => ({ name, homeroom: true })).concat([{ name: '專題', homeroom: false }])
 
 export function defaultGradeConfig(): GradeConfig {
   return {
     classCount: 0,
-    subjects: DEFAULT_SUBJECTS.map(name => ({ name, perClass: 0 })),
+    subjects: DEFAULT_SUBJECTS.map(s => ({ name: s.name, perClass: 0, homeroom: s.homeroom })),
     homeroomBase: 0,
     scenarios: {
       0: { enabled: true, plans: [] },
@@ -92,7 +95,7 @@ export function normalizeConfig(raw: unknown): AllocationConfig {
       ? {
           classCount: Number(rg.classCount ?? 0),
           subjects: Array.isArray(rg.subjects) && rg.subjects.length
-            ? rg.subjects.map(s => ({ name: String(s.name ?? ''), perClass: Number(s.perClass ?? 0) }))
+            ? rg.subjects.map(s => ({ name: String(s.name ?? ''), perClass: Number(s.perClass ?? 0), homeroom: s.homeroom !== false }))
             : dg.subjects,
           homeroomBase: Number(rg.homeroomBase ?? 0),
           scenarios: {

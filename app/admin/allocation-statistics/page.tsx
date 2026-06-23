@@ -63,9 +63,10 @@ export default async function AllocationStatisticsPage() {
   const gradesMeta: Record<number, GradeMeta> = {}
   for (const g of GRADES) {
     const gc = config.grades[g]
+    const hrSubjects = new Set(gc.subjects.filter(s => s.homeroom).map(s => s.name))
     gradesMeta[g] = {
-      subjects: gc.subjects.map(s => s.name).filter(Boolean),
-      demand: gradeDemand(gc).filter(d => d.subject).map(d => ({ subject: d.subject, total: d.total })),
+      subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
+      demand: gradeDemand(gc).filter(d => d.subject && hrSubjects.has(d.subject)).map(d => ({ subject: d.subject, total: d.total })),
       homeroomBase: gc.homeroomBase,
     }
   }

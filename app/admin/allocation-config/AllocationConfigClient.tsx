@@ -122,6 +122,7 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
                 <th>科目 / 領域</th>
                 <th className="text-center w-28">每班基本節數</th>
                 <th className="text-center w-32">需求總節數<br /><span className="font-normal text-[10px] text-zinc-400">班級數 × 每班節數</span></th>
+                <th className="text-center w-24">導師配課<br /><span className="font-normal text-[10px] text-zinc-400">取消＝不出現在<br />老師配課選填</span></th>
                 <th className="w-16"></th>
               </tr>
             </thead>
@@ -139,6 +140,11 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
                       className="input w-16 text-center py-1" />
                   </td>
                   <td className="text-center font-medium text-zinc-800">{g.classCount * s.perClass}</td>
+                  <td className="text-center">
+                    <input type="checkbox" checked={s.homeroom}
+                      onChange={e => patchGrade(grade, gc => ({ ...gc, subjects: gc.subjects.map((x, j) => j === i ? { ...x, homeroom: e.target.checked } : x) }))}
+                      className="w-4 h-4" />
+                  </td>
                   <td>
                     <button onClick={() => patchGrade(grade, gc => ({ ...gc, subjects: gc.subjects.filter((_, j) => j !== i) }))}
                       className="btn-danger text-xs py-0.5 px-1.5">刪除</button>
@@ -148,7 +154,7 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
             </tbody>
           </table>
         </div>
-        <button onClick={() => patchGrade(grade, gc => ({ ...gc, subjects: [...gc.subjects, { name: '', perClass: 0 }] }))}
+        <button onClick={() => patchGrade(grade, gc => ({ ...gc, subjects: [...gc.subjects, { name: '', perClass: 0, homeroom: true }] }))}
           className="btn-secondary text-xs">+ 新增科目</button>
       </div>
 
@@ -186,7 +192,7 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
                             className="btn-danger text-xs py-0.5 px-1.5 ml-auto">刪除方案</button>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
-                          {g.subjects.map((s, si) => (
+                          {g.subjects.filter(s => s.homeroom).map((s, si) => (
                             <div key={si} className="flex items-center gap-1.5">
                               <span className="text-xs text-zinc-600 flex-1 truncate">{s.name || '（未命名）'}</span>
                               <NumberInput min={0} value={plan.alloc[s.name] ?? 0}
