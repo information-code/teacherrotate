@@ -22,6 +22,13 @@ const navSections = [
     ],
   },
   {
+    title: '配課管理',
+    items: [
+      { href: '/admin/allocation-config', label: '配課設定' },
+      // 配課統計 於 Stage 4 加入
+    ],
+  },
+  {
     title: '規則設定',
     items: [
       { href: '/admin/scoremap', label: '分數對照表' },
