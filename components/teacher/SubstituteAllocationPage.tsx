@@ -184,8 +184,8 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
                     <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}`}</p>
                   </>
                 )}
-                {hasPlans && !voluntarySelf && !planName && !readOnly && (
-                  <p className="text-[11px] text-zinc-400">建議直接選用上方方案。<button onClick={() => setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } }))} className="ml-1 text-zinc-500 underline hover:text-zinc-700">需要自訂?</button></p>
+                {hasPlans && !voluntarySelf && !readOnly && (
+                  <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={() => setChoice(r, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } }))} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
                 )}
                 {inSelf && (
                   <div className="space-y-2">

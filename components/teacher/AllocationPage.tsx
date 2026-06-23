@@ -269,11 +269,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     </>
                   )}
 
-                  {/* 有相符方案、未選、非自配：引導 + 降級的自訂入口 */}
-                  {hasPlans && !voluntarySelf && !planName && !readOnly && (
+                  {/* 有相符方案、非自配：自訂入口一直可用（即使已選方案） */}
+                  {hasPlans && !voluntarySelf && !readOnly && (
                     <p className="text-[11px] text-zinc-400">
-                      建議直接選用上方行政方案。
-                      <button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">需要自訂配課？</button>
+                      建議直接選用方案；如需調整可
+                      <button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。
                     </p>
                   )}
 
