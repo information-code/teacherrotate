@@ -62,7 +62,12 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
 
   const rkey = String(reduction)
-  const subjectTabs = Array.from(new Set(teachers.filter(t => t.role === 'subject').map(t => subjectAreaOf(t.work)))).filter(Boolean).sort()
+  const SUBJECT_ORDER = ['生活', '英語', '社會', '自然', '體育', '視覺藝術', '表演藝術', '音樂']
+  const subjectTabs = Array.from(new Set(teachers.filter(t => t.role === 'subject').map(t => subjectAreaOf(t.work)))).filter(Boolean)
+    .sort((a, b) => {
+      const ia = SUBJECT_ORDER.indexOf(a), ib = SUBJECT_ORDER.indexOf(b)
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b, 'zh-Hant')
+    })
   const adminTeachers = teachers.filter(t => t.role === 'admin')
     .sort((a, b) => ADMIN_KIND_ORDER[adminKind(a.work)] - ADMIN_KIND_ORDER[adminKind(b.work)])
 
@@ -121,7 +126,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="flex gap-1 flex-wrap items-center">
           {GRADES.map(g => <button key={g} onClick={() => setView(String(g))} className={tabCls(view === String(g))}>{GRADE_LABEL[g]}</button>)}
           <span className="mx-1 text-zinc-300">|</span>
-          {subjectTabs.map(s => <button key={s} onClick={() => setView('subj:' + s)} className={tabCls(view === 'subj:' + s)}>科任·{s}</button>)}
+          {subjectTabs.map(s => <button key={s} onClick={() => setView('subj:' + s)} className={tabCls(view === 'subj:' + s)}>{s}</button>)}
           <span className="mx-1 text-zinc-300">|</span>
           <button onClick={() => setView('admin')} className={tabCls(view === 'admin')}>行政</button>
         </div>
