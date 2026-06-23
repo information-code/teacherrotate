@@ -1,21 +1,41 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
   year: number
+  phase: 'open' | 'closed'
   teachers: TeacherStat[]
   gradesMeta: Record<number, GradeMeta>
 }
 
-export default function AllocationStatisticsClient({ year, teachers: initial, gradesMeta }: Props) {
+export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta }: Props) {
+  const router = useRouter()
   const [teachers, setTeachers] = useState<TeacherStat[]>(initial)
   const [grade, setGrade] = useState<number>(1)
   const [reduction, setReduction] = useState<Reduction>(0)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function setPhase(next: 'open' | 'closed') {
+    const msg = next === 'closed'
+      ? `截止 ${year} 學年度配課？\n\n老師端的配課選填將立即轉為唯讀，無法再修改。`
+      : `重新開放 ${year} 學年度配課？\n\n老師端將恢復可填寫。`
+    if (!confirm(msg)) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allocation_phase: next }),
+      })
+      if (!res.ok) { alert('操作失敗，請稍後再試'); return }
+      router.refresh()
+    } finally { setBusy(false) }
+  }
 
   const teachersRef = useRef(teachers)
   useEffect(() => { teachersRef.current = teachers }, [teachers])
@@ -66,10 +86,19 @@ export default function AllocationStatisticsClient({ year, teachers: initial, gr
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="page-title mb-1">配課統計 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span></h2>
+          <h2 className="page-title mb-1">配課統計 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
+            {phase === 'open'
+              ? <span className="ml-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-sm">填報中</span>
+              : <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-sm">已截止</span>}
+          </h2>
           <p className="text-xs text-zinc-400">篩選年級與情境，檢視各教師配課明細；可直接編輯（最高權限，含已鎖定者）。下方比對各領域需求與選擇加總。</p>
         </div>
-        {savingId && <span className="text-xs text-zinc-500">儲存中…</span>}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {savingId && <span className="text-xs text-zinc-500">儲存中…</span>}
+          {phase === 'open'
+            ? <button onClick={() => setPhase('closed')} disabled={busy} className="btn-primary text-sm">{busy ? '處理中…' : '截止配課'}</button>
+            : <button onClick={() => setPhase('open')} disabled={busy} className="btn-secondary text-sm">{busy ? '處理中…' : '重新開放配課'}</button>}
+        </div>
       </div>
 
       {/* 篩選 */}

@@ -26,8 +26,10 @@ export interface GradeMeta {
 
 export default async function AllocationStatisticsPage() {
   const admin = getAdminClient()
-  const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
-  const year = Number(settingsRows?.[0]?.value ?? 115)
+  const { data: settingsRows } = await admin.from('settings').select('key, value').in('key', ['preference_year', 'allocation_phase'])
+  const sMap = Object.fromEntries((settingsRows ?? []).map(r => [r.key, r.value]))
+  const year = Number(sMap['preference_year'] ?? 115)
+  const phase: 'open' | 'closed' = sMap['allocation_phase'] === 'closed' ? 'closed' : 'open'
 
   const [{ data: cfgRow }, { data: profiles }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
@@ -71,5 +73,5 @@ export default async function AllocationStatisticsPage() {
     }
   }
 
-  return <AllocationStatisticsClient year={year} teachers={teachers} gradesMeta={gradesMeta} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} />
 }
