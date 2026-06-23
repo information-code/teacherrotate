@@ -168,11 +168,6 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         <div className="flex items-center gap-2">
           {saveStatus === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
           {saveStatus === 'saved' && !readOnly && <span className="text-xs text-green-600">✓ 已自動儲存</span>}
-          {!readOnly && step === 1 && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
-          {!readOnly && step === 2 && <>
-            <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
-            <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>
-          </>}
         </div>
       </div>
 
@@ -309,6 +304,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             </div>
           )}
           <p className="text-[11px] text-zinc-400">超鐘意願供課務組事後安排參考，不影響上一頁的配課節數。</p>
+        </div>
+      )}
+
+      {!readOnly && (
+        <div className="flex items-center justify-end gap-2 pt-2">
+          {step === 1 && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
+          {step === 2 && <>
+            <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
+            <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>
+          </>}
         </div>
       )}
 
