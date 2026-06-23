@@ -271,7 +271,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                 <div key={r} className="card p-4 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-sm font-semibold text-zinc-700">{REDUCTION_LABEL[r as 0 | 1 | 2]}<span className="ml-2 text-xs font-normal text-zinc-500">目標實際授課節數 {target}</span></h3>
-                    {hasPlans && !selfMode[key] && (
+                    {hasPlans && !selfMode[key] && usablePlans.length > 1 && (
                       <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
                         <option value="">請選擇方案</option>
                         {usablePlans.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
@@ -285,29 +285,34 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                       {block('導師原則配課', principleSubjects, false)}
                       {block('導師專長配課', specialtySubjects, false)}
                       {block('導師選填配課', optionalSubjects, false)}
-                      <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}`}</p>
                     </>
-                  )}
-
-                  {hasPlans && !selfMode[key] && !readOnly && (
-                    <p className="text-[11px] text-zinc-400">建議直接選用方案；如需調整可<button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</p>
                   )}
 
                   {/* 自配模式：三區塊（原則鎖定，旁有編輯） */}
                   {inSelf && (
-                    <div className="space-y-3">
-                      {hasPlans
-                        ? !readOnly && <p className="text-[11px] text-zinc-400">自訂配課,各科合計需達 {target} 節。<button onClick={cancelSelf} className="text-zinc-500 underline">改選方案</button></p>
-                        : <p className="text-[11px] text-zinc-500">您的實際授課節數為 {target} 節,與行政方案總數不同,請自行配課使合計達 {target} 節。</p>}
+                    <>
                       {block('導師原則配課', principleSubjects, principleEditable,
                         inSelf && !readOnly && !principleUnlocked[key]
                           ? <button onClick={() => setPrincipleUnlocked(m => ({ ...m, [key]: true }))} className="text-zinc-500 underline font-normal">編輯</button>
                           : null)}
                       {block('導師專長配課', specialtySubjects, inSelf && !readOnly)}
                       {block('導師選填配課', optionalSubjects, inSelf && !readOnly)}
-                      <p className={`text-xs ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== target && ` / 目標 ${target}（${sum < target ? '不足' : '超過'} ${Math.abs(sum - target)}）`}</p>
-                    </div>
+                    </>
                   )}
+
+                  {/* 底部：提示（左）＋ 合計（右下、放大） */}
+                  <div className="flex items-end justify-between gap-3 pt-1">
+                    <div className="text-[11px] text-zinc-400 flex-1">
+                      {!inSelf && !readOnly && <>建議直接選用方案；如需調整可<button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</>}
+                      {inSelf && hasPlans && !readOnly && <>自訂配課，各科合計需達 {target} 節。<button onClick={cancelSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改選方案</button></>}
+                      {inSelf && !hasPlans && <>您的實際授課節數為 {target} 節，與行政方案總數不同，請自行配課使合計達 {target} 節。</>}
+                    </div>
+                    {(inSelf || planName) && (
+                      <div className={`text-lg font-semibold whitespace-nowrap ${sum === target ? 'text-green-600' : 'text-amber-600'}`}>
+                        合計 {sum}{sum !== target && <span className="text-xs font-normal"> / 目標 {target}（{sum < target ? '不足' : '超過'} {Math.abs(sum - target)}）</span>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })
