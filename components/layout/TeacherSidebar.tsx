@@ -4,15 +4,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-const navItems = [
+const FORMAL_ITEMS = [
   { href: '/teacher/profile',     label: '基本資料' },
   { href: '/teacher/scores',      label: '輪動分數' },
   { href: '/teacher/preferences', label: '選填志願' },
   { href: '/teacher/allocation',  label: '配課選填' },
 ]
+// 代理：不輪動、不選志願，只看基本資料與配課選填
+const SUBSTITUTE_ITEMS = [
+  { href: '/teacher/profile',    label: '基本資料' },
+  { href: '/teacher/allocation', label: '配課選填' },
+]
 
-export function TeacherSidebar() {
+export function TeacherSidebar({ isSubstitute = false }: { isSubstitute?: boolean }) {
   const pathname = usePathname()
+  const navItems = isSubstitute ? SUBSTITUTE_ITEMS : FORMAL_ITEMS
 
   return (
     <aside className="w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">

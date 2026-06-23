@@ -25,7 +25,7 @@ export async function GET() {
   const admin = getAdminClient()
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, name, email, role, created_at')
+    .select('id, name, email, role, employment_type, created_at')
     .in('role', ['teacher', 'admin'])
     .order('name')
 
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   const caller = await requireAdmin()
   if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, email } = await request.json()
+  const { name, email, employmentType } = await request.json()
   if (!name?.trim() || !email?.trim()) {
     return NextResponse.json({ error: '姓名與 Email 為必填' }, { status: 400 })
   }
@@ -59,8 +59,9 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       email: email.trim().toLowerCase(),
       role: 'teacher',
+      employment_type: employmentType === 'substitute' ? 'substitute' : 'formal',
     })
-    .select('id, name, email, created_at')
+    .select('id, name, email, employment_type, created_at')
     .single()
 
   if (error) {
@@ -95,6 +96,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '無效的角色' }, { status: 400 })
     }
     const { error } = await admin.from('profiles').update({ role: newRole }).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  // 聘任別異動（正式/代理）
+  if ('employment_type' in body) {
+    const t = body.employment_type === 'substitute' ? 'substitute' : 'formal'
+    const { error } = await admin.from('profiles').update({ employment_type: t }).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
   }

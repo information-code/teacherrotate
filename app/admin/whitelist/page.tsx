@@ -18,7 +18,7 @@ export default async function WhitelistPage() {
 
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, name, email, role, created_at')
+    .select('id, name, email, role, employment_type, created_at')
     .in('role', ['teacher', 'admin'])
     .order('name')
 

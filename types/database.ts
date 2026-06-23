@@ -33,6 +33,7 @@ export type Database = {
           status: string; created_at: string; updated_at: string
           score_confirmed: boolean; score_confirmed_at: string | null
           other_school_years: number; kanpu_substitute_years: number
+          employment_type: string
         }
         Insert: {
           id: string; email: string; name?: string | null; phone?: string | null
@@ -58,6 +59,7 @@ export type Database = {
           status?: string; created_at?: string; updated_at?: string
           score_confirmed?: boolean; score_confirmed_at?: string | null
           other_school_years?: number; kanpu_substitute_years?: number
+          employment_type?: string
         }
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>
         Relationships: []

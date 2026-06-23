@@ -8,6 +8,7 @@ interface TeacherEntry {
   name: string | null
   email: string
   role: string
+  employment_type: string
   created_at: string
   logged_in: boolean
 }
@@ -24,8 +25,10 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   // 新增
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [employmentType, setEmploymentType] = useState<'formal' | 'substitute'>('formal')
   const [addError, setAddError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [empTogglingId, setEmpTogglingId] = useState<string | null>(null)
 
   // 搜尋
   const [query, setQuery] = useState('')
@@ -58,7 +61,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     const res = await fetch('/api/admin/whitelist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email, employmentType }),
     })
     const data = await res.json()
     setSubmitting(false)
@@ -66,6 +69,22 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     setEntries(prev => [...prev, data].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'zh-TW')))
     setName('')
     setEmail('')
+    setEmploymentType('formal')
+    router.refresh()
+  }
+
+  async function handleToggleEmployment(entry: TeacherEntry) {
+    const next = entry.employment_type === 'substitute' ? 'formal' : 'substitute'
+    if (!confirm(`將「${entry.name ?? entry.email}」改為${next === 'substitute' ? '代理' : '正式'}教師？`)) return
+    setEmpTogglingId(entry.id)
+    const res = await fetch('/api/admin/whitelist', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: entry.id, employment_type: next }),
+    })
+    setEmpTogglingId(null)
+    if (!res.ok) return
+    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, employment_type: next } : e))
     router.refresh()
   }
 
@@ -122,6 +141,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
               {entry.role === 'admin' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-white rounded-sm">管理員</span>
               )}
+              {entry.employment_type === 'substitute' && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>
+              )}
             </div>
             {isEditing ? (
               <div className="mt-1.5 flex items-center gap-2">
@@ -151,6 +173,15 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                   className="text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-40"
                 >
                   {entry.role === 'admin' ? '移除管理員' : '設為管理員'}
+                </button>
+              )}
+              {entry.role !== 'admin' && (
+                <button
+                  onClick={() => handleToggleEmployment(entry)}
+                  disabled={empTogglingId === entry.id}
+                  className="text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-40"
+                >
+                  {entry.employment_type === 'substitute' ? '改正式' : '設為代理'}
                 </button>
               )}
               <button onClick={() => { setEditingId(entry.id); setEditEmail(entry.email); setEditError('') }} className="text-xs text-zinc-400 hover:text-zinc-700">
@@ -193,6 +224,13 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
           <div className="flex-[2]">
             <label className="block text-xs text-zinc-500 mb-1">Google 登入 Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teacher@gmail.com" required className="input" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">聘任別</label>
+            <select value={employmentType} onChange={e => setEmploymentType(e.target.value as 'formal' | 'substitute')} className="input">
+              <option value="formal">正式</option>
+              <option value="substitute">代理</option>
+            </select>
           </div>
           <button type="submit" disabled={submitting} className="btn-primary whitespace-nowrap">
             {submitting ? '新增中...' : '新增'}

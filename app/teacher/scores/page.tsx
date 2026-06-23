@@ -12,9 +12,10 @@ export default async function TeacherScoresPage() {
   const admin = getAdminClient()
   const [scoresResult, profileResult, settingsResult] = await Promise.all([
     admin.from('scores').select('year, score, recent_four_year_total').eq('teacher_id', user.id).order('year'),
-    admin.from('profiles').select('score_confirmed, score_confirmed_at').eq('id', user.id).single(),
+    admin.from('profiles').select('score_confirmed, score_confirmed_at, employment_type').eq('id', user.id).single(),
     admin.from('settings').select('key, value').in('key', ['preference_phase', 'preference_year']),
   ])
+  if (profileResult.data?.employment_type === 'substitute') redirect('/teacher/allocation')
   const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
   const closed = settingsMap['preference_phase'] === 'closed'
   const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
