@@ -127,8 +127,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-56">
             {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
           </select>
-          {reasonIcon(t)}{reviewIcon(t)}
+          {reasonIcon(t)}
           {t.data.locked && <span className="text-[10px]">🔒</span>}
+          <button onClick={() => setReview(t.id)} className="btn-secondary text-xs">🛠 減課／超鐘審核</button>
           <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
         </div>
         <div className="card p-0 overflow-x-auto">
