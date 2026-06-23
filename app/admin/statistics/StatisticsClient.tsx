@@ -112,7 +112,18 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
         body: JSON.stringify({ year: nextYear }),
       })
       if (!res.ok) {
-        alert('啟動失敗，請稍後再試')
+        const data = await res.json().catch(() => ({}))
+        if (data.error === 'missing_rotations') {
+          alert(
+            `無法啟動 ${nextYear} 學年度\n\n` +
+            `以下 ${data.count} 位在職教師尚未建立 ${data.year} 學年度工作紀錄：\n` +
+            `${data.teachers.join('、')}\n\n` +
+            `請先到「工作紀錄」為他們建立 ${data.year} 學年度工作，` +
+            `或將已離校者狀態設為「離職」，再重新啟動。`
+          )
+        } else {
+          alert(data.error || '啟動失敗，請稍後再試')
+        }
         return
       }
       router.push('/admin/statistics')
