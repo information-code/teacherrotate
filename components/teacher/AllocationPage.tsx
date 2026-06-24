@@ -338,7 +338,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         <div className="card p-4 space-y-4">
           <h3 className="text-sm font-semibold text-zinc-700">二、超鐘意願</h3>
           <label className="flex items-center gap-2 text-sm"><span className="text-zinc-700">願意超鐘點節數</span>
-            <NumberInput min={0} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" /></label>
+            <NumberInput min={0} max={6} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5" />
+            <span className="text-xs text-zinc-400">（不得超過 6 節，最多 6 節）</span></label>
           {role !== 'admin' && overtimeHours > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-500">超鐘順序（願意支援的科目，依優先順序；{role === 'subject' ? '可選任一科目' : '列出全部專長科目與您有配課的選填科目'}）。選「⛔ 其他領域不願意」後，後面的順序會自動補上同值。</p>
