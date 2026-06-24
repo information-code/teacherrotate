@@ -258,6 +258,7 @@ export interface TeacherAllocation {
   overtimeSubjects?: string[]          // 願意超鐘點支援的科目（舊欄位，保留相容）
   overtimeOrder?: string[]             // 願意超鐘點支援科目（依優先順序）
   overtimeApproved?: number            // 管理者事後審核通過的超鐘數
+  subjectWishes?: string[]             // 行政：想授課科目志願序（全科可選，供課務組參考）
   principleReason?: string             // 動到原則配課的理由（提課發會）
   specialtyReason?: string             // 動到專長配課的理由（課務組排配課依據）
   scheduling?: SchedulingNeeds         // 排課需求（移送課發會審議）

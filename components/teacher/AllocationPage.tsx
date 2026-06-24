@@ -45,6 +45,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
   const [step, setStep] = useState(1)
   const [showPeriodsTable, setShowPeriodsTable] = useState(false)
+  const [subjectWishes, setSubjectWishes] = useState<string[]>(initial.subjectWishes ?? [])
   const [principleReason, setPrincipleReason] = useState(initial.principleReason ?? '')
   const [specialtyReason, setSpecialtyReason] = useState(initial.specialtyReason ?? '')
   const [overtimeHours, setOvertimeHours] = useState(initial.overtimeHours ?? 0)
@@ -75,6 +76,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       role, work, grade, projectReduction, extraHours: 0, scenarios, gradeHours,
       projects, projectOrder: projectOrder.filter(Boolean),
       overtimeHours, overtimeOrder: overtimeOrder.filter(Boolean),
+      subjectWishes: subjectWishes.filter(Boolean),
       scheduling,
       principleReason, specialtyReason,
       acknowledged: lock ? true : (initial.acknowledged ?? false),
@@ -98,7 +100,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, projects, projectOrder, scheduling, principleReason, specialtyReason])
+  }, [scenarios, gradeHours, overtimeHours, overtimeOrder, projects, projectOrder, scheduling, principleReason, specialtyReason, subjectWishes])
 
   const actual = (reduction: number) => (base ?? 0) - reduction   // 超鐘點與專案減課不計入教師端
 
@@ -139,6 +141,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   }
   function setProjOrder(i: number, val: string) {
     setProjectOrder(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
+  }
+  function setWish(i: number, val: string) {
+    setSubjectWishes(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a })
   }
   function addProject() { setProjects(p => [...p, { name: '', hours: 0 }]) }
   function removeProject(i: number) { setProjects(p => p.filter((_, idx) => idx !== i)) }
@@ -221,6 +226,23 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             <span className="text-sm text-zinc-600">實際授課節數</span>
             <span className="text-2xl font-semibold text-zinc-900">{actual(0)}</span>
           </div></div>
+        )}
+
+        {role === 'admin' && (
+          <div className="card p-4 space-y-2">
+            <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">想授課科目志願</div>
+            <p className="text-[11px] text-zinc-400">請依序選擇您希望授課的科目（全科可選，供課務組安排參考）。</p>
+            <div className="flex flex-wrap gap-3 pt-1">
+              {[0, 1, 2].map(i => (
+                <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">志願{['一', '二', '三'][i]}</span>
+                  <select value={subjectWishes[i] ?? ''} disabled={readOnly} onChange={e => setWish(i, e.target.value)} className="input py-1 text-sm w-32">
+                    <option value="">不指定</option>
+                    {allSubjects.filter(s => !subjectWishes.includes(s) || subjectWishes[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* 科任：與行政相同，僅顯示實際授課節數，科目與各年級節數由管理者事後填寫 */}

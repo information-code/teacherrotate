@@ -122,15 +122,23 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     const mismatch = total !== act
     return (
       <div className="space-y-4">
-        <div className="card p-4 flex items-center gap-3 flex-wrap">
-          <span className="text-sm text-zinc-600">選擇{kindLabel}教師</span>
-          <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-56">
-            {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
-          </select>
-          {reasonIcon(t)}
-          {t.data.locked && <span className="text-[10px]">🔒</span>}
-          <button onClick={() => setReview(t.id)} className="btn-secondary text-xs">🛠 減課／超鐘審核</button>
-          <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-zinc-600">選擇{kindLabel}教師</span>
+            <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-56">
+              {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
+            </select>
+            {reasonIcon(t)}
+            {t.data.locked && <span className="text-[10px]">🔒</span>}
+            <button onClick={() => setReview(t.id)} className="btn-secondary text-xs">🛠 減課／超鐘審核</button>
+            <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
+          </div>
+          {(() => {
+            const wishes = (t.data.subjectWishes ?? []).filter(Boolean)
+            return wishes.length > 0
+              ? <div className="text-xs text-zinc-600 border-t border-zinc-100 pt-2">老師想授課志願：<span className="font-medium text-zinc-800">{wishes.join(' ＞ ')}</span></div>
+              : null
+          })()}
         </div>
         <div className="card p-0 overflow-x-auto">
           <div className="px-4 pt-3 flex items-center justify-between flex-wrap gap-2">
