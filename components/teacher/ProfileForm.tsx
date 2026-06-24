@@ -114,27 +114,28 @@ export function ProfileForm({ profile }: ProfileFormProps) {
 
   // 監聽語言 checkbox（觸發 re-render 讓 validate 拿到最新值）
   watch(['local_language', 'four_language', 'sea_language', 'sign_language'])
-  const gradeValues = watch([
+  // 取各「級數」欄位的實際值（基本型別）作為下方 effect 依賴。
+  // 切勿用 watch([...]) 回傳的「陣列」當依賴——它每次 render 都是新參考，
+  // 會讓 effect 每次 render 都執行、內部 setValue 形成無限更新迴圈
+  // （Maximum update depth exceeded）→ 整頁崩潰、側欄也按不動（凡是有填語言級數的老師都會中）。
+  const [llg, flg, slg, sg] = watch([
     'local_language_grade',
     'four_language_grade',
     'sea_language_grade',
     'sign_language_grade',
   ])
   useEffect(() => {
-    const pairs: [string, string][] = [
-      ['local_language_grade', 'local_language'],
-      ['four_language_grade',  'four_language'],
-      ['sea_language_grade',   'sea_language'],
-      ['sign_language_grade',  'sign_language'],
+    const pairs: [string, 'local_language' | 'four_language' | 'sea_language' | 'sign_language'][] = [
+      [llg, 'local_language'],
+      [flg, 'four_language'],
+      [slg, 'sea_language'],
+      [sg, 'sign_language'],
     ]
-    pairs.forEach(([gradeKey, boolKey]) => {
-      const grade = watch(gradeKey)
-      if (grade && grade.trim()) {
-        setValue(boolKey, true, { shouldDirty: false })
-      }
+    pairs.forEach(([grade, boolKey]) => {
+      if (grade && grade.trim()) setValue(boolKey, true, { shouldDirty: false })
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gradeValues])
+  }, [llg, flg, slg, sg])
 
   // 離開頁面前提醒（只攔截瀏覽器層級的關閉視窗 / 重新整理 / 跳外站）
   // 不攔截 app 內 <a> 點擊：之前在 capture phase 用 window.confirm 攔
