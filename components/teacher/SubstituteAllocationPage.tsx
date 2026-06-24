@@ -7,7 +7,7 @@ import {
   defaultSchedulingNeeds,
   type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds,
 } from '@/lib/allocation'
-import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
+import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, HomeroomNoticeCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 interface Props {
@@ -203,6 +203,7 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
               </label>
             </div>
 
+            {grade && <HomeroomNoticeCard grade={grade} />}
             {grade && grades[grade].scenarios.length === 0 && <div className="card text-sm text-zinc-400">管理者尚未為 {GRADE_LABEL[grade]} 啟用情境。</div>}
             {grade && grades[grade].scenarios.map(sc => {
               const g = grades[grade]

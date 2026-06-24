@@ -5,6 +5,23 @@ import { GRADES, GRADE_LABEL, type SchedulingNeeds } from '@/lib/allocation'
 
 export interface ReasonResult { principleReason: string; specialtyReason: string }
 
+// ── 導師配課注意事項（依年級不同；科任不顯示）──
+export function HomeroomNoticeCard({ grade }: { grade: number }) {
+  const isHigh = grade >= 5
+  const principle = isHigh ? '國語、數學、班級學年活動、自主學習' : '國語、數學、班級學年活動'
+  return (
+    <div className="card border-zinc-200 bg-zinc-50 p-4 space-y-2">
+      {isHigh && <p className="text-xs text-zinc-600">以下提供配課模組參考，請老師依實際授課，排出兩種配課意願模組。（E1、E2）</p>}
+      <div className="text-xs font-semibold text-zinc-500">注意事項</div>
+      <ol className="list-decimal list-inside space-y-1 text-xs text-zinc-600">
+        <li>導師原則上需要配課{principle}。</li>
+        <li>任課任何領域都須依照課程計畫進行課程實施。（符合教學正常化）</li>
+        <li>同一領域若有兩位以上老師任教，進度與課程內涵需做橫向聯繫與討論，確保學生學習品質。</li>
+      </ol>
+    </div>
+  )
+}
+
 // ── 排課需求頁（第三頁，移送課發會審議）──
 export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: SchedulingNeeds; onChange: (v: SchedulingNeeds) => void; readOnly: boolean }) {
   const set = (patch: Partial<SchedulingNeeds>) => onChange({ ...value, ...patch })

@@ -7,7 +7,7 @@ import {
   defaultSchedulingNeeds,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds,
 } from '@/lib/allocation'
-import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
+import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, HomeroomNoticeCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 interface Props {
@@ -205,6 +205,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </div>
           <p className="text-[11px] text-zinc-400 mt-2">實際授課節數 = 基本授課節數 − 減課節數（情境）</p>
         </div>
+
+        {role === 'homeroom' && grade && <HomeroomNoticeCard grade={grade} />}
 
         {role === 'admin' && (
           <div className="card p-4"><div className="flex items-center gap-3 flex-wrap">
