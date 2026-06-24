@@ -44,6 +44,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [principleUnlocked, setPrincipleUnlocked] = useState<Record<string, boolean>>({})
   const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
   const [step, setStep] = useState(1)
+  const [showPeriodsTable, setShowPeriodsTable] = useState(false)
   const [principleReason, setPrincipleReason] = useState(initial.principleReason ?? '')
   const [specialtyReason, setSpecialtyReason] = useState(initial.specialtyReason ?? '')
   const [overtimeHours, setOvertimeHours] = useState(initial.overtimeHours ?? 0)
@@ -199,7 +200,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       {/* ════ 第一頁：配課 ════ */}
       {step === 1 && <>
         <div className="card p-4">
-          <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">節數</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">節數</div>
+            <button onClick={() => setShowPeriodsTable(true)} title="點擊查看課程節數表"
+              className="flex items-center gap-1.5 text-xs text-zinc-600 border border-zinc-200 rounded-sm px-2 py-1 hover:border-zinc-400 hover:text-zinc-900 hover:bg-zinc-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+              <span className="font-medium">課程節數表</span>
+            </button>
+          </div>
           <div className="flex items-center gap-6 flex-wrap text-sm">
             <span className="text-zinc-600">基本授課節數 <span className="font-medium text-zinc-900">{base ?? '—'}</span></span>
           </div>
@@ -390,6 +398,13 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           initial={{ principleReason, specialtyReason }} onCancel={() => setReasonModalOpen(false)} onDone={onReasonDone} />
       )}
       {confirmModalOpen && <ConfirmNotesModal onCancel={() => setConfirmModalOpen(false)} onConfirm={onConfirm} />}
+
+      {/* 課程節數表（點任意處關閉）*/}
+      {showPeriodsTable && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setShowPeriodsTable(false)}>
+          <img src="/images/課程節數表.png" alt="課程節數表" className="max-w-full max-h-[90vh] rounded shadow-xl bg-white" />
+        </div>
+      )}
     </div>
   )
 }
