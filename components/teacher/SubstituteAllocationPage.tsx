@@ -92,6 +92,30 @@ export function SubstituteAllocationPage({ year, closed, subjectBase, grades, al
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked, grade, scenarios, subjects, sgh, overtimeHours, overtimeOrder, projects, projectOrder, scheduling, principleReason, specialtyReason])
 
+  // 選定年級後，自動帶入各情境的唯一/第一個可用方案（比照正式版，避免只有一個方案時沒下拉可選而卡住）。
+  // 切換年級時重置，避免沿用上一個年級的方案/配課。
+  const prevGradeRef = useRef(grade)
+  useEffect(() => {
+    if (picked !== 'homeroom' || !grade || readOnly) { prevGradeRef.current = grade; return }
+    const gradeChanged = prevGradeRef.current !== grade
+    prevGradeRef.current = grade
+    const gc = grades[grade]
+    setScenarios(prev => {
+      const next: Record<string, ScenarioChoice> = gradeChanged ? {} : { ...prev }
+      let changed = gradeChanged && Object.keys(prev).length > 0
+      for (const sc of gc.scenarios) {
+        const k = String(sc.reduction)
+        const tgt = gc.homeroomBase - sc.reduction
+        const usable = sc.plans.filter(p => planTotal(p) === tgt)
+        const cur = next[k]
+        const curValid = !!cur && (cur.planName === null ? Object.keys(cur.breakdown).length > 0 : usable.some(p => p.name === cur.planName))
+        if (usable.length > 0 && !curValid) { next[k] = { planName: usable[0].name, breakdown: { ...usable[0].alloc } }; changed = true }
+      }
+      return changed ? next : prev
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grade, picked, readOnly])
+
   function setChoice(r: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setScenarios(prev => ({ ...prev, [String(r)]: fn(prev[String(r)] ?? { planName: null, breakdown: {} }) }))
   }
