@@ -248,13 +248,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     <div className="space-y-1">
                       <div className="text-[11px] font-semibold text-zinc-500 flex items-center gap-2">{title}{extra}</div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5">
-                        {subjs.map((subj, si) => (
+                        {subjs.map((subj, si) => {
+                          const cap = homeroom!.subjectMax[subj] ?? 0
+                          return (
                           <div key={si} className="flex items-center gap-1.5"><span className="text-xs text-zinc-600 flex-1 truncate">{subj}</span>
                             {editable
-                              ? <NumberInput min={0} value={choice?.breakdown[subj] ?? 0} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" />
+                              ? <NumberInput min={0} max={cap > 0 ? cap : undefined} value={choice?.breakdown[subj] ?? 0} onChange={n => setChoice(r, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))} className="input w-12 text-center py-0.5 text-xs" />
                               : <span className="w-12 text-center text-xs font-medium text-zinc-800">{choice?.breakdown[subj] ?? 0}</span>}
+                            {cap > 0 && <span className="text-[10px] text-zinc-400 whitespace-nowrap">/{cap}</span>}
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )

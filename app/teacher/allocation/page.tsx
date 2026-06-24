@@ -15,6 +15,7 @@ export interface HomeroomCtx {
   grade: number
   homeroomBase: number
   subjects: string[]
+  subjectMax: Record<string, number>   // 各科上限＝配課設定的每班基本節數（perClass）
   scenarios: { reduction: number; plans: AllocationPlan[] }[]
 }
 
@@ -48,6 +49,7 @@ export default async function TeacherAllocationPage() {
         grade: g,
         homeroomBase: gc.homeroomBase,
         subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
+        subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name).map(s => [s.name, s.perClass])),
         scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
       }
     }
@@ -72,6 +74,7 @@ export default async function TeacherAllocationPage() {
       grade,
       homeroomBase: gc.homeroomBase,
       subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
+      subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name).map(s => [s.name, s.perClass])),
       scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
     }
   }
