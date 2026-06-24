@@ -25,6 +25,12 @@ export function HomeroomNoticeCard({ grade }: { grade: number }) {
 // ── 排課需求頁（第三頁，移送課發會審議）──
 export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: SchedulingNeeds; onChange: (v: SchedulingNeeds) => void; readOnly: boolean }) {
   const set = (patch: Partial<SchedulingNeeds>) => onChange({ ...value, ...patch })
+  // 子女年級：新欄位為陣列；相容舊資料（單一 avoidChildGradeValue）
+  const childGrades: number[] = value.avoidChildGradeValues ?? (value.avoidChildGradeValue != null ? [value.avoidChildGradeValue] : [])
+  const toggleChildGrade = (g: number) => set({
+    avoidChildGradeValues: childGrades.includes(g) ? childGrades.filter(x => x !== g) : [...childGrades, g].sort((a, b) => a - b),
+    avoidChildGradeValue: null,
+  })
   return (
     <div className="card p-4 space-y-3">
       <h3 className="text-sm font-semibold text-zinc-700">排課需求</h3>
@@ -32,13 +38,21 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
       <div className="space-y-2.5 text-sm text-zinc-700">
         <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked })} className="w-4 h-4" />公假進修</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked })} className="w-4 h-4" />輔導團共同不排課</label>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValue: e.target.checked ? value.avoidChildGradeValue : null })} className="w-4 h-4" />避免授課子女班級年段</label>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValues: e.target.checked ? childGrades : [], avoidChildGradeValue: null })} className="w-4 h-4" />避免授課子女班級年段</label>
           {value.avoidChildGrade && (
-            <select value={value.avoidChildGradeValue ?? ''} disabled={readOnly} onChange={e => set({ avoidChildGradeValue: e.target.value ? Number(e.target.value) : null })} className="input py-1 text-sm w-28">
-              <option value="">請選擇年級</option>
-              {GRADES.map(g => <option key={g} value={g}>{GRADE_LABEL[g]}</option>)}
-            </select>
+            <div className="flex items-center gap-1.5 flex-wrap pl-6">
+              <span className="text-xs text-zinc-500">子女年級（可複選，不同孩子可選多個）</span>
+              {GRADES.map(g => {
+                const on = childGrades.includes(g)
+                return (
+                  <button key={g} type="button" disabled={readOnly} onClick={() => toggleChildGrade(g)}
+                    className={`px-2 py-0.5 text-xs rounded-sm border ${on ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
+                    {GRADE_LABEL[g]}
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
         <div className="space-y-1">

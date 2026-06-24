@@ -224,13 +224,14 @@ export function baseForTeacher(config: AllocationConfig, work: string, grade: nu
 export interface SchedulingNeeds {
   officialLeave: boolean              // 公假進修
   counselingGroup: boolean            // 輔導團共同不排課
-  avoidChildGrade: boolean            // 避免授課子女班級年段
-  avoidChildGradeValue: number | null // 年段 1~6
+  avoidChildGrade: boolean             // 避免授課子女班級年段
+  avoidChildGradeValues: number[]      // 子女所在年級（可多個；不同孩子可在不同年級）1~6
+  avoidChildGradeValue?: number | null // 舊資料相容（單一年級），已改用 avoidChildGradeValues
   other: boolean                      // 其他
   otherText: string                   // 其他說明
 }
 export function defaultSchedulingNeeds(): SchedulingNeeds {
-  return { officialLeave: false, counselingGroup: false, avoidChildGrade: false, avoidChildGradeValue: null, other: false, otherText: '' }
+  return { officialLeave: false, counselingGroup: false, avoidChildGrade: false, avoidChildGradeValues: [], other: false, otherText: '' }
 }
 
 // ── 教師配課結果（每年每位老師一筆 JSON）──
