@@ -358,7 +358,6 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             <div className="text-[11px] text-zinc-400 flex-1">
               {!inSelf && !readOnly && <>已選用方案；如需調整可<button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</>}
               {inSelf && hasPlans && !readOnly && <>自訂配課，各科合計需達 {P} 節。<button onClick={cancelSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改選方案</button></>}
-              {inSelf && !hasPlans && <>超鐘節數無行政方案，請自配使合計達 {P} 節（考科為整塊，其餘填充科目補足）。</>}
             </div>
             <div className={`text-lg font-semibold whitespace-nowrap ${sum === P ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== P && <span className="text-xs font-normal"> / 目標 {P}（{sum < P ? '不足' : '超過'} {Math.abs(sum - P)}）</span>}</div>
           </div>
