@@ -88,13 +88,19 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const extraPeriods = periodsAsc.filter(P => !mandatorySet.has(P))  // 因專案減課（低）或超鐘點（高）而新增
   const groups = reducedBaseGroups({ base: base0, reductions, projectFiled }) // 由高到低
 
+  // 專長配課基準：該節數的行政方案 → 老師的減0方案（非減0卡才用，避免循環）→ 減0行政方案 → 視為 0
   function baselineFor(P: number): Record<string, number> {
-    return presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? plans[String(base0)]?.breakdown ?? {}
+    if (presetsByPeriod[P]?.length) return presetsByPeriod[P][0].alloc
+    if (P !== base0 && plans[String(base0)]) return plans[String(base0)].breakdown
+    return presetsByPeriod[base0]?.[0]?.alloc ?? {}
   }
   function deviates(P: number, breakdown: Record<string, number>, cat: 'principle' | 'specialty'): boolean {
+    if (cat === 'principle') {
+      // 原則配課基準＝各科上限（補滿值），與方案是否存在無關，避免誤判到別張卡
+      return principleSubjects.some(s => (Number(breakdown[s]) || 0) !== (homeroom?.subjectMax[s] ?? 0))
+    }
     const baseline = baselineFor(P)
-    const subs = cat === 'principle' ? principleSubjects : specialtySubjects
-    return subs.some(s => (Number(breakdown[s]) || 0) !== (Number(baseline[s]) || 0))
+    return specialtySubjects.some(s => (Number(breakdown[s]) || 0) !== (Number(baseline[s]) || 0))
   }
 
   function buildData(lock: boolean): TeacherAllocation {
