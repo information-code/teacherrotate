@@ -67,9 +67,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [openCard, setOpenCard] = useState<Record<string, boolean>>({})
   const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
   const [principleReasons, setPrincipleReasons] = useState<Record<string, string>>(initial.principleReasons ?? {})
-  const [principleEdit, setPrincipleEdit] = useState<{ P: number; subj: string; revertTo: number } | null>(null)
+  const [principleEdit, setPrincipleEdit] = useState<{ P: number; subj: string; revertTo: number | null } | null>(null)
   const [specialtyReasons, setSpecialtyReasons] = useState<Record<string, string>>(initial.specialtyReasons ?? {})
-  const [specialtyEdit, setSpecialtyEdit] = useState<{ P: number; subj: string; revertTo: number } | null>(null)
+  const [specialtyEdit, setSpecialtyEdit] = useState<{ P: number; subj: string; revertTo: number | null } | null>(null)
 
   // 科任／行政沿用欄位
   const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
@@ -204,7 +204,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       setPrincipleReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
       return
     }
-    setPrincipleEdit({ P, subj, revertTo: oldVal })
+    if (!principleReasons[String(P)]) setPrincipleEdit({ P, subj, revertTo: oldVal }) // 同卡已有理由則不重複打擾
   }
   function confirmPrincipleReason(reason: string) {
     if (!principleEdit) return
@@ -214,7 +214,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function cancelPrincipleEdit() {
     if (!principleEdit) return
     const { P, subj, revertTo } = principleEdit
-    setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
+    if (revertTo !== null) setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
     setPrincipleEdit(null)
   }
   function onSpecialtyChange(P: number, subj: string, n: number) {
@@ -226,7 +226,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       setSpecialtyReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
       return
     }
-    setSpecialtyEdit({ P, subj, revertTo: oldVal })
+    if (!specialtyReasons[String(P)]) setSpecialtyEdit({ P, subj, revertTo: oldVal }) // 同卡已有理由則不重複打擾
   }
   function confirmSpecialtyReason(reason: string) {
     if (!specialtyEdit) return
@@ -236,7 +236,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function cancelSpecialtyEdit() {
     if (!specialtyEdit) return
     const { P, subj, revertTo } = specialtyEdit
-    setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
+    if (revertTo !== null) setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
     setSpecialtyEdit(null)
   }
 
@@ -368,11 +368,13 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         {principleReasons[key] && (
           <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
             <span className="font-semibold">動到原則配課（理由提課發會）：</span><span className="whitespace-pre-line">{principleReasons[key]}</span>
+            {!readOnly && <button onClick={() => setPrincipleEdit({ P, subj: '', revertTo: null })} className="ml-2 underline text-red-600 hover:text-red-800">編輯理由</button>}
           </div>
         )}
         {specialtyReasons[key] && (
           <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
             <span className="font-semibold">動到專長配課（課務組排配課依據）：</span><span className="whitespace-pre-line">{specialtyReasons[key]}</span>
+            {!readOnly && <button onClick={() => setSpecialtyEdit({ P, subj: '', revertTo: null })} className="ml-2 underline text-amber-700 hover:text-amber-900">編輯理由</button>}
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -642,8 +644,8 @@ function CategoryReasonModal({ cat, subj, initial, onConfirm, onCancel }: { cat:
         <h3 className="font-semibold text-zinc-900">{isPrin ? '調整原則配課' : '調整專長配課'}</h3>
         <p className={`text-sm border rounded-sm px-3 py-2 ${isPrin ? 'text-red-700 bg-red-50 border-red-200' : 'text-amber-800 bg-amber-50 border-amber-200'}`}>
           {isPrin
-            ? <>您調整了「<strong>{subj}</strong>」的原則配課，請填寫理由。理由將提交至<strong>課發會－排配課會議討論決議</strong>，並顯示於此方案上方。</>
-            : <>您已調整「<strong>{subj}</strong>」專長配課，請填寫理由。您的理由將成為<strong>課務組排配課的依據</strong>，並顯示於此方案上方。</>}
+            ? <>您調整了{subj ? <>「<strong>{subj}</strong>」的</> : '本方案的'}原則配課，請填寫理由。理由將提交至<strong>課發會－排配課會議討論決議</strong>，並顯示於此方案上方（同一方案僅需一則理由，可涵蓋多科）。</>
+            : <>您已調整{subj ? <>「<strong>{subj}</strong>」</> : '本方案的'}專長配課，請填寫理由。您的理由將成為<strong>課務組排配課的依據</strong>，並顯示於此方案上方（同一方案僅需一則理由，可涵蓋多科）。</>}
         </p>
         <div className="text-[11px] text-zinc-400 space-y-0.5">
           <div className="font-medium text-zinc-500">{isPrin ? '範例（限非常重要之原因）：' : '範例（請舉證可勝任，如學歷背景或專業證照）：'}</div>
