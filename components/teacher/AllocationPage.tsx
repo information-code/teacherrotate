@@ -544,16 +544,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           <div className="card border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
             依「<strong>可能被減幾節</strong>」分成幾種情況。每一種情況，把你<strong>最想要的方案拖到最上面</strong>。（你無法決定自己會不會被減課，所以每種情況都先排好偏好。）
           </div>
+          {groups.every(rb => groupRankedPeriods(rb).length === 0) && (
+            <div className="card text-sm text-zinc-400">尚無已提方案，請回上一步提出方案後再回來排序。</div>
+          )}
           {groups.map(rb => {
             const ordered = groupRankedPeriods(rb)
+            if (ordered.length === 0) return null  // 空組（該情況尚未提方案）不顯示，提方案在第一頁進行
             const net = base0 - rb
             const grpLabel = net === 0 ? '沒有減課' : `若被減 ${net} 節`
-            if (ordered.length === 0) return (
-              <div key={rb} className="card p-4">
-                <div className="text-sm font-semibold text-zinc-700">{grpLabel}</div>
-                <p className="text-[11px] text-zinc-400 mt-1">此情況尚無方案，請回上一步為 {groupPeriods(rb, overtimeHours).filter(p => p >= bounds.lower && p <= bounds.upper).join('、')} 節提出方案。</p>
-              </div>
-            )
             return (
               <div key={rb} className="card p-4 space-y-2">
                 <div className="text-sm font-semibold text-zinc-700">{grpLabel}</div>
