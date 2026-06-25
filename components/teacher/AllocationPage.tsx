@@ -143,9 +143,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       if (prev[String(P)]) return prev
       const presets = presetsByPeriod[P] ?? []
       if (presets.length > 0) return { ...prev, [String(P)]: { planName: presets[0].name, breakdown: { ...presets[0].alloc } } }
-      // 超鐘節數：自配，預載減0(基本)方案當起點
-      const seed = prev[String(base0)]?.breakdown ?? {}
-      return { ...prev, [String(P)]: { planName: null, breakdown: { ...seed } } }
+      // 超鐘／專案節數：自配，預載減0(基本)方案當起點，並把導師原則配課補滿（已有值者不覆蓋）
+      const seed: Record<string, number> = { ...(prev[String(base0)]?.breakdown ?? {}) }
+      for (const s of principleSubjects) if (!(Number(seed[s]) > 0)) seed[s] = homeroom?.subjectMax[s] ?? 0
+      return { ...prev, [String(P)]: { planName: null, breakdown: seed } }
     })
     setOpenCard(o => ({ ...o, [P]: true }))
     if ((presetsByPeriod[P]?.length ?? 0) === 0) setSelfMode(m => ({ ...m, [P]: true }))
