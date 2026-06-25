@@ -343,25 +343,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     }
     function enterSelf() { setSelfMode(m => ({ ...m, [key]: true })); setPlanChoice(P, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }
     function cancelSelf() { setSelfMode(m => ({ ...m, [key]: false })); setPrincipleReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); setSpecialtyReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); if (presets[0]) setPlanChoice(P, () => ({ planName: presets[0].name, breakdown: { ...presets[0].alloc } })) }
-    const principleDeviated = proposed && !!ch && deviates(P, ch.breakdown, 'principle')
-    const specialtyDeviated = proposed && !!ch && deviates(P, ch.breakdown, 'specialty')
 
     return (
       <div key={P} className={`card p-4 space-y-3 ${!proposed ? 'border-dashed' : ''}`}>
-        {principleDeviated && (
+        {principleReasons[key] && (
           <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-            <span className="font-semibold">動到原則配課（理由提課發會）：</span>
-            {principleReasons[key]
-              ? <span className="whitespace-pre-line">{principleReasons[key]}</span>
-              : <span className="text-red-400">請點原則配課數字補填理由</span>}
+            <span className="font-semibold">動到原則配課（理由提課發會）：</span><span className="whitespace-pre-line">{principleReasons[key]}</span>
           </div>
         )}
-        {specialtyDeviated && (
+        {specialtyReasons[key] && (
           <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
-            <span className="font-semibold">動到專長配課（課務組排配課依據）：</span>
-            {specialtyReasons[key]
-              ? <span className="whitespace-pre-line">{specialtyReasons[key]}</span>
-              : <span className="text-amber-500">請點專長配課數字補填理由</span>}
+            <span className="font-semibold">動到專長配課（課務組排配課依據）：</span><span className="whitespace-pre-line">{specialtyReasons[key]}</span>
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
