@@ -362,13 +362,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               <span className="text-zinc-600 inline-flex items-center gap-1">實際節數可能範圍
                 <span className="group relative inline-flex">
                   <span className="w-4 h-4 rounded-full border border-zinc-300 text-zinc-400 text-[10px] leading-none flex items-center justify-center cursor-help">i</span>
-                  <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-52 rounded-sm bg-zinc-800 text-white text-[11px] font-normal px-2.5 py-1.5 z-20 shadow-lg pointer-events-none">減幾節由公文決定，你只需照「實際節數」配課。</span>
+                  <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-64 rounded-sm bg-zinc-800 text-white text-[11px] font-normal px-2.5 py-1.5 z-20 shadow-lg pointer-events-none">下限＝基本−最大減課−專案減課；上限＝基本−最小減課＋超鐘。</span>
                 </span>
               </span>
               <span>下限 <span className="text-lg font-semibold text-zinc-900">{bounds.lower}</span></span>
               <span>上限 <span className="text-lg font-semibold text-zinc-900">{bounds.upper}</span></span>
             </div>
-            <p className="text-[11px] text-zinc-400">下限＝基本−最大減課−專案減課；上限＝基本−最小減課＋超鐘。</p>
           </div>
 
           <HomeroomNoticeCard grade={homeroom.grade} ack={noticeAck} onAckChange={setNoticeAck} readOnly={readOnly} />
