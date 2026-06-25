@@ -295,6 +295,7 @@ export interface TeacherAllocation {
   scenarios: Record<string, ScenarioChoice>  // 導師（舊／相容）：各減課情境（key = "0"/"1"/"2"）的配課；新版由 plans 鏡射標準情境回填供統計頁讀取
   // ── 實際節數重設計（導師）──
   plans?: Record<string, ScenarioChoice>     // key = 實際節數；同實際節數 = 同方案（單一真實來源）
+  principleReasons?: Record<string, string>   // key = 實際節數；動到該節數原則配課的理由（即時填寫）
   ranking?: Record<string, number[]>          // key = 減後基數；值 = 該組實際節數由最想要到最不想要
   projectFiled?: number                       // 老師申請的計畫專案減課節數（用於上下限與減後基數分組）
   gradeHours?: Record<string, number>  // 科任：各年級授課節數（單一領域，key = "1".."6"）
