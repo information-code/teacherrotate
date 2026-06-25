@@ -475,7 +475,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <div><div className="text-[11px] text-zinc-400">基本授課節數</div><div className="text-lg font-semibold text-zinc-900">{base0}</div></div>
               <div><div className="text-[11px] text-zinc-400">總量管制減課</div><div className="text-sm text-zinc-700 pt-1">最少 {reductions.length ? Math.min(...reductions) : 0}～最多 {reductions.length ? Math.max(...reductions) : 0} 節</div></div>
-              <label className="block"><div className="text-[11px] text-zinc-400">計畫專案減課</div><NumberInput min={0} value={projectFiled} disabled={readOnly} onChange={n => setProjectFiled(Math.max(0, n))} className="input w-16 text-center py-0.5 mt-1" /></label>
+              <label className="block"><div className="text-[11px] text-zinc-400">計畫專案減課（0~6）</div><NumberInput min={0} max={6} value={projectFiled} disabled={readOnly} onChange={n => setProjectFiled(Math.min(6, Math.max(0, n)))} className="input w-16 text-center py-0.5 mt-1" /></label>
               <label className="block"><div className="text-[11px] text-zinc-400">意願超鐘點（0~6）</div><NumberInput min={0} max={6} value={overtimeHours} disabled={readOnly} onChange={n => setOvertimeHours(Math.min(6, Math.max(0, n)))} className="input w-16 text-center py-0.5 mt-1" /></label>
             </div>
             <div className="border-t border-zinc-100 pt-2 flex items-center gap-6 text-sm">
