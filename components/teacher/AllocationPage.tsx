@@ -190,10 +190,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     return [...present]
   })()
 
+  function failNext(msg: string) {
+    setError(msg)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   function goNext() {
     setError(null)
     if (role === 'homeroom') {
-      if (!noticeAck) { setError('請先勾選「我已熟讀上方注意事項」'); return }
+      if (!noticeAck) { failNext('請先勾選「我已熟讀上方注意事項」'); return }
       const issues: string[] = []
       for (const P of mandatoryPeriods({ base: base0, reductions })) {
         if (!plans[String(P)]) { issues.push(`必填的 ${P} 節（${netReductionLabel(base0, P)}）尚未提出方案`); continue }
@@ -203,7 +207,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         const sum = Object.values(ch.breakdown).reduce((s, n) => s + (Number(n) || 0), 0)
         if (sum !== P) issues.push(`${P} 節方案：合計 ${sum} ≠ ${P}`)
       }
-      if (issues.length) { setError('無法繼續：\n' + issues.join('\n')); return }
+      if (issues.length) { failNext('無法繼續：\n' + issues.join('\n')); return }
     }
     if (wantPrinciple || wantSpecialty || certSubjects.length) setReasonModalOpen(true)
     else setStep(2)
