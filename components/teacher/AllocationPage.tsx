@@ -65,6 +65,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [scheduling, setScheduling] = useState<SchedulingNeeds>(initial.scheduling ?? defaultSchedulingNeeds())
   const [reasonModalOpen, setReasonModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [noticeAck, setNoticeAck] = useState(false)
   const [locked, setLocked] = useState(initial.locked ?? false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -192,6 +193,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function goNext() {
     setError(null)
     if (role === 'homeroom') {
+      if (!noticeAck) { setError('請先勾選「我已熟讀上方注意事項」'); return }
       const issues: string[] = []
       for (const P of mandatoryPeriods({ base: base0, reductions })) {
         if (!plans[String(P)]) { issues.push(`必填的 ${P} 節（${netReductionLabel(base0, P)}）尚未提出方案`); continue }
@@ -364,7 +366,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             <p className="text-[11px] text-zinc-400">下限＝基本−最大減課−專案減課；上限＝基本−最小減課＋超鐘。減幾節由公文決定，你只需照「實際節數」配課。</p>
           </div>
 
-          <HomeroomNoticeCard grade={homeroom.grade} />
+          <HomeroomNoticeCard grade={homeroom.grade} ack={noticeAck} onAckChange={setNoticeAck} readOnly={readOnly} />
 
           {/* 下半之一：總量管制配課方案（必填） */}
           <div className="space-y-2">

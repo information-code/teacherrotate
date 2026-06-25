@@ -6,18 +6,24 @@ import { GRADES, GRADE_LABEL, type SchedulingNeeds } from '@/lib/allocation'
 export interface ReasonResult { principleReason: string; specialtyReason: string }
 
 // ── 導師配課注意事項（依年級不同；科任不顯示）──
-export function HomeroomNoticeCard({ grade }: { grade: number }) {
+// ack/onAckChange 有提供時，顯示「我已熟讀」勾選框（作為進下一頁的門檻）。
+export function HomeroomNoticeCard({ grade, ack, onAckChange, readOnly }: { grade: number; ack?: boolean; onAckChange?: (v: boolean) => void; readOnly?: boolean }) {
   const isHigh = grade >= 5
   const principle = isHigh ? '國語、數學、班級學年活動、自主學習' : '國語、數學、班級學年活動'
   return (
-    <div className="card border-zinc-200 bg-zinc-50 p-4 space-y-2">
-      {isHigh && <p className="text-xs text-zinc-600">以下提供配課模組參考，請老師依實際授課，排出兩種配課意願模組。（E1、E2）</p>}
-      <div className="text-xs font-semibold text-zinc-500">注意事項</div>
-      <ol className="list-decimal list-inside space-y-1 text-xs text-zinc-600">
-        <li>導師原則上需要配課{principle}。</li>
+    <div className="card border-amber-200 bg-amber-50 p-4 space-y-2">
+      <div className="text-xs font-semibold text-amber-800">注意事項：</div>
+      <ol className="list-decimal list-inside space-y-1 text-xs text-amber-900">
+        <li>導師原則上需要配課{principle}，（變更需撰寫理由呈報課發會審議）。</li>
         <li>任課任何領域都須依照課程計畫進行課程實施。（符合教學正常化）</li>
         <li>同一領域若有兩位以上老師任教，進度與課程內涵需做橫向聯繫與討論，確保學生學習品質。</li>
       </ol>
+      {onAckChange && (
+        <label className="flex items-center gap-2 text-xs font-medium text-amber-900 pt-2 mt-1 border-t border-amber-200">
+          <input type="checkbox" checked={!!ack} disabled={readOnly} onChange={e => onAckChange(e.target.checked)} className="w-4 h-4" />
+          <span>我已熟讀上方注意事項</span>
+        </label>
+      )}
     </div>
   )
 }
