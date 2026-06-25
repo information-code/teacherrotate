@@ -272,9 +272,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       <div key={P} className={`card p-4 space-y-3 ${!proposed ? 'border-dashed' : ''}`}>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節
-            <span className="ml-2 text-xs font-normal text-zinc-500">{netReductionLabel(base0, Math.min(P, base0))}{isOvertime && `・超鐘 +${P - (groups.find(g => g <= P) ?? base0)}`}</span>
             {isMandatory && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-zinc-800 text-white rounded-sm">必填</span>}
-            {isOvertime && !isMandatory && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-sm">超鐘・自配</span>}
           </h3>
           <div className="flex items-center gap-2">
             {proposed && hasPlans && !selfMode[key] && presets.length > 1 && (
