@@ -423,7 +423,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
           {/* 下半之一：總量管制配課方案（必填） */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-zinc-500">總量管制配課方案 <span className="font-normal text-zinc-400">· 依減課情境，必填（由低到高）</span></div>
+            <div className="text-xs font-semibold text-zinc-500">總量管制配課方案</div>
             {stdPeriods.length === 0
               ? <div className="card text-sm text-zinc-400">尚無可填節數，請確認管理者是否已啟用減課情境。</div>
               : stdPeriods.map(P => periodCard(P))}
@@ -432,7 +432,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           {/* 下半之二：因專案減課或超鐘點而新增（沒有專案／超鐘者不顯示） */}
           {extraPeriods.length > 0 && (
             <div className="space-y-2 pt-1">
-              <div className="text-xs font-semibold text-zinc-500">因專案減課或超鐘點而新增的方案 <span className="font-normal text-zinc-400">· 可選擇是否提出（由低到高）</span></div>
+              <div className="text-xs font-semibold text-zinc-500">因專案減課或超鐘點而新增的方案</div>
               {extraPeriods.map(P => periodCard(P))}
             </div>
           )}
