@@ -156,7 +156,7 @@ export function gradeDemand(g: GradeConfig): { subject: string; perClass: number
   return g.subjects.map(s => ({ subject: s.name, perClass: s.perClass, total: g.classCount * s.perClass }))
 }
 
-/** 實際授課節數 = 基本授課節數 − 減課節數 − 專案減課 + 自願超鐘點 */
+/** 實際授課節數 = 基本授課節數 − 減課節數 − 專案減課 + 意願超鐘點 */
 export function actualPeriods(opts: {
   base: number; reduction: number; projectReduction?: number; extraHours?: number
 }): number {
@@ -291,7 +291,7 @@ export interface TeacherAllocation {
   work: string
   grade: number | null                 // 導師年級（系統判定）
   projectReduction: number             // 專案減課
-  extraHours: number                   // 自願超鐘點
+  extraHours: number                   // 意願超鐘點
   scenarios: Record<string, ScenarioChoice>  // 導師（舊／相容）：各減課情境（key = "0"/"1"/"2"）的配課；新版由 plans 鏡射標準情境回填供統計頁讀取
   // ── 實際節數重設計（導師）──
   plans?: Record<string, ScenarioChoice>     // key = 實際節數；同實際節數 = 同方案（單一真實來源）

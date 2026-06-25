@@ -356,7 +356,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               <div><div className="text-[11px] text-zinc-400">基本授課節數</div><div className="text-lg font-semibold text-zinc-900">{base0}</div></div>
               <div><div className="text-[11px] text-zinc-400">總量管制減課</div><div className="text-sm text-zinc-700 pt-1">最少 {reductions.length ? Math.min(...reductions) : 0}～最多 {reductions.length ? Math.max(...reductions) : 0} 節</div></div>
               <label className="block"><div className="text-[11px] text-zinc-400">計畫專案減課（你申請）</div><NumberInput min={0} value={projectFiled} disabled={readOnly} onChange={setProjectFiled} className="input w-16 text-center py-0.5 mt-1" /></label>
-              <label className="block"><div className="text-[11px] text-zinc-400">自願超鐘點（你願意）</div><NumberInput min={0} max={6} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5 mt-1" /></label>
+              <label className="block"><div className="text-[11px] text-zinc-400">意願超鐘點（你願意）</div><NumberInput min={0} max={6} value={overtimeHours} disabled={readOnly} onChange={setOvertimeHours} className="input w-16 text-center py-0.5 mt-1" /></label>
             </div>
             <div className="border-t border-zinc-100 pt-2 flex items-center gap-6 text-sm">
               <span className="text-zinc-600 inline-flex items-center gap-1">實際節數可能範圍
