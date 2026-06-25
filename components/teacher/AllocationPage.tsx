@@ -78,8 +78,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   // 區間與分組
   const bounds = periodBounds({ base: base0, reductions, projectFiled, overtime: overtimeHours })
-  const periods = possiblePeriods({ base: base0, reductions, projectFiled, overtime: overtimeHours }) // 由高到低
   const mandatorySet = new Set(mandatoryPeriods({ base: base0, reductions }))
+  const periodsAsc = possiblePeriods({ base: base0, reductions, projectFiled, overtime: overtimeHours }).slice().sort((a, b) => a - b) // 低到高
+  const stdPeriods = periodsAsc.filter(P => mandatorySet.has(P))     // 總量管制配課方案（必填）
+  const extraPeriods = periodsAsc.filter(P => !mandatorySet.has(P))  // 因專案減課（低）或超鐘點（高）而新增
   const groups = reducedBaseGroups({ base: base0, reductions, projectFiled }) // 由高到低
 
   function baselineFor(P: number): Record<string, number> {
@@ -366,13 +368,21 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
           <HomeroomNoticeCard grade={homeroom.grade} />
 
-          {/* 下半：逐節數提方案 */}
+          {/* 下半之一：總量管制配課方案（必填） */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-zinc-500">請為可能的實際節數提出方案（必填者已標示；超鐘節數可選擇是否提出）</div>
-            {periods.length === 0
+            <div className="text-xs font-semibold text-zinc-500">總量管制配課方案 <span className="font-normal text-zinc-400">· 依減課情境，必填（由低到高）</span></div>
+            {stdPeriods.length === 0
               ? <div className="card text-sm text-zinc-400">尚無可填節數，請確認管理者是否已啟用減課情境。</div>
-              : periods.map(P => periodCard(P))}
+              : stdPeriods.map(P => periodCard(P))}
           </div>
+
+          {/* 下半之二：因專案減課或超鐘點而新增（沒有專案／超鐘者不顯示） */}
+          {extraPeriods.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <div className="text-xs font-semibold text-zinc-500">因專案減課或超鐘點而新增的方案 <span className="font-normal text-zinc-400">· 可選擇是否提出（由低到高）</span></div>
+              {extraPeriods.map(P => periodCard(P))}
+            </div>
+          )}
         </>}
 
         {role === 'admin' && (
