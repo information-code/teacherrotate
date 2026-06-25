@@ -614,6 +614,9 @@ function CategoryReasonModal({ cat, subj, initial, onConfirm, onCancel }: { cat:
   const [reason, setReason] = useState(initial)
   const [err, setErr] = useState<string | null>(null)
   const isPrin = cat === 'principle'
+  const examples = isPrin
+    ? ['因擔任學校法定／重大職務，經行政協調部分節數由具資格教師協同。', '經課程發展委員會通過之實驗／特色課程，採協同或跨領域統整。']
+    : ['具該領域教師證、加註專長或第二專長學分證明。', '具相關學歷背景（主修／輔系／研究所）足以勝任該科教學。', '曾受該領域研習／培訓並取得時數證明，具教學經驗。']
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-md shadow-xl w-full max-w-lg p-5 space-y-4">
@@ -623,6 +626,10 @@ function CategoryReasonModal({ cat, subj, initial, onConfirm, onCancel }: { cat:
             ? <>您調整了「<strong>{subj}</strong>」的原則配課，請填寫理由。理由將提交至<strong>課發會－排配課會議討論決議</strong>，並顯示於此方案上方。</>
             : <>您已調整「<strong>{subj}</strong>」專長配課，請填寫理由。您的理由將成為<strong>課務組排配課的依據</strong>，並顯示於此方案上方。</>}
         </p>
+        <div className="text-[11px] text-zinc-400 space-y-0.5">
+          <div className="font-medium text-zinc-500">{isPrin ? '範例（限非常重要之原因）：' : '範例（請舉證可勝任，如學歷背景或專業證照）：'}</div>
+          {examples.map((e, i) => <div key={i} className="pl-2">• {e}</div>)}
+        </div>
         <textarea value={reason} onChange={e => setReason(e.target.value)} className="input w-full" rows={3} placeholder={`請說明調整${isPrin ? '原則' : '專長'}配課的理由（必填）`} autoFocus />
         {err && <p className="text-xs text-red-600">{err}</p>}
         <div className="flex items-center justify-end gap-3 pt-1">
