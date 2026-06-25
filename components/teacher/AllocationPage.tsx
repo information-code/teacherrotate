@@ -50,13 +50,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       const specSubs = homeroom.subjects.filter(s => subjectCategory(s) === 'specialty')
       const pr = initial.principleReasons ?? {}
       const sr = initial.specialtyReasons ?? {}
-      const base0Spec = initial.plans?.[String(base0)]?.breakdown ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
       for (const k of Object.keys(p)) {
         const P = Number(k)
         const bd = { ...p[k].breakdown }
         if (!pr[k]) for (const s of prinSubs) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
         if (!sr[k]) {
-          const spec = presetsByPeriod[P]?.[0]?.alloc ?? base0Spec
+          const spec = presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
           for (const s of specSubs) { const std = Number(spec[s]) || 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
         }
         p[k] = { ...p[k], breakdown: bd }
@@ -104,11 +103,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const extraPeriods = periodsAsc.filter(P => !mandatorySet.has(P))  // 因專案減課（低）或超鐘點（高）而新增
   const groups = reducedBaseGroups({ base: base0, reductions, projectFiled }) // 由高到低
 
-  // 專長配課基準：該節數的行政方案 → 老師的減0方案（非減0卡才用，避免循環）→ 減0行政方案 → 視為 0
+  // 專長配課基準＝行政方案（該節數 → 減0），無方案則視為 0。
+  // 不採老師自己的方案當基準：否則老師在某張卡把某科調成 1，就會變成其他卡的「標準」，
+  // 導致把該科改回真正的原始值 0 時被誤判為偏離而要求理由。
   function baselineFor(P: number): Record<string, number> {
-    if (presetsByPeriod[P]?.length) return presetsByPeriod[P][0].alloc
-    if (P !== base0 && plans[String(base0)]) return plans[String(base0)].breakdown
-    return presetsByPeriod[base0]?.[0]?.alloc ?? {}
+    return presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
   }
   function deviates(P: number, breakdown: Record<string, number>, cat: 'principle' | 'specialty'): boolean {
     if (cat === 'principle') {
@@ -182,7 +181,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       return { ...prev, [String(P)]: { planName: null, breakdown: seed } }
     })
     setOpenCard(o => ({ ...o, [P]: true }))
-    if ((presetsByPeriod[P]?.length ?? 0) === 0) setSelfMode(m => ({ ...m, [P]: true }))
+    if ((presetsByPeriod[P]?.length ?? 0) === 0) {
+      setSelfMode(m => ({ ...m, [P]: true }))
+      // 從減0種子帶入專長配課時，連同減0的專長理由一起帶（避免被載入校正還原）
+      setSpecialtyReasons(prev => (prev[String(base0)] && !prev[String(P)]) ? { ...prev, [String(P)]: prev[String(base0)] } : prev)
+    }
   }
   function unproposePeriod(P: number) {
     setPlans(prev => { const n = { ...prev }; delete n[String(P)]; return n })
