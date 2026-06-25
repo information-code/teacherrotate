@@ -53,6 +53,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
   const [principleReasons, setPrincipleReasons] = useState<Record<string, string>>(initial.principleReasons ?? {})
   const [principleEdit, setPrincipleEdit] = useState<{ P: number; subj: string; revertTo: number } | null>(null)
+  const [specialtyReasons, setSpecialtyReasons] = useState<Record<string, string>>(initial.specialtyReasons ?? {})
+  const [specialtyEdit, setSpecialtyEdit] = useState<{ P: number; subj: string; revertTo: number } | null>(null)
 
   // 科任／行政沿用欄位
   const [gradeHours, setGradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
@@ -99,21 +101,24 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     // 鏡射標準減課情境（減0/1/2）回 scenarios，供配課統計頁沿用
     const scenariosMirror: Record<string, ScenarioChoice> = {}
     for (const r of reductions) { const ch = plans[String(base0 - r)]; if (ch) scenariosMirror[String(r)] = ch }
-    // 把各節數的原則配課理由彙整成單一字串，供配課統計頁的「配課理由」沿用
-    const principleAgg = role === 'homeroom'
-      ? Object.keys(plans).filter(k => deviates(Number(k), plans[k].breakdown, 'principle') && principleReasons[k])
-          .sort((a, b) => Number(a) - Number(b)).map(k => `實際${k}節：${principleReasons[k]}`).join('\n')
-      : principleReason
+    // 把各節數的原則／專長配課理由彙整成單一字串，供配課統計頁的「配課理由」沿用
+    const aggReasons = (reasons: Record<string, string>, cat: 'principle' | 'specialty', fallback: string) =>
+      role === 'homeroom'
+        ? Object.keys(plans).filter(k => deviates(Number(k), plans[k].breakdown, cat) && reasons[k])
+            .sort((a, b) => Number(a) - Number(b)).map(k => `實際${k}節：${reasons[k]}`).join('\n')
+        : fallback
+    const principleAgg = aggReasons(principleReasons, 'principle', principleReason)
+    const specialtyAgg = aggReasons(specialtyReasons, 'specialty', specialtyReason)
     return {
       role, work, grade,
       projectReduction: initial.projectReduction ?? 0, extraHours: 0,
       scenarios: role === 'homeroom' ? scenariosMirror : (initial.scenarios ?? {}),
-      plans, principleReasons, ranking, projectFiled,
+      plans, principleReasons, specialtyReasons, ranking, projectFiled,
       gradeHours,
       projects: initial.projects ?? [], projectOrder: initial.projectOrder ?? [],
       overtimeHours, overtimeOrder: overtimeOrder.filter(Boolean),
       subjectWishes: subjectWishes.filter(Boolean),
-      scheduling, principleReason: principleAgg, specialtyReason,
+      scheduling, principleReason: principleAgg, specialtyReason: specialtyAgg,
       acknowledged: lock ? true : (initial.acknowledged ?? false),
       locked: lock,
       submittedAt: lock ? new Date().toISOString() : (initial.submittedAt ?? null),
@@ -136,7 +141,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans, principleReasons, ranking, projectFiled, overtimeHours, overtimeOrder, gradeHours, scheduling, principleReason, specialtyReason, subjectWishes])
+  }, [plans, principleReasons, specialtyReasons, ranking, projectFiled, overtimeHours, overtimeOrder, gradeHours, scheduling, principleReason, specialtyReason, subjectWishes])
 
   const actual = (reduction: number) => base0 - reduction
 
@@ -160,6 +165,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function unproposePeriod(P: number) {
     setPlans(prev => { const n = { ...prev }; delete n[String(P)]; return n })
     setPrincipleReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
+    setSpecialtyReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
     setOpenCard(o => ({ ...o, [P]: false }))
   }
 
@@ -185,6 +191,28 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const { P, subj, revertTo } = principleEdit
     setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
     setPrincipleEdit(null)
+  }
+  function onSpecialtyChange(P: number, subj: string, n: number) {
+    const oldVal = Number(plans[String(P)]?.breakdown[subj] ?? 0)
+    if (n === oldVal) return
+    setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))
+    const after = { ...(plans[String(P)]?.breakdown ?? {}), [subj]: n }
+    if (!deviates(P, after, 'specialty')) {
+      setSpecialtyReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
+      return
+    }
+    setSpecialtyEdit({ P, subj, revertTo: oldVal })
+  }
+  function confirmSpecialtyReason(reason: string) {
+    if (!specialtyEdit) return
+    setSpecialtyReasons(prev => ({ ...prev, [String(specialtyEdit.P)]: reason }))
+    setSpecialtyEdit(null)
+  }
+  function cancelSpecialtyEdit() {
+    if (!specialtyEdit) return
+    const { P, subj, revertTo } = specialtyEdit
+    setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: revertTo } }))
+    setSpecialtyEdit(null)
   }
 
   // ── 分組排序 ──
@@ -214,8 +242,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   }
   const overtimeOptions = role === 'subject' ? allSubjects : []
 
-  // 大原則／證照判定（跨所有已提方案）。原則配課改為即時填理由，故此處只判專長與證照。
-  const wantSpecialty = role === 'homeroom' ? Object.entries(plans).some(([k, ch]) => ch.planName === null && deviates(Number(k), ch.breakdown, 'specialty')) : false
+  // 證照判定（跨所有已提方案）。原則／專長配課改為即時填理由，此處只判證照。
   const certSubjects = (() => {
     const present = new Set<string>()
     if (role === 'homeroom') for (const ch of Object.values(plans)) for (const cs of CERT_SUBJECTS) if ((Number(ch.breakdown[cs]) || 0) > 0) present.add(cs)
@@ -246,8 +273,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       }
       if (issues.length) { failNext('尚有以下項目需處理才能繼續：\n• ' + issues.join('\n• ')); return }
     }
-    // 原則配課的理由已於編輯當下即時填寫；此處只處理專長配課與證照
-    if (wantSpecialty || certSubjects.length) setReasonModalOpen(true)
+    // 原則／專長配課的理由已於編輯當下即時填寫；此處只處理證照確認
+    if (certSubjects.length) setReasonModalOpen(true)
     else setStep(2)
   }
   function onReasonDone(r: ReasonResult) { setPrincipleReason(r.principleReason); setSpecialtyReason(r.specialtyReason); setReasonModalOpen(false); setStep(2) }
@@ -309,8 +336,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       setPlanChoice(P, () => ({ planName: v, breakdown: { ...(plan?.alloc ?? {}) } }))
     }
     function enterSelf() { setSelfMode(m => ({ ...m, [key]: true })); setPlanChoice(P, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }
-    function cancelSelf() { setSelfMode(m => ({ ...m, [key]: false })); setPrincipleReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); if (presets[0]) setPlanChoice(P, () => ({ planName: presets[0].name, breakdown: { ...presets[0].alloc } })) }
+    function cancelSelf() { setSelfMode(m => ({ ...m, [key]: false })); setPrincipleReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); setSpecialtyReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); if (presets[0]) setPlanChoice(P, () => ({ planName: presets[0].name, breakdown: { ...presets[0].alloc } })) }
     const principleDeviated = proposed && !!ch && deviates(P, ch.breakdown, 'principle')
+    const specialtyDeviated = proposed && !!ch && deviates(P, ch.breakdown, 'specialty')
 
     return (
       <div key={P} className={`card p-4 space-y-3 ${!proposed ? 'border-dashed' : ''}`}>
@@ -320,6 +348,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             {principleReasons[key]
               ? <span className="whitespace-pre-line">{principleReasons[key]}</span>
               : <span className="text-red-400">請點原則配課數字補填理由</span>}
+          </div>
+        )}
+        {specialtyDeviated && (
+          <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+            <span className="font-semibold">動到專長配課（課務組排配課依據）：</span>
+            {specialtyReasons[key]
+              ? <span className="whitespace-pre-line">{specialtyReasons[key]}</span>
+              : <span className="text-amber-500">請點專長配課數字補填理由</span>}
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -352,7 +388,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           {inSelf && <>
             {block(P, '導師原則配課', principleSubjects, inSelf && !readOnly, <span className="text-zinc-400 font-normal">調整需填理由</span>, (subj, n) => onPrincipleChange(P, subj, n))}
             {block(P, '導師選填配課', optionalSubjects, inSelf && !readOnly)}
-            {block(P, '導師專長配課', specialtySubjects, inSelf && !readOnly)}
+            {block(P, '導師專長配課', specialtySubjects, inSelf && !readOnly, <span className="text-zinc-400 font-normal">調整需填理由</span>, (subj, n) => onSpecialtyChange(P, subj, n))}
           </>}
           <div className="flex items-end justify-between gap-3 pt-1">
             <div className="text-[11px] text-zinc-400 flex-1">
@@ -553,13 +589,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       )}
 
       {reasonModalOpen && (
-        <ReasonCertModal needPrinciple={false} needSpecialty={wantSpecialty} certSubjects={certSubjects}
+        <ReasonCertModal needPrinciple={false} needSpecialty={false} certSubjects={certSubjects}
           initial={{ principleReason, specialtyReason }} onCancel={() => setReasonModalOpen(false)} onDone={onReasonDone} />
       )}
       {confirmModalOpen && <ConfirmNotesModal onCancel={() => setConfirmModalOpen(false)} onConfirm={onConfirm} />}
       {principleEdit && (
-        <PrincipleReasonModal subj={principleEdit.subj} initial={principleReasons[String(principleEdit.P)] ?? ''}
+        <CategoryReasonModal cat="principle" subj={principleEdit.subj} initial={principleReasons[String(principleEdit.P)] ?? ''}
           onConfirm={confirmPrincipleReason} onCancel={cancelPrincipleEdit} />
+      )}
+      {specialtyEdit && (
+        <CategoryReasonModal cat="specialty" subj={specialtyEdit.subj} initial={specialtyReasons[String(specialtyEdit.P)] ?? ''}
+          onConfirm={confirmSpecialtyReason} onCancel={cancelSpecialtyEdit} />
       )}
 
       {showPeriodsTable && (
@@ -571,16 +611,21 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   )
 }
 
-// 調整導師原則配課 → 即時填理由 modal（取消則由呼叫端還原數字）
-function PrincipleReasonModal({ subj, initial, onConfirm, onCancel }: { subj: string; initial: string; onConfirm: (r: string) => void; onCancel: () => void }) {
+// 調整導師原則／專長配課 → 即時填理由 modal（取消則由呼叫端還原數字）
+function CategoryReasonModal({ cat, subj, initial, onConfirm, onCancel }: { cat: 'principle' | 'specialty'; subj: string; initial: string; onConfirm: (r: string) => void; onCancel: () => void }) {
   const [reason, setReason] = useState(initial)
   const [err, setErr] = useState<string | null>(null)
+  const isPrin = cat === 'principle'
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-md shadow-xl w-full max-w-lg p-5 space-y-4">
-        <h3 className="font-semibold text-zinc-900">調整原則配課</h3>
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2">您調整了「<strong>{subj}</strong>」的原則配課，請填寫理由。理由將提交至<strong>課發會－排配課會議討論決議</strong>，並顯示於此方案上方。</p>
-        <textarea value={reason} onChange={e => setReason(e.target.value)} className="input w-full" rows={3} placeholder="請說明調整原則配課的理由（必填）" autoFocus />
+        <h3 className="font-semibold text-zinc-900">{isPrin ? '調整原則配課' : '調整專長配課'}</h3>
+        <p className={`text-sm border rounded-sm px-3 py-2 ${isPrin ? 'text-red-700 bg-red-50 border-red-200' : 'text-amber-800 bg-amber-50 border-amber-200'}`}>
+          {isPrin
+            ? <>您調整了「<strong>{subj}</strong>」的原則配課，請填寫理由。理由將提交至<strong>課發會－排配課會議討論決議</strong>，並顯示於此方案上方。</>
+            : <>您已調整「<strong>{subj}</strong>」專長配課，請填寫理由。您的理由將成為<strong>課務組排配課的依據</strong>，並顯示於此方案上方。</>}
+        </p>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} className="input w-full" rows={3} placeholder={`請說明調整${isPrin ? '原則' : '專長'}配課的理由（必填）`} autoFocus />
         {err && <p className="text-xs text-red-600">{err}</p>}
         <div className="flex items-center justify-end gap-3 pt-1">
           <button onClick={onCancel} className="btn-secondary text-sm">取消（還原數字）</button>
