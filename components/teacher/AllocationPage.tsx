@@ -243,6 +243,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     setSpecialtyEdit(null)
   }
 
+  // 方案摘要：非 0 科目（依配課科目順序），供第二頁排序卡回顧
+  function planSummary(P: number): string {
+    const bd = plans[String(P)]?.breakdown ?? {}
+    return (homeroom?.subjects ?? []).filter(s => (Number(bd[s]) || 0) > 0).map(s => `${s}${bd[s]}`).join('  ')
+  }
+
   // ── 分組排序 ──
   function groupRankedPeriods(rb: number): number[] {
     const inGroup = groupPeriods(rb, overtimeHours).filter(P => !!plans[String(P)] && P >= bounds.lower && P <= bounds.upper)
@@ -556,11 +562,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                       onDragStart={() => setDragGroup({ rb, idx })}
                       onDragOver={e => e.preventDefault()}
                       onDrop={() => { if (dragGroup && dragGroup.rb === rb) { reorderGroup(rb, dragGroup.idx, idx); setDragGroup(null) } }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-sm border text-sm ${idx === 0 ? 'border-green-300 bg-green-50' : 'border-zinc-200 bg-white'} ${!readOnly ? 'cursor-move' : ''}`}>
-                      <span className="text-zinc-400">≡</span>
-                      <span className="text-xs text-zinc-500 w-10">第{idx + 1}名</span>
-                      <span className="font-medium text-zinc-800">{P} 節</span>
-                      <span className="text-xs text-zinc-500">{P > base0 ? `超鐘 +${P - rb}・含考科` : (P === rb ? '標準' : `超鐘 +${P - rb}`)}</span>
+                      className={`px-3 py-2 rounded-sm border ${idx === 0 ? 'border-green-300 bg-green-50' : 'border-zinc-200 bg-white'} ${!readOnly ? 'cursor-move' : ''}`}>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-zinc-400">≡</span>
+                        <span className="text-xs text-zinc-500 w-10">第{idx + 1}名</span>
+                        <span className="font-medium text-zinc-800">{P} 節</span>
+                        <span className="text-xs text-zinc-500">{P === rb ? '標準' : `超鐘 +${P - rb}`}</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-500 mt-0.5 pl-[3.4rem]">{planSummary(P) || '（未配課）'}</div>
                     </li>
                   ))}
                 </ul>
