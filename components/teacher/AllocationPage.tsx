@@ -5,7 +5,7 @@ import { NumberInput } from '@/components/ui/NumberInput'
 import {
   GRADE_LABEL, GRADES, planTotal, subjectCategory, CERT_SUBJECTS, OVERTIME_REJECT_OTHERS,
   defaultSchedulingNeeds, periodBounds, possiblePeriods, mandatoryPeriods, reducedBaseGroups,
-  groupPeriods, netReductionLabel,
+  groupPeriods,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds, type AllocationPlan,
 } from '@/lib/allocation'
 import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, HomeroomNoticeCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
@@ -542,19 +542,21 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       {step === 2 && role === 'homeroom' && (
         <div className="space-y-4">
           <div className="card border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-            依「<strong>減後基數</strong>」分組，每組把<strong>最想要的拖到最上面</strong>。你無法決定自己減幾節（公文決定），所以每組只需排「<strong>超鐘 vs 標準</strong>」的偏好。
+            依「<strong>可能被減幾節</strong>」分成幾種情況。每一種情況，把你<strong>最想要的方案拖到最上面</strong>。（你無法決定自己會不會被減課，所以每種情況都先排好偏好。）
           </div>
           {groups.map(rb => {
             const ordered = groupRankedPeriods(rb)
+            const net = base0 - rb
+            const grpLabel = net === 0 ? '沒有減課' : `若被減 ${net} 節`
             if (ordered.length === 0) return (
               <div key={rb} className="card p-4">
-                <div className="text-sm font-semibold text-zinc-700">{netReductionLabel(base0, rb)}（減後基數 {rb}）</div>
-                <p className="text-[11px] text-zinc-400 mt-1">此組尚無已提方案，請回上一步為 {groupPeriods(rb, overtimeHours).filter(p => p >= bounds.lower && p <= bounds.upper).join('、')} 節提出方案。</p>
+                <div className="text-sm font-semibold text-zinc-700">{grpLabel}</div>
+                <p className="text-[11px] text-zinc-400 mt-1">此情況尚無方案，請回上一步為 {groupPeriods(rb, overtimeHours).filter(p => p >= bounds.lower && p <= bounds.upper).join('、')} 節提出方案。</p>
               </div>
             )
             return (
               <div key={rb} className="card p-4 space-y-2">
-                <div className="text-sm font-semibold text-zinc-700">{netReductionLabel(base0, rb)}（減後基數 {rb}）</div>
+                <div className="text-sm font-semibold text-zinc-700">{grpLabel}</div>
                 <ul className="space-y-1.5">
                   {ordered.map((P, idx) => (
                     <li key={P}
