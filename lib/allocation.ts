@@ -241,13 +241,62 @@ export interface ScenarioChoice {
   reason?: string                      // 自配時必填理由（供行政參考）
   escalate?: boolean                   // 自配動到原則配課 → 理由提課發會
 }
+
+// ── 實際節數重設計（以「實際節數」為唯一軸）的純函式 ──
+// 實際節數 = 基本 − 總量管制減課 − 專案減課 + 超鐘。同實際節數 = 同方案。
+// 詳見記憶 allocation-teacher-redesign。
+
+/** 實際授課節數上下限。下限＝教最少（最大減課＋專案減課、無超鐘）；上限＝教最多（最小減課、加超鐘）。 */
+export function periodBounds(o: { base: number; reductions: number[]; projectFiled: number; overtime: number }): { lower: number; upper: number } {
+  const rs = o.reductions.length ? o.reductions : [0]
+  const minR = Math.min(...rs)
+  const maxR = Math.max(...rs)
+  return { lower: o.base - maxR - o.projectFiled, upper: o.base - minR + o.overtime }
+}
+
+/** 減後基數分組：淨減課 = 總量管制減課 + 專案減課，相加去重；回傳減後基數（由高到低）。 */
+export function reducedBaseGroups(o: { base: number; reductions: number[]; projectFiled: number }): number[] {
+  const rs = o.reductions.length ? o.reductions : [0]
+  const set = new Set<number>()
+  for (const tc of rs) for (let pj = 0; pj <= o.projectFiled; pj++) set.add(o.base - tc - pj)
+  return Array.from(set).sort((a, b) => b - a)
+}
+
+/** 全部可能的實際節數（每個對應一張方案卡）；由高到低、去重。 */
+export function possiblePeriods(o: { base: number; reductions: number[]; projectFiled: number; overtime: number }): number[] {
+  const set = new Set<number>()
+  for (const rb of reducedBaseGroups(o)) for (let ot = 0; ot <= o.overtime; ot++) set.add(rb + ot)
+  return Array.from(set).sort((a, b) => b - a)
+}
+
+/** 必填的實際節數（總量管制減課情境本身：無專案、無超鐘）。 */
+export function mandatoryPeriods(o: { base: number; reductions: number[] }): number[] {
+  return Array.from(new Set((o.reductions.length ? o.reductions : [0]).map(r => o.base - r))).sort((a, b) => b - a)
+}
+
+/** 某減後基數組內可達的實際節數（含超鐘），由高到低。 */
+export function groupPeriods(reducedBase: number, overtime: number): number[] {
+  const arr: number[] = []
+  for (let ot = overtime; ot >= 0; ot--) arr.push(reducedBase + ot)
+  return arr
+}
+
+/** 減後基數的淨減課標籤。 */
+export function netReductionLabel(base: number, reducedBase: number): string {
+  const net = base - reducedBase
+  return net === 0 ? '無減課' : `淨減 ${net} 節`
+}
 export interface TeacherAllocation {
   role: AllocRole
   work: string
   grade: number | null                 // 導師年級（系統判定）
   projectReduction: number             // 專案減課
   extraHours: number                   // 自願超鐘點
-  scenarios: Record<string, ScenarioChoice>  // 導師：各情境（key = "0"/"1"/"2"）的配課
+  scenarios: Record<string, ScenarioChoice>  // 導師（舊／相容）：各減課情境（key = "0"/"1"/"2"）的配課；新版由 plans 鏡射標準情境回填供統計頁讀取
+  // ── 實際節數重設計（導師）──
+  plans?: Record<string, ScenarioChoice>     // key = 實際節數；同實際節數 = 同方案（單一真實來源）
+  ranking?: Record<string, number[]>          // key = 減後基數；值 = 該組實際節數由最想要到最不想要
+  projectFiled?: number                       // 老師申請的計畫專案減課節數（用於上下限與減後基數分組）
   gradeHours?: Record<string, number>  // 科任：各年級授課節數（單一領域，key = "1".."6"）
   // 代理專用：
   subjects?: string[]                                          // 代理科任複選的授課科目
