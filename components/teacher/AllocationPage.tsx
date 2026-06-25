@@ -37,13 +37,29 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [projectFiled, setProjectFiled] = useState(initial.projectFiled ?? 0)
   const [overtimeHours, setOvertimeHours] = useState(initial.overtimeHours ?? 0)
 
-  // 以「實際節數」為鍵的方案；初始化時為必填節數預載行政方案
+  // 以「實際節數」為鍵的方案；初始化時為必填節數預載行政方案，並校正「無理由的偏離」
   const [plans, setPlans] = useState<Record<string, ScenarioChoice>>(() => {
     const p: Record<string, ScenarioChoice> = { ...(initial.plans ?? {}) }
     const ro = (initial.locked ?? false) || closed
     if (homeroom && !ro) {
       for (const P of mandatoryPeriods({ base: base0, reductions })) {
         if (!p[String(P)] && (presetsByPeriod[P]?.length)) p[String(P)] = { planName: presetsByPeriod[P][0].name, breakdown: { ...presetsByPeriod[P][0].alloc } }
+      }
+      // 載入校正：原則／專長偏離但沒有理由 → 還原為標準值（避免重整後殘留無理由的偏離）
+      const prinSubs = homeroom.subjects.filter(s => subjectCategory(s) === 'principle')
+      const specSubs = homeroom.subjects.filter(s => subjectCategory(s) === 'specialty')
+      const pr = initial.principleReasons ?? {}
+      const sr = initial.specialtyReasons ?? {}
+      const base0Spec = initial.plans?.[String(base0)]?.breakdown ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
+      for (const k of Object.keys(p)) {
+        const P = Number(k)
+        const bd = { ...p[k].breakdown }
+        if (!pr[k]) for (const s of prinSubs) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
+        if (!sr[k]) {
+          const spec = presetsByPeriod[P]?.[0]?.alloc ?? base0Spec
+          for (const s of specSubs) { const std = Number(spec[s]) || 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
+        }
+        p[k] = { ...p[k], breakdown: bd }
       }
     }
     return p
