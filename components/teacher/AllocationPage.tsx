@@ -45,19 +45,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       for (const P of mandatoryPeriods({ base: base0, reductions })) {
         if (!p[String(P)] && (presetsByPeriod[P]?.length)) p[String(P)] = { planName: presetsByPeriod[P][0].name, breakdown: { ...presetsByPeriod[P][0].alloc } }
       }
-      // 載入校正：原則／專長偏離但沒有理由 → 還原為標準值（避免重整後殘留無理由的偏離）
+      // 載入校正（逐科）：偏離但該科沒有理由 → 還原為標準值（避免重整後殘留無理由的偏離）
       const prinSubs = homeroom.subjects.filter(s => subjectCategory(s) === 'principle')
       const specSubs = homeroom.subjects.filter(s => subjectCategory(s) === 'specialty')
-      const pr = initial.principleReasons ?? {}
-      const sr = initial.specialtyReasons ?? {}
+      const pr = normReasons(initial.principleReasons)
+      const sr = normReasons(initial.specialtyReasons)
       for (const k of Object.keys(p)) {
         const P = Number(k)
         const bd = { ...p[k].breakdown }
-        if (!pr[k]) for (const s of prinSubs) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
-        if (!sr[k]) {
-          const spec = presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
-          for (const s of specSubs) { const std = Number(spec[s]) || 0; if ((Number(bd[s]) || 0) !== std) bd[s] = std }
-        }
+        for (const s of prinSubs) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std && !pr[k]?.[s]) bd[s] = std }
+        const spec = presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
+        for (const s of specSubs) { const std = Number(spec[s]) || 0; if ((Number(bd[s]) || 0) !== std && !sr[k]?.[s]) bd[s] = std }
         p[k] = { ...p[k], breakdown: bd }
       }
     }
@@ -66,9 +64,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [ranking, setRanking] = useState<Record<string, number[]>>(initial.ranking ?? {})
   const [openCard, setOpenCard] = useState<Record<string, boolean>>({})
   const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
-  const [principleReasons, setPrincipleReasons] = useState<Record<string, string>>(initial.principleReasons ?? {})
+  const [principleReasons, setPrincipleReasons] = useState<Record<string, Record<string, string>>>(() => normReasons(initial.principleReasons))
   const [principleEdit, setPrincipleEdit] = useState<{ P: number; subj: string; revertTo: number | null } | null>(null)
-  const [specialtyReasons, setSpecialtyReasons] = useState<Record<string, string>>(initial.specialtyReasons ?? {})
+  const [specialtyReasons, setSpecialtyReasons] = useState<Record<string, Record<string, string>>>(() => normReasons(initial.specialtyReasons))
   const [specialtyEdit, setSpecialtyEdit] = useState<{ P: number; subj: string; revertTo: number | null } | null>(null)
 
   // 科任／行政沿用欄位
@@ -109,13 +107,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   function baselineFor(P: number): Record<string, number> {
     return presetsByPeriod[P]?.[0]?.alloc ?? presetsByPeriod[base0]?.[0]?.alloc ?? {}
   }
-  function deviates(P: number, breakdown: Record<string, number>, cat: 'principle' | 'specialty'): boolean {
-    if (cat === 'principle') {
-      // 原則配課基準＝各科上限（補滿值），與方案是否存在無關，避免誤判到別張卡
-      return principleSubjects.some(s => (Number(breakdown[s]) || 0) !== (homeroom?.subjectMax[s] ?? 0))
-    }
-    const baseline = baselineFor(P)
-    return specialtySubjects.some(s => (Number(breakdown[s]) || 0) !== (Number(baseline[s]) || 0))
+  // 單科是否偏離標準：原則＝各科上限；專長＝行政方案（無則 0）
+  function subjectDeviates(P: number, subj: string, val: number, cat: 'principle' | 'specialty'): boolean {
+    const std = cat === 'principle' ? (homeroom?.subjectMax[subj] ?? 0) : (Number(baselineFor(P)[subj]) || 0)
+    return (Number(val) || 0) !== std
+  }
+  function removeSubjReason(map: Record<string, Record<string, string>>, P: number, subj: string) {
+    const inner = { ...(map[String(P)] ?? {}) }
+    delete inner[subj]
+    const next = { ...map }
+    if (Object.keys(inner).length) next[String(P)] = inner; else delete next[String(P)]
+    return next
   }
 
   function buildData(lock: boolean): TeacherAllocation {
@@ -123,13 +125,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const scenariosMirror: Record<string, ScenarioChoice> = {}
     for (const r of reductions) { const ch = plans[String(base0 - r)]; if (ch) scenariosMirror[String(r)] = ch }
     // 把各節數的原則／專長配課理由彙整成單一字串，供配課統計頁的「配課理由」沿用
-    const aggReasons = (reasons: Record<string, string>, cat: 'principle' | 'specialty', fallback: string) =>
+    const aggReasons = (reasons: Record<string, Record<string, string>>, fallback: string) =>
       role === 'homeroom'
-        ? Object.keys(plans).filter(k => deviates(Number(k), plans[k].breakdown, cat) && reasons[k])
-            .sort((a, b) => Number(a) - Number(b)).map(k => `實際${k}節：${reasons[k]}`).join('\n')
+        ? Object.keys(reasons).filter(k => plans[k] && Object.keys(reasons[k]).length)
+            .sort((a, b) => Number(a) - Number(b))
+            .map(k => `實際${k}節 ${Object.entries(reasons[k]).map(([s, r]) => `${s}：${r}`).join('；')}`).join('\n')
         : fallback
-    const principleAgg = aggReasons(principleReasons, 'principle', principleReason)
-    const specialtyAgg = aggReasons(specialtyReasons, 'specialty', specialtyReason)
+    const principleAgg = aggReasons(principleReasons, principleReason)
+    const specialtyAgg = aggReasons(specialtyReasons, specialtyReason)
     return {
       role, work, grade,
       projectReduction: initial.projectReduction ?? 0, extraHours: 0,
@@ -199,16 +202,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const oldVal = Number(plans[String(P)]?.breakdown[subj] ?? 0)
     if (n === oldVal) return
     setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))
-    const after = { ...(plans[String(P)]?.breakdown ?? {}), [subj]: n }
-    if (!deviates(P, after, 'principle')) { // 改回標準 → 不需理由，清除既有理由
-      setPrincipleReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
+    if (!subjectDeviates(P, subj, n, 'principle')) { // 該科改回標準 → 移除該科理由
+      setPrincipleReasons(prev => removeSubjReason(prev, P, subj))
       return
     }
-    if (!principleReasons[String(P)]) setPrincipleEdit({ P, subj, revertTo: oldVal }) // 同卡已有理由則不重複打擾
+    if (!principleReasons[String(P)]?.[subj]) setPrincipleEdit({ P, subj, revertTo: oldVal }) // 該科已有理由則不重複打擾
   }
   function confirmPrincipleReason(reason: string) {
     if (!principleEdit) return
-    setPrincipleReasons(prev => ({ ...prev, [String(principleEdit.P)]: reason }))
+    const { P, subj } = principleEdit
+    setPrincipleReasons(prev => ({ ...prev, [String(P)]: { ...(prev[String(P)] ?? {}), [subj]: reason } }))
     setPrincipleEdit(null)
   }
   function cancelPrincipleEdit() {
@@ -221,16 +224,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const oldVal = Number(plans[String(P)]?.breakdown[subj] ?? 0)
     if (n === oldVal) return
     setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))
-    const after = { ...(plans[String(P)]?.breakdown ?? {}), [subj]: n }
-    if (!deviates(P, after, 'specialty')) {
-      setSpecialtyReasons(prev => { const m = { ...prev }; delete m[String(P)]; return m })
+    if (!subjectDeviates(P, subj, n, 'specialty')) { // 該科改回標準 → 移除該科理由
+      setSpecialtyReasons(prev => removeSubjReason(prev, P, subj))
       return
     }
-    if (!specialtyReasons[String(P)]) setSpecialtyEdit({ P, subj, revertTo: oldVal }) // 同卡已有理由則不重複打擾
+    if (!specialtyReasons[String(P)]?.[subj]) setSpecialtyEdit({ P, subj, revertTo: oldVal }) // 該科已有理由則不重複打擾
   }
   function confirmSpecialtyReason(reason: string) {
     if (!specialtyEdit) return
-    setSpecialtyReasons(prev => ({ ...prev, [String(specialtyEdit.P)]: reason }))
+    const { P, subj } = specialtyEdit
+    setSpecialtyReasons(prev => ({ ...prev, [String(P)]: { ...(prev[String(P)] ?? {}), [subj]: reason } }))
     setSpecialtyEdit(null)
   }
   function cancelSpecialtyEdit() {
@@ -363,18 +366,25 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     function enterSelf() { setSelfMode(m => ({ ...m, [key]: true })); setPlanChoice(P, c => ({ planName: null, breakdown: { ...(c?.breakdown ?? {}) } })) }
     function cancelSelf() { setSelfMode(m => ({ ...m, [key]: false })); setPrincipleReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); setSpecialtyReasons(prev => { const mm = { ...prev }; delete mm[key]; return mm }); if (presets[0]) setPlanChoice(P, () => ({ planName: presets[0].name, breakdown: { ...presets[0].alloc } })) }
 
+    const prinEnt = Object.entries(principleReasons[key] ?? {})
+    const specEnt = Object.entries(specialtyReasons[key] ?? {})
+
     return (
       <div key={P} className={`card p-4 space-y-3 ${!proposed ? 'border-dashed' : ''}`}>
-        {principleReasons[key] && (
-          <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-            <span className="font-semibold">動到原則配課（理由提課發會）：</span><span className="whitespace-pre-line">{principleReasons[key]}</span>
-            {!readOnly && <button onClick={() => setPrincipleEdit({ P, subj: '', revertTo: null })} className="ml-2 underline text-red-600 hover:text-red-800">編輯理由</button>}
+        {prinEnt.length > 0 && (
+          <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 space-y-0.5">
+            <div className="font-semibold">動到原則配課（理由提課發會）：</div>
+            {prinEnt.map(([s, r]) => (
+              <div key={s} className="pl-1">・<span className="font-medium">{s}</span>：<span className="whitespace-pre-line">{r}</span>{!readOnly && <button onClick={() => setPrincipleEdit({ P, subj: s, revertTo: null })} className="ml-1 underline text-red-600 hover:text-red-800">編輯</button>}</div>
+            ))}
           </div>
         )}
-        {specialtyReasons[key] && (
-          <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
-            <span className="font-semibold">動到專長配課（課務組排配課依據）：</span><span className="whitespace-pre-line">{specialtyReasons[key]}</span>
-            {!readOnly && <button onClick={() => setSpecialtyEdit({ P, subj: '', revertTo: null })} className="ml-2 underline text-amber-700 hover:text-amber-900">編輯理由</button>}
+        {specEnt.length > 0 && (
+          <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 space-y-0.5">
+            <div className="font-semibold">動到專長配課（課務組排配課依據）：</div>
+            {specEnt.map(([s, r]) => (
+              <div key={s} className="pl-1">・<span className="font-medium">{s}</span>：<span className="whitespace-pre-line">{r}</span>{!readOnly && <button onClick={() => setSpecialtyEdit({ P, subj: s, revertTo: null })} className="ml-1 underline text-amber-700 hover:text-amber-900">編輯</button>}</div>
+            ))}
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -613,11 +623,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       )}
       {confirmModalOpen && <ConfirmNotesModal onCancel={() => setConfirmModalOpen(false)} onConfirm={onConfirm} />}
       {principleEdit && (
-        <CategoryReasonModal cat="principle" subj={principleEdit.subj} initial={principleReasons[String(principleEdit.P)] ?? ''}
+        <CategoryReasonModal cat="principle" subj={principleEdit.subj} initial={principleReasons[String(principleEdit.P)]?.[principleEdit.subj] ?? ''}
           onConfirm={confirmPrincipleReason} onCancel={cancelPrincipleEdit} />
       )}
       {specialtyEdit && (
-        <CategoryReasonModal cat="specialty" subj={specialtyEdit.subj} initial={specialtyReasons[String(specialtyEdit.P)] ?? ''}
+        <CategoryReasonModal cat="specialty" subj={specialtyEdit.subj} initial={specialtyReasons[String(specialtyEdit.P)]?.[specialtyEdit.subj] ?? ''}
           onConfirm={confirmSpecialtyReason} onCancel={cancelSpecialtyEdit} />
       )}
 
@@ -628,6 +638,19 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       )}
     </div>
   )
+}
+
+// 把（可能為舊格式或不完整的）理由資料正規化成 實際節數 → 科目 → 理由
+function normReasons(raw?: Record<string, unknown>): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {}
+  if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw)) {
+    if (v && typeof v === 'object') {
+      const inner: Record<string, string> = {}
+      for (const [s, r] of Object.entries(v as Record<string, unknown>)) if (typeof r === 'string' && r.trim()) inner[s] = r
+      if (Object.keys(inner).length) out[k] = inner
+    }
+  }
+  return out
 }
 
 // 調整導師原則／專長配課 → 即時填理由 modal（取消則由呼叫端還原數字）
