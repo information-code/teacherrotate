@@ -122,6 +122,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     } catch { setSaveStatus('idle'); setError('儲存失敗'); return false }
   }
   const firstRun = useRef(true)
+  const topRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return }
     if (readOnly) return
@@ -192,7 +193,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   function failNext(msg: string) {
     setError(msg)
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   function goNext() {
     setError(null)
@@ -322,7 +323,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   }
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div ref={topRef} className="space-y-5 max-w-4xl scroll-mt-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
