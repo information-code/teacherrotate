@@ -88,6 +88,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     return p
   })
   const [autonomousAgreed, setAutonomousAgreed] = useState<Record<string, number>>(initial.autonomousOvertime ?? {})
+  const [noOvertimeAck, setNoOvertimeAck] = useState<Record<string, boolean>>(initial.noOvertimeAck ?? {})
   const [willingOvertime, setWillingOvertime] = useState(initial.willingOvertime ?? 0)
   const [willingSubjects, setWillingSubjects] = useState<string[]>(initial.willingSubjects ?? [])
   const [selfMode, setSelfMode] = useState<Record<string, boolean>>({})
@@ -170,7 +171,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       scenarios: role === 'homeroom' ? scenariosMirror : (initial.scenarios ?? {}),
       scenariosOriginal: role === 'homeroom' ? scenariosMirror : (initial.scenariosOriginal ?? {}),
       plans, principleReasons, specialtyReasons,
-      autonomousOvertime: autoOut, willingOvertime, willingSubjects: willingOrdered.slice(0, willingOvertime > 0 ? undefined : 0),
+      autonomousOvertime: autoOut, noOvertimeAck, willingOvertime, willingSubjects: willingOrdered.slice(0, willingOvertime > 0 ? undefined : 0),
       overtimeHours: willingOvertime,  // 相容：統計頁的「意願超鐘」沿用 overtimeHours
       gradeHours,
       projectOrder: initial.projectOrder ?? [],
@@ -216,7 +217,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans, projects, autonomousAgreed, principleReasons, specialtyReasons, willingOvertime, willingSubjects, subjectWishes, scheduling])
+  }, [plans, projects, autonomousAgreed, noOvertimeAck, principleReasons, specialtyReasons, willingOvertime, willingSubjects, subjectWishes, scheduling])
 
   function setPlanChoice(P: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setPlans(prev => ({ ...prev, [String(P)]: fn(prev[String(P)] ?? { planName: null, breakdown: {} }) }))
@@ -288,6 +289,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           if (over > OVERTIME_CAP) issues.push(`「實際 ${P} 節」多了 ${over} 節，已超過自願超鐘上限 ${OVERTIME_CAP} 節，請調整方案。`)
           else if (autonomousAgreed[String(P)] !== over) issues.push(`「實際 ${P} 節」多了 ${over} 節，請勾選同意「自願超鐘 ${over} 節」。`)
         }
+        else if (!noOvertimeAck[String(P)]) issues.push(`「實際 ${P} 節」合計等於最低授課節數，請勾選確認「無意願超鐘點」。`)
       }
       if (issues.length) { failNext('尚有以下項目需處理才能繼續：\n• ' + issues.join('\n• ')); return }
     }
@@ -415,10 +417,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               </label>
         )}
 
-        {/* 合計 = 實際 → 無意願超鐘 */}
-        {over === 0 && (
-          <div className="rounded-sm border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">此方案合計{sum}節，等於最低授課節數{P}節，代表您<strong>「無意願」超鐘點</strong>。</div>
-        )}
+        {/* 合計 = 實際 → 無意願超鐘（需勾選確認） */}
+        {over === 0 && (() => {
+          const noOtAgreed = !!noOvertimeAck[key]
+          return (
+            <label className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${noOtAgreed ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+              <input type="checkbox" checked={noOtAgreed} disabled={readOnly} onChange={e => setNoOvertimeAck(prev => ({ ...prev, [key]: e.target.checked }))} className="w-4 h-4" />
+              <span>此方案合計{sum}節，等於最低授課節數{P}節，代表您<strong>「無意願」超鐘點</strong>。</span>
+            </label>
+          )
+        })()}
 
         {/* 未完整授課（某科只配一部分 → 與他人共課）提醒 */}
         {(() => {
