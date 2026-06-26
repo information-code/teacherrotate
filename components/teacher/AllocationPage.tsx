@@ -395,7 +395,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             ? <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">此方案超過實際 {over} 節，已超過自願超鐘上限 {OVERTIME_CAP} 節，請調整。</div>
             : <label className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${agreed ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
                 <input type="checkbox" checked={agreed} disabled={readOnly} onChange={e => setAutonomousAgreed(prev => ({ ...prev, [key]: e.target.checked ? over : 0 }))} className="w-4 h-4" />
-                <span>此方案合計超過實際 {P} 節，代表你將<strong>自願超鐘 {over} 節</strong>以維持配課完整（免審核，自動計入）。我同意。</span>
+                <span>此方案合計超過實際 {P} 節，代表你將<strong>自願超鐘 {over} 節</strong>以維持配課完整。</span>
               </label>
         )}
 
