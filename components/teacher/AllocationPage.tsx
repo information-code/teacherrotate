@@ -137,7 +137,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const willingOrdered = (() => {
     const out = willingSubjects.filter(s => willingCandidates.includes(s))
     for (const s of willingCandidates) if (!out.includes(s)) out.push(s)
-    return out
+    // 類別為主要排序鍵（選配在前、專長在後、原則最後），同類別維持既有/拖曳順序（穩定排序）
+    return out.sort((a, b) => catRank(a) - catRank(b))
   })()
 
   // ── 偏離判斷與理由（沿用）──
