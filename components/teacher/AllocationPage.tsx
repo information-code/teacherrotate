@@ -399,13 +399,13 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         {role === 'homeroom' && homeroom && <>
           <div className="card p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-zinc-600">基本授課節數 <span className="font-semibold text-zinc-900">{base0}</span>{projectReduction > 0 && <span className="ml-2 text-xs text-zinc-500">・専案減課 {projectReduction} 節（管理者輸入）</span>}</div>
+              <div className="text-sm text-zinc-600">基本授課節數 <span className="font-semibold text-zinc-900">{base0}</span>{projectReduction > 0 && <span className="ml-2 text-xs text-zinc-500">・専案減課 {projectReduction} 節</span>}</div>
               <button onClick={() => setShowPeriodsTable(true)} className="flex items-center gap-1.5 text-xs text-zinc-600 border border-zinc-200 rounded-sm px-2 py-1 hover:border-zinc-400 hover:text-zinc-900 hover:bg-zinc-50">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
                 <span className="font-medium">課程節數表</span>
               </button>
             </div>
-            <p className="text-[11px] text-zinc-400">總量管制減課由公文決定（可能有 {scenarioPeriods.length} 種情況），系統各列一版。合計超過實際 = 你自願超鐘以維持配課完整。</p>
+            <p className="text-[11px] text-zinc-400">若發現専案減課數有錯誤，請洽課務組。</p>
           </div>
 
           <HomeroomNoticeCard grade={homeroom.grade} ack={noticeAck} onAckChange={setNoticeAck} readOnly={readOnly} />
