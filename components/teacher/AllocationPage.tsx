@@ -456,7 +456,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                 </div>
               ))}
               {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
-              <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>
+              {projectFiled > 0 && <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>}
             </div>
             {/* D：實際授課節數 */}
             <div className="card border-zinc-200 bg-zinc-50 p-4 space-y-1">
