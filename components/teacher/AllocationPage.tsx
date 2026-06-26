@@ -458,12 +458,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
               {projectFiled > 0 && <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>}
             </div>
-            {/* D：實際授課節數 */}
-            <div className="card border-zinc-200 bg-zinc-50 p-4 space-y-1">
-              <div className="text-sm font-semibold text-zinc-700"><span className="text-zinc-400">D</span>　實際授課節數（A − B − C）</div>
-              <p className="text-[11px] text-zinc-400">你目前可能的實際授課節數：</p>
+            {/* D：實際授課節數（最重要，黃底凸顯） */}
+            <div className="card border-amber-300 bg-amber-50 p-4 space-y-1">
+              <div className="text-sm font-semibold text-amber-900"><span className="text-amber-500">D</span>　實際授課節數（A − B − C）</div>
+              <p className="text-[11px] text-amber-700">你目前可能的實際授課節數：</p>
               {reductions.map(b => (
-                <div key={b} className="text-sm text-zinc-700">基本 {base0} − 總量管制減 {b} − 專案減 {projectFiled} = <span className="font-semibold text-zinc-900">{base0 - b - projectFiled} 節</span></div>
+                <div key={b} className="text-sm text-amber-900">基本 {base0} − 總量管制減 {b} − 專案減 {projectFiled} = <span className="font-bold text-lg text-amber-900">{base0 - b - projectFiled} 節</span></div>
               ))}
             </div>
             <div className="flex justify-end"><button onClick={() => setSeg(2)} className="btn-primary text-sm">下一步</button></div>
