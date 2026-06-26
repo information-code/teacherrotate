@@ -317,7 +317,7 @@ export interface TeacherAllocation {
   subjects?: string[]                                          // 代理科任複選的授課科目
   subjectGradeHours?: Record<string, Record<string, number>>  // 代理科任：科目 → 年級 → 節數
   // 送出精靈收集（教師層級）：
-  projects?: { name: string; hours: number }[]  // 專案減課申請（教師端，可多筆）
+  projects?: { name: string; hours: number; custom?: boolean }[]  // 專案減課申請（教師端，可多筆；custom=選了「其他」自行輸入）
   projectOrder?: string[]              // 減課順序（教師端，依優先順序）
   overtimeHours?: number               // 願意超鐘點節數
   overtimeSubjects?: string[]          // 願意超鐘點支援的科目（舊欄位，保留相容）
