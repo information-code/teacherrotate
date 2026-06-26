@@ -402,7 +402,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             {!inSelf && !readOnly && <>已選用方案；如需調整可<button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</>}
             {inSelf && hasPlans && !readOnly && <>自訂配課。<button onClick={cancelSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改選方案</button></>}
           </div>
-          <div className={`text-lg font-semibold whitespace-nowrap ${over === 0 ? 'text-green-600' : over < 0 ? 'text-amber-600' : 'text-sky-600'}`}>{over < 0 ? `剩餘 ${-over} 節` : over === 0 ? '剩餘 0 節 ✓' : `超鐘 ${over} 節`}</div>
+          <div className={`text-lg font-semibold whitespace-nowrap ${over === 0 ? 'text-green-600' : over < 0 ? 'text-amber-600' : 'text-sky-600'}`}>{over < 0 ? `未分配 ${-over} 節` : over === 0 ? '未分配 0 節 ✓' : `超鐘 ${over} 節`}</div>
         </div>
 
         {/* 合計 > 實際 → 自主超鐘確認 */}
@@ -411,8 +411,13 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             ? <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">此方案超過實際 {over} 節，已超過自願超鐘上限 {OVERTIME_CAP} 節，請調整。</div>
             : <label className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${agreed ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
                 <input type="checkbox" checked={agreed} disabled={readOnly} onChange={e => setAutonomousAgreed(prev => ({ ...prev, [key]: e.target.checked ? over : 0 }))} className="w-4 h-4" />
-                <span>此方案合計超過實際 {P} 節，代表你將<strong>自願超鐘 {over} 節</strong>以維持配課完整。</span>
+                <span>此方案合計{sum}節，超過最低授課節數{P}節，代表你將<strong>自願超鐘 {over} 節</strong>以維持配課完整。</span>
               </label>
+        )}
+
+        {/* 合計 = 實際 → 無意願超鐘 */}
+        {over === 0 && (
+          <div className="rounded-sm border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">此方案合計{sum}節，等於最低授課節數{P}節，代表您<strong>「無意願」超鐘點</strong>。</div>
         )}
 
         {/* 未完整授課（某科只配一部分 → 與他人共課）提醒 */}
