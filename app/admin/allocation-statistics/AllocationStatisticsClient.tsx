@@ -23,6 +23,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [busy, setBusy] = useState(false)
   const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
+  const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
 
@@ -134,7 +135,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             </select>
             {reasonIcon(t)}
             {t.data.locked && <span className="text-[10px]">🔒</span>}
-            <label className="flex items-center gap-1 text-xs text-zinc-600">減課<NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5" /></label>
+            <span className="flex items-center gap-1 text-xs text-zinc-600">減課 <span className="font-medium text-zinc-800">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="text-zinc-400 hover:text-sky-600">✎</button></span>
             <label className="flex items-center gap-1 text-xs text-zinc-600">意願超鐘<NumberInput min={0} max={6} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(6, Math.max(0, n)) }))} className="input w-12 text-center py-0.5" /></label>
             <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
           </div>
@@ -273,7 +274,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         ))}
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
-                        <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-11 text-center py-0.5 text-xs" /></td>
+                        <td className="text-center whitespace-nowrap"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
                         <td className="text-center font-medium text-sky-700">{Math.max(0, sum - actualPeriod(t))}</td>
                         {(() => { const auto = Math.max(0, sum - actualPeriod(t)); const cap = Math.max(0, 6 - auto); return (
                           <td className="text-center"><NumberInput min={0} max={cap} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(cap, Math.max(0, n)) }))} className="input w-11 text-center py-0.5 text-xs" /></td>
@@ -377,6 +378,44 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 </div>
               </div>
               <div className="flex justify-end pt-1"><button onClick={() => setReasonView(null)} className="btn-primary text-sm">關閉</button></div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── 專案減課核實 modal ── */}
+      {projEdit && (() => {
+        const t = teachers.find(x => x.id === projEdit)
+        if (!t) return null
+        const projs = t.data.projects ?? []
+        const total = projs.reduce((s, p) => s + (Number(p.hours) || 0), 0)
+        const setProjs = (next: { name: string; hours: number }[]) => updateTeacher(t.id, d => ({ ...d, projects: next, projectReduction: next.reduce((s, p) => s + (Number(p.hours) || 0), 0) }))
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setProjEdit(null)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">{t.name} · 專案減課核實</h3>
+                  <p className="text-xs text-zinc-500">{t.roleLabel}</p>
+                </div>
+                <button onClick={() => setProjEdit(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+              <p className="text-[11px] text-zinc-400">老師列舉的專案減課，可刪除／修改／新增。「減課」欄＝下方總計（唯讀）。</p>
+              {projs.length === 0 && <p className="text-xs text-zinc-400">老師未列舉任何專案。</p>}
+              {projs.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 flex-wrap">
+                  <input value={p.name} onChange={e => setProjs(projs.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} placeholder="專案名稱" className="input py-0.5 text-sm flex-1 min-w-[7rem]" />
+                  <span className="text-xs text-zinc-500">減</span>
+                  <NumberInput min={0} max={6} value={p.hours} onChange={n => setProjs(projs.map((x, idx) => idx === i ? { ...x, hours: Math.min(6, Math.max(0, n)) } : x))} className="input w-14 text-center py-0.5" />
+                  <span className="text-xs text-zinc-500">節</span>
+                  <button onClick={() => setProjs(projs.filter((_, idx) => idx !== i))} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>
+                </div>
+              ))}
+              <button onClick={() => setProjs([...projs, { name: '', hours: 0 }])} className="btn-secondary text-xs">＋ 新增專案</button>
+              <div className="flex items-center justify-between border-t border-zinc-100 pt-2">
+                <span className="text-sm text-zinc-600">減課總計 <span className="font-semibold text-zinc-900">{total}</span> 節</span>
+                <button onClick={() => setProjEdit(null)} className="btn-primary text-sm">完成</button>
+              </div>
             </div>
           </div>
         )
