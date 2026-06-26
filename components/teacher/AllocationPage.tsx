@@ -436,14 +436,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">A</span>　基本授課節數 <span className="font-semibold text-lg text-zinc-900">{base0}</span> 節</div>
               <p className="text-[11px] text-zinc-400">依據國民中小學教師授課節數訂定基準。</p>
             </div>
-            {/* B：總量管制減課數 */}
-            <div className="card p-4 space-y-1">
-              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">B</span>　總量管制減課數 <span className="font-semibold text-lg text-zinc-900">{reductions.length ? (Math.min(...reductions) === Math.max(...reductions) ? Math.min(...reductions) : `${Math.min(...reductions)}~${Math.max(...reductions)}`) : 0}</span> 節</div>
-              <p className="text-[11px] text-zinc-400">將依校內課發會排配課會議決議後確認。</p>
-            </div>
-            {/* C：列舉專案減課 */}
+            {/* B：列舉專案減課 */}
             <div className="card p-4 space-y-2">
-              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">C</span>　列舉專案減課數 <span className="font-semibold text-lg text-zinc-900">{projectFiled}</span> 節</div>
+              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">B</span>　列舉專案減課數 <span className="font-semibold text-lg text-zinc-900">{projectFiled}</span> 節</div>
               <p className="text-[11px] text-zinc-400">請列舉您於下學年度因參與專案或特殊任務產生之減課（例如：學年主任、輔導團、基地團等）。</p>
               {projects.map((p, i) => (
                 <div key={i} className="flex items-center gap-2 flex-wrap">
@@ -468,12 +463,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
               {projectFiled > 0 && <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>}
             </div>
-            {/* D：實際授課節數（最重要，黃底凸顯） */}
+            {/* C：總量管制減課數 */}
+            <div className="card p-4 space-y-1">
+              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">C</span>　總量管制減課數 <span className="font-semibold text-lg text-zinc-900">{reductions.length ? (Math.min(...reductions) === Math.max(...reductions) ? Math.min(...reductions) : `${Math.min(...reductions)}~${Math.max(...reductions)}`) : 0}</span> 節</div>
+              <p className="text-[11px] text-zinc-400">將依校內課發會排配課會議決議後確認。</p>
+            </div>
+            {/* D：最低授課節數（最重要，黃底凸顯） */}
             <div className="card border-amber-300 bg-amber-50 p-4 space-y-1">
-              <div className="text-sm font-semibold text-amber-900"><span className="text-amber-500">D</span>　實際授課節數（A − B − C）</div>
+              <div className="text-sm font-semibold text-amber-900"><span className="text-amber-500">D</span>　最低授課節數（A − B − C）</div>
               <p className="text-[11px] text-amber-700">你目前可能的實際授課節數：</p>
               {reductions.map(b => (
-                <div key={b} className="text-sm text-amber-900">基本 {base0} − 總量管制減 {b} − 專案減 {projectFiled} = <span className="font-bold text-lg text-amber-900">{base0 - b - projectFiled} 節</span></div>
+                <div key={b} className="text-sm text-amber-900">基本 {base0} − 專案減 {projectFiled} − 總量管制減 {b} = <span className="font-bold text-lg text-amber-900">{base0 - b - projectFiled} 節</span></div>
               ))}
             </div>
             <div className="flex justify-end"><button onClick={() => setSeg(2)} className="btn-primary text-sm">下一步</button></div>
