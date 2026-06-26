@@ -7,10 +7,12 @@ export const GRADES = [1, 2, 3, 4, 5, 6] as const
 export const SUBJECT_ORDER = ['國語', '數學', '生活', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
 
 // 導師配課三分類：
-//   原則配課（動到→理由提課發會）
-export const PRINCIPLE_SUBJECTS = ['國語', '數學', '班級活動', '自主學習']
+//   原則配課（動到→理由提課發會）。低年級以「生活」取代「自主學習」，兩者不會同時存在。
+export const PRINCIPLE_SUBJECTS = ['國語', '數學', '班級活動', '自主學習', '生活']
+//   原則配課的優先順序（自動配課/減太多時保留前面、捨棄後面）
+export const PRINCIPLE_ORDER = ['國語', '數學', '班級活動', '自主學習', '生活']
 //   選填配課＝必修但非原則、非科任專長（由導師授課）
-export const OPTIONAL_SUBJECTS = ['健康', '綜合', '生活']
+export const OPTIONAL_SUBJECTS = ['健康', '綜合']
 //   其餘一律為專長配課：各科任領域，以及任何非必修／事後新增的其他課程（含專題、國際教育…）。
 export function subjectCategory(name: string): 'principle' | 'specialty' | 'optional' {
   if (PRINCIPLE_SUBJECTS.includes(name)) return 'principle'

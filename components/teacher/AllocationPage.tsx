@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS, PROJECT_PRESETS,
+  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS, PROJECT_PRESETS, PRINCIPLE_ORDER,
   defaultSchedulingNeeds,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds, type AllocationPlan,
 } from '@/lib/allocation'
@@ -39,6 +39,21 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const principleSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'principle') : []
   const specialtySubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'specialty') : []
   const optionalSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'optional') : []
+  const principleTotal = principleSubjects.reduce((s, ss) => s + (homeroom?.subjectMax[ss] ?? 0), 0)
+  // 系統自動配課（無行政方案時的預設）：原則(依序)→選填→專長，填到實際節數為止；原則放不下時依序保留國語/數學/班級活動/自主學習/生活
+  function autoFill(P: number): Record<string, number> {
+    if (!homeroom) return {}
+    const bd: Record<string, number> = {}
+    let remaining = P
+    const principleOrder = PRINCIPLE_ORDER.filter(s => homeroom.subjects.includes(s))
+    for (const s of [...principleOrder, ...optionalSubjects, ...specialtySubjects]) {
+      if (remaining <= 0) break
+      const cap = homeroom.subjectMax[s] ?? 0
+      const give = Math.min(cap, remaining)
+      if (give > 0) { bd[s] = give; remaining -= give }
+    }
+    return bd
+  }
 
   // 行政方案（preset）依「總節數」索引
   const presetsByPeriod: Record<number, AllocationPlan[]> = {}
@@ -55,7 +70,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         if (!p[String(P)]) {
           const preset = presetsByPeriod[P]?.[0]
           if (preset) p[String(P)] = { planName: preset.name, breakdown: { ...preset.alloc } }
-          else { const bd: Record<string, number> = {}; for (const s of principleSubjects) bd[s] = homeroom.subjectMax[s] ?? 0; p[String(P)] = { planName: null, breakdown: bd } }
+          else p[String(P)] = { planName: null, breakdown: autoFill(P) }  // 無方案 → 系統自動配（原則→選填→專長）
         }
       }
       const pr = normReasons(initial.principleReasons)
@@ -63,7 +78,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       for (const k of Object.keys(p)) {
         const P = Number(k)
         const bd = { ...p[k].breakdown }
-        for (const s of principleSubjects) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std && !pr[k]?.[s]) bd[s] = std }
+        // 原則配課放得下(P≥原則總數)卻被減又沒理由 → 還原補滿；減太多放不下則保留（不強迫補滿）
+        if (P >= principleTotal) for (const s of principleSubjects) { const std = homeroom.subjectMax[s] ?? 0; if ((Number(bd[s]) || 0) !== std && !pr[k]?.[s]) bd[s] = std }
         const spec = presetsByPeriod[P]?.[0]?.alloc ?? {}
         for (const s of specialtySubjects) { const std = Number(spec[s]) || 0; if ((Number(bd[s]) || 0) !== std && !sr[k]?.[s]) bd[s] = std }
         p[k] = { ...p[k], breakdown: bd }
@@ -184,7 +200,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           changed = true
           const preset = presetsByPeriod[P]?.[0]
           if (preset) p[String(P)] = { planName: preset.name, breakdown: { ...preset.alloc } }
-          else { const bd: Record<string, number> = {}; for (const s of principleSubjects) bd[s] = homeroom.subjectMax[s] ?? 0; p[String(P)] = { planName: null, breakdown: bd } }
+          else p[String(P)] = { planName: null, breakdown: autoFill(P) }  // 無方案 → 系統自動配（原則→選填→專長）
         }
       }
       return changed ? p : prev
@@ -212,7 +228,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     if (n === oldVal) return
     setPlanChoice(P, c => ({ ...c, breakdown: { ...c.breakdown, [subj]: n } }))
     if (!subjectDeviates(P, subj, n, 'principle')) { setPrincipleReasons(prev => removeSubjReason(prev, P, subj)); return }
-    if (!principleReasons[String(P)]?.[subj]) setPrincipleEdit({ P, subj, revertTo: oldVal })
+    // 原則放得下(P≥原則總數)卻刻意減 → 要理由；減太多放不下(P<原則總數) → 不是故意的，免理由（僅靠超鐘建議提醒）
+    if (P >= principleTotal && !principleReasons[String(P)]?.[subj]) setPrincipleEdit({ P, subj, revertTo: oldVal })
   }
   function confirmPrincipleReason(reason: string) {
     if (!principleEdit) return
