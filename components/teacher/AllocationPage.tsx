@@ -324,7 +324,6 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const key = String(P)
     const ch = plans[key]
     if (!ch) return null  // 尚未播種（剛改專案減課）→ 由 effect 補上後重繪
-    const r = base0 - projectFiled - P
     const presets = presetsByPeriod[P] ?? []
     const hasPlans = presets.length > 0
     const inSelf = !hasPlans || !!selfMode[key]
@@ -359,9 +358,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節
-            <span className="ml-2 text-xs font-normal text-zinc-500">{r > 0 ? `總量管制減 ${r} 節` : '無減課'}{projectFiled > 0 ? `・専案減 ${projectFiled} 節` : ''}</span>
-          </h3>
+          <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節</h3>
           {hasPlans && !selfMode[key] && presets.length > 1 && (
             <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
               <option value="">請選擇方案</option>
