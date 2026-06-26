@@ -147,6 +147,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       role, work, grade,
       projectReduction, extraHours: 0,
       scenarios: role === 'homeroom' ? scenariosMirror : (initial.scenarios ?? {}),
+      scenariosOriginal: role === 'homeroom' ? scenariosMirror : (initial.scenariosOriginal ?? {}),
       plans, principleReasons, specialtyReasons,
       autonomousOvertime: autoOut, willingOvertime, willingSubjects: willingOrdered.slice(0, willingOvertime > 0 ? undefined : 0),
       overtimeHours: willingOvertime,  // 相容：統計頁的「意願超鐘」沿用 overtimeHours

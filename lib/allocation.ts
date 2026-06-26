@@ -293,6 +293,7 @@ export interface TeacherAllocation {
   projectReduction: number             // 專案減課
   extraHours: number                   // 意願超鐘點
   scenarios: Record<string, ScenarioChoice>  // 導師（舊／相容）：各減課情境（key = "0"/"1"/"2"）的配課；新版由 plans 鏡射標準情境回填供統計頁讀取
+  scenariosOriginal?: Record<string, ScenarioChoice>  // 老師送出時的原始配課快照（管理者編輯 scenarios 後可一鍵還原）
   // ── 實際節數重設計（導師）──
   plans?: Record<string, ScenarioChoice>     // key = 實際節數；同實際節數 = 同方案（單一真實來源）
   principleReasons?: Record<string, Record<string, string>>   // 實際節數 → 科目 → 動到原則配課的理由（每科一則，顯示時合併）
