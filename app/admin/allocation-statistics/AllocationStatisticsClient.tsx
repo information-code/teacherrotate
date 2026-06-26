@@ -127,7 +127,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             {reasonIcon(t)}
             {t.data.locked && <span className="text-[10px]">🔒</span>}
             <label className="flex items-center gap-1 text-xs text-zinc-600">減課<NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5" /></label>
-            <label className="flex items-center gap-1 text-xs text-zinc-600">超鐘<NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-12 text-center py-0.5" /></label>
+            <label className="flex items-center gap-1 text-xs text-zinc-600">意願超鐘<NumberInput min={0} max={6} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(6, Math.max(0, n)) }))} className="input w-12 text-center py-0.5" /></label>
             <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
           </div>
           {(() => {
@@ -238,11 +238,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
                     {subjects.map(s => <th key={s} className="text-center whitespace-nowrap">{s}</th>)}
                     <th className="text-center">合計</th><th className="text-center">目標</th>
-                    <th className="text-center">減課數</th><th className="text-center">超鐘數</th>
+                    <th className="text-center">減課</th><th className="text-center">自願超鐘</th><th className="text-center">意願超鐘</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {homeroomTeachers.length === 0 && <tr><td colSpan={subjects.length + 5} className="text-sm text-zinc-400 text-center py-3">此年級無導師資料（請先在撕榜套用工作紀錄）</td></tr>}
+                  {homeroomTeachers.length === 0 && <tr><td colSpan={subjects.length + 6} className="text-sm text-zinc-400 text-center py-3">此年級無導師資料（請先在撕榜套用工作紀錄）</td></tr>}
                   {homeroomTeachers.map(t => {
                     const sum = subjects.reduce((s, sub) => s + (Number(breakdown(t)[sub]) || 0), 0)
                     const tgt = target(t)
@@ -266,7 +266,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
                         <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-11 text-center py-0.5 text-xs" /></td>
-                        <td className="text-center font-medium text-sky-700">{Math.max(0, sum - actualPeriod(t))}{sum > tgt && <span className="text-[9px] text-amber-500 block">(合計&gt;目標)</span>}</td>
+                        <td className="text-center font-medium text-sky-700">{Math.max(0, sum - actualPeriod(t))}</td>
+                        {(() => { const auto = Math.max(0, sum - actualPeriod(t)); const cap = Math.max(0, 6 - auto); return (
+                          <td className="text-center"><NumberInput min={0} max={cap} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(cap, Math.max(0, n)) }))} className="input w-11 text-center py-0.5 text-xs" /></td>
+                        ) })()}
                       </tr>
                     )
                   })}
@@ -275,17 +278,17 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <tr className="border-t-2 border-zinc-200">
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">科任供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{subjectSupply(grade, s)}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">行政供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{adminSupply(grade, s)}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
                     {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
@@ -300,7 +303,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         </td>
                       )
                     })}
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                   </tr>
                 </tfoot>
               </table>
