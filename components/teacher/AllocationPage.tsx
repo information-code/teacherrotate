@@ -27,10 +27,14 @@ interface Props {
 
 export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, allSubjects, closed, initial }: Props) {
   const base0 = base ?? 0
-  const projectReduction = initial.projectReduction ?? 0  // 専案減課：管理者於統計頁事前輸入
   const reductions = homeroom ? (homeroom.scenarios.length ? homeroom.scenarios.map(s => s.reduction) : [0]) : []
-  // 實際節數 = 基本 − 總量管制減課 − 専案減課；總量管制 0~2 種情境 → 0~2 個實際節數
-  const scenarioPeriods = Array.from(new Set(reductions.map(r => base0 - r - projectReduction))).filter(p => p > 0).sort((a, b) => b - a)
+  const [projects, setProjects] = useState<{ name: string; hours: number }[]>(initial.projects ?? [])
+  const projectFiled = projects.reduce((s, p) => s + (Number(p.hours) || 0), 0)  // C：老師列舉的專案減課總數
+  // 實際節數 = 基本(A) − 總量管制減課(B) − 專案減課(C，老師列舉)
+  const scenarioPeriods = Array.from(new Set(reductions.map(r => base0 - r - projectFiled))).filter(p => p > 0).sort((a, b) => b - a)
+  function addProject() { setProjects(p => [...p, { name: '', hours: 0 }]) }
+  function removeProject(i: number) { setProjects(p => p.filter((_, idx) => idx !== i)) }
+  function setProject(i: number, patch: Partial<{ name: string; hours: number }>) { setProjects(p => p.map((x, idx) => (idx === i ? { ...x, ...patch } : x))) }
 
   const principleSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'principle') : []
   const specialtySubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'specialty') : []
@@ -134,7 +138,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   function buildData(lock: boolean): TeacherAllocation {
     const scenariosMirror: Record<string, ScenarioChoice> = {}
-    for (const r of reductions) { const ch = plans[String(base0 - r - projectReduction)]; if (ch) scenariosMirror[String(r)] = ch }
+    for (const r of reductions) { const ch = plans[String(base0 - r - projectFiled)]; if (ch) scenariosMirror[String(r)] = ch }
     const aggReasons = (reasons: Record<string, Record<string, string>>, fallback: string) =>
       role === 'homeroom'
         ? Object.keys(reasons).filter(k => plans[k] && Object.keys(reasons[k]).length)
@@ -145,14 +149,15 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     for (const P of scenarioPeriods) { const a = autoOf(P); if (a > 0) autoOut[String(P)] = a }
     return {
       role, work, grade,
-      projectReduction, extraHours: 0,
+      projectReduction: role === 'homeroom' ? projectFiled : (initial.projectReduction ?? 0), extraHours: 0,
+      projects,
       scenarios: role === 'homeroom' ? scenariosMirror : (initial.scenarios ?? {}),
       scenariosOriginal: role === 'homeroom' ? scenariosMirror : (initial.scenariosOriginal ?? {}),
       plans, principleReasons, specialtyReasons,
       autonomousOvertime: autoOut, willingOvertime, willingSubjects: willingOrdered.slice(0, willingOvertime > 0 ? undefined : 0),
       overtimeHours: willingOvertime,  // 相容：統計頁的「意願超鐘」沿用 overtimeHours
       gradeHours,
-      projects: initial.projects ?? [], projectOrder: initial.projectOrder ?? [],
+      projectOrder: initial.projectOrder ?? [],
       subjectWishes: subjectWishes.filter(Boolean),
       scheduling, principleReason: aggReasons(principleReasons, principleReason), specialtyReason: aggReasons(specialtyReasons, specialtyReason),
       acknowledged: lock ? true : (initial.acknowledged ?? false),
@@ -168,6 +173,25 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       setSaveStatus('saved'); setError(null); return true
     } catch { setSaveStatus('idle'); setError('儲存失敗'); return false }
   }
+  // 專案減課改變 → 實際節數改變 → 為新出現的情境補播方案
+  useEffect(() => {
+    if (readOnly || role !== 'homeroom' || !homeroom) return
+    setPlans(prev => {
+      let changed = false
+      const p = { ...prev }
+      for (const P of scenarioPeriods) {
+        if (!p[String(P)]) {
+          changed = true
+          const preset = presetsByPeriod[P]?.[0]
+          if (preset) p[String(P)] = { planName: preset.name, breakdown: { ...preset.alloc } }
+          else { const bd: Record<string, number> = {}; for (const s of principleSubjects) bd[s] = homeroom.subjectMax[s] ?? 0; p[String(P)] = { planName: null, breakdown: bd } }
+        }
+      }
+      return changed ? p : prev
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenarioPeriods.join(',')])
+
   const firstRun = useRef(true)
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return }
@@ -176,7 +200,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     const t = setTimeout(() => { void put(false) }, 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans, autonomousAgreed, principleReasons, specialtyReasons, willingOvertime, willingSubjects, subjectWishes, scheduling])
+  }, [plans, projects, autonomousAgreed, principleReasons, specialtyReasons, willingOvertime, willingSubjects, subjectWishes, scheduling])
 
   function setPlanChoice(P: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setPlans(prev => ({ ...prev, [String(P)]: fn(prev[String(P)] ?? { planName: null, breakdown: {} }) }))
@@ -298,8 +322,9 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   function periodCard(P: number) {
     const key = String(P)
-    const ch = plans[key]!
-    const r = base0 - projectReduction - P
+    const ch = plans[key]
+    if (!ch) return null  // 尚未播種（剛改專案減課）→ 由 effect 補上後重繪
+    const r = base0 - projectFiled - P
     const presets = presetsByPeriod[P] ?? []
     const hasPlans = presets.length > 0
     const inSelf = !hasPlans || !!selfMode[key]
@@ -335,7 +360,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         )}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節
-            <span className="ml-2 text-xs font-normal text-zinc-500">{r > 0 ? `總量管制減 ${r} 節` : '無減課'}{projectReduction > 0 ? `・専案減 ${projectReduction} 節` : ''}</span>
+            <span className="ml-2 text-xs font-normal text-zinc-500">{r > 0 ? `總量管制減 ${r} 節` : '無減課'}{projectFiled > 0 ? `・専案減 ${projectFiled} 節` : ''}</span>
           </h3>
           {hasPlans && !selfMode[key] && presets.length > 1 && (
             <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
@@ -405,14 +430,44 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         scenarioPeriods.map(P => periodCard(P))
       ) : <>
           {/* 段1：確認基本授課與專案減課 */}
-          {seg === 1 && (
-            <div className="card p-4 space-y-3">
-              <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">確認基本授課與專案減課</div>
-              <div className="text-base text-zinc-800">基本授課節數 <span className="font-semibold">{base0}</span>{projectReduction > 0 && <span className="ml-2">・専案減課 <span className="font-semibold">{projectReduction}</span> 節</span>}</div>
-              <p className="text-xs text-red-600">專案減課數由課務組依公文核定；如發現數字有誤，請逕洽課務組更正。</p>
-              <div className="flex justify-end"><button onClick={() => setSeg(2)} className="btn-primary text-sm">我已確認專案減課數正確</button></div>
+          {seg === 1 && <>
+            {/* A：基本授課節數 */}
+            <div className="card p-4 space-y-1">
+              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">A</span>　基本授課節數 <span className="font-semibold text-lg text-zinc-900">{base0}</span> 節</div>
+              <p className="text-[11px] text-zinc-400">依據國民中小學教師授課節數訂定基準。</p>
             </div>
-          )}
+            {/* B：總量管制減課數 */}
+            <div className="card p-4 space-y-1">
+              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">B</span>　總量管制減課數 <span className="font-semibold text-lg text-zinc-900">{reductions.length ? (Math.min(...reductions) === Math.max(...reductions) ? Math.min(...reductions) : `${Math.min(...reductions)}~${Math.max(...reductions)}`) : 0}</span> 節</div>
+              <p className="text-[11px] text-zinc-400">將依校內課發會排配課會議決議後確認。</p>
+            </div>
+            {/* C：列舉專案減課 */}
+            <div className="card p-4 space-y-2">
+              <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">C</span>　列舉專案減課數 <span className="font-semibold text-lg text-zinc-900">{projectFiled}</span> 節</div>
+              <p className="text-[11px] text-zinc-400">請列舉您於下學年度因參與專案或特殊任務產生之減課（例如：學年主任、輔導團、基地團等）。</p>
+              {projects.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-zinc-500">專案名稱</span>
+                  <input value={p.name} disabled={readOnly} onChange={e => setProject(i, { name: e.target.value })} placeholder="專案／任務名稱" className="input py-0.5 text-sm flex-1 min-w-[8rem]" />
+                  <span className="text-xs text-zinc-500">減</span>
+                  <NumberInput min={0} max={6} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.min(6, Math.max(0, n)) })} className="input w-14 text-center py-0.5" />
+                  <span className="text-xs text-zinc-500">節</span>
+                  {!readOnly && <button onClick={() => removeProject(i)} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>}
+                </div>
+              ))}
+              {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
+              <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>
+            </div>
+            {/* D：實際授課節數 */}
+            <div className="card border-zinc-200 bg-zinc-50 p-4 space-y-1">
+              <div className="text-sm font-semibold text-zinc-700"><span className="text-zinc-400">D</span>　實際授課節數（A − B − C）</div>
+              <p className="text-[11px] text-zinc-400">你目前可能的實際授課節數：</p>
+              {reductions.map(b => (
+                <div key={b} className="text-sm text-zinc-700">基本 {base0} − 總量管制減 {b} − 專案減 {projectFiled} = <span className="font-semibold text-zinc-900">{base0 - b - projectFiled} 節</span></div>
+              ))}
+            </div>
+            <div className="flex justify-end"><button onClick={() => setSeg(2)} className="btn-primary text-sm">下一步</button></div>
+          </>}
 
           {/* 段2：注意事項 */}
           {seg === 2 && <>
@@ -443,7 +498,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         </>)}
 
         {role === 'admin' && (readOnly || seg === 1) && <>
-          <div className="card p-4"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - projectReduction}</span></div></div>
+          <div className="card p-4"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - (initial.projectReduction ?? 0)}</span></div></div>
           <div className="card p-4 space-y-2">
             <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">想授課科目志願</div>
             <p className="text-[11px] text-zinc-400">請依序選擇您希望授課的科目（全科可選，供課務組安排參考）。</p>
@@ -462,7 +517,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
         {role === 'subject' && (readOnly || seg === 1) && (
           <div className="card p-4 space-y-2">
-            <div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - projectReduction}</span></div>
+            <div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - (initial.projectReduction ?? 0)}</span></div>
             <p className="text-[11px] text-zinc-400">授課科目與各年級節數由管理者於後續配課時填寫。請於下一步填寫超鐘點意願。</p>
           </div>
         )}
