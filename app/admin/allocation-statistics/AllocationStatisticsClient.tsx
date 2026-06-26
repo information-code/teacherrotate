@@ -22,7 +22,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
-  const [review, setReview] = useState<string | null>(null)  // 減課／超鐘事後審核 modal（teacher id）
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
@@ -88,15 +87,12 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
   // 全部領域（各年級需求科目之聯集，含非導師科目）
   const allSubjectsList = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => Object.keys(demandByGradeSubject[g] ?? {})))).filter(Boolean))
-  function willingFor(subj: string) { return teachers.filter(t => (t.data.overtimeHours || 0) > 0 && (t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []).includes(subj)) }
+  // 意願超鐘：老師在意願調查填的（willingOvertime + willingSubjects），供某科不足時參考
+  function willingFor(subj: string) { return teachers.filter(t => (t.data.willingOvertime ?? t.data.overtimeHours ?? 0) > 0 && (t.data.willingSubjects ?? t.data.overtimeOrder ?? []).includes(subj)) }
 
   function reasonIcon(t: TeacherStat) {
     if (!(t.data.principleReason || t.data.specialtyReason)) return null
     return <button onClick={() => setReasonView(t.id)} title="查看配課理由" className="ml-1 text-amber-600 hover:text-amber-700">💬</button>
-  }
-  function reviewIcon(t: TeacherStat) {
-    const flagged = (t.data.overtimeHours || 0) > 0 || (t.data.projectReduction || 0) > 0 || (t.data.overtimeApproved || 0) > 0
-    return <button onClick={() => setReview(t.id)} title="減課／超鐘審核" className={`ml-1 ${flagged ? 'text-sky-600' : 'text-zinc-300'} hover:text-sky-700`}>🛠</button>
   }
 
   function editCell(id: string, sub: string, val: number) {
@@ -130,7 +126,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             </select>
             {reasonIcon(t)}
             {t.data.locked && <span className="text-[10px]">🔒</span>}
-            <button onClick={() => setReview(t.id)} className="btn-secondary text-xs">🛠 減課／超鐘審核</button>
+            <label className="flex items-center gap-1 text-xs text-zinc-600">減課<NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-12 text-center py-0.5" /></label>
+            <label className="flex items-center gap-1 text-xs text-zinc-600">超鐘<NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-12 text-center py-0.5" /></label>
             <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
           </div>
           {(() => {
@@ -254,7 +251,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`sticky left-0 z-10 ${mismatch ? 'bg-red-50' : 'bg-white'}`}>
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
-                            {reasonIcon(t)}{reviewIcon(t)}
+                            {reasonIcon(t)}
                           </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>
                         </td>
@@ -265,8 +262,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         ))}
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
-                        <td className="text-center text-zinc-700">{t.data.projectReduction || 0}</td>
-                        <td className="text-center text-zinc-700">{t.data.overtimeApproved || 0}</td>
+                        <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-11 text-center py-0.5 text-xs" /></td>
+                        <td className="text-center">
+                          <NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-11 text-center py-0.5 text-xs" />
+                          {(() => { const act = (t.base ?? 0) - reduction - (t.data.projectReduction || 0); const a = t.data.autonomousOvertime?.[String(act)] ?? 0; return a > 0 ? <div className="text-[9px] text-sky-600">自主 {a}</div> : null })()}
+                        </td>
                       </tr>
                     )
                   })}
@@ -326,15 +326,14 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             ? <p className="text-sm text-zinc-400">目前無老師於送出時表示願意超鐘點支援此科目。</p>
             : <ul className="text-sm text-zinc-700 space-y-1">
                 {willingFor(otSubj).map(t => {
-                  const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
+                  const order = t.data.willingSubjects ?? t.data.overtimeOrder ?? []
                   return (
                     <li key={t.id} className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{t.name}</span>
                       <span className="text-xs text-zinc-500">{t.roleLabel}</span>
-                      <span className="text-xs text-amber-600">願意超鐘點 {t.data.overtimeHours} 節</span>
-                      {order.length > 0 && <span className="text-xs text-zinc-400">順序：{order.join('＞')}</span>}
-                      {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已核定 {t.data.overtimeApproved} 節</span>}
-                      <button onClick={() => setReview(t.id)} className="text-xs text-sky-600 underline hover:text-sky-700">審核</button>
+                      <span className="text-xs text-amber-600">意願超鐘點 {t.data.willingOvertime ?? t.data.overtimeHours ?? 0} 節</span>
+                      {order.length > 0 && <span className="text-xs text-zinc-400">支援順序：{order.join('＞')}</span>}
+                      {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已排超鐘 {t.data.overtimeApproved} 節</span>}
                     </li>
                   )
                 })}
@@ -372,52 +371,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         )
       })()}
 
-      {/* ── 減課／超鐘 事後審核 modal ── */}
-      {review && (() => {
-        const t = teachers.find(x => x.id === review)
-        if (!t) return null
-        const order = t.data.overtimeOrder ?? t.data.overtimeSubjects ?? []
-        const projects = t.data.projects ?? []
-        const projOrder = t.data.projectOrder ?? []
-        const projTotal = projects.reduce((s, p) => s + (Number(p.hours) || 0), 0)
-        return (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setReview(null)}>
-            <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-zinc-900">{t.name} · 減課／超鐘審核</h3>
-                  <p className="text-xs text-zinc-500">{t.roleLabel}{t.work === '代理導師' || t.work === '代理科任' ? '（代理）' : ''}</p>
-                </div>
-                <button onClick={() => setReview(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
-              </div>
-
-              <div className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm space-y-1.5">
-                <div className="text-xs font-semibold text-zinc-500">老師專案減課申請</div>
-                {projects.length === 0
-                  ? <div className="text-zinc-400 text-xs">未申請</div>
-                  : <ul className="space-y-0.5">
-                      {projects.map((p, i) => <li key={i} className="text-zinc-700 flex justify-between"><span>{p.name || <span className="text-zinc-400">（未命名）</span>}</span><span className="text-zinc-500">{p.hours} 節</span></li>)}
-                      <li className="text-zinc-500 text-xs border-t border-zinc-200 pt-0.5 flex justify-between"><span>合計</span><span>{projTotal} 節</span></li>
-                    </ul>}
-                <div className="text-zinc-700 text-xs">減課順序：{projOrder.length ? projOrder.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
-                <div className="text-xs font-semibold text-zinc-500 pt-1">老師超鐘意願</div>
-                <div className="text-zinc-700">願意超鐘點 <span className="font-medium">{t.data.overtimeHours || 0}</span> 節</div>
-                <div className="text-zinc-700 text-xs">支援順序：{order.length ? order.join(' ＞ ') : <span className="text-zinc-400">未指定</span>}</div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">核定專案減課</span>
-                  <NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-16 text-center py-0.5" /></label>
-                <label className="flex items-center justify-between text-sm"><span className="text-zinc-700">核定超鐘數</span>
-                  <NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-16 text-center py-0.5" /></label>
-                <p className="text-[11px] text-zinc-400">核定後「超鐘數」將顯示於統計表。修改即自動儲存。</p>
-              </div>
-
-              <div className="flex justify-end pt-1"><button onClick={() => setReview(null)} className="btn-primary text-sm">完成</button></div>
-            </div>
-          </div>
-        )
-      })()}
     </div>
   )
 }
