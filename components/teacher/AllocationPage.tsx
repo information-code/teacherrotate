@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS, PROJECT_PRESETS, PRINCIPLE_ORDER,
+  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS, PROJECT_PRESETS, PRINCIPLE_ORDER, OPTIONAL_SUBJECTS,
   defaultSchedulingNeeds,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds, type AllocationPlan,
 } from '@/lib/allocation'
@@ -38,7 +38,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   const principleSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'principle') : []
   const specialtySubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'specialty') : []
-  const optionalSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'optional') : []
+  const optionalSubjects = homeroom ? homeroom.subjects.filter(s => subjectCategory(s) === 'optional').sort((a, b) => OPTIONAL_SUBJECTS.indexOf(a) - OPTIONAL_SUBJECTS.indexOf(b)) : []
   const principleTotal = principleSubjects.reduce((s, ss) => s + (homeroom?.subjectMax[ss] ?? 0), 0)
   // 系統自動配課（無行政方案時的預設）：原則(依序)→選填→專長，填到實際節數為止；原則放不下時依序保留國語/數學/班級活動/自主學習/生活
   function autoFill(P: number): Record<string, number> {
