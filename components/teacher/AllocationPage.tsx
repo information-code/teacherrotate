@@ -398,7 +398,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
         {/* 未完整授課（某科只配一部分 → 與他人共課）提醒 */}
         {(() => {
-          const partials = homeroom!.subjects.filter(s => { const v = Number(ch.breakdown[s]) || 0; const cap = homeroom!.subjectMax[s] ?? 0; return cap > 0 && v > 0 && v < cap })
+          // 原則配課：低於上限（含 0，減太多沒吃下原則）即不完整；其餘科目：0<節數<上限（與他人共課）才算
+          const partials = homeroom!.subjects.filter(s => { const v = Number(ch.breakdown[s]) || 0; const cap = homeroom!.subjectMax[s] ?? 0; if (cap <= 0) return false; return principleSubjects.includes(s) ? v < cap : (v > 0 && v < cap) })
           if (!partials.length) return null
           return (
             <div className="rounded-sm border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700 space-y-0.5">
