@@ -5,7 +5,7 @@ import { AllocationPage } from '@/components/teacher/AllocationPage'
 import { SubstituteAllocationPage } from '@/components/teacher/SubstituteAllocationPage'
 import {
   normalizeConfig, allocRole, homeroomGrade, adminKind, ADMIN_KIND_LABEL,
-  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, REDUCTIONS, GRADES,
+  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, REDUCTIONS, GRADES, subjectAllowedForGrade,
   type TeacherAllocation, type AllocationPlan,
 } from '@/lib/allocation'
 
@@ -48,8 +48,8 @@ export default async function TeacherAllocationPage() {
       subGrades[g] = {
         grade: g,
         homeroomBase: gc.homeroomBase,
-        subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
-        subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name).map(s => [s.name, s.perClass])),
+        subjects: gc.subjects.filter(s => s.homeroom && subjectAllowedForGrade(s.name, g)).map(s => s.name).filter(Boolean),
+        subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name && subjectAllowedForGrade(s.name, g)).map(s => [s.name, s.perClass])),
         scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
       }
     }
@@ -73,8 +73,8 @@ export default async function TeacherAllocationPage() {
     homeroom = {
       grade,
       homeroomBase: gc.homeroomBase,
-      subjects: gc.subjects.filter(s => s.homeroom).map(s => s.name).filter(Boolean),
-      subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name).map(s => [s.name, s.perClass])),
+      subjects: gc.subjects.filter(s => s.homeroom && subjectAllowedForGrade(s.name, grade)).map(s => s.name).filter(Boolean),
+      subjectMax: Object.fromEntries(gc.subjects.filter(s => s.homeroom && s.name && subjectAllowedForGrade(s.name, grade)).map(s => [s.name, s.perClass])),
       scenarios: REDUCTIONS.filter(r => gc.scenarios[r].enabled).map(r => ({ reduction: r, plans: gc.scenarios[r].plans })),
     }
   }

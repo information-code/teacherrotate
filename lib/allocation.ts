@@ -99,6 +99,12 @@ function defaultSubjectsFor(grade: number): string[] {
     : ['國語', '數學', '社會', '自然', '英語', '健康', '體育', '視覺藝術', '表演藝術', '音樂', '綜合', '本土語']
 }
 
+// 自主學習僅高年級（5、6 年級）開課；中低年級（1–4）不會有自主學習課。
+export function subjectAllowedForGrade(name: string, grade: number): boolean {
+  if (name === '自主學習' && grade < 5) return false
+  return true
+}
+
 export function defaultGradeConfig(grade: number): GradeConfig {
   return {
     classCount: 0,
