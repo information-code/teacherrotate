@@ -362,6 +362,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
     return (
       <div key={P} className="card p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節</h3>
+          {hasPlans && !selfMode[key] && presets.length > 1 && (
+            <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
+              <option value="">請選擇方案</option>
+              {presets.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* 理由卡片：標題下方、配課區塊上方 */}
         {prinEnt.length > 0 && (
           <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 space-y-0.5">
             <div className="font-semibold">動到原則配課（理由提課發會）：</div>
@@ -374,15 +385,6 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             {specEnt.map(([s, rr]) => <div key={s} className="pl-1">・<span className="font-medium">{s}</span>：<span className="whitespace-pre-line">{rr}</span>{!readOnly && <button onClick={() => setSpecialtyEdit({ P, subj: s, revertTo: null })} className="ml-1 underline text-amber-700 hover:text-amber-900">編輯</button>}</div>)}
           </div>
         )}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-semibold text-zinc-700">實際 {P} 節</h3>
-          {hasPlans && !selfMode[key] && presets.length > 1 && (
-            <select className="input py-1 text-sm w-48" value={planName} disabled={readOnly} onChange={e => pickPlan(e.target.value)}>
-              <option value="">請選擇方案</option>
-              {presets.map((p, i) => <option key={i} value={p.name}>{p.name || `方案${i + 1}`}</option>)}
-            </select>
-          )}
-        </div>
 
         {hasPlans && !selfMode[key] && planName && <>
           {block(P, '導師原則配課', principleSubjects, false)}
