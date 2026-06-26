@@ -222,8 +222,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const meta = gradesMeta[grade]
         const subjects = meta?.subjects ?? []
         const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-        // 導師目標 = 基本 − 情境減課 − 核定專案減課 + 核定超鐘
-        const target = (t: TeacherStat) => actualOf(t) - reduction
+        // 導師（本班）目標 = 實際節數 + 自主超鐘（老師自願、自動計入；意願超鐘屬另填的核定超鐘，不計入本班目標）
+        const actualPeriod = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0)
+        const autonomousOf = (t: TeacherStat) => t.data.autonomousOvertime?.[String(actualPeriod(t))] ?? 0
+        const target = (t: TeacherStat) => actualPeriod(t) + autonomousOf(t)
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
         return (
           <>
