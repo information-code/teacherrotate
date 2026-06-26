@@ -194,6 +194,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {savingId && <span className="text-xs text-zinc-500">儲存中…</span>}
+          <button onClick={() => router.refresh()} className="btn-secondary text-sm" title="抓取老師最新送出的資料">重新整理</button>
           {phase === 'open'
             ? <button onClick={() => setPhase('closed')} disabled={busy} className="btn-primary text-sm">{busy ? '處理中…' : '截止配課'}</button>
             : <button onClick={() => setPhase('open')} disabled={busy} className="btn-secondary text-sm">{busy ? '處理中…' : '重新開放配課'}</button>}
@@ -265,10 +266,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
                         <td className="text-center"><NumberInput min={0} value={t.data.projectReduction || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, projectReduction: n }))} className="input w-11 text-center py-0.5 text-xs" /></td>
-                        <td className="text-center">
-                          <NumberInput min={0} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: n }))} className="input w-11 text-center py-0.5 text-xs" />
-                          {(() => { const act = (t.base ?? 0) - reduction - (t.data.projectReduction || 0); const a = t.data.autonomousOvertime?.[String(act)] ?? 0; return a > 0 ? <div className="text-[9px] text-sky-600">自主 {a}</div> : null })()}
-                        </td>
+                        <td className="text-center font-medium text-sky-700">{Math.max(0, sum - actualPeriod(t))}{sum > tgt && <span className="text-[9px] text-amber-500 block">(合計&gt;目標)</span>}</td>
                       </tr>
                     )
                   })}
