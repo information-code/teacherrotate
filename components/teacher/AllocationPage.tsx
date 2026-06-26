@@ -257,7 +257,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     return [...present]
   })()
 
-  function failNext(msg: string) { setError(msg); topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  function failNext(msg: string) { setError(msg) }
   function goNext() {
     setError(null)
     if (role === 'homeroom') {
@@ -518,9 +518,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             {scenarioPeriods.length === 0
               ? <div className="card text-sm text-zinc-400">尚無可配節數，請確認管理者是否已啟用減課情境與輸入専案減課。</div>
               : scenarioPeriods.map(P => periodCard(P))}
-            <div className="flex items-center justify-between">
-              <button onClick={() => setSeg(2)} className="btn-secondary text-sm">上一步</button>
-              <button onClick={goNext} className="btn-primary text-sm">我已確認我的配課方案</button>
+            <div className="flex items-center justify-between gap-3">
+              <button onClick={() => setSeg(2)} className="btn-secondary text-sm flex-shrink-0">上一步</button>
+              {error && <p className="text-sm text-red-700 whitespace-pre-line flex-1 text-right">{error}</p>}
+              <button onClick={goNext} className="btn-primary text-sm flex-shrink-0">我已確認我的配課方案</button>
             </div>
           </>}
         </>)}
