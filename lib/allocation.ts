@@ -297,6 +297,9 @@ export interface TeacherAllocation {
   plans?: Record<string, ScenarioChoice>     // key = 實際節數；同實際節數 = 同方案（單一真實來源）
   principleReasons?: Record<string, Record<string, string>>   // 實際節數 → 科目 → 動到原則配課的理由（每科一則，顯示時合併）
   specialtyReasons?: Record<string, Record<string, string>>    // 實際節數 → 科目 → 動到專長配課的理由（每科一則，顯示時合併）
+  autonomousOvertime?: Record<string, number>  // 實際節數 → 自主超鐘節數（合計>實際、老師同意，免審核，自動計入統計頁超鐘）
+  willingOvertime?: number                     // 意願超鐘節數（額外願意，供課務組缺課調度）
+  willingSubjects?: string[]                   // 意願超鐘支援科目（排序，最想支援在前；排除已配滿的科）
   ranking?: Record<string, number[]>          // key = 減後基數；值 = 該組實際節數由最想要到最不想要
   projectFiled?: number                       // 老師申請的計畫專案減課節數（用於上下限與減後基數分組）
   gradeHours?: Record<string, number>  // 科任：各年級授課節數（單一領域，key = "1".."6"）
