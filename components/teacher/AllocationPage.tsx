@@ -386,7 +386,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             {!inSelf && !readOnly && <>已選用方案；如需調整可<button onClick={enterSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改為自訂配課</button>。</>}
             {inSelf && hasPlans && !readOnly && <>自訂配課。<button onClick={cancelSelf} className="ml-1 text-zinc-500 underline hover:text-zinc-700">改選方案</button></>}
           </div>
-          <div className={`text-lg font-semibold whitespace-nowrap ${sum === P ? 'text-green-600' : 'text-amber-600'}`}>合計 {sum}{sum !== P && <span className="text-xs font-normal"> / 實際 {P}（{sum < P ? `尚差 ${P - sum}` : `多 ${over}`}）</span>}</div>
+          <div className={`text-lg font-semibold whitespace-nowrap ${over === 0 ? 'text-green-600' : over < 0 ? 'text-amber-600' : 'text-sky-600'}`}>{over < 0 ? `剩餘 ${-over} 節` : over === 0 ? '剩餘 0 節 ✓' : `超鐘 ${over} 節`}</div>
         </div>
 
         {/* 合計 > 實際 → 自主超鐘確認 */}
@@ -398,6 +398,19 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                 <span>此方案合計超過實際 {P} 節，代表你將<strong>自願超鐘 {over} 節</strong>以維持配課完整（免審核，自動計入）。我同意。</span>
               </label>
         )}
+
+        {/* 未完整授課（某科只配一部分 → 與他人共課）提醒 */}
+        {(() => {
+          const partials = homeroom!.subjects.filter(s => { const v = Number(ch.breakdown[s]) || 0; const cap = homeroom!.subjectMax[s] ?? 0; return cap > 0 && v > 0 && v < cap })
+          if (!partials.length) return null
+          return (
+            <div className="rounded-sm border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700 space-y-0.5">
+              {partials.map(s => (
+                <div key={s}>偵測到您的「<span className="font-medium">{s}</span>」課並未完整授課（{ch.breakdown[s]}/{homeroom!.subjectMax[s]} 節），建議您{over < 0 ? '補齊該科目節數' : '超鐘點後補齊該科目節數'}。</div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
     )
   }
