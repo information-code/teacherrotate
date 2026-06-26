@@ -79,6 +79,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [gradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
 
   const [step, setStep] = useState(1)
+  const [seg, setSeg] = useState(1)  // 第一頁（導師）分段：1 確認節數 → 2 注意事項 → 3 方案配課
   const [showPeriodsTable, setShowPeriodsTable] = useState(false)
   const [principleReason] = useState(initial.principleReason ?? '')
   const [specialtyReason] = useState(initial.specialtyReason ?? '')
@@ -396,24 +397,46 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
       {/* ════ 第一頁：自主配課 ════ */}
       {step === 1 && <>
-        {role === 'homeroom' && homeroom && <>
-          <div className="card p-4 space-y-2">
+        {role === 'homeroom' && homeroom && (readOnly ? (
+          scenarioPeriods.map(P => periodCard(P))
+        ) : <>
+          {/* 段1：確認基本授課與專案減課 */}
+          {seg === 1 && (
+            <div className="card p-4 space-y-3">
+              <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">確認基本授課與專案減課</div>
+              <div className="text-base text-zinc-800">基本授課節數 <span className="font-semibold">{base0}</span>{projectReduction > 0 && <span className="ml-2">・専案減課 <span className="font-semibold">{projectReduction}</span> 節</span>}</div>
+              <p className="text-xs text-red-600">專案減課數由課務組依公文核定；如發現數字有誤，請逕洽課務組更正。</p>
+              <div className="flex justify-end"><button onClick={() => setSeg(2)} className="btn-primary text-sm">我已確認專案減課數正確</button></div>
+            </div>
+          )}
+
+          {/* 段2：注意事項 */}
+          {seg === 2 && <>
+            <HomeroomNoticeCard grade={homeroom.grade} />
             <div className="flex items-center justify-between">
-              <div className="text-sm text-zinc-600">基本授課節數 <span className="font-semibold text-zinc-900">{base0}</span>{projectReduction > 0 && <span className="ml-2 text-xs text-zinc-500">・専案減課 {projectReduction} 節</span>}</div>
-              <button onClick={() => setShowPeriodsTable(true)} className="flex items-center gap-1.5 text-xs text-zinc-600 border border-zinc-200 rounded-sm px-2 py-1 hover:border-zinc-400 hover:text-zinc-900 hover:bg-zinc-50">
+              <button onClick={() => setSeg(1)} className="btn-secondary text-sm">上一步</button>
+              <button onClick={() => { setNoticeAck(true); setSeg(3) }} className="btn-primary text-sm">我已詳讀注意事項，開始配課</button>
+            </div>
+          </>}
+
+          {/* 段3：方案配課 */}
+          {seg === 3 && <>
+            <div className="card border-zinc-200 bg-zinc-50 p-3 flex items-start justify-between gap-3">
+              <p className="text-sm text-zinc-600">本校為<strong>總量管制學校</strong>，依課發會審議，學年導師{(() => { const nz = reductions.filter(r => r > 0); if (!nz.length) return '本學年無減課'; const lo = Math.min(...nz), hi = Math.max(...nz); return `可能減 ${lo === hi ? lo : `${lo}~${hi}`} 節課` })()}，請協助選擇您的配課意願方案。</p>
+              <button onClick={() => setShowPeriodsTable(true)} className="flex-shrink-0 flex items-center gap-1.5 text-xs text-zinc-600 border border-zinc-200 rounded-sm px-2 py-1 bg-white hover:border-zinc-400 hover:text-zinc-900">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
                 <span className="font-medium">課程節數表</span>
               </button>
             </div>
-            <p className="text-[11px] text-zinc-400">若發現専案減課數有錯誤，請洽課務組。</p>
-          </div>
-
-          <HomeroomNoticeCard grade={homeroom.grade} ack={noticeAck} onAckChange={setNoticeAck} readOnly={readOnly} />
-
-          {scenarioPeriods.length === 0
-            ? <div className="card text-sm text-zinc-400">尚無可配節數，請確認管理者是否已啟用減課情境與輸入専案減課。</div>
-            : scenarioPeriods.map(P => periodCard(P))}
-        </>}
+            {scenarioPeriods.length === 0
+              ? <div className="card text-sm text-zinc-400">尚無可配節數，請確認管理者是否已啟用減課情境與輸入専案減課。</div>
+              : scenarioPeriods.map(P => periodCard(P))}
+            <div className="flex items-center justify-between">
+              <button onClick={() => setSeg(2)} className="btn-secondary text-sm">上一步</button>
+              <button onClick={goNext} className="btn-primary text-sm">我已確認我的配課方案</button>
+            </div>
+          </>}
+        </>)}
 
         {role === 'admin' && <>
           <div className="card p-4"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - projectReduction}</span></div></div>
@@ -481,7 +504,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
       {!readOnly && (
         <div className="flex items-center justify-end gap-2 pt-2">
-          {step === 1 && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
+          {step === 1 && role !== 'homeroom' && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
           {step === 2 && <>
             <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
             <button onClick={() => setStep(3)} className="btn-primary text-sm">下一步</button>
