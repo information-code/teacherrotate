@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { NumberInput } from '@/components/ui/NumberInput'
 import {
-  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS,
+  GRADE_LABEL, planTotal, subjectCategory, CERT_SUBJECTS, PROJECT_PRESETS,
   defaultSchedulingNeeds,
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds, type AllocationPlan,
 } from '@/lib/allocation'
@@ -447,8 +447,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
               <p className="text-[11px] text-zinc-400">請列舉您於下學年度因參與專案或特殊任務產生之減課（例如：學年主任、輔導團、基地團等）。</p>
               {projects.map((p, i) => (
                 <div key={i} className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-zinc-500">專案名稱</span>
-                  <input value={p.name} disabled={readOnly} onChange={e => setProject(i, { name: e.target.value })} placeholder="專案／任務名稱" className="input py-0.5 text-sm flex-1 min-w-[8rem]" />
+                  <select value="" disabled={readOnly} onChange={e => { if (e.target.value) setProject(i, { name: e.target.value }) }} className="input py-0.5 text-sm w-36">
+                    <option value="">常用分團／職務…</option>
+                    {PROJECT_PRESETS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <input value={p.name} disabled={readOnly} onChange={e => setProject(i, { name: e.target.value })} placeholder="專案名稱（或上方快選）" className="input py-0.5 text-sm flex-1 min-w-[8rem]" />
                   <span className="text-xs text-zinc-500">減</span>
                   <NumberInput min={0} max={6} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.min(6, Math.max(0, n)) })} className="input w-14 text-center py-0.5" />
                   <span className="text-xs text-zinc-500">節</span>

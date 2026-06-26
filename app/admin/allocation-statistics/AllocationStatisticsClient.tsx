@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
-import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, adminKind, ADMIN_KIND_ORDER, orderSubjectNames, type Reduction } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, PROJECT_PRESETS, adminKind, ADMIN_KIND_ORDER, orderSubjectNames, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
@@ -404,6 +404,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               {projs.length === 0 && <p className="text-xs text-zinc-400">老師未列舉任何專案。</p>}
               {projs.map((p, i) => (
                 <div key={i} className="flex items-center gap-2 flex-wrap">
+                  <select value="" onChange={e => { if (e.target.value) setProjs(projs.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x)) }} className="input py-0.5 text-sm w-32">
+                    <option value="">常用…</option>
+                    {PROJECT_PRESETS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
                   <input value={p.name} onChange={e => setProjs(projs.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} placeholder="專案名稱" className="input py-0.5 text-sm flex-1 min-w-[7rem]" />
                   <span className="text-xs text-zinc-500">減</span>
                   <NumberInput min={0} max={6} value={p.hours} onChange={n => setProjs(projs.map((x, idx) => idx === i ? { ...x, hours: Math.min(6, Math.max(0, n)) } : x))} className="input w-14 text-center py-0.5" />
