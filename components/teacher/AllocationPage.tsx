@@ -130,7 +130,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     }
     return set
   })()
-  const willingCandidates = allSubjects.filter(s => !maxedSubjects.has(s))
+  // 候選科目：導師依年級（homeroom.subjects 已過濾年級），科任／行政用全科；排序選配在前、專長在後（原則最後）。
+  const willingBase = homeroom ? homeroom.subjects : allSubjects
+  const catRank = (s: string) => { const c = subjectCategory(s); return c === 'optional' ? 0 : c === 'specialty' ? 1 : 2 }
+  const willingCandidates = willingBase.filter(s => !maxedSubjects.has(s)).sort((a, b) => catRank(a) - catRank(b))
   const willingOrdered = (() => {
     const out = willingSubjects.filter(s => willingCandidates.includes(s))
     for (const s of willingCandidates) if (!out.includes(s)) out.push(s)
