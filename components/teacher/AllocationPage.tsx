@@ -32,7 +32,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const projectFiled = projects.reduce((s, p) => s + (Number(p.hours) || 0), 0)  // C：老師列舉的專案減課總數
   // 實際節數 = 基本(A) − 總量管制減課(B) − 專案減課(C，老師列舉)
   const scenarioPeriods = Array.from(new Set(reductions.map(r => base0 - r - projectFiled))).filter(p => p > 0).sort((a, b) => b - a)
-  function addProject() { setProjects(p => [...p, { name: '', hours: 0 }]) }
+  function addProject() { setProjects(p => [...p, { name: PROJECT_PRESETS[0], hours: 0 }]) }
   function removeProject(i: number) { setProjects(p => p.filter((_, idx) => idx !== i)) }
   function setProject(i: number, patch: Partial<{ name: string; hours: number; custom: boolean }>) { setProjects(p => p.map((x, idx) => (idx === i ? { ...x, ...patch } : x))) }
 
@@ -453,7 +453,6 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                       <select value={isCustom ? '__OTHER__' : p.name} disabled={readOnly}
                         onChange={e => { const v = e.target.value; if (v === '__OTHER__') setProject(i, { custom: true, name: PROJECT_PRESETS.includes(p.name) ? '' : p.name }); else setProject(i, { name: v, custom: false }) }}
                         className="input py-0.5 text-sm w-48">
-                        <option value="">請選擇分團／職務…</option>
                         {PROJECT_PRESETS.map(o => <option key={o} value={o}>{o}</option>)}
                         <option value="__OTHER__">其他（自行輸入）</option>
                       </select>

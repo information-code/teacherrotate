@@ -409,7 +409,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     const upd = (patch: Partial<{ name: string; hours: number; custom: boolean }>) => setProjs(projs.map((x, idx) => idx === i ? { ...x, ...patch } : x))
                     return <>
                       <select value={isCustom ? '__OTHER__' : p.name} onChange={e => { const v = e.target.value; if (v === '__OTHER__') upd({ custom: true, name: PROJECT_PRESETS.includes(p.name) ? '' : p.name }); else upd({ name: v, custom: false }) }} className="input py-0.5 text-sm w-44">
-                        <option value="">請選擇…</option>
                         {PROJECT_PRESETS.map(o => <option key={o} value={o}>{o}</option>)}
                         <option value="__OTHER__">其他（自行輸入）</option>
                       </select>
@@ -422,7 +421,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <button onClick={() => setProjs(projs.filter((_, idx) => idx !== i))} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>
                 </div>
               ))}
-              <button onClick={() => setProjs([...projs, { name: '', hours: 0 }])} className="btn-secondary text-xs">＋ 新增專案</button>
+              <button onClick={() => setProjs([...projs, { name: PROJECT_PRESETS[0], hours: 0 }])} className="btn-secondary text-xs">＋ 新增專案</button>
               <div className="flex items-center justify-between border-t border-zinc-100 pt-2">
                 <span className="text-sm text-zinc-600">減課總計 <span className="font-semibold text-zinc-900">{total}</span> 節</span>
                 <button onClick={() => setProjEdit(null)} className="btn-primary text-sm">完成</button>
