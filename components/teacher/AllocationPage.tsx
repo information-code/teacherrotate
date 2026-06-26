@@ -490,12 +490,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
           {/* 段3：方案配課 */}
           {seg === 3 && <>
-            <div className="card border-zinc-200 bg-zinc-50 p-3 flex items-start justify-between gap-3">
-              <p className="text-sm text-zinc-600">本校為<strong>總量管制學校</strong>，依課發會審議，學年導師{(() => { const nz = reductions.filter(r => r > 0); if (!nz.length) return '本學年無減課'; const lo = Math.min(...nz), hi = Math.max(...nz); return `可能減 ${lo === hi ? lo : `${lo}~${hi}`} 節課` })()}，請協助選擇您的配課意願方案。</p>
-              <button onClick={() => setShowPeriodsTable(true)} className="flex-shrink-0 flex items-center gap-1.5 text-xs text-zinc-600 border border-zinc-200 rounded-sm px-2 py-1 bg-white hover:border-zinc-400 hover:text-zinc-900">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-                <span className="font-medium">課程節數表</span>
-              </button>
+            <div className="card border-amber-300 bg-amber-50 p-4 space-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-sm font-semibold text-amber-900">您需要根據您的「D：最低授課節數」方案進行配課：</div>
+                <button onClick={() => setShowPeriodsTable(true)} className="flex-shrink-0 flex items-center gap-1.5 text-xs text-amber-800 border border-amber-300 rounded-sm px-2 py-1 bg-white hover:border-amber-400">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+                  <span className="font-medium">課程節數表</span>
+                </button>
+              </div>
+              {reductions.map(b => (
+                <div key={b} className="text-sm text-amber-900">基本 {base0} − 專案減 {projectFiled} − 總量管制減 {b} = <span className="font-bold text-lg text-amber-900">{base0 - b - projectFiled} 節</span></div>
+              ))}
             </div>
             {scenarioPeriods.length === 0
               ? <div className="card text-sm text-zinc-400">尚無可配節數，請確認管理者是否已啟用減課情境與輸入専案減課。</div>
