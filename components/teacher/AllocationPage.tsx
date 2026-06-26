@@ -78,8 +78,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [subjectWishes, setSubjectWishes] = useState<string[]>(initial.subjectWishes ?? [])  // 行政：想授課科目志願
   const [gradeHours] = useState<Record<string, number>>(initial.gradeHours ?? {})
 
-  const [step, setStep] = useState(1)
-  const [seg, setSeg] = useState(1)  // 第一頁（導師）分段：1 確認節數 → 2 注意事項 → 3 方案配課
+  const [seg, setSeg] = useState(1)  // 全流程分段（導師 1~5；科任/行政 1~3）
   const [showPeriodsTable, setShowPeriodsTable] = useState(false)
   const [principleReason] = useState(initial.principleReason ?? '')
   const [specialtyReason] = useState(initial.specialtyReason ?? '')
@@ -251,12 +250,17 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       if (issues.length) { failNext('尚有以下項目需處理才能繼續：\n• ' + issues.join('\n• ')); return }
     }
     if (certSubjects.length) setReasonModalOpen(true)
-    else setStep(2)
+    else setSeg(4)
   }
-  function onReasonDone(_r: ReasonResult) { setReasonModalOpen(false); setStep(2) }
+  function onReasonDone(_r: ReasonResult) { setReasonModalOpen(false); setSeg(4) }
   async function onConfirm() { setConfirmModalOpen(false); if (await put(true)) setLocked(true) }
 
-  const stepLabel = step === 1 ? '自主配課' : step === 2 ? '超鐘點意願' : '排課需求'
+  const willingSeg = role === 'homeroom' ? 4 : 2
+  const scheduleSeg = role === 'homeroom' ? 5 : 3
+  const lastSeg = scheduleSeg
+  const segLabel = (role === 'homeroom'
+    ? ['確認節數', '注意事項', '方案配課', '超鐘意願', '排課需求']
+    : ['基本資料', '超鐘意願', '排課需求'])[seg - 1] ?? ''
 
   if (role === 'none') {
     return (
@@ -377,7 +381,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
-            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {step} / 3 · {stepLabel}</span>}
+            {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {seg} / {lastSeg} · {segLabel}</span>}
           </h2>
           <p className="text-xs text-zinc-500">
             身分：<span className="font-medium text-zinc-700">{roleLabel}</span>
@@ -395,11 +399,10 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       {locked && !closed && <div className="card border-zinc-300 bg-zinc-50"><p className="text-sm text-zinc-700"><span className="font-semibold">🔒 您的配課已送出鎖定</span>——如需修改請洽管理員。</p></div>}
       {error && <div className="card border-red-200 bg-red-50"><p className="text-sm text-red-700 whitespace-pre-line">{error}</p></div>}
 
-      {/* ════ 第一頁：自主配課 ════ */}
-      {step === 1 && <>
-        {role === 'homeroom' && homeroom && (readOnly ? (
-          scenarioPeriods.map(P => periodCard(P))
-        ) : <>
+      {/* 導師：段1~3（確認節數 / 注意事項 / 方案配課） */}
+      {role === 'homeroom' && homeroom && (readOnly ? (
+        scenarioPeriods.map(P => periodCard(P))
+      ) : <>
           {/* 段1：確認基本授課與專案減課 */}
           {seg === 1 && (
             <div className="card p-4 space-y-3">
@@ -438,7 +441,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </>}
         </>)}
 
-        {role === 'admin' && <>
+        {role === 'admin' && (readOnly || seg === 1) && <>
           <div className="card p-4"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - projectReduction}</span></div></div>
           <div className="card p-4 space-y-2">
             <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">想授課科目志願</div>
@@ -456,16 +459,15 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </div>
         </>}
 
-        {role === 'subject' && (
+        {role === 'subject' && (readOnly || seg === 1) && (
           <div className="card p-4 space-y-2">
             <div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - projectReduction}</span></div>
             <p className="text-[11px] text-zinc-400">授課科目與各年級節數由管理者於後續配課時填寫。請於下一步填寫超鐘點意願。</p>
           </div>
         )}
-      </>}
 
-      {/* ════ 第二頁：超鐘點意願調查 ════ */}
-      {step === 2 && (
+      {/* 超鐘點意願調查（導師段4 / 科任行政段2） */}
+      {(readOnly || seg === willingSeg) && (
         <div className="space-y-4">
           {role === 'homeroom' && maxAutonomous > 0 && (
             <div className="card border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">你在配課中最多已同意<strong>自願超鐘 {maxAutonomous} 節</strong>（依實際減課情況）。以下為「額外」願意支援的超鐘意願。</div>
@@ -499,20 +501,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
         </div>
       )}
 
-      {/* ════ 第三頁：排課需求 ════ */}
-      {step === 3 && <SchedulingNeedsCard value={scheduling} onChange={setScheduling} readOnly={readOnly} />}
+      {/* 排課需求（導師段5 / 科任行政段3） */}
+      {(readOnly || seg === scheduleSeg) && <SchedulingNeedsCard value={scheduling} onChange={setScheduling} readOnly={readOnly} />}
 
-      {!readOnly && (
-        <div className="flex items-center justify-end gap-2 pt-2">
-          {step === 1 && role !== 'homeroom' && <button onClick={goNext} className="btn-primary text-sm">下一步</button>}
-          {step === 2 && <>
-            <button onClick={() => setStep(1)} className="btn-secondary text-sm">上一步</button>
-            <button onClick={() => setStep(3)} className="btn-primary text-sm">下一步</button>
-          </>}
-          {step === 3 && <>
-            <button onClick={() => setStep(2)} className="btn-secondary text-sm">上一步</button>
-            <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>
-          </>}
+      {/* 底部導覽：導師段1~3用段內按鈕；其餘用此導覽 */}
+      {!readOnly && (role === 'homeroom' ? seg >= willingSeg : true) && (
+        <div className="flex items-center justify-between pt-2">
+          {seg > 1 ? <button onClick={() => setSeg(s => s - 1)} className="btn-secondary text-sm">上一步</button> : <span />}
+          {seg < lastSeg
+            ? <button onClick={() => setSeg(s => s + 1)} className="btn-primary text-sm">下一步</button>
+            : <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>}
         </div>
       )}
 
