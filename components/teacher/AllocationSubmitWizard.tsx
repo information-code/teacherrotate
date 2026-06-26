@@ -9,7 +9,7 @@ export interface ReasonResult { principleReason: string; specialtyReason: string
 // ack/onAckChange 有提供時，顯示「我已熟讀」勾選框（作為進下一頁的門檻）。
 export function HomeroomNoticeCard({ grade, ack, onAckChange, readOnly }: { grade: number; ack?: boolean; onAckChange?: (v: boolean) => void; readOnly?: boolean }) {
   const isHigh = grade >= 5
-  const principle = isHigh ? '國語、數學、班級學年活動、自主學習' : '國語、數學、班級學年活動、生活'
+  const principle = isHigh ? '國語、數學、班級學年活動、自主學習' : '國語、數學、班級學年活動'
   return (
     <div className="card border-amber-200 bg-amber-50 p-4 space-y-2">
       <div className="text-xs font-semibold text-amber-800">注意事項：</div>
