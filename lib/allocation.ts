@@ -241,6 +241,8 @@ export function baseForTeacher(config: AllocationConfig, work: string, grade: nu
 // 排課需求（移送課發會－排配課會議審議）
 export interface SchedulingNeeds {
   officialLeave: boolean              // 公假進修
+  officialLeaveUnsure?: boolean       // 公假進修不排課時間尚不清楚（勾選則隱藏課表）
+  officialLeaveSlots?: string[]       // 公假進修不排課時段，格式 "星期-節次"（星期1~5、節次1~7；星期三僅1~4）
   counselingGroup: boolean            // 輔導團共同不排課
   counselingUnsure?: boolean          // 輔導團不排課時間尚不清楚（勾選則隱藏課表）
   counselingSlots?: string[]          // 輔導團不排課時段，格式 "星期-節次"（星期1~5、節次1~7；星期三僅1~4）
@@ -251,7 +253,7 @@ export interface SchedulingNeeds {
   otherText: string                   // 其他說明
 }
 export function defaultSchedulingNeeds(): SchedulingNeeds {
-  return { officialLeave: false, counselingGroup: false, counselingUnsure: false, counselingSlots: [], avoidChildGrade: false, avoidChildGradeValues: [], other: false, otherText: '' }
+  return { officialLeave: false, officialLeaveUnsure: false, officialLeaveSlots: [], counselingGroup: false, counselingUnsure: false, counselingSlots: [], avoidChildGrade: false, avoidChildGradeValues: [], other: false, otherText: '' }
 }
 
 // 不排課課表結構：星期一~五；星期三半天（上午 4 節），其餘整天 7 節。

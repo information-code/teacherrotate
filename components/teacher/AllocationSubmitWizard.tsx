@@ -42,10 +42,23 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
       <h3 className="text-sm font-semibold text-zinc-700">排課需求</h3>
       <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">下列事項將移送<strong>課發會－排配課會議審議</strong>。</div>
       <div className="space-y-2.5 text-sm text-zinc-700">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked })} className="w-4 h-4" />公假進修</label>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked, officialLeaveUnsure: e.target.checked ? value.officialLeaveUnsure : false, officialLeaveSlots: e.target.checked ? (value.officialLeaveSlots ?? []) : [] })} className="w-4 h-4" />公假進修</label>
+          {value.officialLeave && (
+            <NoScheduleTimetable
+              unsure={!!value.officialLeaveUnsure} slots={value.officialLeaveSlots ?? []} readOnly={readOnly}
+              onUnsure={v => set({ officialLeaveUnsure: v })} onSlots={v => set({ officialLeaveSlots: v })}
+            />
+          )}
+        </div>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked, counselingUnsure: e.target.checked ? value.counselingUnsure : false, counselingSlots: e.target.checked ? (value.counselingSlots ?? []) : [] })} className="w-4 h-4" />輔導團共同不排課</label>
-          {value.counselingGroup && <CounselingTimetable value={value} set={set} readOnly={readOnly} />}
+          {value.counselingGroup && (
+            <NoScheduleTimetable
+              unsure={!!value.counselingUnsure} slots={value.counselingSlots ?? []} readOnly={readOnly}
+              onUnsure={v => set({ counselingUnsure: v })} onSlots={v => set({ counselingSlots: v })}
+            />
+          )}
         </div>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValues: e.target.checked ? childGrades : [], avoidChildGradeValue: null })} className="w-4 h-4" />避免授課子女班級年段</label>
@@ -73,22 +86,24 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
   )
 }
 
-// 輔導團不排課課表：勾選欲不排課的節次（星期三半天 4 節，其餘整天 7 節）。
-// 勾「尚不清楚」時隱藏課表（放在課表上方）。
-function CounselingTimetable({ value, set, readOnly }: { value: SchedulingNeeds; set: (patch: Partial<SchedulingNeeds>) => void; readOnly: boolean }) {
-  const unsure = !!value.counselingUnsure
-  const slots = new Set(value.counselingSlots ?? [])
+// 不排課課表：勾選欲不排課的節次（星期三半天 4 節，其餘整天 7 節）。
+// 勾「尚不清楚」時隱藏課表（放在課表上方）。公假進修、輔導團共用此元件。
+function NoScheduleTimetable({ unsure, slots: slotList, readOnly, onUnsure, onSlots }: {
+  unsure: boolean; slots: string[]; readOnly: boolean
+  onUnsure: (v: boolean) => void; onSlots: (v: string[]) => void
+}) {
+  const slots = new Set(slotList)
   const toggle = (key: string) => {
     if (readOnly) return
     const next = new Set(slots)
     if (next.has(key)) next.delete(key); else next.add(key)
-    set({ counselingSlots: Array.from(next) })
+    onSlots(Array.from(next))
   }
   const maxPeriods = 7
   return (
     <div className="pl-6 space-y-2">
       <label className="flex items-center gap-2 text-xs text-zinc-600">
-        <input type="checkbox" checked={unsure} disabled={readOnly} onChange={e => set({ counselingUnsure: e.target.checked })} className="w-4 h-4" />
+        <input type="checkbox" checked={unsure} disabled={readOnly} onChange={e => onUnsure(e.target.checked)} className="w-4 h-4" />
         尚不清楚（暫不填寫不排課時間，後續再與課務組確認）
       </label>
       {!unsure && (
