@@ -134,12 +134,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   // 候選科目：導師依年級（homeroom.subjects 已過濾年級）；科任／行政用全科但排除導師原則配課（國語/數學/班級活動/自主學習）。排序選配在前、專長在後（原則最後）。
   const willingBase = homeroom ? homeroom.subjects : allSubjects.filter(s => subjectCategory(s) !== 'principle')
   const catRank = (s: string) => { const c = subjectCategory(s); return c === 'optional' ? 0 : c === 'specialty' ? 1 : 2 }
+  // 候選清單預設「選配在前、專長在後」（僅作為未排序科目的預設順序）
   const willingCandidates = willingBase.filter(s => !maxedSubjects.has(s)).sort((a, b) => catRank(a) - catRank(b))
   const willingOrdered = (() => {
+    // 尊重老師已儲存／手動拖曳的順序（含跨類別，例如把本土語拉到第一）；
+    // 尚未排到的科目再依候選預設順序（選配在前、專長在後）補在後面。不再強制重排。
     const out = willingSubjects.filter(s => willingCandidates.includes(s))
     for (const s of willingCandidates) if (!out.includes(s)) out.push(s)
-    // 類別為主要排序鍵（選配在前、專長在後、原則最後），同類別維持既有/拖曳順序（穩定排序）
-    return out.sort((a, b) => catRank(a) - catRank(b))
+    return out
   })()
 
   // ── 偏離判斷與理由（沿用）──
