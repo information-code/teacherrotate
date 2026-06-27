@@ -301,6 +301,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     else setSeg(4)
   }
   function onReasonDone(_r: ReasonResult) { setReasonModalOpen(false); setSeg(4) }
+  // 排課需求為必填：須勾「無」或至少一項實際需求才能送出
+  function trySubmit() {
+    const s = scheduling
+    const filled = s.none || s.officialLeave || s.counselingGroup || s.avoidChildGrade || s.other
+    if (!filled) { setError('「排課需求」為必填，請至少勾選一項（若無任何需求請勾選「無」）。'); return }
+    setError(null)
+    setConfirmModalOpen(true)
+  }
   async function onConfirm() { setConfirmModalOpen(false); if (await put(true)) setLocked(true) }
 
   const willingSeg = role === 'homeroom' ? 4 : 2
@@ -625,11 +633,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
       {/* 底部導覽：導師段1~3用段內按鈕；其餘用此導覽 */}
       {!readOnly && (role === 'homeroom' ? seg >= willingSeg : true) && (
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-between gap-3 pt-2">
           {seg > 1 ? <button onClick={() => setSeg(s => s - 1)} className="btn-secondary text-sm">上一步</button> : <span />}
-          {seg < lastSeg
-            ? <button onClick={() => setSeg(s => s + 1)} className="btn-primary text-sm">下一步</button>
-            : <button onClick={() => setConfirmModalOpen(true)} className="btn-primary text-sm">送出並鎖定</button>}
+          <div className="flex items-center gap-3">
+            {seg === scheduleSeg && error && <p className="text-sm text-red-700 whitespace-pre-line text-right">{error}</p>}
+            {seg < lastSeg
+              ? <button onClick={() => setSeg(s => s + 1)} className="btn-primary text-sm">下一步</button>
+              : <button onClick={trySubmit} className="btn-primary text-sm">送出並鎖定</button>}
+          </div>
         </div>
       )}
 

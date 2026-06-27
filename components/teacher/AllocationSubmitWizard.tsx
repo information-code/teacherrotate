@@ -31,6 +31,12 @@ export function HomeroomNoticeCard({ grade, ack, onAckChange, readOnly }: { grad
 // ── 排課需求頁（第三頁，移送課發會審議）──
 export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: SchedulingNeeds; onChange: (v: SchedulingNeeds) => void; readOnly: boolean }) {
   const set = (patch: Partial<SchedulingNeeds>) => onChange({ ...value, ...patch })
+  // 勾選任一實際需求時自動取消「無」（兩者互斥）
+  const setNeed = (patch: Partial<SchedulingNeeds>) => set({ ...patch, none: false })
+  // 勾「無」→ 清空其他所有需求
+  const pickNone = (on: boolean) => on
+    ? onChange({ none: true, officialLeave: false, officialLeaveUnsure: false, officialLeaveSlots: [], counselingGroup: false, counselingUnsure: false, counselingSlots: [], avoidChildGrade: false, avoidChildGradeValues: [], avoidChildGradeValue: null, other: false, otherText: '' })
+    : set({ none: false })
   // 子女年級：新欄位為陣列；相容舊資料（單一 avoidChildGradeValue）
   const childGrades: number[] = value.avoidChildGradeValues ?? (value.avoidChildGradeValue != null ? [value.avoidChildGradeValue] : [])
   const toggleChildGrade = (g: number) => set({
@@ -42,8 +48,9 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
       <h3 className="text-sm font-semibold text-zinc-700">排課需求</h3>
       <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">下列事項將移送<strong>課發會－排配課會議審議</strong>。</div>
       <div className="space-y-2.5 text-sm text-zinc-700">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={!!value.none} disabled={readOnly} onChange={e => pickNone(e.target.checked)} className="w-4 h-4" />無</label>
         <div className="space-y-1.5">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked, officialLeaveUnsure: e.target.checked ? value.officialLeaveUnsure : false, officialLeaveSlots: e.target.checked ? (value.officialLeaveSlots ?? []) : [] })} className="w-4 h-4" />公假進修</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => setNeed({ officialLeave: e.target.checked, officialLeaveUnsure: e.target.checked ? value.officialLeaveUnsure : false, officialLeaveSlots: e.target.checked ? (value.officialLeaveSlots ?? []) : [] })} className="w-4 h-4" />公假進修</label>
           {value.officialLeave && (
             <NoScheduleTimetable
               unsure={!!value.officialLeaveUnsure} slots={value.officialLeaveSlots ?? []} readOnly={readOnly}
@@ -52,7 +59,7 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
           )}
         </div>
         <div className="space-y-1.5">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked, counselingUnsure: e.target.checked ? value.counselingUnsure : false, counselingSlots: e.target.checked ? (value.counselingSlots ?? []) : [] })} className="w-4 h-4" />輔導團共同不排課</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => setNeed({ counselingGroup: e.target.checked, counselingUnsure: e.target.checked ? value.counselingUnsure : false, counselingSlots: e.target.checked ? (value.counselingSlots ?? []) : [] })} className="w-4 h-4" />輔導團共同不排課</label>
           {value.counselingGroup && (
             <NoScheduleTimetable
               unsure={!!value.counselingUnsure} slots={value.counselingSlots ?? []} readOnly={readOnly}
@@ -61,7 +68,7 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
           )}
         </div>
         <div className="space-y-1.5">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValues: e.target.checked ? childGrades : [], avoidChildGradeValue: null })} className="w-4 h-4" />避免授課子女班級年段</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => setNeed({ avoidChildGrade: e.target.checked, avoidChildGradeValues: e.target.checked ? childGrades : [], avoidChildGradeValue: null })} className="w-4 h-4" />避免授課子女班級年段</label>
           {value.avoidChildGrade && (
             <div className="flex items-center gap-1.5 flex-wrap pl-6">
               <span className="text-xs text-zinc-500">子女年級（可複選，不同孩子可選多個）</span>
@@ -78,7 +85,7 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
           )}
         </div>
         <div className="space-y-1">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={value.other} disabled={readOnly} onChange={e => set({ other: e.target.checked, otherText: e.target.checked ? value.otherText : '' })} className="w-4 h-4" />其他</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.other} disabled={readOnly} onChange={e => setNeed({ other: e.target.checked, otherText: e.target.checked ? value.otherText : '' })} className="w-4 h-4" />其他</label>
           {value.other && <textarea value={value.otherText} disabled={readOnly} onChange={e => set({ otherText: e.target.value })} rows={2} className="input w-full" placeholder="請說明" />}
         </div>
       </div>
