@@ -427,7 +427,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           return (
             <label className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${noOtAgreed ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
               <input type="checkbox" checked={noOtAgreed} disabled={readOnly} onChange={e => setNoOvertimeAck(prev => ({ ...prev, [key]: e.target.checked }))} className="w-4 h-4" />
-              <span>此方案合計{sum}節，等於最低授課節數{P}節，代表您<strong>「無意願」超鐘點</strong>。</span>
+              <span>此方案合計{sum}節，等於最低授課節數{P}節，代表您<strong>已確認此配課方案</strong>。</span>
             </label>
           )
         })()}
