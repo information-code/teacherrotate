@@ -190,6 +190,7 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
           />
           <span className="text-sm text-zinc-500">共 {filtered.length} 筆</span>
         </div>
+        <div className="overflow-x-auto -mx-6 px-6">
         <table className="table-base">
           <thead>
             <tr>
@@ -284,6 +285,7 @@ export default function ConfirmationsClient({ initialTeachers, preferenceYear }:
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

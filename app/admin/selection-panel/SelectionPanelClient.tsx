@@ -318,9 +318,9 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
         </div>
       )}
 
-      {/* ── 雙欄：左側空缺表 / 右側待安排教師抽屜 ── */}
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0 space-y-5">
+      {/* ── 雙欄：左側空缺表 / 右側待安排教師抽屜（手機改為上下堆疊） ── */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        <div className="flex-1 min-w-0 w-full space-y-5">
 
       {/* ── 行政空缺 ── */}
       <div className="card p-4 space-y-3">
@@ -383,13 +383,13 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
         {/* /左側空缺表 */}
 
         {/* ── 右側抽屜：待安排教師 ── */}
-        <aside className="flex-shrink-0 sticky top-0 self-start">
+        <aside className="flex-shrink-0 w-full lg:w-auto lg:sticky lg:top-0 self-start">
           {drawerOpen ? (
             <div
               onDragOver={e => { e.preventDefault(); setDragOver('pool') }}
               onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
               onDrop={e => { e.preventDefault(); handleDrop('pool') }}
-              className={`w-60 card p-3 space-y-2 max-h-[calc(100vh-2rem)] overflow-y-auto transition-colors ${
+              className={`w-full lg:w-60 card p-3 space-y-2 max-h-[calc(100vh-2rem)] overflow-y-auto transition-colors ${
                 dragOver === 'pool' ? 'border-zinc-500 bg-zinc-50' : ''
               }`}
             >

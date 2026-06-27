@@ -92,9 +92,9 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
   }
 
   return (
-    <div className="flex h-full -m-6 overflow-hidden">
-      {/* 左側：搜尋 + 名單 */}
-      <div className="w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white print:hidden">
+    <div className="flex flex-col md:flex-row h-full -m-3 md:-m-6 overflow-hidden">
+      {/* 左側：搜尋 + 名單（手機改為上方、限高可捲動） */}
+      <div className="w-full md:w-72 flex-shrink-0 max-h-60 md:max-h-none border-b md:border-r border-zinc-200 flex flex-col bg-white print:hidden">
         {/* 搜尋 */}
         <div className="px-3 pt-3 pb-2">
           <input
@@ -169,7 +169,7 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
       </div>
 
       {/* 右側：履歷 */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {!selected ? (
           <div className="flex items-center justify-center h-64 text-zinc-400 text-sm">
             請從左側選擇教師以查看履歷

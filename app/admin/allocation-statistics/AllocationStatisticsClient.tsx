@@ -130,7 +130,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="card p-4 space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm text-zinc-600">選擇{kindLabel}教師</span>
-            <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-56">
+            <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-48 sm:w-56 max-w-full">
               {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
             </select>
             {reasonIcon(t)}

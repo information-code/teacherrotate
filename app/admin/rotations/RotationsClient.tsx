@@ -392,7 +392,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
           </div>
 
           {/* 篩選 */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <input
               value={filterTeacher}
               onChange={e => setFilterTeacher(e.target.value)}
@@ -411,7 +411,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
           </div>
 
           {/* 表格 */}
-          <div className="card p-0">
+          <div className="card p-0 overflow-x-auto">
             <table className="table-base">
               <thead>
                 <tr>

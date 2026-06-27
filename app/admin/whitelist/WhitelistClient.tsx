@@ -216,7 +216,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
       {/* 新增表單 */}
       <div className="card">
         <h2 className="text-sm font-medium text-zinc-700 mb-3">新增教師帳號</h2>
-        <form onSubmit={handleAdd} className="flex gap-2 items-end">
+        <form onSubmit={handleAdd} className="flex gap-2 items-end flex-wrap">
           <div className="flex-1">
             <label className="block text-xs text-zinc-500 mb-1">姓名</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="王小明" required className="input" />

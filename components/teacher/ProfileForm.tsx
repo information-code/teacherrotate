@@ -187,7 +187,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
       {/* 不可修改資訊 */}
       <div className="card">
         <p className="text-xs text-zinc-400 mb-3">以下資訊由 Google 帳號同步，無法修改</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">電子信箱</label>
             <input value={profile.email} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
@@ -202,7 +202,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
       {/* 基本聯絡資訊 */}
       <div className="card">
         <h3 className="text-sm font-semibold text-zinc-700 mb-4">聯絡資訊</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">姓名</label>
             <input {...register('name')} className="input" placeholder="請輸入姓名" />
@@ -221,7 +221,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
       {/* 學歷 */}
       <div className="card">
         <h3 className="text-sm font-semibold text-zinc-700 mb-4">學歷</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">大學</label>
             <input {...register('university')} className="input" />

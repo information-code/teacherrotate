@@ -95,6 +95,7 @@ export default function AdminsClient({ initialAdmins, isSuperAdmin }: Props) {
         {admins.length === 0 ? (
           <p className="text-sm text-zinc-400">無資料</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>
@@ -111,6 +112,7 @@ export default function AdminsClient({ initialAdmins, isSuperAdmin }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

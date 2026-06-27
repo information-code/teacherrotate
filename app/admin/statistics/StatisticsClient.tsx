@@ -145,8 +145,8 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-6 items-start">
-        <div className="flex-1 space-y-4 min-w-0">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className="flex-1 space-y-4 min-w-0 w-full">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="page-title mb-0">
@@ -227,7 +227,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
           ) : stats.length === 0 ? (
             <div className="card text-sm text-zinc-400">尚無需換工作的教師填寫志願</div>
           ) : (
-            <div className="card p-0">
+            <div className="card p-0 overflow-x-auto">
               <table className="table-base">
                 <thead>
                   <tr>
@@ -268,7 +268,7 @@ export default function StatisticsClient({ initialStats, initialTeachers, curren
         </div>
 
         {selected && (
-          <div className="w-72 flex-shrink-0 card space-y-3">
+          <div className="w-full lg:w-72 flex-shrink-0 card space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-zinc-800 text-sm">{selected}</h3>
               <button onClick={() => setSelected(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
