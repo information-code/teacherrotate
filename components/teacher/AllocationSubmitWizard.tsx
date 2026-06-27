@@ -114,8 +114,8 @@ function CounselingTimetable({ value, set, readOnly }: { value: SchedulingNeeds;
                       return (
                         <td key={d} className="border-t border-l border-zinc-200 p-0">
                           <button type="button" disabled={readOnly} onClick={() => toggle(key)}
-                            className={`w-full h-7 ${on ? 'bg-zinc-800 text-white' : 'bg-white hover:bg-zinc-100'}`}>
-                            {on ? '✕' : ''}
+                            className={`w-full h-7 ${on ? 'bg-green-50 text-green-600 font-semibold' : 'bg-white hover:bg-zinc-100'}`}>
+                            {on ? '✓' : ''}
                           </button>
                         </td>
                       )
