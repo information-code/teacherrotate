@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { TeacherSidebar } from '@/components/layout/TeacherSidebar'
 import { TopBar } from '@/components/layout/TopBar'
+import { MobileNavProvider } from '@/components/layout/MobileNav'
 
 export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -24,18 +25,20 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   const isSubstitute = profile.employment_type === 'substitute'
 
   return (
-    <div className="flex h-screen bg-zinc-50 overflow-hidden">
-      <TeacherSidebar isSubstitute={isSubstitute} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar
-          userName={profile?.name ?? profile?.email ?? user.email ?? ''}
-          role="teacher"
-          isAdmin={profile?.role === 'admin' || profile?.role === 'superadmin'}
-        />
-        <main className="relative flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+    <MobileNavProvider>
+      <div className="flex h-screen bg-zinc-50 overflow-hidden">
+        <TeacherSidebar isSubstitute={isSubstitute} />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TopBar
+            userName={profile?.name ?? profile?.email ?? user.email ?? ''}
+            role="teacher"
+            isAdmin={profile?.role === 'admin' || profile?.role === 'superadmin'}
+          />
+          <main className="relative flex-1 overflow-y-auto p-3 md:p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   )
 }

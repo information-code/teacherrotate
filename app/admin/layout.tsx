@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { TopBar } from '@/components/layout/TopBar'
+import { MobileNavProvider } from '@/components/layout/MobileNav'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -20,18 +21,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (profile.role !== 'admin' && profile.role !== 'superadmin') redirect('/teacher')
 
   return (
-    <div className="flex h-screen bg-zinc-50 overflow-hidden">
-      <AdminSidebar />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar
-          userName={profile.name ?? profile.email ?? user.email ?? ''}
-          role="admin"
-          isAdmin={true}
-        />
-        <main className="relative flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+    <MobileNavProvider>
+      <div className="flex h-screen bg-zinc-50 overflow-hidden">
+        <AdminSidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TopBar
+            userName={profile.name ?? profile.email ?? user.email ?? ''}
+            role="admin"
+            isAdmin={true}
+          />
+          <main className="relative flex-1 overflow-y-auto p-3 md:p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   )
 }

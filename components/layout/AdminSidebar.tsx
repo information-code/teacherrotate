@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useMobileNav } from '@/components/layout/MobileNav'
 
 const navSections = [
   {
@@ -44,36 +45,52 @@ const navSections = [
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const { open, setOpen } = useMobileNav()
 
   return (
-    <aside className="w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0">
-      {/* Logo */}
-      <div className="h-12 border-b border-zinc-200 flex items-center px-5">
-        <span className="text-sm font-semibold text-zinc-900">教師輪動系統</span>
-      </div>
+    <>
+      {/* 手機遮罩：抽屜開啟時顯示，點擊關閉（桌機隱藏） */}
+      <div
+        className={cn('fixed inset-0 z-30 bg-black/40 md:hidden', open ? 'block' : 'hidden')}
+        onClick={() => setOpen(false)}
+      />
+      <aside
+        className={cn(
+          'w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0',
+          // 手機：固定式抽屜，依 open 滑入/滑出；桌機（md+）：回到常駐排版
+          'fixed inset-y-0 left-0 z-40 transition-transform md:static md:z-auto md:translate-x-0',
+          open ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        {/* Logo */}
+        <div className="h-12 border-b border-zinc-200 flex items-center px-5">
+          <span className="text-sm font-semibold text-zinc-900">教師輪動系統</span>
+        </div>
 
-      {/* 導覽 */}
-      <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
-        {navSections.map(section => (
-          <div key={section.title} className="space-y-1">
-            <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              {section.title}
+        {/* 導覽 */}
+        <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
+          {navSections.map(section => (
+            <div key={section.title} className="space-y-1">
+              <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                {section.title}
+              </div>
+              {section.items.map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    'sidebar-link',
+                    pathname === item.href && 'active'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </div>
-            {section.items.map(item => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'sidebar-link',
-                  pathname === item.href && 'active'
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        ))}
-      </nav>
-    </aside>
+          ))}
+        </nav>
+      </aside>
+    </>
   )
 }
