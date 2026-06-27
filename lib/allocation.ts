@@ -242,6 +242,8 @@ export function baseForTeacher(config: AllocationConfig, work: string, grade: nu
 export interface SchedulingNeeds {
   officialLeave: boolean              // 公假進修
   counselingGroup: boolean            // 輔導團共同不排課
+  counselingUnsure?: boolean          // 輔導團不排課時間尚不清楚（勾選則隱藏課表）
+  counselingSlots?: string[]          // 輔導團不排課時段，格式 "星期-節次"（星期1~5、節次1~7；星期三僅1~4）
   avoidChildGrade: boolean             // 避免授課子女班級年段
   avoidChildGradeValues: number[]      // 子女所在年級（可多個；不同孩子可在不同年級）1~6
   avoidChildGradeValue?: number | null // 舊資料相容（單一年級），已改用 avoidChildGradeValues
@@ -249,7 +251,14 @@ export interface SchedulingNeeds {
   otherText: string                   // 其他說明
 }
 export function defaultSchedulingNeeds(): SchedulingNeeds {
-  return { officialLeave: false, counselingGroup: false, avoidChildGrade: false, avoidChildGradeValues: [], other: false, otherText: '' }
+  return { officialLeave: false, counselingGroup: false, counselingUnsure: false, counselingSlots: [], avoidChildGrade: false, avoidChildGradeValues: [], other: false, otherText: '' }
+}
+
+// 不排課課表結構：星期一~五；星期三半天（上午 4 節），其餘整天 7 節。
+export const SCHEDULE_DAYS = [1, 2, 3, 4, 5] as const
+export const SCHEDULE_DAY_LABEL: Record<number, string> = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五' }
+export function periodsOfDay(day: number): number[] {
+  return day === 3 ? [1, 2, 3, 4] : [1, 2, 3, 4, 5, 6, 7]
 }
 
 // ── 教師配課結果（每年每位老師一筆 JSON）──

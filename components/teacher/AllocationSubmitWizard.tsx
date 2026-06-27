@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { GRADES, GRADE_LABEL, type SchedulingNeeds } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, SCHEDULE_DAYS, SCHEDULE_DAY_LABEL, periodsOfDay, type SchedulingNeeds } from '@/lib/allocation'
 
 export interface ReasonResult { principleReason: string; specialtyReason: string }
 
@@ -43,7 +43,10 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
       <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">下列事項將移送<strong>課發會－排配課會議審議</strong>。</div>
       <div className="space-y-2.5 text-sm text-zinc-700">
         <label className="flex items-center gap-2"><input type="checkbox" checked={value.officialLeave} disabled={readOnly} onChange={e => set({ officialLeave: e.target.checked })} className="w-4 h-4" />公假進修</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked })} className="w-4 h-4" />輔導團共同不排課</label>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={value.counselingGroup} disabled={readOnly} onChange={e => set({ counselingGroup: e.target.checked, counselingUnsure: e.target.checked ? value.counselingUnsure : false, counselingSlots: e.target.checked ? (value.counselingSlots ?? []) : [] })} className="w-4 h-4" />輔導團共同不排課</label>
+          {value.counselingGroup && <CounselingTimetable value={value} set={set} readOnly={readOnly} />}
+        </div>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2"><input type="checkbox" checked={value.avoidChildGrade} disabled={readOnly} onChange={e => set({ avoidChildGrade: e.target.checked, avoidChildGradeValues: e.target.checked ? childGrades : [], avoidChildGradeValue: null })} className="w-4 h-4" />避免授課子女班級年段</label>
           {value.avoidChildGrade && (
@@ -66,6 +69,64 @@ export function SchedulingNeedsCard({ value, onChange, readOnly }: { value: Sche
           {value.other && <textarea value={value.otherText} disabled={readOnly} onChange={e => set({ otherText: e.target.value })} rows={2} className="input w-full" placeholder="請說明" />}
         </div>
       </div>
+    </div>
+  )
+}
+
+// 輔導團不排課課表：勾選欲不排課的節次（星期三半天 4 節，其餘整天 7 節）。
+// 勾「尚不清楚」時隱藏課表（放在課表上方）。
+function CounselingTimetable({ value, set, readOnly }: { value: SchedulingNeeds; set: (patch: Partial<SchedulingNeeds>) => void; readOnly: boolean }) {
+  const unsure = !!value.counselingUnsure
+  const slots = new Set(value.counselingSlots ?? [])
+  const toggle = (key: string) => {
+    if (readOnly) return
+    const next = new Set(slots)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    set({ counselingSlots: Array.from(next) })
+  }
+  const maxPeriods = 7
+  return (
+    <div className="pl-6 space-y-2">
+      <label className="flex items-center gap-2 text-xs text-zinc-600">
+        <input type="checkbox" checked={unsure} disabled={readOnly} onChange={e => set({ counselingUnsure: e.target.checked })} className="w-4 h-4" />
+        尚不清楚（暫不填寫不排課時間，後續再與課務組確認）
+      </label>
+      {!unsure && (
+        <div className="space-y-1">
+          <p className="text-xs text-zinc-500">點選欲「不排課」的節次（星期三為半天 4 節）：</p>
+          <div className="inline-block border border-zinc-200 rounded-sm overflow-hidden">
+            <table className="text-xs text-center border-collapse">
+              <thead>
+                <tr className="bg-zinc-50">
+                  <th className="w-10 px-1 py-1 font-medium text-zinc-400 border-b border-zinc-200">節</th>
+                  {SCHEDULE_DAYS.map(d => <th key={d} className="w-12 px-1 py-1 font-medium text-zinc-600 border-b border-l border-zinc-200">{SCHEDULE_DAY_LABEL[d]}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(p => (
+                  <tr key={p}>
+                    <td className="px-1 py-1 text-zinc-400 border-t border-zinc-200">{p}</td>
+                    {SCHEDULE_DAYS.map(d => {
+                      const has = periodsOfDay(d).includes(p)
+                      if (!has) return <td key={d} className="border-t border-l border-zinc-200 bg-zinc-100" />
+                      const key = `${d}-${p}`
+                      const on = slots.has(key)
+                      return (
+                        <td key={d} className="border-t border-l border-zinc-200 p-0">
+                          <button type="button" disabled={readOnly} onClick={() => toggle(key)}
+                            className={`w-full h-7 ${on ? 'bg-zinc-800 text-white' : 'bg-white hover:bg-zinc-100'}`}>
+                            {on ? '✕' : ''}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
