@@ -608,7 +608,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
             </label>
             {willingOvertime > 0 && (
               <div className="space-y-2">
-                <p className="text-xs text-zinc-500">把你<strong>最願意支援的科目拖到上面</strong>（已排除你已配滿的科）：</p>
+                <p className="text-xs text-zinc-500">把你<strong>最願意支援的科目排到上面</strong>（已排除你已配滿的科）；可拖曳，或用 <span className="font-medium">▲▼</span> 調整順序：</p>
                 {willingOrdered.length === 0
                   ? <p className="text-[11px] text-zinc-400">目前沒有可支援的科目。</p>
                   : <ul className="space-y-1.5 max-w-md">
@@ -617,8 +617,16 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                           onDragStart={() => setDragWilling(idx)}
                           onDragOver={e => e.preventDefault()}
                           onDrop={() => { if (dragWilling !== null) { reorderWilling(dragWilling, idx); setDragWilling(null) } }}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-sm ${idx === 0 ? 'border-green-300 bg-green-50' : 'border-zinc-200 bg-white'} ${!readOnly ? 'cursor-move' : ''}`}>
-                          <span className="text-zinc-400">≡</span><span className="text-xs text-zinc-500 w-8">第{idx + 1}</span><span className="font-medium text-zinc-800">{s}</span>
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-sm ${idx === 0 ? 'border-green-300 bg-green-50' : 'border-zinc-200 bg-white'} ${!readOnly ? 'sm:cursor-move' : ''}`}>
+                          <span className="hidden sm:inline text-zinc-400">≡</span><span className="text-xs text-zinc-500 w-8">第{idx + 1}</span><span className="font-medium text-zinc-800 flex-1">{s}</span>
+                          {!readOnly && (
+                            <span className="flex items-center gap-1">
+                              <button type="button" aria-label="上移" disabled={idx === 0} onClick={() => reorderWilling(idx, idx - 1)}
+                                className="w-7 h-7 rounded-sm border border-zinc-200 text-zinc-600 disabled:opacity-30 hover:bg-zinc-100">▲</button>
+                              <button type="button" aria-label="下移" disabled={idx === willingOrdered.length - 1} onClick={() => reorderWilling(idx, idx + 1)}
+                                className="w-7 h-7 rounded-sm border border-zinc-200 text-zinc-600 disabled:opacity-30 hover:bg-zinc-100">▼</button>
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>}
