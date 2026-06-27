@@ -111,6 +111,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [dragWilling, setDragWilling] = useState<number | null>(null)
+  const [dragWish, setDragWish] = useState<number | null>(null)
 
   const readOnly = locked || closed
   const topRef = useRef<HTMLDivElement>(null)
@@ -130,8 +131,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     }
     return set
   })()
-  // 候選科目：導師依年級（homeroom.subjects 已過濾年級），科任／行政用全科；排序選配在前、專長在後（原則最後）。
-  const willingBase = homeroom ? homeroom.subjects : allSubjects
+  // 候選科目：導師依年級（homeroom.subjects 已過濾年級）；科任／行政用全科但排除導師原則配課（國語/數學/班級活動/自主學習）。排序選配在前、專長在後（原則最後）。
+  const willingBase = homeroom ? homeroom.subjects : allSubjects.filter(s => subjectCategory(s) !== 'principle')
   const catRank = (s: string) => { const c = subjectCategory(s); return c === 'optional' ? 0 : c === 'specialty' ? 1 : 2 }
   const willingCandidates = willingBase.filter(s => !maxedSubjects.has(s)).sort((a, b) => catRank(a) - catRank(b))
   const willingOrdered = (() => {
@@ -170,7 +171,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     for (const P of scenarioPeriods) { const a = autoOf(P); if (a > 0) autoOut[String(P)] = a }
     return {
       role, work, grade,
-      projectReduction: role === 'homeroom' ? projectFiled : (initial.projectReduction ?? 0), extraHours: 0,
+      // 導師、科任、行政皆由老師端列舉專案減課 → 寫回 projectReduction（供統計頁顯示，管理者仍可核實調整）
+      projectReduction: role === 'none' ? (initial.projectReduction ?? 0) : projectFiled, extraHours: 0,
       projects,
       scenarios: role === 'homeroom' ? scenariosMirror : (initial.scenarios ?? {}),
       scenariosOriginal: role === 'homeroom' ? scenariosMirror : (initial.scenariosOriginal ?? {}),
@@ -179,7 +181,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
       overtimeHours: willingOvertime,  // 相容：統計頁的「意願超鐘」沿用 overtimeHours
       gradeHours,
       projectOrder: initial.projectOrder ?? [],
-      subjectWishes: subjectWishes.filter(Boolean),
+      // 行政：配課意願＝完整科目優先順序；其他角色維持原值
+      subjectWishes: role === 'admin' ? wishesOrdered : subjectWishes.filter(Boolean),
       scheduling, principleReason: aggReasons(principleReasons, principleReason), specialtyReason: aggReasons(specialtyReasons, specialtyReason),
       acknowledged: lock ? true : (initial.acknowledged ?? false),
       locked: lock,
@@ -268,9 +271,18 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     setSpecialtyEdit(null)
   }
 
-  function setWish(i: number, val: string) { setSubjectWishes(prev => { const a = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? '']; a[i] = val; return a }) }
   function reorderWilling(from: number, to: number) {
     setWillingSubjects(() => { const arr = [...willingOrdered]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr })
+  }
+  // 行政配課意願：全科（排除導師原則配課）依優先順序排列
+  const wishCandidates = allSubjects.filter(s => subjectCategory(s) !== 'principle')
+  const wishesOrdered = (() => {
+    const out = subjectWishes.filter(s => wishCandidates.includes(s))
+    for (const s of wishCandidates) if (!out.includes(s)) out.push(s)
+    return out
+  })()
+  function reorderWish(from: number, to: number) {
+    setSubjectWishes(() => { const arr = [...wishesOrdered]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return arr })
   }
 
   const certSubjects = (() => {
@@ -311,12 +323,18 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   }
   async function onConfirm() { setConfirmModalOpen(false); if (await put(true)) setLocked(true) }
 
-  const willingSeg = role === 'homeroom' ? 4 : 2
-  const scheduleSeg = role === 'homeroom' ? 5 : 3
-  const lastSeg = scheduleSeg
-  const segLabel = (role === 'homeroom'
-    ? ['確認節數', '注意事項', '方案配課', '超鐘意願', '排課需求']
-    : ['基本資料', '超鐘意願', '排課需求'])[seg - 1] ?? ''
+  // 分段流程（依角色）：導師有注意事項+方案配課；行政以「配課意願」取代方案配課；科任兩者皆無。
+  const segKinds = role === 'homeroom'
+    ? ['periods', 'notice', 'plan', 'willing', 'scheduling']
+    : role === 'admin'
+      ? ['periods', 'wishes', 'willing', 'scheduling']
+      : ['periods', 'willing', 'scheduling']  // subject
+  const SEG_LABELS: Record<string, string> = { periods: '確認節數', notice: '注意事項', plan: '方案配課', wishes: '配課意願', willing: '超鐘意願', scheduling: '排課需求' }
+  const segKind = segKinds[seg - 1]
+  const willingSeg = segKinds.indexOf('willing') + 1
+  const scheduleSeg = segKinds.indexOf('scheduling') + 1
+  const lastSeg = segKinds.length
+  const segLabel = SEG_LABELS[segKind] ?? ''
 
   if (role === 'none') {
     return (
@@ -568,28 +586,71 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           </>}
         </>)}
 
-        {role === 'admin' && (readOnly || seg === 1) && <>
-          <div className="card p-4"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - (initial.projectReduction ?? 0)}</span></div></div>
+        {/* 確認節數／列舉減課（科任、行政 第一步；無總量管制減課） */}
+        {(role === 'subject' || role === 'admin') && (readOnly || segKind === 'periods') && <>
+          {/* A：基本授課節數 */}
+          <div className="card p-4 space-y-1">
+            <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">A</span>　基本授課節數 <span className="font-semibold text-lg text-zinc-900">{base0}</span> 節</div>
+            <p className="text-[11px] text-zinc-400">依據國民中小學教師授課節數訂定基準。</p>
+          </div>
+          {/* B：列舉專案減課 */}
           <div className="card p-4 space-y-2">
-            <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">想授課科目志願</div>
-            <p className="text-[11px] text-zinc-400">請依序選擇您希望授課的科目（全科可選，供課務組安排參考）。</p>
-            <div className="flex flex-wrap gap-3 pt-1">
-              {[0, 1, 2].map(i => (
-                <label key={i} className="flex items-center gap-1.5 text-sm"><span className="text-zinc-600 text-xs">志願{['一', '二', '三'][i]}</span>
-                  <select value={subjectWishes[i] ?? ''} disabled={readOnly} onChange={e => setWish(i, e.target.value)} className="input py-1 text-sm w-32">
-                    <option value="">不指定</option>
-                    {allSubjects.filter(s => !subjectWishes.includes(s) || subjectWishes[i] === s).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
+            <div className="text-sm text-zinc-800"><span className="font-semibold text-zinc-400">B</span>　列舉專案減課數 <span className="font-semibold text-lg text-zinc-900">{projectFiled}</span> 節</div>
+            <p className="text-[11px] text-zinc-400">請列舉您於下學年度因參與專案或特殊任務產生之減課（例如：學年主任、輔導團、基地團等）。</p>
+            {projects.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                {(() => {
+                  const isCustom = !!p.custom || (!!p.name && !PROJECT_PRESETS.includes(p.name))
+                  return <>
+                    <select value={isCustom ? '__OTHER__' : p.name} disabled={readOnly}
+                      onChange={e => { const v = e.target.value; if (v === '__OTHER__') setProject(i, { custom: true, name: PROJECT_PRESETS.includes(p.name) ? '' : p.name }); else setProject(i, { name: v, custom: false }) }}
+                      className="input py-0.5 text-sm w-48">
+                      {PROJECT_PRESETS.map(o => <option key={o} value={o}>{o}</option>)}
+                      <option value="__OTHER__">其他（自行輸入）</option>
+                    </select>
+                    {isCustom && <input value={p.name} disabled={readOnly} onChange={e => setProject(i, { name: e.target.value, custom: true })} placeholder="自行輸入名稱" className="input py-0.5 text-sm flex-1 min-w-[8rem]" autoFocus />}
+                  </>
+                })()}
+                <span className="text-xs text-zinc-500">減</span>
+                <NumberInput min={0} max={6} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.min(6, Math.max(0, n)) })} className="input w-14 text-center py-0.5" />
+                <span className="text-xs text-zinc-500">節</span>
+                {!readOnly && <button onClick={() => removeProject(i)} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>}
+              </div>
+            ))}
+            {!readOnly && <button onClick={addProject} className="btn-secondary text-xs">＋ 新增專案</button>}
+            {projectFiled > 0 && <p className="text-xs text-red-600">教學組將依校內會議決議或公文核實，如發現有誤會再與您聯繫。</p>}
+          </div>
+          {/* C：實際授課節數 */}
+          <div className="card border-amber-300 bg-amber-50 p-4 space-y-1">
+            <div className="text-sm font-semibold text-amber-900"><span className="text-amber-500">C</span>　實際授課節數（A − B）</div>
+            <div className="text-sm text-amber-900">基本 {base0} − 專案減 {projectFiled} = <span className="font-bold text-lg text-amber-900">{base0 - projectFiled} 節</span></div>
           </div>
         </>}
 
-        {role === 'subject' && (readOnly || seg === 1) && (
-          <div className="card p-4 space-y-2">
-            <div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-zinc-600">實際授課節數</span><span className="text-2xl font-semibold text-zinc-900">{base0 - (initial.projectReduction ?? 0)}</span></div>
-            <p className="text-[11px] text-zinc-400">授課科目與各年級節數由管理者於後續配課時填寫。請於下一步填寫超鐘點意願。</p>
+        {/* 配課意願（行政第三步）：希望授課科目的優先順序（不含導師原則配課） */}
+        {role === 'admin' && (readOnly || segKind === 'wishes') && (
+          <div className="card p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-zinc-700">配課意願</h3>
+            <p className="text-[11px] text-zinc-400">請依您<strong>希望授課的優先順序</strong>排列科目（不含導師原則配課），供課務組安排參考；可拖曳，或用 <span className="font-medium">▲▼</span> 調整。</p>
+            <ul className="space-y-1.5 max-w-md">
+              {wishesOrdered.map((s, idx) => (
+                <li key={s} draggable={!readOnly}
+                  onDragStart={() => setDragWish(idx)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => { if (dragWish !== null) { reorderWish(dragWish, idx); setDragWish(null) } }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-sm ${idx === 0 ? 'border-green-300 bg-green-50' : 'border-zinc-200 bg-white'} ${!readOnly ? 'sm:cursor-move' : ''}`}>
+                  <span className="hidden sm:inline text-zinc-400">≡</span><span className="text-xs text-zinc-500 w-8">第{idx + 1}</span><span className="font-medium text-zinc-800 flex-1">{s}</span>
+                  {!readOnly && (
+                    <span className="flex items-center gap-1">
+                      <button type="button" aria-label="上移" disabled={idx === 0} onClick={() => reorderWish(idx, idx - 1)}
+                        className="w-7 h-7 rounded-sm border border-zinc-200 text-zinc-600 disabled:opacity-30 hover:bg-zinc-100">▲</button>
+                      <button type="button" aria-label="下移" disabled={idx === wishesOrdered.length - 1} onClick={() => reorderWish(idx, idx + 1)}
+                        className="w-7 h-7 rounded-sm border border-zinc-200 text-zinc-600 disabled:opacity-30 hover:bg-zinc-100">▼</button>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
