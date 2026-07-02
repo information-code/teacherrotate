@@ -23,9 +23,11 @@ interface Props {
   allSubjects: string[]
   closed: boolean
   initial: TeacherAllocation
+  substitutePicker?: ReactNode   // 代理教師：身分／年級選擇器（由 SubstituteAllocationPage 傳入）
 }
 
-export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, allSubjects, closed, initial }: Props) {
+export function AllocationPage({ year, role, work, grade, roleLabel, base, homeroom, allSubjects, closed, initial, substitutePicker }: Props) {
+  const isSub = !!substitutePicker
   const base0 = base ?? 0
   const reductions = homeroom ? (homeroom.scenarios.length ? homeroom.scenarios.map(s => s.reduction) : [0]) : []
   const [projects, setProjects] = useState<{ name: string; hours: number; custom?: boolean }[]>(initial.projects ?? [])
@@ -228,6 +230,12 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plans, projects, autonomousAgreed, noOvertimeAck, principleReasons, specialtyReasons, willingOvertime, willingSubjects, subjectWishes, scheduling])
 
+  // 代理教師：掛載時（已選好身分／年級）存一次，持久化自選的 role/grade 與預載方案
+  useEffect(() => {
+    if (isSub && role !== 'none' && !readOnly) void put(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function setPlanChoice(P: number, fn: (c: ScenarioChoice) => ScenarioChoice) {
     setPlans(prev => ({ ...prev, [String(P)]: fn(prev[String(P)] ?? { planName: null, breakdown: {} }) }))
   }
@@ -340,9 +348,14 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   if (role === 'none') {
     return (
-      <div className="space-y-5 max-w-3xl">
-        <h2 className="page-title">配課選填</h2>
-        <div className="card border-amber-200 bg-amber-50"><p className="text-sm text-amber-800"><span className="font-semibold">您 {year} 學年度無需配課</span>——尚未有本年度工作紀錄，或屬留停／借調等狀態。如有疑問請洽管理員。</p></div>
+      <div className="space-y-5 max-w-4xl">
+        <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度{isSub && ' · 代理教師'}</span></h2>
+        {isSub ? <>
+          <p className="text-xs text-zinc-500">請先選擇您的身分{'（與年級）'}，再依畫面填寫配課。</p>
+          {substitutePicker}
+        </> : (
+          <div className="card border-amber-200 bg-amber-50"><p className="text-sm text-amber-800"><span className="font-semibold">您 {year} 學年度無需配課</span>——尚未有本年度工作紀錄，或屬留停／借調等狀態。如有疑問請洽管理員。</p></div>
+        )}
       </div>
     )
   }
@@ -481,13 +494,13 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     <div ref={topRef} className="space-y-5 max-w-4xl scroll-mt-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
+          <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度{isSub && ' · 代理教師'}</span>
             {!readOnly && <span className="ml-2 text-xs font-normal text-zinc-400">步驟 {seg} / {lastSeg} · {segLabel}</span>}
           </h2>
           <p className="text-xs text-zinc-500">
             身分：<span className="font-medium text-zinc-700">{roleLabel}</span>
-            {role === 'homeroom' && grade && <span className="ml-1">· {GRADE_LABEL[grade]}（系統判定）</span>}
-            <span className="ml-1 text-zinc-400">· 工作：{work}</span>
+            {role === 'homeroom' && grade && <span className="ml-1">· {GRADE_LABEL[grade]}{isSub ? '（自選）' : '（系統判定）'}</span>}
+            {!isSub && <span className="ml-1 text-zinc-400">· 工作：{work}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -495,6 +508,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
           {saveStatus === 'saved' && !readOnly && <span className="text-xs text-green-600">✓ 已自動儲存</span>}
         </div>
       </div>
+
+      {isSub && substitutePicker}
 
       {closed && <div className="card border-amber-200 bg-amber-50"><p className="text-sm text-amber-800"><span className="font-semibold">📋 配課填報已截止</span>——目前唯讀。</p></div>}
       {locked && !closed && <div className="card border-zinc-300 bg-zinc-50"><p className="text-sm text-zinc-700"><span className="font-semibold">🔒 您的配課已送出鎖定</span>——如需修改請洽管理員。</p></div>}
