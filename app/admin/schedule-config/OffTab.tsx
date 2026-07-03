@@ -163,8 +163,6 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
         return (
           <>
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={() => setDraft({ id: crypto.randomUUID(), teacherId: '', category: defaultCategory(tab), note: '', slots: [] })}
-                className="btn btn-primary text-sm py-1">＋ 新增個人不排課</button>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋教師名稱…"
                 className="input py-1 text-sm w-44 ml-auto" />
             </div>
@@ -242,6 +240,11 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                   ))}
                 </div>
               )}
+
+            <div className="flex justify-end">
+              <button onClick={() => setDraft({ id: crypto.randomUUID(), teacherId: '', category: defaultCategory(tab), note: '', slots: [] })}
+                className="btn btn-primary text-sm py-1">＋ 新增個人不排課</button>
+            </div>
           </>
         )
       })()}
