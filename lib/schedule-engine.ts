@@ -708,13 +708,16 @@ export class EngineRun {
       matchTeacher.forEach(({ lesson }) => { if (this.st.canPlace(lesson, p)) this.st.place(lesson, p) })
     })
 
-    // 第零步 B：殘餘的必排格（例如該班只剩連堂可用）用貪婪補
+    // 第零步 B：殘餘的必排格用貪婪補。相鄰兩格都是必排（如整天不排課）時連堂優先，
+    // 一次蓋兩格；否則單節優先、連堂彈性留給後面
     for (const t of this.mustTargets) {
       if (this.st.classOcc.get(t.classKey)?.has(t.slot)) continue
       const { day, period } = parseSlotKey(t.slot)
+      const mustSet0 = this.mustSetByClass.get(t.classKey)!
+      const nextAlsoMust = mustSet0.has(`${day}-${period + 1}`) && !this.st.classOcc.get(t.classKey)?.has(`${day}-${period + 1}`)
       const free = (this.lessonsByClass.get(t.classKey) ?? [])
         .filter(l => !this.st.pos.has(l.id))
-        .sort((a, b) => a.size - b.size)   // 單節優先，連堂彈性留給後面
+        .sort((a, b) => nextAlsoMust ? b.size - a.size : a.size - b.size)
       for (const l of free) {
         const tries: Placement[] = l.size === 2 ? [{ day, period }, { day, period: period - 1 }] : [{ day, period }]
         let ok = false
@@ -889,7 +892,7 @@ export class EngineRun {
     const allLessons = this.input.lessons
     while (Date.now() < end) {
       this.iterations++
-      if (this.iterations % 16 === 0) { this.tryCoverMustFill(); continue }
+      if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
       const oldP = this.st.pos.get(l.id) ?? null
       if (oldP) this.st.remove(l)
