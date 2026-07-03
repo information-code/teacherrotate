@@ -207,6 +207,20 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const teacherBlocked: Record<string, string[]> = {}
   for (const id of Array.from(teacherIds)) teacherBlocked[id] = offByTeacher[id] ?? []
 
+  // 前置檢核：教師配課節數 vs 其授課班級可排時段（扣除自身不排課）——超過即必然有課排不進
+  const loadByTeacher: Record<string, number> = {}
+  const slotsByTeacher: Record<string, Set<string>> = {}
+  for (const l of lessons) {
+    loadByTeacher[l.teacherId] = (loadByTeacher[l.teacherId] ?? 0) + l.size
+    const set = (slotsByTeacher[l.teacherId] ??= new Set())
+    const blocked = teacherBlocked[l.teacherId]
+    for (const s of classSlots[l.classKey] ?? []) if (!blocked.includes(s)) set.add(s)
+  }
+  for (const [tid, load] of Object.entries(loadByTeacher)) {
+    const cap = slotsByTeacher[tid]?.size ?? 0
+    if (load > cap) preflight.push({ level: 'warn', text: `${a.teacherNames[tid] ?? tid} 配課 ${load} 節，但其授課班級的可排時段（扣除不排課）僅 ${cap} 格，至少 ${load - cap} 節必然排不進，請調整配班或不排課時段。` })
+  }
+
   // 教室
   const rooms: RoomInfo[] = []
   const classRoom: EngineInput['classRoom'] = {}
@@ -620,6 +634,10 @@ export class EngineRun {
   private bestPos: Map<string, Placement>
   private lastImprove = Date.now()
   iterations = 0
+  // 必排格定向補洞用索引
+  private mustTargets: { classKey: string; slot: string }[] = []
+  private mustSetByClass = new Map<string, Set<string>>()
+  private lessonsByClass = new Map<string, EngineLesson[]>()
 
   constructor(input: EngineInput) {
     this.input = input
@@ -652,11 +670,72 @@ export class EngineRun {
       if (best) this.st.place(l, best)
     }
 
+    // 必排格索引
+    for (const [key2, slots] of Object.entries(input.classMustFill)) {
+      if (!slots.length) continue
+      this.mustSetByClass.set(key2, new Set(slots))
+      for (const s of slots) this.mustTargets.push({ classKey: key2, slot: s })
+    }
+    for (const l of input.lessons) this.lessonsByClass.set(l.classKey, [...(this.lessonsByClass.get(l.classKey) ?? []), l])
+
     const s0 = scoreState(this.st)
     this.cur = s0.total
     this.bestTotal = s0.total
     this.bestSoft = s0.soft
     this.bestPos = new Map(this.st.pos)
+
+    // 建構後先做幾輪定向補洞
+    for (let k = 0; k < this.mustTargets.length * 2; k++) this.tryCoverMustFill()
+  }
+
+  private snapshotIfBest(total: number, soft: number) {
+    if (total < this.bestTotal) {
+      this.bestTotal = total
+      this.bestSoft = soft
+      this.bestPos = new Map(this.st.pos)
+      this.lastImprove = Date.now()
+    }
+  }
+
+  /** 定向補洞：挑一個未覆蓋的必排格，把該班某堂課搬進來（總分下降才保留）。 */
+  private tryCoverMustFill() {
+    const n = this.mustTargets.length
+    if (n === 0) return
+    const start = Math.floor(this.rnd() * n)
+    for (let k = 0; k < n; k++) {
+      const t = this.mustTargets[(start + k) % n]
+      const occ = this.st.classOcc.get(t.classKey)
+      if (!occ || occ.has(t.slot)) continue
+      const { day, period } = parseSlotKey(t.slot)
+      const mustSet = this.mustSetByClass.get(t.classKey)!
+      const lessons = this.lessonsByClass.get(t.classKey) ?? []
+      const off = Math.floor(this.rnd() * Math.max(1, lessons.length))
+      for (let j = 0; j < lessons.length; j++) {
+        const l = lessons[(off + j) % lessons.length]
+        const oldP = this.st.pos.get(l.id) ?? null
+        // 原位置若已覆蓋其他必排格則不動它（避免拆東牆補西牆）
+        if (oldP && this.st.slotsOf(l, oldP).some(s => mustSet.has(s))) continue
+        if (oldP) this.st.remove(l)
+        const tries: Placement[] = l.size === 2
+          ? [{ day, period }, { day, period: period - 1 }]
+          : [{ day, period }]
+        let placedAt = false
+        for (const p of tries) {
+          if (p.period >= 1 && this.st.canPlace(l, p)) { this.st.place(l, p); placedAt = true; break }
+        }
+        if (placedAt) {
+          const sc = scoreState(this.st)
+          if (sc.total <= this.cur) {
+            this.cur = sc.total
+            this.snapshotIfBest(sc.total, sc.soft)
+            return
+          }
+          this.st.remove(l)
+        }
+        if (oldP) this.st.place(l, oldP)
+      }
+      return   // 一次處理一格
+    }
   }
 
   /** 跑一小段局部搜尋（約 ms 毫秒）。 */
@@ -665,6 +744,7 @@ export class EngineRun {
     const allLessons = this.input.lessons
     while (Date.now() < end) {
       this.iterations++
+      if (this.iterations % 16 === 0) { this.tryCoverMustFill(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
       const oldP = this.st.pos.get(l.id) ?? null
       if (oldP) this.st.remove(l)
@@ -677,12 +757,7 @@ export class EngineRun {
         if (sc.total <= this.cur || this.rnd() < 0.02) {
           this.cur = sc.total
           moved = true
-          if (sc.total < this.bestTotal) {
-            this.bestTotal = sc.total
-            this.bestSoft = sc.soft
-            this.bestPos = new Map(this.st.pos)
-            this.lastImprove = Date.now()
-          }
+          this.snapshotIfBest(sc.total, sc.soft)
         } else this.st.remove(l)
       }
       if (!moved && oldP) this.st.place(l, oldP)
