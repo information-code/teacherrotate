@@ -7,6 +7,7 @@ import {
 } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import SubjectAssignTab from './SubjectAssignTab'
+import RoomTab from './RoomTab'
 import LockTab from './LockTab'
 import OffTab from './OffTab'
 import type { GradeSubject, HomeroomTeacher, NeedsRef, OffTeacher, SubjectTeacher } from './page'
@@ -22,14 +23,15 @@ interface Props {
   needsRefs: NeedsRef[]
 }
 
-type TabKey = 'time' | 'homeroom' | 'subject' | 'lock' | 'off' | 'weight'
+type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'time', label: '1 年段可排課時間' },
   { key: 'homeroom', label: '2 導師配班' },
   { key: 'subject', label: '3 科任配班' },
-  { key: 'lock', label: '4 鎖課設定' },
-  { key: 'off', label: '5 不排課標記' },
-  { key: 'weight', label: '6 權重設定' },
+  { key: 'room', label: '4 教室設定' },
+  { key: 'lock', label: '5 鎖課設定' },
+  { key: 'off', label: '6 不排課標記' },
+  { key: 'weight', label: '7 權重設定' },
 ]
 
 export default function ScheduleConfigClient({ year, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
@@ -205,17 +207,22 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
         />
       )}
 
-      {/* ── 四、鎖課設定 ── */}
+      {/* ── 四、教室設定 ── */}
+      {tab === 'room' && (
+        <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} />
+      )}
+
+      {/* ── 五、鎖課設定 ── */}
       {tab === 'lock' && (
         <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
       )}
 
-      {/* ── 五、不排課標記 ── */}
+      {/* ── 六、不排課標記 ── */}
       {tab === 'off' && (
         <OffTab config={config} setConfig={setConfig} offTeachers={offTeachers} needsRefs={needsRefs} />
       )}
 
-      {/* ── 六、權重設定（佔位） ── */}
+      {/* ── 七、權重設定（佔位） ── */}
       {tab === 'weight' && (
         <div className="card p-6 space-y-2 text-sm text-zinc-500">
           <div className="font-semibold text-zinc-700">權重設定（規劃中）</div>

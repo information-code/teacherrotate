@@ -62,6 +62,23 @@ export interface PersonalOff {
   slots: string[]         // slotKey 列表
 }
 
+// ── 教室設定 ──
+// 目的：一、讓系統知道哪些教室同層同區、彼此接近（排課走動成本）；
+//       二、統計科任教室數（每間需要一張科任教室課表）。
+export type RoomKind = 'class' | 'subject' | 'none'
+export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', none: '其他／未使用' }
+
+/** 一間教室：一般教室填班級（classKey）、科任教室填名稱。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string }
+
+/** 一個區域：同層樓一排彼此相鄰的教室。ring＝環狀（首尾也相鄰）；否則直排（首尾最遠）。 */
+export interface RoomZone { id: string; floor: string; area: string; ring: boolean; rooms: Room[] }
+
+// 科任教室常用名稱（datalist 快選用）
+export const SUBJECT_ROOM_PRESETS = [
+  '音樂教室', '自然教室', '英語教室', '電腦教室', '視覺藝術教室', '表演藝術教室', '律動教室', '圖書室', '活動中心',
+]
+
 /** 科任配班中「導師自上」的特殊值（該班該科由導師授課，不指派科任）。 */
 export const HOMEROOM_SELF = '__homeroom__'
 export function subjectClassKey(grade: number, index: number, subject: string): string {
@@ -76,6 +93,7 @@ export interface ScheduleConfig {
   lockCells: Record<string, Record<string, string>>  // 鎖課標記：classKey → slotKey → lockTypeId
   gradeCommonOff: Record<string, string[]>        // 學年共同不排課：年級("1"~"6") → slotKey 列表（連動該年級所有導師）
   personalOff: PersonalOff[]                      // 個人不排課
+  roomZones: RoomZone[]                           // 教室設定：樓層×區域×相鄰教室
 }
 
 /** 產生一張時段格：halfDays 中的星期只開 1~4 節（半天），其餘整天 7 節。 */
@@ -104,6 +122,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     lockCells: {},
     gradeCommonOff: {},
     personalOff: [],
+    roomZones: [],
   }
 }
 
@@ -153,6 +172,19 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
           id: String(p.id ?? ''), teacherId: String(p.teacherId ?? ''),
           category: OFF_CATEGORIES.includes(p.category as OffCategory) ? p.category as OffCategory : 'other',
           note: String(p.note ?? ''), slots: Array.isArray(p.slots) ? p.slots.map(String) : [],
+        }))
+      : [],
+    roomZones: Array.isArray(r.roomZones)
+      ? r.roomZones.map(z => ({
+          id: String(z.id ?? ''), floor: String(z.floor ?? ''), area: String(z.area ?? ''),
+          ring: Boolean(z.ring),
+          rooms: Array.isArray(z.rooms)
+            ? z.rooms.map(rm => ({
+                id: String(rm.id ?? ''),
+                kind: (['class', 'subject', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
+                classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''),
+              }))
+            : [],
         }))
       : [],
   }
