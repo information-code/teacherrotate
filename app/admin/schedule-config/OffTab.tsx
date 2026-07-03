@@ -97,12 +97,13 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
       }],
     }))
   }
-  /** 編輯：已有項目 → 編輯該項目；沒有 → 以申報時段預填開新項目。 */
+  /** 編輯：已有項目 → 編輯該項目；沒有 → 以申報時段預填開新項目。
+   *  其他分頁＝管理者認定理由可接受後手動標時段，說明留白由管理者自填。 */
   function editNeeds(n: NeedsRef, tab: PersonalTab) {
     const exist = existingEntry(n.teacherId, tab)
     setDraft(exist ? { ...exist, slots: [...exist.slots] } : {
       id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab),
-      note: '教師申報帶入', slots: [...declaredSlots(n, tab)],
+      note: tab === 'otherx' ? '' : '教師申報帶入', slots: [...declaredSlots(n, tab)],
     })
   }
 
@@ -194,11 +195,22 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                                   {n.other && <div className="whitespace-pre-wrap">{n.otherText || '—'}</div>}
                                 </>
                               )}
-                              {exist && <div className="text-green-600">✓ 已建立標記（{exist.slots.length} 節）</div>}
+                              {exist && (
+                                <div className="text-green-600">
+                                  ✓ 已標記不排課{exist.slots.length ? `：${slotText(exist.slots)}` : '（尚未標時段）'}
+                                  {exist.note && <span className="text-zinc-400 ml-1">（{exist.note}）</span>}
+                                </div>
+                              )}
                             </td>
                             <td className="text-center whitespace-nowrap">
-                              <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5 mr-1">編輯</button>
-                              <button onClick={() => importNeeds(n, tab)} disabled={!slots.length || Boolean(exist)} className="btn btn-secondary text-xs py-0.5">帶入</button>
+                              {tab === 'otherx'
+                                ? <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5">{exist ? '編輯不排課' : '不排課'}</button>
+                                : (
+                                  <>
+                                    <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5 mr-1">編輯</button>
+                                    <button onClick={() => importNeeds(n, tab)} disabled={!slots.length || Boolean(exist)} className="btn btn-secondary text-xs py-0.5">帶入</button>
+                                  </>
+                                )}
                             </td>
                           </tr>
                         )
