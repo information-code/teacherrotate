@@ -138,7 +138,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
               return (
                 <div key={i} className="card p-3 space-y-1">
                   <div className="text-sm font-semibold text-zinc-700">{classLabel(grade, i)}</div>
-                  <table className="w-full border-collapse text-[11px]">
+                  <table className="w-full table-fixed border-collapse text-[11px]">
                     <thead>
                       <tr>
                         <th className="w-8 text-zinc-400 font-normal"></th>
@@ -158,7 +158,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
                             return (
                               <td key={d} className="p-0.5">
                                 <button type="button" onClick={() => clickCell(ck, k)} title={t ? `${t.label || t.subject}` : undefined}
-                                  className={`w-full h-7 rounded-sm border text-[10px] leading-tight overflow-hidden ${t ? '' : 'bg-zinc-50 border-zinc-200 hover:border-zinc-400'}`}
+                                  className={`w-full h-7 rounded-sm border text-[10px] leading-tight truncate px-0 ${t ? '' : 'bg-zinc-50 border-zinc-200 hover:border-zinc-400'}`}
                                   style={col ? { backgroundColor: col.bg, borderColor: col.border, color: col.text } : undefined}>
                                   {t ? (t.subject || t.label || '？') : ''}
                                 </button>

@@ -14,7 +14,7 @@ interface Props {
 /** 課表樣式的時段選擇格：列＝節次、欄＝週一~五，點格切換。 */
 export default function SlotGrid({ periods, enabled, isOn, onToggle, onLabel = '✓', onClass = 'bg-zinc-700 text-white border-zinc-700' }: Props) {
   return (
-    <table className="w-full border-collapse text-[11px]">
+    <table className="w-full table-fixed border-collapse text-[11px]">
       <thead>
         <tr>
           <th className="w-8 text-zinc-400 font-normal"></th>
