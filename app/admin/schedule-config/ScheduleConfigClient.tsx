@@ -15,6 +15,7 @@ import type { GradeSubject, HomeroomTeacher, NeedsRef, OffTeacher, SubjectTeache
 
 interface Props {
   year: number
+  initialTab?: string
   initialConfig: ScheduleConfig
   classCounts: Record<number, number>
   gradeSubjects: Record<number, GradeSubject[]>
@@ -35,9 +36,9 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'weight', label: '7 權重設定' },
 ]
 
-export default function ScheduleConfigClient({ year, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
+export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
-  const [tab, setTab] = useState<TabKey>('time')
+  const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   // 自動儲存（debounce）

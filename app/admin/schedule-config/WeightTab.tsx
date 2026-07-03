@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type Dispatch, type SetStateAction } from 'react'
+import Link from 'next/link'
 import {
   WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, RULE_TEMPLATE_LABEL, defaultScheduleWeights,
   type ScheduleConfig, type ScheduleWeights, type BuiltinRules, type WeightLevel,
@@ -124,7 +125,10 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           引擎只排科任課，所有規則都作用在「科任課的落點」。權重五段：關閉／低／中／高／必須；
           「高」一項約抵「低」九項。<span className="text-amber-600">「必須」＝硬限制，排不下的課會列入未排清單，請謹慎使用。</span>
         </p>
-        <button onClick={resetAll} className="btn btn-secondary text-xs py-0.5 flex-shrink-0">恢復預設</button>
+        <span className="flex gap-2 flex-shrink-0">
+          <button onClick={resetAll} className="btn btn-secondary text-xs py-0.5">恢復預設</button>
+          <Link href="/admin/schedule-wizard" className="btn btn-primary text-xs py-0.5">▶ 前往排課精靈</Link>
+        </span>
       </div>
 
       {/* 固定硬限制（不可調） */}

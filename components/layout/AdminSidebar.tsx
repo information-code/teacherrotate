@@ -33,6 +33,7 @@ const navSections = [
     title: '排課管理',
     items: [
       { href: '/admin/schedule-config', label: '排課設定' },
+      { href: '/admin/schedule-wizard', label: '排課精靈' },
     ],
   },
   {

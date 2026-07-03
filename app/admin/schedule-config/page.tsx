@@ -39,7 +39,7 @@ export interface NeedsRef {
 
 export interface GradeSubject { name: string; perClass: number; homeroom: boolean }
 
-export default async function ScheduleConfigPage() {
+export default async function ScheduleConfigPage({ searchParams }: { searchParams?: { tab?: string } }) {
   const admin = getAdminClient()
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)
@@ -138,6 +138,7 @@ export default async function ScheduleConfigPage() {
   return (
     <ScheduleConfigClient
       year={year}
+      initialTab={searchParams?.tab}
       initialConfig={scheduleConfig}
       classCounts={classCounts}
       gradeSubjects={gradeSubjects}
