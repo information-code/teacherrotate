@@ -1,11 +1,43 @@
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleConfigClient from './ScheduleConfigClient'
-import { normalizeConfig, allocRole, homeroomGrade, GRADES, type TeacherAllocation } from '@/lib/allocation'
+import {
+  normalizeConfig, allocRole, homeroomGrade, subjectAreaOf, GRADES,
+  type TeacherAllocation, type AllocRole,
+} from '@/lib/allocation'
 import { normalizeScheduleConfig } from '@/lib/scheduling'
 
 export const dynamic = 'force-dynamic'
 
 export interface HomeroomTeacher { id: string; name: string; grade: number }
+
+/** 科任配班用：可授課教師（科任／行政）與其配課節數（科目 → 年級 → 節數）。 */
+export interface SubjectTeacher {
+  id: string
+  name: string
+  work: string
+  role: 'subject' | 'admin'
+  hours: Record<string, Record<string, number>>
+}
+
+/** 不排課標記用：全體教師（含導師）。 */
+export interface OffTeacher { id: string; name: string; work: string; role: AllocRole }
+
+/** 教師於配課精靈申報的排課需求（供個人不排課帶入參考）。 */
+export interface NeedsRef {
+  teacherId: string
+  name: string
+  officialLeave: boolean
+  officialLeaveUnsure: boolean
+  officialLeaveSlots: string[]
+  counseling: boolean
+  counselingUnsure: boolean
+  counselingSlots: string[]
+  avoidChildGrades: number[]
+  other: boolean
+  otherText: string
+}
+
+export interface GradeSubject { name: string; perClass: number; homeroom: boolean }
 
 export default async function ScheduleConfigPage() {
   const admin = getAdminClient()
@@ -32,27 +64,87 @@ export default async function ScheduleConfigPage() {
   const allocMap = Object.fromEntries((allocs ?? []).map(a => [a.teacher_id, a.data as TeacherAllocation]))
 
   const homerooms: HomeroomTeacher[] = []
+  const subjectTeachers: SubjectTeacher[] = []
+  const offTeachers: OffTeacher[] = []
+  const needsRefs: NeedsRef[] = []
+
   for (const id of ids) {
+    const name = nameMap[id] ?? id
+    const d = allocMap[id]
+    // 角色與職務：代理看配課資料，正式看工作紀錄
+    let role: AllocRole = 'none'
+    let work = ''
+    let grade: number | null = null
     if (empMap[id] === 'substitute') {
-      const d = allocMap[id]
-      if (d?.role === 'homeroom' && d.grade) homerooms.push({ id, name: nameMap[id] ?? id, grade: d.grade })
-      continue
+      role = d?.role ?? 'none'
+      work = d?.work ?? '代理'
+      grade = d?.role === 'homeroom' ? (d.grade ?? null) : null
+    } else {
+      const rot = rotMap[id]
+      work = rot?.work ?? ''
+      role = allocRole(work)
+      if (role === 'homeroom') grade = homeroomGrade(work, rot?.grade ?? null)
     }
-    const rot = rotMap[id]
-    if (!rot || allocRole(rot.work) !== 'homeroom') continue
-    const grade = homeroomGrade(rot.work, rot.grade ?? null)
-    if (grade) homerooms.push({ id, name: nameMap[id] ?? id, grade })
+    if (role === 'none') continue
+
+    offTeachers.push({ id, name, work, role })
+    if (role === 'homeroom' && grade) homerooms.push({ id, name, grade })
+
+    if (role === 'subject' || role === 'admin') {
+      // 配課節數：優先 subjectGradeHours（科目×年級，統計頁可編輯）；
+      // 正式單一領域科任若只填 gradeHours，則以職稱領域回推。
+      const hours: Record<string, Record<string, number>> = {}
+      const sgh = d?.subjectGradeHours
+      if (sgh && Object.values(sgh).some(m => Object.values(m ?? {}).some(v => Number(v) > 0))) {
+        for (const [subj, m] of Object.entries(sgh)) {
+          for (const [g, v] of Object.entries(m ?? {})) {
+            if (Number(v) > 0) (hours[subj] ??= {})[g] = Number(v)
+          }
+        }
+      } else if (role === 'subject' && d?.gradeHours) {
+        const area = subjectAreaOf(work)
+        for (const [g, v] of Object.entries(d.gradeHours)) {
+          if (area && Number(v) > 0) (hours[area] ??= {})[g] = Number(v)
+        }
+      }
+      subjectTeachers.push({ id, name, work, role, hours })
+    }
+
+    // 排課需求申報（有勾任一項才列入參考）
+    const s = d?.scheduling
+    if (s && (s.officialLeave || s.counselingGroup || s.avoidChildGrade || s.other)) {
+      needsRefs.push({
+        teacherId: id, name,
+        officialLeave: Boolean(s.officialLeave),
+        officialLeaveUnsure: Boolean(s.officialLeaveUnsure),
+        officialLeaveSlots: s.officialLeaveSlots ?? [],
+        counseling: Boolean(s.counselingGroup),
+        counselingUnsure: Boolean(s.counselingUnsure),
+        counselingSlots: s.counselingSlots ?? [],
+        avoidChildGrades: s.avoidChildGrade ? (s.avoidChildGradeValues?.length ? s.avoidChildGradeValues : (s.avoidChildGradeValue ? [s.avoidChildGradeValue] : [])) : [],
+        other: Boolean(s.other),
+        otherText: s.otherText ?? '',
+      })
+    }
   }
 
   const classCounts: Record<number, number> = {}
-  for (const g of GRADES) classCounts[g] = config.grades[g].classCount
+  const gradeSubjects: Record<number, GradeSubject[]> = {}
+  for (const g of GRADES) {
+    classCounts[g] = config.grades[g].classCount
+    gradeSubjects[g] = config.grades[g].subjects.map(s => ({ name: s.name, perClass: s.perClass, homeroom: s.homeroom }))
+  }
 
   return (
     <ScheduleConfigClient
       year={year}
       initialConfig={scheduleConfig}
       classCounts={classCounts}
+      gradeSubjects={gradeSubjects}
       homerooms={homerooms}
+      subjectTeachers={subjectTeachers}
+      offTeachers={offTeachers}
+      needsRefs={needsRefs}
     />
   )
 }

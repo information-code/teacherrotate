@@ -30,16 +30,52 @@ export interface BandGrid {
   teachable: Record<string, boolean>    // key = `${day}-${period}` → 是否可排課節
 }
 
-/** 全校固定占用（如本土語）：套用到所有班的同一時段。 */
-export interface FixedSlot { id: string; label: string; slots: Slot[] }
+/** 鎖課名目：名目（label）給管理者辨識、科目（subject）顯示在課表格子上。 */
+export interface LockType { id: string; label: string; subject: string; color: string }
+
+// 鎖課名目可選的低彩度色票（key 存進設定，顯示時查表）
+export const LOCK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  rose:   { bg: '#ffe4e6', text: '#9f1239', border: '#fda4af' },
+  amber:  { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+  lime:   { bg: '#ecfccb', text: '#3f6212', border: '#bef264' },
+  teal:   { bg: '#ccfbf1', text: '#115e59', border: '#5eead4' },
+  sky:    { bg: '#e0f2fe', text: '#075985', border: '#7dd3fc' },
+  violet: { bg: '#ede9fe', text: '#5b21b6', border: '#c4b5fd' },
+  pink:   { bg: '#fce7f3', text: '#9d174d', border: '#f9a8d4' },
+  slate:  { bg: '#e2e8f0', text: '#334155', border: '#94a3b8' },
+}
+export const LOCK_COLOR_KEYS = Object.keys(LOCK_COLORS)
+
+// 個人不排課類別
+export type OffCategory = 'counseling' | 'admin' | 'training' | 'other'
+export const OFF_CATEGORIES: OffCategory[] = ['counseling', 'admin', 'training', 'other']
+export const OFF_CATEGORY_LABEL: Record<OffCategory, string> = {
+  counseling: '輔導團', admin: '行政', training: '進修', other: '其他',
+}
+
+/** 個人不排課：該教師這些時段不排課（導師→班級課表該時段排科任課；科任→該時段留空）。 */
+export interface PersonalOff {
+  id: string
+  teacherId: string
+  category: OffCategory
+  note: string            // 補充說明（類別為其他時建議填）
+  slots: string[]         // slotKey 列表
+}
+
+/** 科任配班中「導師自上」的特殊值（該班該科由導師授課，不指派科任）。 */
+export const HOMEROOM_SELF = '__homeroom__'
+export function subjectClassKey(grade: number, index: number, subject: string): string {
+  return `${grade}-${index}|${subject}`
+}
 
 export interface ScheduleConfig {
   bands: Record<Band, BandGrid>
-  fixedSlots: FixedSlot[]                         // 全校固定（本土語…）
-  bandCommonOff: Record<Band, Slot[]>             // 學年導師共同不排課（該年段全導師空出）
-  classBlocks: Record<string, Slot[]>             // 班級封鎖（種子班…）classKey = `${grade}-${index}`
-  teacherOff: Record<string, Slot[]>              // 教師不排課（由排課需求帶出後課務組填）
   classTeacher: Record<string, string>            // 導師配班：classKey → teacherId（管理者指定）
+  subjectClassTeacher: Record<string, string>     // 科任配班：`${grade}-${index}|${subject}` → teacherId 或 HOMEROOM_SELF
+  lockTypes: LockType[]                           // 鎖課名目
+  lockCells: Record<string, Record<string, string>>  // 鎖課標記：classKey → slotKey → lockTypeId
+  gradeCommonOff: Record<string, string[]>        // 學年共同不排課：年級("1"~"6") → slotKey 列表（連動該年級所有導師）
+  personalOff: PersonalOff[]                      // 個人不排課
 }
 
 /** 產生一張時段格：halfDays 中的星期只開 1~4 節（半天），其餘整天 7 節。 */
@@ -62,18 +98,20 @@ export function defaultScheduleConfig(): ScheduleConfig {
       mid: bandGridWithHalfDays(DEFAULT_HALF_DAYS.mid),
       high: bandGridWithHalfDays(DEFAULT_HALF_DAYS.high),
     },
-    fixedSlots: [],
-    bandCommonOff: { low: [], mid: [], high: [] },
-    classBlocks: {},
-    teacherOff: {},
     classTeacher: {},
+    subjectClassTeacher: {},
+    lockTypes: [],
+    lockCells: {},
+    gradeCommonOff: {},
+    personalOff: [],
   }
 }
 
 export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
   const base = defaultScheduleConfig()
   if (!raw || typeof raw !== 'object') return base
-  const r = raw as Partial<ScheduleConfig>
+  // 舊欄位 bandCommonOff（年段 Slot[]）→ 遷移為 gradeCommonOff（年級 slotKey[]）
+  const r = raw as Partial<ScheduleConfig> & { bandCommonOff?: Record<Band, Slot[]> }
   const bands = {} as Record<Band, BandGrid>
   for (const b of BANDS) {
     const g = r.bands?.[b]
@@ -81,15 +119,42 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       ? { periodsPerDay: Number(g.periodsPerDay ?? DEFAULT_PERIODS), teachable: { ...(g.teachable ?? {}) } }
       : bandGridWithHalfDays(DEFAULT_HALF_DAYS[b])
   }
+  let gradeCommonOff: Record<string, string[]> = {}
+  if (r.gradeCommonOff && typeof r.gradeCommonOff === 'object') {
+    for (const [g, v] of Object.entries(r.gradeCommonOff)) {
+      if (Array.isArray(v)) gradeCommonOff[g] = v.map(String)
+    }
+  } else if (r.bandCommonOff) {
+    for (const b of BANDS) {
+      const slots = (r.bandCommonOff[b] ?? []).map(s => slotKey(s))
+      if (slots.length) for (const g of BAND_GRADES[b]) gradeCommonOff[String(g)] = [...slots]
+    }
+  }
+  const lockCells: Record<string, Record<string, string>> = {}
+  if (r.lockCells && typeof r.lockCells === 'object') {
+    for (const [ck, m] of Object.entries(r.lockCells)) {
+      if (m && typeof m === 'object') lockCells[ck] = { ...m }
+    }
+  }
   return {
     bands,
-    fixedSlots: Array.isArray(r.fixedSlots) ? r.fixedSlots.map(f => ({ id: String(f.id ?? ''), label: String(f.label ?? ''), slots: Array.isArray(f.slots) ? f.slots : [] })) : [],
-    bandCommonOff: {
-      low: r.bandCommonOff?.low ?? [], mid: r.bandCommonOff?.mid ?? [], high: r.bandCommonOff?.high ?? [],
-    },
-    classBlocks: r.classBlocks ?? {},
-    teacherOff: r.teacherOff ?? {},
     classTeacher: r.classTeacher ?? {},
+    subjectClassTeacher: r.subjectClassTeacher ?? {},
+    lockTypes: Array.isArray(r.lockTypes)
+      ? r.lockTypes.map(t => ({
+          id: String(t.id ?? ''), label: String(t.label ?? ''), subject: String(t.subject ?? ''),
+          color: LOCK_COLORS[String(t.color ?? '')] ? String(t.color) : LOCK_COLOR_KEYS[0],
+        }))
+      : [],
+    lockCells,
+    gradeCommonOff,
+    personalOff: Array.isArray(r.personalOff)
+      ? r.personalOff.map(p => ({
+          id: String(p.id ?? ''), teacherId: String(p.teacherId ?? ''),
+          category: OFF_CATEGORIES.includes(p.category as OffCategory) ? p.category as OffCategory : 'other',
+          note: String(p.note ?? ''), slots: Array.isArray(p.slots) ? p.slots.map(String) : [],
+        }))
+      : [],
   }
 }
 
