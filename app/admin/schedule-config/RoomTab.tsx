@@ -1,6 +1,6 @@
 'use client'
 
-import { type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import {
   ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, classLabel, roomLabel,
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
@@ -21,6 +21,7 @@ function newRoom(): Room {
  *  用途：一、排課知道哪些教室彼此接近；二、統計科任教室數（每間一張科任教室課表）。 */
 export default function RoomTab({ config, setConfig, classCounts }: Props) {
   const zones = config.roomZones
+  const [dragging, setDragging] = useState<{ zid: string; rid: string } | null>(null)
 
   // 全部班級與已被指派的班級（跨全部區域，擋重複）
   const allClasses: { key: string; label: string }[] = []
@@ -61,6 +62,22 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
     updateZones(zs => zs.map(z => z.id !== zid ? z : {
       ...z, rooms: z.rooms.map(r => r.id === rid ? { ...r, ...patch } : r),
     }))
+  }
+  /** 把教室移到同區的另一個位置（拖曳／◀▶ 共用）。 */
+  function moveRoom(zid: string, from: number, to: number) {
+    updateZones(zs => zs.map(z => {
+      if (z.id !== zid || from === to || to < 0 || to >= z.rooms.length) return z
+      const rooms = [...z.rooms]
+      const [m] = rooms.splice(from, 1)
+      rooms.splice(to, 0, m)
+      return { ...z, rooms }
+    }))
+  }
+  /** 拖曳經過另一間教室時即時交換位置。 */
+  function dragOverRoom(z: RoomZone, targetIdx: number) {
+    if (!dragging || dragging.zid !== z.id) return
+    const from = z.rooms.findIndex(r => r.id === dragging.rid)
+    if (from >= 0 && from !== targetIdx) moveRoom(z.id, from, targetIdx)
   }
 
   // 小結：科任／本土語言教室數、未安排教室的班級
@@ -126,8 +143,24 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
             <div className="flex gap-2 flex-wrap items-stretch">
               {z.rooms.map((r, i) => (
                 <div key={r.id} className="flex items-center gap-1">
-                  <div className={`rounded-md border p-2 w-36 space-y-1 ${r.kind === 'subject' ? 'border-sky-300 bg-sky-50' : r.kind === 'native' ? 'border-teal-300 bg-teal-50' : r.kind === 'none' ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-300 bg-white'}`}>
-                    <div className="text-[10px] text-zinc-400">教室 {i + 1}</div>
+                  <div
+                    onDragOver={e => { e.preventDefault(); dragOverRoom(z, i) }}
+                    onDrop={e => e.preventDefault()}
+                    className={`rounded-md border p-2 w-36 space-y-1 ${dragging?.rid === r.id ? 'opacity-40 border-dashed' : ''} ${r.kind === 'subject' ? 'border-sky-300 bg-sky-50' : r.kind === 'native' ? 'border-teal-300 bg-teal-50' : r.kind === 'none' ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-300 bg-white'}`}>
+                    <div
+                      draggable
+                      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragging({ zid: z.id, rid: r.id }) }}
+                      onDragEnd={() => setDragging(null)}
+                      className="flex items-center text-[10px] text-zinc-400 cursor-grab active:cursor-grabbing select-none"
+                      title="拖曳調整順序">
+                      <span className="mr-1">⠿</span>教室 {i + 1}
+                      <span className="ml-auto flex gap-0.5">
+                        <button draggable={false} onClick={e => { e.stopPropagation(); moveRoom(z.id, i, i - 1) }} disabled={i === 0}
+                          className="px-0.5 text-zinc-300 hover:text-zinc-600 disabled:opacity-30" title="往前移">◀</button>
+                        <button draggable={false} onClick={e => { e.stopPropagation(); moveRoom(z.id, i, i + 1) }} disabled={i === z.rooms.length - 1}
+                          className="px-0.5 text-zinc-300 hover:text-zinc-600 disabled:opacity-30" title="往後移">▶</button>
+                      </span>
+                    </div>
                     <select value={r.kind}
                       onChange={e => updateRoom(z.id, r.id, { kind: e.target.value as RoomKind, classKey: '', name: '', no: '' })}
                       className="input py-0.5 text-xs w-full">
