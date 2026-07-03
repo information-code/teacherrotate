@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import {
-  DEFAULT_PERIODS, OFF_CATEGORIES, OFF_CATEGORY_LABEL, bandOf, parseSlotKey,
+  DEFAULT_PERIODS, OFF_CATEGORY_LABEL, bandOf, parseSlotKey,
   type ScheduleConfig, type OffCategory, type PersonalOff,
 } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
@@ -32,6 +32,12 @@ function entryInTab(p: PersonalOff, tab: PersonalTab): boolean {
 function defaultCategory(tab: PersonalTab): OffCategory {
   return tab === 'otherx' ? 'other' : tab
 }
+// modal 可選類別（行政併入其他；改類別＝移到對應清單）
+const MODAL_CATEGORIES: OffCategory[] = ['counseling', 'training', 'other']
+/** 類別歸組（舊資料 admin 視同 other），用於同清單重複判斷。 */
+function categoryGroup(cat: OffCategory): OffCategory {
+  return cat === 'admin' ? 'other' : cat
+}
 
 /** 分頁五：不排課標記。學年共同（連動該年級所有導師）與個人（依類別分頁）。
  *  標記時段＝不排該師的課：導師 → 班級課表該時段改排科任課；科任 → 該時段課表留空。 */
@@ -60,8 +66,17 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
     if (p.slots.length > 0 && !confirm(`刪除「${nameOf(p.teacherId)}」的${OFF_CATEGORY_LABEL[p.category]}不排課標記？`)) return
     setConfig(c => ({ ...c, personalOff: c.personalOff.filter(x => x.id !== p.id) }))
   }
+  /** 開啟編輯 modal（舊資料的行政類別視同其他）。 */
+  function openDraft(p: PersonalOff) {
+    setDraft({ ...p, category: categoryGroup(p.category), slots: [...p.slots] })
+  }
+  /** 同類別清單已有同一位教師的其他項目 → 擋下不能存。 */
+  function conflictOf(d: PersonalOff | null): boolean {
+    if (!d || !d.teacherId) return false
+    return config.personalOff.some(p => p.id !== d.id && p.teacherId === d.teacherId && categoryGroup(p.category) === categoryGroup(d.category))
+  }
   function saveDraft() {
-    if (!draft || !draft.teacherId) return
+    if (!draft || !draft.teacherId || conflictOf(draft)) return
     setConfig(c => ({
       ...c,
       personalOff: c.personalOff.some(p => p.id === draft.id)
@@ -101,7 +116,8 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
    *  其他分頁＝管理者認定理由可接受後手動標時段，說明留白由管理者自填。 */
   function editNeeds(n: NeedsRef, tab: PersonalTab) {
     const exist = existingEntry(n.teacherId, tab)
-    setDraft(exist ? { ...exist, slots: [...exist.slots] } : {
+    if (exist) { openDraft(exist); return }
+    setDraft({
       id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab),
       note: tab === 'otherx' ? '' : '教師申報帶入', slots: [...declaredSlots(n, tab)],
     })
@@ -231,7 +247,7 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                           <span className="text-xs font-normal text-zinc-400 ml-1">{workOf(p.teacherId)}</span>
                         </div>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-500 border border-zinc-200 flex-shrink-0">{OFF_CATEGORY_LABEL[p.category]}</span>
-                        <button onClick={() => setDraft({ ...p, slots: [...p.slots] })} className="btn btn-secondary text-xs py-0.5 flex-shrink-0">編輯</button>
+                        <button onClick={() => openDraft(p)} className="btn btn-secondary text-xs py-0.5 flex-shrink-0">編輯</button>
                         <button onClick={() => removeEntry(p)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
                       </div>
                       {p.note && <div className="text-xs text-zinc-500">{p.note}</div>}
@@ -261,13 +277,18 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}{t.work ? `（${t.work}）` : ''}</option>)}
             </select>
             <div className="flex gap-1 flex-wrap">
-              {OFF_CATEGORIES.map(cat => (
+              {MODAL_CATEGORIES.map(cat => (
                 <button key={cat} onClick={() => setDraft(d => d && { ...d, category: cat })}
-                  className={`text-xs px-2 py-0.5 rounded-sm border ${draft.category === cat ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'}`}>
+                  className={`text-xs px-2 py-0.5 rounded-sm border ${categoryGroup(draft.category) === cat ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'}`}>
                   {OFF_CATEGORY_LABEL[cat]}
                 </button>
               ))}
             </div>
+            {conflictOf(draft) && (
+              <p className="text-xs text-red-600">
+                「{OFF_CATEGORY_LABEL[categoryGroup(draft.category)]}」清單已有 {nameOf(draft.teacherId)} 的標記，同一清單不能重複，請改編輯既有標記或換類別。
+              </p>
+            )}
             <input value={draft.note} onChange={e => setDraft(d => d && { ...d, note: e.target.value })}
               placeholder={draft.category === 'other' ? '說明（類別為其他時請填）' : '補充說明（選填）'}
               className="input py-1 text-sm w-full" />
@@ -280,7 +301,7 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
             <div className="text-[11px] text-zinc-400 text-right">{draft.slots.length} 節不排課</div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setDraft(null)} className="btn btn-secondary text-sm py-1">取消</button>
-              <button onClick={saveDraft} disabled={!draft.teacherId} className="btn btn-primary text-sm py-1">儲存</button>
+              <button onClick={saveDraft} disabled={!draft.teacherId || conflictOf(draft)} className="btn btn-primary text-sm py-1">儲存</button>
             </div>
           </div>
         </div>
