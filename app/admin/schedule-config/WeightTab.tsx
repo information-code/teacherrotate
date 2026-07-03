@@ -59,9 +59,9 @@ const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; na
     rows: [
       { key: 'compact', name: '減少零碎空堂', desc: '科任課盡量緊湊，避免上一節空一節' },
       { key: 'dayBalance', name: '每日負擔平衡', desc: '避免科任老師某天塞滿、某天全空' },
-      { key: 'batchType', name: '同型態同日', desc: '有連堂的科目（如自然、社會），老師同一天盡量全連堂或全單節' },
-      { key: 'blockSplit', name: '連堂單節分半週', desc: '同班同科的連堂與單節分屬前半週（一二三）與後半週（三四五）' },
-      { key: 'walkCost', name: '走動成本', desc: '連續兩節在不同教室依距離扣分（用教室設定的相鄰關係）' },
+      { key: 'batchType', name: '連堂日與單節日分開', desc: '老師某天有連堂課，那天就盡量都排連堂、不混單節課。例：自然老師週一上滿各班連堂（實驗），週四上滿各班單節（講述），備一次課用一整天' },
+      { key: 'blockSplit', name: '連堂與單節隔半週', desc: '同一班同一科的連堂和單節，一個排週一～三、另一個排週三～五。例：3年1班自然連堂在週二、單節在週五，不會擠在同半週' },
+      { key: 'walkCost', name: '走動成本', desc: '老師連續兩節要跑不同教室時，距離越遠扣越多。例：第2節在A區1樓、第3節要衝到B區3樓就會被扣分（距離依教室設定的相鄰關係計算）' },
     ],
   },
   {
