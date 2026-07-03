@@ -2,7 +2,7 @@
 
 import { type Dispatch, type SetStateAction } from 'react'
 import {
-  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, classLabel,
+  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, classLabel, roomLabel,
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
 } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
@@ -14,7 +14,7 @@ interface Props {
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '' }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '' }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
@@ -78,7 +78,7 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
       <div className="flex gap-2 flex-wrap text-xs">
         <span className="px-2 py-1 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200">
           科任教室 <b>{subjectRooms.length}</b> 間（需 {subjectRooms.length} 張科任教室課表）
-          {subjectRooms.length > 0 && <span className="text-zinc-400">：{subjectRooms.map(r => r.name || '未命名').join('、')}</span>}
+          {subjectRooms.length > 0 && <span className="text-zinc-400">：{subjectRooms.map(r => roomLabel(r) || '未命名').join('、')}</span>}
         </span>
         {allClasses.length > 0 && (
           <span className={`px-2 py-1 rounded-sm border ${unplacedClasses.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
@@ -138,8 +138,12 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
                       </select>
                     )}
                     {r.kind === 'subject' && (
-                      <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
-                        placeholder="教室名稱" list="subject-room-presets" className="input py-0.5 text-xs w-full" />
+                      <div className="flex gap-1">
+                        <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
+                          placeholder="教室名稱" list="subject-room-presets" className="input py-0.5 text-xs flex-1 min-w-0" />
+                        <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
+                          placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
+                      </div>
                     )}
                   </div>
                   {i < z.rooms.length - 1 && <span className="text-zinc-300 text-xs">—</span>}

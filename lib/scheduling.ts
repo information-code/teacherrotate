@@ -68,8 +68,13 @@ export interface PersonalOff {
 export type RoomKind = 'class' | 'subject' | 'none'
 export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', none: '其他／未使用' }
 
-/** 一間教室：一般教室填班級（classKey）、科任教室填名稱。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string }
+/** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string }
+
+/** 科任教室顯示名稱＝名稱＋編號。 */
+export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
+  return `${r.name}${r.no}`
+}
 
 /** 一個區域：同層樓一排彼此相鄰的教室。ring＝環狀（首尾也相鄰）；否則直排（首尾最遠）。 */
 export interface RoomZone { id: string; floor: string; area: string; ring: boolean; rooms: Room[] }
@@ -182,7 +187,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
             ? z.rooms.map(rm => ({
                 id: String(rm.id ?? ''),
                 kind: (['class', 'subject', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
-                classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''),
+                classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
               }))
             : [],
         }))
