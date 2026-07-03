@@ -17,12 +17,11 @@ interface Props {
   lastGeneratedAt: string | null
 }
 
-type Progress = { iter: number; best: number; elapsed: number; placed: number; unplaced: number }
+type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number }
 type ViewKey = 'class' | 'teacher' | 'room'
 
 export default function ScheduleWizardClient(props: Props) {
   const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames } = props
-  const [timeSec, setTimeSec] = useState(10)
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [result, setResult] = useState<EngineResult | null>(null)
@@ -54,11 +53,11 @@ export default function ScheduleWizardClient(props: Props) {
         w.terminate()
       }
     }
-    w.postMessage({ input, timeMs: timeSec * 1000 })
+    w.postMessage({ input })
   }
   function stop() {
-    workerRef.current?.terminate()
-    setRunning(false)
+    // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
+    workerRef.current?.postMessage({ type: 'stop' })
   }
   async function save() {
     if (!result) return
@@ -190,25 +189,21 @@ export default function ScheduleWizardClient(props: Props) {
 
       {/* 執行 */}
       <div className="card p-3 flex items-center gap-3 flex-wrap">
-        <label className="text-xs text-zinc-500 flex items-center gap-1" title="引擎先在一秒內排出合法課表，剩餘時間反覆改善品質（降低軟規則罰分）。時間越長品質越好，但報酬遞減。">
-          優化時間
-          <select value={timeSec} onChange={e => setTimeSec(Number(e.target.value))} className="input py-1 text-sm w-36">
-            <option value={5}>5 秒（快速草稿）</option>
-            <option value={10}>10 秒（日常試排）</option>
-            <option value={20}>20 秒（較佳品質）</option>
-            <option value={60}>60 秒（定稿精修）</option>
-          </select>
-        </label>
         {!running
           ? <button onClick={run} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
-          : <button onClick={stop} className="btn btn-danger text-sm py-1">■ 中止（放棄本次）</button>}
-        <span className="text-xs text-zinc-400">共 {input.lessons.length} 堂科任課待排</span>
-        {(running || progress) && (
-          <span className="text-xs text-zinc-500 ml-auto">
-            {running && <span className="inline-block w-24 h-1.5 bg-zinc-200 rounded-full overflow-hidden align-middle mr-2">
-              <span className="block h-full bg-zinc-600 rounded-full transition-all" style={{ width: `${Math.min(100, ((progress?.elapsed ?? 0) / (timeSec * 1000)) * 100)}%` }} />
-            </span>}
-            {progress && <>迭代 {progress.iter.toLocaleString()}｜目前罰分 {progress.best >= 1e6 ? `${Math.floor(progress.best / 1e6)} 項必須違反＋${Math.round(progress.best % 1e6)}` : Math.round(progress.best)}</>}
+          : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
+        <span className="text-xs text-zinc-400">
+          共 {input.lessons.length} 堂科任課待排。引擎會持續優化，連續 8 秒沒有進步就自動完成。
+        </span>
+        {running && progress && (
+          <span className="text-xs text-zinc-500 ml-auto flex items-center gap-2">
+            <span>已排 {progress.placed}/{input.lessons.length}｜軟規則罰分 {Math.round(progress.softBest)}｜迭代 {progress.iter.toLocaleString()}</span>
+            <span className="text-zinc-400">
+              {progress.sinceImproveMs < 1500 ? '持續進步中…' : `${Math.floor(progress.sinceImproveMs / 1000)} 秒無進步`}
+            </span>
+            <span className="inline-block w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+              <span className="block h-full bg-zinc-600 rounded-full transition-all" style={{ width: `${Math.min(100, (progress.sinceImproveMs / 8000) * 100)}%` }} />
+            </span>
           </span>
         )}
       </div>
@@ -223,7 +218,7 @@ export default function ScheduleWizardClient(props: Props) {
               {result.uncoveredMustFill.length ? `導師不排課未覆蓋 ${result.uncoveredMustFill.length} 格` : '✓ 導師不排課時段全覆蓋'}
             </span>
             <span className="px-2 py-1 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200">
-              軟規則罰分 {Math.round(result.totalPenalty % 1e6)}{bigPenalty.length > 0 && `（另有必須級違反）`}
+              軟規則罰分 {Math.round(result.softPenalty)}{bigPenalty.length > 0 && `（另有必須級違反）`}
             </span>
             <span className="ml-auto flex gap-2 items-center">
               {saveStatus === 'saved' && <span className="text-green-600">✓ 已儲存</span>}

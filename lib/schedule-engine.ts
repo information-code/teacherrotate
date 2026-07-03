@@ -51,6 +51,7 @@ export interface EngineResult {
   unplaced: UnplacedResult[]
   penalties: RulePenalty[]
   totalPenalty: number
+  softPenalty: number      // 純軟規則罰分（排除未排與必須級，供顯示）
   uncoveredMustFill: { classKey: string; slot: string }[]
   iterations: number
   elapsedMs: number
@@ -366,7 +367,9 @@ function acc(map: Map<string, Acc & { label: string }>, key: string, label: stri
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 function slotZh(day: number, period: number) { return `週${DAY_ZH[day]}第${period}節` }
 
-export function scoreState(st: State): { total: number; penalties: RulePenalty[]; uncovered: { classKey: string; slot: string }[] } {
+const UNPLACED_PEN = 1e5   // 每堂未排課的罰分：低於「必須」、高於一切軟規則，確保搜尋優先塞入
+
+export function scoreState(st: State): { total: number; soft: number; penalties: RulePenalty[]; uncovered: { classKey: string; slot: string }[] } {
   const { input } = st
   const w = input.weights.builtin
   const map = new Map<string, Acc & { label: string }>()
@@ -583,104 +586,173 @@ export function scoreState(st: State): { total: number; penalties: RulePenalty[]
     })
   }
 
+  // 未排課罰分（搜尋會優先把課塞回去）
+  for (const l of input.lessons) {
+    if (!st.pos.has(l.id)) acc(map, 'unplaced', '未排課', UNPLACED_PEN, `${l.classLabel} ${l.subject}（${l.teacherName}）`)
+  }
+
   const penalties: RulePenalty[] = []
-  let total = 0
-  map.forEach((v, k) => { penalties.push({ key: k, label: v.label, count: v.count, points: v.points, items: v.items }); total += v.points })
+  let total = 0, soft = 0
+  map.forEach((v, k) => {
+    penalties.push({ key: k, label: v.label, count: v.count, points: v.points, items: v.items })
+    total += v.points
+    if (k !== 'unplaced' && v.points / v.count < UNPLACED_PEN) soft += v.points   // 排除未排與必須級
+  })
   penalties.sort((x, y) => y.points - x.points)
-  return { total, penalties, uncovered }
+  return { total, soft, penalties, uncovered }
 }
 
 // ══════════════════ 建構＋局部搜尋 ══════════════════
 
-export interface RunOptions { timeMs: number; onProgress?: (p: { iter: number; best: number; elapsed: number; placed: number; unplaced: number }) => void }
+export interface RunProgress { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number }
 
-export function runEngine(input: EngineInput, opts: RunOptions): EngineResult {
-  const start = Date.now()
-  const rnd = mulberry32(input.seed)
-  const st = new State(input)
+/** 可分段執行的排課回合：建構於建構子內完成，step() 跑一小段局部搜尋，
+ *  finalize() 還原「歷來最佳解」快照並產出結果。供 Worker 分段執行以支援
+ *  「收斂自動停」與「中途停止採用目前結果」。 */
+export class EngineRun {
+  private input: EngineInput
+  private st: State
+  private rnd: () => number
+  private startTime = Date.now()
+  private cur = 0
+  private bestTotal = 0
+  private bestSoft = 0
+  private bestPos: Map<string, Placement>
+  private lastImprove = Date.now()
+  iterations = 0
 
-  // 難排優先：必排格多的班、連堂、老師封鎖多、老師課多
-  const teacherLoad: Record<string, number> = {}
-  for (const l of input.lessons) teacherLoad[l.teacherId] = (teacherLoad[l.teacherId] ?? 0) + l.size
-  const difficulty = (l: EngineLesson) =>
-    (l.size === 2 ? 100 : 0) + (l.parity !== 'weekly' ? 50 : 0)
-    + (input.teacherBlocked[l.teacherId]?.length ?? 0) * 3
-    + (input.classMustFill[l.classKey]?.length ?? 0) * 2
-    + teacherLoad[l.teacherId]
-  const ordered = [...input.lessons].sort((a, b) => difficulty(b) - difficulty(a))
+  constructor(input: EngineInput) {
+    this.input = input
+    this.rnd = mulberry32(input.seed)
+    this.st = new State(input)
 
-  // 建構：優先覆蓋必排格，其次低節次干擾
-  for (const l of ordered) {
-    const cands = st.candidates(l)
-    if (cands.length === 0) continue
-    const must = new Set(input.classMustFill[l.classKey] ?? [])
-    let best: Placement | null = null
-    let bestScore = Infinity
-    for (const p of cands) {
-      const slots = l.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
-      const coverMust = slots.filter(s => must.has(s) && !st.classOcc.get(l.classKey)!.has(s)).length
-      const score = -coverMust * 1000 + (p.period <= 4 ? 5 : 0) + rnd()
-      if (score < bestScore) { bestScore = score; best = p }
-    }
-    if (best) st.place(l, best)
-  }
+    // 難排優先：連堂、單雙週、老師封鎖多、必排格多、老師課多
+    const teacherLoad: Record<string, number> = {}
+    for (const l of input.lessons) teacherLoad[l.teacherId] = (teacherLoad[l.teacherId] ?? 0) + l.size
+    const difficulty = (l: EngineLesson) =>
+      (l.size === 2 ? 100 : 0) + (l.parity !== 'weekly' ? 50 : 0)
+      + (input.teacherBlocked[l.teacherId]?.length ?? 0) * 3
+      + (input.classMustFill[l.classKey]?.length ?? 0) * 2
+      + teacherLoad[l.teacherId]
+    const ordered = [...input.lessons].sort((a, b) => difficulty(b) - difficulty(a))
 
-  // 局部搜尋
-  let { total: cur } = scoreState(st)
-  let bestTotal = cur
-  let iter = 0
-  const allLessons = input.lessons
-  while (Date.now() - start < opts.timeMs) {
-    iter++
-    const l = allLessons[Math.floor(rnd() * allLessons.length)]
-    const oldP = st.pos.get(l.id) ?? null
-    if (oldP) st.remove(l)
-    const cands = st.candidates(l)
-    let moved = false
-    if (cands.length > 0) {
-      const p = cands[Math.floor(rnd() * cands.length)]
-      st.place(l, p)
-      const { total: next } = scoreState(st)
-      if (next <= cur || rnd() < 0.02) { cur = next; moved = true }
-      else st.remove(l)
-    }
-    if (!moved && oldP) st.place(l, oldP)
-    if (cur < bestTotal) bestTotal = cur
-    if (iter % 50 === 0 && opts.onProgress) {
-      opts.onProgress({ iter, best: cur, elapsed: Date.now() - start, placed: st.pos.size, unplaced: input.lessons.length - st.pos.size })
-    }
-  }
-
-  // 結果
-  const { total, penalties, uncovered } = scoreState(st)
-  const placed: PlacedResult[] = []
-  const unplaced: UnplacedResult[] = []
-  // 教室分配（與 scoreState 同邏輯：先到先得）
-  const roomCap: Record<string, RoomInfo[]> = {}
-  for (const r of input.rooms) (roomCap[r.subject] ??= []).push(r)
-  const roomTaken = new Map<string, Set<string>>()   // slot → set(roomId)
-  const sorted: { l: EngineLesson; p: Placement }[] = []
-  st.pos.forEach((p, id) => sorted.push({ l: st.lessonById.get(id)!, p }))
-  sorted.sort((a, b) => a.l.id < b.l.id ? -1 : 1)
-  for (const { l, p } of sorted) {
-    let roomId: string | null = null
-    const rooms = roomCap[l.subject] ?? []
-    const slots = st.slotsOf(l, p)
-    for (const r of rooms) {
-      if (slots.every(s => !(roomTaken.get(s)?.has(r.id)))) {
-        roomId = r.id
-        for (const s of slots) (roomTaken.get(s) ?? roomTaken.set(s, new Set()).get(s)!).add(r.id)
-        break
+    // 建構：優先覆蓋必排格，其次低節次干擾
+    for (const l of ordered) {
+      const cands = this.st.candidates(l)
+      if (cands.length === 0) continue
+      const must = new Set(input.classMustFill[l.classKey] ?? [])
+      let best: Placement | null = null
+      let bestScore = Infinity
+      for (const p of cands) {
+        const slots = l.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+        const coverMust = slots.filter(s => must.has(s) && !this.st.classOcc.get(l.classKey)!.has(s)).length
+        const score = -coverMust * 1000 + (p.period <= 4 ? 5 : 0) + this.rnd()
+        if (score < bestScore) { bestScore = score; best = p }
       }
+      if (best) this.st.place(l, best)
     }
-    placed.push({ ...l, day: p.day, period: p.period, roomId })
-  }
-  for (const l of input.lessons) {
-    if (st.pos.has(l.id)) continue
-    unplaced.push({ lesson: l, reason: unplacedReason(st, l) })
+
+    const s0 = scoreState(this.st)
+    this.cur = s0.total
+    this.bestTotal = s0.total
+    this.bestSoft = s0.soft
+    this.bestPos = new Map(this.st.pos)
   }
 
-  return { placed, unplaced, penalties, totalPenalty: total, uncoveredMustFill: uncovered, iterations: iter, elapsedMs: Date.now() - start }
+  /** 跑一小段局部搜尋（約 ms 毫秒）。 */
+  step(ms: number) {
+    const end = Date.now() + ms
+    const allLessons = this.input.lessons
+    while (Date.now() < end) {
+      this.iterations++
+      const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
+      const oldP = this.st.pos.get(l.id) ?? null
+      if (oldP) this.st.remove(l)
+      const cands = this.st.candidates(l)
+      let moved = false
+      if (cands.length > 0) {
+        const p = cands[Math.floor(this.rnd() * cands.length)]
+        this.st.place(l, p)
+        const sc = scoreState(this.st)
+        if (sc.total <= this.cur || this.rnd() < 0.02) {
+          this.cur = sc.total
+          moved = true
+          if (sc.total < this.bestTotal) {
+            this.bestTotal = sc.total
+            this.bestSoft = sc.soft
+            this.bestPos = new Map(this.st.pos)
+            this.lastImprove = Date.now()
+          }
+        } else this.st.remove(l)
+      }
+      if (!moved && oldP) this.st.place(l, oldP)
+    }
+  }
+
+  get elapsed() { return Date.now() - this.startTime }
+  get sinceImprove() { return Date.now() - this.lastImprove }
+
+  progress(): RunProgress {
+    return {
+      iter: this.iterations, best: this.bestTotal, softBest: this.bestSoft,
+      elapsed: this.elapsed, placed: this.bestPos.size,
+      unplaced: this.input.lessons.length - this.bestPos.size,
+      sinceImproveMs: this.sinceImprove,
+    }
+  }
+
+  /** 還原歷來最佳解並產出結果（教室分配、罰分明細、未排原因）。 */
+  finalize(): EngineResult {
+    const st = new State(this.input)
+    this.bestPos.forEach((p, id) => st.place(st.lessonById.get(id)!, p))
+    const { total, soft, penalties, uncovered } = scoreState(st)
+
+    const placed: PlacedResult[] = []
+    const unplaced: UnplacedResult[] = []
+    // 教室分配（與 scoreState 同邏輯：先到先得）
+    const roomCap: Record<string, RoomInfo[]> = {}
+    for (const r of this.input.rooms) (roomCap[r.subject] ??= []).push(r)
+    const roomTaken = new Map<string, Set<string>>()
+    const sorted: { l: EngineLesson; p: Placement }[] = []
+    st.pos.forEach((p, id) => sorted.push({ l: st.lessonById.get(id)!, p }))
+    sorted.sort((a, b) => a.l.id < b.l.id ? -1 : 1)
+    for (const { l, p } of sorted) {
+      let roomId: string | null = null
+      const rooms = roomCap[l.subject] ?? []
+      const slots = st.slotsOf(l, p)
+      for (const r of rooms) {
+        if (slots.every(s => !(roomTaken.get(s)?.has(r.id)))) {
+          roomId = r.id
+          for (const s of slots) (roomTaken.get(s) ?? roomTaken.set(s, new Set()).get(s)!).add(r.id)
+          break
+        }
+      }
+      placed.push({ ...l, day: p.day, period: p.period, roomId })
+    }
+    for (const l of this.input.lessons) {
+      if (st.pos.has(l.id)) continue
+      unplaced.push({ lesson: l, reason: unplacedReason(st, l) })
+    }
+
+    return {
+      placed, unplaced,
+      penalties: penalties.filter(p => p.key !== 'unplaced'),   // 未排另有清單，不重複列
+      totalPenalty: total, softPenalty: soft,
+      uncoveredMustFill: uncovered, iterations: this.iterations, elapsedMs: this.elapsed,
+    }
+  }
+}
+
+export interface RunOptions { timeMs: number; onProgress?: (p: RunProgress) => void }
+
+/** 一次跑完（固定時間預算）。分段執行請直接用 EngineRun。 */
+export function runEngine(input: EngineInput, opts: RunOptions): EngineResult {
+  const run = new EngineRun(input)
+  while (run.elapsed < opts.timeMs) {
+    run.step(Math.min(300, opts.timeMs - run.elapsed))
+    opts.onProgress?.(run.progress())
+  }
+  return run.finalize()
 }
 
 function unplacedReason(st: State, l: EngineLesson): string {
