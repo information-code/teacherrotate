@@ -65,8 +65,8 @@ export interface PersonalOff {
 // ── 教室設定 ──
 // 目的：一、讓系統知道哪些教室同層同區、彼此接近（排課走動成本）；
 //       二、統計科任教室數（每間需要一張科任教室課表）。
-export type RoomKind = 'class' | 'subject' | 'none'
-export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', none: '其他／未使用' }
+export type RoomKind = 'class' | 'subject' | 'native' | 'none'
+export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', native: '本土語言教室', none: '其他／未使用' }
 
 /** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）。 */
 export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string }
@@ -186,7 +186,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
           rooms: Array.isArray(z.rooms)
             ? z.rooms.map(rm => ({
                 id: String(rm.id ?? ''),
-                kind: (['class', 'subject', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
+                kind: (['class', 'subject', 'native', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
                 classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
               }))
             : [],

@@ -63,8 +63,9 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
     }))
   }
 
-  // 小結：科任教室數、未安排教室的班級
+  // 小結：科任／本土語言教室數、未安排教室的班級
   const subjectRooms = zones.flatMap(z => z.rooms.filter(r => r.kind === 'subject'))
+  const nativeRooms = zones.flatMap(z => z.rooms.filter(r => r.kind === 'native'))
   const unplacedClasses = allClasses.filter(c => !usedClass[c.key])
 
   return (
@@ -80,6 +81,12 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
           科任教室 <b>{subjectRooms.length}</b> 間（需 {subjectRooms.length} 張科任教室課表）
           {subjectRooms.length > 0 && <span className="text-zinc-400">：{subjectRooms.map(r => roomLabel(r) || '未命名').join('、')}</span>}
         </span>
+        {nativeRooms.length > 0 && (
+          <span className="px-2 py-1 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200">
+            本土語言教室 <b>{nativeRooms.length}</b> 間
+            <span className="text-zinc-400">：{nativeRooms.map(r => `本土語言教室${r.no}`).join('、')}</span>
+          </span>
+        )}
         {allClasses.length > 0 && (
           <span className={`px-2 py-1 rounded-sm border ${unplacedClasses.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
             {unplacedClasses.length
@@ -119,10 +126,10 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
             <div className="flex gap-2 flex-wrap items-stretch">
               {z.rooms.map((r, i) => (
                 <div key={r.id} className="flex items-center gap-1">
-                  <div className={`rounded-md border p-2 w-36 space-y-1 ${r.kind === 'subject' ? 'border-sky-300 bg-sky-50' : r.kind === 'none' ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-300 bg-white'}`}>
+                  <div className={`rounded-md border p-2 w-36 space-y-1 ${r.kind === 'subject' ? 'border-sky-300 bg-sky-50' : r.kind === 'native' ? 'border-teal-300 bg-teal-50' : r.kind === 'none' ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-300 bg-white'}`}>
                     <div className="text-[10px] text-zinc-400">教室 {i + 1}</div>
                     <select value={r.kind}
-                      onChange={e => updateRoom(z.id, r.id, { kind: e.target.value as RoomKind, classKey: '', name: '' })}
+                      onChange={e => updateRoom(z.id, r.id, { kind: e.target.value as RoomKind, classKey: '', name: '', no: '' })}
                       className="input py-0.5 text-xs w-full">
                       {(Object.keys(ROOM_KIND_LABEL) as RoomKind[]).map(k => <option key={k} value={k}>{ROOM_KIND_LABEL[k]}</option>)}
                     </select>
@@ -136,6 +143,10 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
                           </option>
                         ))}
                       </select>
+                    )}
+                    {r.kind === 'native' && (
+                      <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
+                        placeholder="編號（選填，如 一）" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-full" />
                     )}
                     {r.kind === 'subject' && (
                       <div className="flex gap-1">
