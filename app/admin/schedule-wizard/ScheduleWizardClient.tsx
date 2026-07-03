@@ -190,10 +190,13 @@ export default function ScheduleWizardClient(props: Props) {
 
       {/* 執行 */}
       <div className="card p-3 flex items-center gap-3 flex-wrap">
-        <label className="text-xs text-zinc-500 flex items-center gap-1">
-          運算時間
-          <select value={timeSec} onChange={e => setTimeSec(Number(e.target.value))} className="input py-1 text-sm w-20">
-            <option value={5}>5 秒</option><option value={10}>10 秒</option><option value={20}>20 秒</option><option value={60}>60 秒</option>
+        <label className="text-xs text-zinc-500 flex items-center gap-1" title="引擎先在一秒內排出合法課表，剩餘時間反覆改善品質（降低軟規則罰分）。時間越長品質越好，但報酬遞減。">
+          優化時間
+          <select value={timeSec} onChange={e => setTimeSec(Number(e.target.value))} className="input py-1 text-sm w-36">
+            <option value={5}>5 秒（快速草稿）</option>
+            <option value={10}>10 秒（日常試排）</option>
+            <option value={20}>20 秒（較佳品質）</option>
+            <option value={60}>60 秒（定稿精修）</option>
           </select>
         </label>
         {!running
