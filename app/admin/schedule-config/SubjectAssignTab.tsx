@@ -12,10 +12,11 @@ interface Props {
   gradeSubjects: Record<number, GradeSubject[]>
   subjectTeachers: SubjectTeacher[]
   homerooms: HomeroomTeacher[]
+  avoidMap: Record<string, number[]>   // 排課需求—避開子女就讀年段：teacherId → 年級
 }
 
 /** 分頁三：科任配班。從配課結果（科目×年級×節數）帶入可授課教師，指派各班；可手動改派任何科任／行政。 */
-export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms }: Props) {
+export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, avoidMap }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [showAll, setShowAll] = useState(false)
@@ -106,6 +107,15 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
         </label>
       </div>
 
+      {(() => {
+        const avoided = subjectTeachers.filter(t => avoidMap[t.id]?.includes(grade))
+        return avoided.length > 0 && (
+          <p className="text-[11px] text-amber-600">
+            ⚠ 排課需求—子女就讀{GRADE_LABEL[grade]}：{avoided.map(t => t.name).join('、')}（選擇時請留意，仍可指派）
+          </p>
+        )
+      })()}
+
       {count === 0
         ? <div className="card text-sm text-zinc-400 text-center py-6">{GRADE_LABEL[grade]}尚未於配課設定設定班級數。</div>
         : subjects.length === 0
@@ -137,20 +147,23 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         const k = subjectClassKey(grade, i, s.name)
                         const val = config.subjectClassTeacher[k] ?? ''
                         const homeroomName = nameOf(config.classTeacher[classKey(grade, i)] ?? '')
+                        const warned = Boolean(val && val !== HOMEROOM_SELF && avoidMap[val]?.includes(grade))
+                        const warnOf = (tid: string) => avoidMap[tid]?.includes(grade)
                         return (
                           <label key={i} className="flex items-center gap-2 text-sm">
                             <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}</span>
-                            <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)} className="input py-1 text-sm flex-1 min-w-0">
+                            <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)}
+                              className={`input py-1 text-sm flex-1 min-w-0 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                               <option value="">未指定</option>
                               <option value={HOMEROOM_SELF}>導師自上{homeroomName !== '？' ? `（${homeroomName}）` : ''}</option>
                               {eligible.length > 0 && (
                                 <optgroup label="有配課">
-                                  {eligible.map(t => <option key={t.id} value={t.id}>{t.name}（{hoursOf(t, s.name, grade)}節）</option>)}
+                                  {eligible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}
                                 </optgroup>
                               )}
                               {others.length > 0 && (
                                 <optgroup label="其他科任／行政（手動調整）">
-                                  {others.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                  {others.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}{warnOf(t.id) ? '（⚠ 子女在此年段）' : ''}</option>)}
                                 </optgroup>
                               )}
                             </select>

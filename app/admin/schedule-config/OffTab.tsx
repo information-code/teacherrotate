@@ -22,6 +22,7 @@ const OFF_ON_CLASS = 'bg-rose-400 text-white border-rose-400'
  *  標記時段＝不排該師的課：導師 → 班級課表該時段改排科任課；科任 → 該時段課表留空。 */
 export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Props) {
   const [sub, setSub] = useState<'grade' | 'personal'>('grade')
+  const [needsOpen, setNeedsOpen] = useState(false)
   const teachers = [...offTeachers].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const nameOf = (id: string) => offTeachers.find(t => t.id === id)?.name ?? '？'
 
@@ -127,10 +128,12 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
         <>
           {needsRefs.length > 0 && (
             <div className="card p-0 overflow-x-auto">
-              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">教師申報的排課需求
-                <span className="text-xs font-normal text-zinc-400 ml-1">來自配課送出精靈；可一鍵帶入下方個人不排課</span>
-              </div>
-              <table className="table-base mt-2">
+              <button onClick={() => setNeedsOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+                <span className="text-sm font-semibold text-zinc-700">教師申報的排課需求</span>
+                <span className="text-xs text-zinc-400">{needsRefs.length} 位；來自配課送出精靈，可一鍵帶入下方個人不排課</span>
+                <span className="ml-auto text-zinc-400 text-xs">{needsOpen ? '▲ 收合' : '▼ 展開'}</span>
+              </button>
+              {needsOpen && <table className="table-base">
                 <thead><tr><th>教師</th><th>申報內容</th><th className="text-center">帶入</th></tr></thead>
                 <tbody>
                   {needsRefs.map(n => (
@@ -150,7 +153,7 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table>}
             </div>
           )}
 

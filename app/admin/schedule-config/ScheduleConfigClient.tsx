@@ -66,6 +66,10 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
     setConfig(c => ({ ...c, classTeacher: { ...c.classTeacher, [classKey(grade, index)]: teacherId } }))
   }
 
+  // 排課需求「避開子女就讀年段」：teacherId → 年級列表（配班下拉顯示警告用）
+  const avoidMap: Record<string, number[]> = {}
+  for (const n of needsRefs) if (n.avoidChildGrades.length) avoidMap[n.teacherId] = n.avoidChildGrades
+
   return (
     <div className="space-y-4 max-w-6xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -155,22 +159,34 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
             {GRADES.map(g => {
               const count = classCounts[g] ?? 0
               const list = homerooms.filter(h => h.grade === g)
+              const avoided = list.filter(h => avoidMap[h.id]?.includes(g))
               return (
                 <div key={g} className="card p-3 space-y-2">
                   <div className="text-sm font-semibold text-zinc-700">{GRADE_LABEL[g]}
                     <span className="text-xs font-normal text-zinc-400 ml-1">{count} 班 · {list.length} 位導師</span>
                   </div>
+                  {avoided.length > 0 && (
+                    <p className="text-[11px] text-amber-600">⚠ 排課需求—子女就讀此年段：{avoided.map(h => h.name).join('、')}（選擇時請留意，仍可指派）</p>
+                  )}
                   {count === 0
                     ? <p className="text-xs text-zinc-400">尚未於配課設定設定班級數。</p>
-                    : Array.from({ length: count }, (_, i) => (
-                      <label key={i} className="flex items-center gap-2 text-sm">
-                        <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(g, i)}</span>
-                        <select value={config.classTeacher[classKey(g, i)] ?? ''} onChange={e => setClassTeacher(g, i, e.target.value)} className="input py-1 text-sm flex-1">
-                          <option value="">未指定</option>
-                          {list.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                        </select>
-                      </label>
-                    ))}
+                    : Array.from({ length: count }, (_, i) => {
+                      const val = config.classTeacher[classKey(g, i)] ?? ''
+                      const warned = Boolean(val && avoidMap[val]?.includes(g))
+                      return (
+                        <label key={i} className="flex items-center gap-2 text-sm">
+                          <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(g, i)}</span>
+                          <select value={val} onChange={e => setClassTeacher(g, i, e.target.value)}
+                            className={`input py-1 text-sm flex-1 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
+                            <option value="">未指定</option>
+                            {list.map(h => {
+                              const warn = avoidMap[h.id]?.includes(g)
+                              return <option key={h.id} value={h.id} style={warn ? { color: '#b45309' } : undefined}>{h.name}{warn ? '（⚠ 子女在此年段）' : ''}</option>
+                            })}
+                          </select>
+                        </label>
+                      )
+                    })}
                   {count > 0 && list.length !== count && <p className="text-[11px] text-amber-600">導師人數（{list.length}）與班級數（{count}）不一致。</p>}
                 </div>
               )
@@ -185,6 +201,7 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
           config={config} setConfig={setConfig}
           classCounts={classCounts} gradeSubjects={gradeSubjects}
           subjectTeachers={subjectTeachers} homerooms={homerooms}
+          avoidMap={avoidMap}
         />
       )}
 
