@@ -68,8 +68,9 @@ export interface PersonalOff {
 export type RoomKind = 'class' | 'subject' | 'native' | 'none'
 export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', native: '本土語言教室', none: '其他／未使用' }
 
-/** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string }
+/** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）
+ *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string }
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
 export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
@@ -83,6 +84,128 @@ export interface RoomZone { id: string; floor: string; area: string; ring: boole
 export const SUBJECT_ROOM_PRESETS = [
   '音樂教室', '自然教室', '英語教室', '電腦教室', '科技教室', '資訊教室', '視覺藝術教室', '表演藝術教室', '律動教室', '圖書室', '活動中心',
 ]
+
+// ── 權重設定 ──
+// 引擎只排科任課，所有規則的作用對象都是「科任課的落點」；保護導師是部分規則的目的，不是機制。
+// 權重五段：關/低/中/高/必須 → 罰分 0/1/3/9/硬限制（指數型，高一項抵低九項）。
+
+export type WeightLevel = 'off' | 'low' | 'mid' | 'high' | 'must'
+export const WEIGHT_LEVELS: WeightLevel[] = ['off', 'low', 'mid', 'high', 'must']
+export const WEIGHT_LEVEL_LABEL: Record<WeightLevel, string> = { off: '關閉', low: '低', mid: '中', high: '高', must: '必須' }
+export const WEIGHT_PENALTY: Record<WeightLevel, number> = { off: 0, low: 1, mid: 3, high: 9, must: Infinity }
+
+/** 內建規則（只能調權重與參數，不能增刪）。 */
+export interface BuiltinRules {
+  dailyMax: { level: WeightLevel; n: number }     // 科任每日節數上限 N
+  consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
+  compact: WeightLevel                            // 減少零碎空堂
+  dayBalance: WeightLevel                         // 教師每日負擔平衡
+  batchType: WeightLevel                          // 同型態同日：連堂日／單節日不混
+  blockSplit: WeightLevel                         // 連堂與單節分屬前半週（一二三）／後半週（三四五）
+  sameSubjectSameDay: WeightLevel                 // 同班同科同日避免
+  subjectSpread: WeightLevel                      // 同科隔天分散
+  walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
+  roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
+  homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
+  homeroomBalance: WeightLevel                    // 班級科任課每日平衡（導師留白每日分布平均）
+  artBiweekly: { enabled: boolean; grades: number[] }  // 視藝單雙週連堂（占固定兩格，藝術週/導師週輪替；單週組起始 1,3,5、雙週組 2,4,6）
+}
+
+/** 模板規則：管理者可無限新增實例，引擎實作模板計分邏輯。 */
+export type RuleTemplate = 'avoidPeriods' | 'noConsecDays' | 'doublePeriod' | 'timePrefer'
+export const RULE_TEMPLATE_LABEL: Record<RuleTemplate, string> = {
+  avoidPeriods: '科目避開節次', noConsecDays: '科目不連續日', doublePeriod: '科目連堂', timePrefer: '科目時段偏好',
+}
+export interface TemplateRule {
+  id: string
+  template: RuleTemplate
+  subjects: string[]              // 適用科目
+  grades: number[]                // 適用年級（空＝全部年級）
+  level: WeightLevel
+  periods?: number[]              // avoidPeriods：避開的節次
+  fullDayOnly?: boolean           // avoidPeriods：僅整天日適用（如避第 7 節，不影響半天日第 4 節）
+  pref?: 'morning' | 'afternoon'  // timePrefer：偏好時段
+}
+
+export interface ScheduleWeights {
+  builtin: BuiltinRules
+  templates: TemplateRule[]
+}
+
+export function defaultScheduleWeights(): ScheduleWeights {
+  return {
+    builtin: {
+      dailyMax: { level: 'high', n: 6 },
+      consecMax: { level: 'high', n: 3 },
+      compact: 'low',
+      dayBalance: 'low',
+      batchType: 'mid',
+      blockSplit: 'mid',
+      sameSubjectSameDay: 'high',
+      subjectSpread: 'mid',
+      walkCost: 'mid',
+      roomPrefer: 'high',
+      homeroomMorning: 'mid',
+      homeroomBalance: 'low',
+      artBiweekly: { enabled: true, grades: [4, 6] },
+    },
+    templates: [
+      { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
+      { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'mid' },
+      { id: 'tpl-pe-days', template: 'noConsecDays', subjects: ['體育'], grades: [], level: 'mid' },
+      { id: 'tpl-dbl-nature', template: 'doublePeriod', subjects: ['自然'], grades: [], level: 'high' },
+      { id: 'tpl-dbl-social', template: 'doublePeriod', subjects: ['社會'], grades: [], level: 'high' },
+      { id: 'tpl-dbl-life', template: 'doublePeriod', subjects: ['生活'], grades: [], level: 'high' },
+      { id: 'tpl-dbl-maker', template: 'doublePeriod', subjects: ['智慧探究家：科技創新任務'], grades: [], level: 'high' },
+      { id: 'tpl-dbl-art', template: 'doublePeriod', subjects: ['視覺藝術'], grades: [3, 5], level: 'high' },
+    ],
+  }
+}
+
+const WEIGHT_LEVEL_SET = new Set<string>(WEIGHT_LEVELS)
+function normLevel(v: unknown, fallback: WeightLevel): WeightLevel {
+  return WEIGHT_LEVEL_SET.has(String(v)) ? v as WeightLevel : fallback
+}
+
+export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
+  const base = defaultScheduleWeights()
+  if (!raw || typeof raw !== 'object') return base
+  const r = raw as Partial<ScheduleWeights>
+  const b = (r.builtin ?? {}) as Partial<BuiltinRules>
+  const db = base.builtin
+  return {
+    builtin: {
+      dailyMax: { level: normLevel(b.dailyMax?.level, db.dailyMax.level), n: Number(b.dailyMax?.n ?? db.dailyMax.n) },
+      consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
+      compact: normLevel(b.compact, db.compact),
+      dayBalance: normLevel(b.dayBalance, db.dayBalance),
+      batchType: normLevel(b.batchType, db.batchType),
+      blockSplit: normLevel(b.blockSplit, db.blockSplit),
+      sameSubjectSameDay: normLevel(b.sameSubjectSameDay, db.sameSubjectSameDay),
+      subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
+      walkCost: normLevel(b.walkCost, db.walkCost),
+      roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
+      homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
+      homeroomBalance: normLevel(b.homeroomBalance, db.homeroomBalance),
+      artBiweekly: {
+        enabled: b.artBiweekly?.enabled !== false,
+        grades: Array.isArray(b.artBiweekly?.grades) ? b.artBiweekly!.grades.map(Number) : [...db.artBiweekly.grades],
+      },
+    },
+    templates: Array.isArray(r.templates)
+      ? r.templates.map(t => ({
+          id: String(t.id ?? ''),
+          template: (['avoidPeriods', 'noConsecDays', 'doublePeriod', 'timePrefer'] as RuleTemplate[]).includes(t.template as RuleTemplate) ? t.template as RuleTemplate : 'avoidPeriods',
+          subjects: Array.isArray(t.subjects) ? t.subjects.map(String) : [],
+          grades: Array.isArray(t.grades) ? t.grades.map(Number) : [],
+          level: normLevel(t.level, 'mid'),
+          periods: Array.isArray(t.periods) ? t.periods.map(Number) : undefined,
+          fullDayOnly: t.fullDayOnly === true ? true : undefined,
+          pref: t.pref === 'morning' || t.pref === 'afternoon' ? t.pref : undefined,
+        }))
+      : base.templates,
+  }
+}
 
 /** 科任配班中「導師自上」的特殊值（該班該科由導師授課，不指派科任）。 */
 export const HOMEROOM_SELF = '__homeroom__'
@@ -99,6 +222,7 @@ export interface ScheduleConfig {
   gradeCommonOff: Record<string, string[]>        // 學年共同不排課：年級("1"~"6") → slotKey 列表（連動該年級所有導師）
   personalOff: PersonalOff[]                      // 個人不排課
   roomZones: RoomZone[]                           // 教室設定：樓層×區域×相鄰教室
+  weights: ScheduleWeights                        // 權重設定：內建規則＋模板規則實例
 }
 
 /** 產生一張時段格：halfDays 中的星期只開 1~4 節（半天），其餘整天 7 節。 */
@@ -128,6 +252,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     gradeCommonOff: {},
     personalOff: [],
     roomZones: [],
+    weights: defaultScheduleWeights(),
   }
 }
 
@@ -188,10 +313,12 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                 id: String(rm.id ?? ''),
                 kind: (['class', 'subject', 'native', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
                 classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
+                subject: String(rm.subject ?? ''),
               }))
             : [],
         }))
       : [],
+    weights: normalizeScheduleWeights((raw as Record<string, unknown>).weights),
   }
 }
 

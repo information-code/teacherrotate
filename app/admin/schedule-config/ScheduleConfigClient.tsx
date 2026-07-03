@@ -10,6 +10,7 @@ import SubjectAssignTab from './SubjectAssignTab'
 import RoomTab from './RoomTab'
 import LockTab from './LockTab'
 import OffTab from './OffTab'
+import WeightTab from './WeightTab'
 import type { GradeSubject, HomeroomTeacher, NeedsRef, OffTeacher, SubjectTeacher } from './page'
 
 interface Props {
@@ -209,7 +210,7 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
 
       {/* ── 四、教室設定 ── */}
       {tab === 'room' && (
-        <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} />
+        <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
       )}
 
       {/* ── 五、鎖課設定 ── */}
@@ -222,20 +223,9 @@ export default function ScheduleConfigClient({ year, initialConfig, classCounts,
         <OffTab config={config} setConfig={setConfig} offTeachers={offTeachers} needsRefs={needsRefs} />
       )}
 
-      {/* ── 七、權重設定（佔位） ── */}
+      {/* ── 七、權重設定 ── */}
       {tab === 'weight' && (
-        <div className="card p-6 space-y-2 text-sm text-zinc-500">
-          <div className="font-semibold text-zinc-700">權重設定（規劃中）</div>
-          <p className="text-xs text-zinc-400">
-            此分頁將於規格討論後實作，預計涵蓋排課的軟性偏好與優先順序，例如：
-          </p>
-          <ul className="text-xs text-zinc-400 list-disc pl-5 space-y-0.5">
-            <li>主科（國數）優先排上午的權重</li>
-            <li>同科分散到不同天的強度</li>
-            <li>教師連堂／空堂平衡</li>
-            <li>各項限制違反時的取捨順序</li>
-          </ul>
-        </div>
+        <WeightTab config={config} setConfig={setConfig} gradeSubjects={gradeSubjects} />
       )}
     </div>
   )

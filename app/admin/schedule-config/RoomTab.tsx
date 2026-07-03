@@ -5,23 +5,26 @@ import {
   ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, classLabel, roomLabel,
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
 } from '@/lib/scheduling'
-import { GRADES } from '@/lib/allocation'
+import { GRADES, orderSubjectNames } from '@/lib/allocation'
+import type { GradeSubject } from './page'
 
 interface Props {
   config: ScheduleConfig
   setConfig: Dispatch<SetStateAction<ScheduleConfig>>
   classCounts: Record<number, number>
+  gradeSubjects: Record<number, GradeSubject[]>
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '' }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '' }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
  *  用途：一、排課知道哪些教室彼此接近；二、統計科任教室數（每間一張科任教室課表）。 */
-export default function RoomTab({ config, setConfig, classCounts }: Props) {
+export default function RoomTab({ config, setConfig, classCounts, gradeSubjects }: Props) {
   const zones = config.roomZones
   const [dragging, setDragging] = useState<{ zid: string; rid: string } | null>(null)
+  const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
 
   // 全部班級與已被指派的班級（跨全部區域，擋重複）
   const allClasses: { key: string; label: string }[] = []
@@ -182,12 +185,19 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
                         placeholder="編號（選填，如 一）" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-full" />
                     )}
                     {r.kind === 'subject' && (
-                      <div className="flex gap-1">
-                        <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
-                          placeholder="教室名稱" list="subject-room-presets" className="input py-0.5 text-xs flex-1 min-w-0" />
-                        <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
-                          placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
-                      </div>
+                      <>
+                        <div className="flex gap-1">
+                          <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
+                            placeholder="教室名稱" list="subject-room-presets" className="input py-0.5 text-xs flex-1 min-w-0" />
+                          <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
+                            placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
+                        </div>
+                        <select value={r.subject} onChange={e => updateRoom(z.id, r.id, { subject: e.target.value })}
+                          title="對應科目：排課據此計算教室衝突與走動成本" className="input py-0.5 text-xs w-full">
+                          <option value="">不綁科目</option>
+                          {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </>
                     )}
                   </div>
                   {i < z.rooms.length - 1 && <span className="text-zinc-300 text-xs">—</span>}
