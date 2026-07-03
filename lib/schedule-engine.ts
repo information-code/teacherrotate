@@ -502,6 +502,33 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
+  // 科任課同日成塊：同班同日（上、下午各自計）科任課＋鎖課須連成一塊，
+  // 不出現「導師、科任、導師、科任」交錯
+  if (w.classCohesion !== 'off') {
+    for (const c of input.classes) {
+      const occ = st.classOcc.get(c.classKey)!
+      const avail = new Set(input.classSlots[c.classKey] ?? [])
+      const locks = input.lockedCells[c.classKey] ?? {}
+      for (const d of SCHEDULE_DAYS) {
+        for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
+          let blocks = 0, inBlock = false
+          for (const q of seg) {
+            const k = `${d}-${q}`
+            const teachable = avail.has(k) || k in locks
+            if (!teachable) { inBlock = false; continue }
+            const taken = occ.has(k) || k in locks   // 科任課或鎖課＝非導師
+            if (taken) { if (!inBlock) blocks++; inBlock = true }
+            else inBlock = false
+          }
+          if (blocks > 1) {
+            acc(map, 'classCohesion', '科任課同日成塊', pen(w.classCohesion) * (blocks - 1),
+              `${c.label} 週${DAY_ZH[d]}${seg[0] === 1 ? '上午' : '下午'}科任課分成 ${blocks} 塊（與導師課交錯）`)
+          }
+        }
+      }
+    }
+  }
+
   // 留白每日平衡（班級的科任課分布）
   if (w.homeroomBalance !== 'off') {
     for (const c of input.classes) {

@@ -104,6 +104,7 @@ export interface BuiltinRules {
   blockSplit: WeightLevel                         // 連堂與單節分屬前半週（一二三）／後半週（三四五）
   sameSubjectSameDay: WeightLevel                 // 同班同科同日避免
   subjectSpread: WeightLevel                      // 同科隔天分散
+  classCohesion: WeightLevel                      // 科任課同日成塊：不出現「導師、科任、導師、科任」交錯（上、下午各自計）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
@@ -143,6 +144,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       blockSplit: 'mid',
       sameSubjectSameDay: 'high',
       subjectSpread: 'mid',
+      classCohesion: 'must',
       walkCost: 'mid',
       roomPrefer: 'high',
       homeroomMorning: 'mid',
@@ -183,6 +185,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       blockSplit: normLevel(b.blockSplit, db.blockSplit),
       sameSubjectSameDay: normLevel(b.sameSubjectSameDay, db.sameSubjectSameDay),
       subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
+      classCohesion: normLevel(b.classCohesion, db.classCohesion),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),

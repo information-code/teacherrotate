@@ -69,6 +69,7 @@ const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; na
     rows: [
       { key: 'sameSubjectSameDay', name: '同科同日避免', desc: '同班同科一天不排兩次（連堂本身不算違反）' },
       { key: 'subjectSpread', name: '同科隔天分散', desc: '同班同科盡量分散到不相鄰的天' },
+      { key: 'classCohesion', name: '科任課同日成塊', desc: '同班同一天（上、下午分開計）科任課與鎖課要連成一塊，不出現「導師、科任、導師、科任」交錯' },
       { key: 'roomPrefer', name: '專科教室優先', desc: '有對應教室的科目盡量排進專科教室，不夠時回原班上課' },
     ],
   },
