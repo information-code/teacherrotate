@@ -19,6 +19,19 @@ export default async function TeacherLayout({ children }: { children: React.Reac
     .eq('id', user.id)
     .single()
 
+  // id 找不到 → 用 email 備援連結（老師先登入、管理者後建 profile 的舊 session 也能自動接上）
+  if (!profile && user.email) {
+    const { data: byEmail } = await admin
+      .from('profiles')
+      .select('name, email, role, employment_type')
+      .eq('email', user.email)
+      .maybeSingle()
+    if (byEmail) {
+      await admin.from('profiles').update({ id: user.id }).eq('email', user.email)
+      profile = byEmail
+    }
+  }
+
   // profile 不存在 → email 不在白名單，拒絕進入
   if (!profile) redirect('/unauthorized')
 

@@ -29,37 +29,41 @@ export async function GET(request: NextRequest) {
         const admin = getAdminClient()
 
         // 先用 id 找（已登入過的情況）
-        let { data: profile } = await admin
+        const byId = await admin
           .from('profiles')
           .select('role')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
+        let profile = byId.data
+        let lookupFailed = !!byId.error
 
         // 找不到 → 可能是第一次登入，用 email 找管理者預建的 profile
         if (!profile && user.email) {
-          const { data: byEmail } = await admin
+          const byEmail = await admin
             .from('profiles')
             .select('role')
             .eq('email', user.email)
-            .single()
+            .maybeSingle()
+          lookupFailed = lookupFailed || !!byEmail.error
 
-          if (byEmail) {
+          if (byEmail.data) {
             // 將 profile.id 更新為真實 auth UUID（trigger 已處理，這裡是備援）
             await admin
               .from('profiles')
               .update({ id: user.id })
               .eq('email', user.email)
-            profile = byEmail
+            profile = byEmail.data
           }
         }
 
-        // profile 不存在 → 管理者尚未建立此帳號，拒絕進入
+        // profile 不存在 → 管理者尚未建立此帳號，拒絕進入。
+        // 同時刪除這次登入產生的 auth 帳號、且不發 session：
+        // 強制「管理者先建立帳號，老師才能登入」——太早登入不留下任何殘留，
+        // 等 profile 建好後老師重新登入會產生全新 auth 帳號，由 on_auth_user_created
+        // trigger 以 email 連結 profile，id 永遠一致（避免先登入後建檔造成的 id 錯位）。
         if (!profile) {
-          const response = NextResponse.redirect(`${origin}/unauthorized`)
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
-          })
-          return response
+          if (!lookupFailed) await admin.auth.admin.deleteUser(user.id)  // 查詢異常時不誤刪
+          return NextResponse.redirect(`${origin}/unauthorized`)
         }
 
         const r = profile.role
