@@ -679,7 +679,36 @@ export class EngineRun {
     }
     for (const l of input.lessons) this.lessonsByClass.set(l.classKey, [...(this.lessonsByClass.get(l.classKey) ?? []), l])
 
-    // 第零步：先覆蓋所有必排格（此時教師都還空著，幾乎必然成功）
+    // 第零步 A：必排格覆蓋——同一時段多班互搶老師是配對問題，
+    // 用二部圖最大匹配（Kuhn 增廣路徑）保證可配就配到
+    const bySlot = new Map<string, string[]>()
+    for (const t of this.mustTargets) bySlot.set(t.slot, [...(bySlot.get(t.slot) ?? []), t.classKey])
+    bySlot.forEach((classKeys, slot) => {
+      const p = parseSlotKey(slot)
+      const candsOf = new Map<string, EngineLesson[]>()
+      for (const ckey of classKeys) {
+        if (this.st.classOcc.get(ckey)?.has(slot)) continue
+        candsOf.set(ckey, (this.lessonsByClass.get(ckey) ?? []).filter(l =>
+          !this.st.pos.has(l.id) && l.size === 1 && l.parity === 'weekly' && this.st.canPlace(l, p)))
+      }
+      const matchTeacher = new Map<string, { classKey: string; lesson: EngineLesson }>()
+      const tryMatch = (ckey: string, seen: Set<string>): boolean => {
+        for (const l of candsOf.get(ckey) ?? []) {
+          if (seen.has(l.teacherId)) continue
+          seen.add(l.teacherId)
+          const cur = matchTeacher.get(l.teacherId)
+          if (!cur || tryMatch(cur.classKey, seen)) {
+            matchTeacher.set(l.teacherId, { classKey: ckey, lesson: l })
+            return true
+          }
+        }
+        return false
+      }
+      for (const ckey of Array.from(candsOf.keys())) tryMatch(ckey, new Set())
+      matchTeacher.forEach(({ lesson }) => { if (this.st.canPlace(lesson, p)) this.st.place(lesson, p) })
+    })
+
+    // 第零步 B：殘餘的必排格（例如該班只剩連堂可用）用貪婪補
     for (const t of this.mustTargets) {
       if (this.st.classOcc.get(t.classKey)?.has(t.slot)) continue
       const { day, period } = parseSlotKey(t.slot)
