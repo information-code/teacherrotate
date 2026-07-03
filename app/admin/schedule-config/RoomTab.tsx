@@ -44,7 +44,7 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
   }
   function removeZone(z: RoomZone) {
     const filled = z.rooms.filter(r => (r.kind === 'class' && r.classKey) || (r.kind === 'subject' && r.name)).length
-    if (filled > 0 && !confirm(`區域「${z.floor}${z.area}」已填 ${filled} 間教室，確定刪除？`)) return
+    if (filled > 0 && !confirm(`區域「${z.area}${z.floor}」已填 ${filled} 間教室，確定刪除？`)) return
     updateZones(zs => zs.filter(x => x.id !== z.id))
   }
   function setRoomCount(z: RoomZone, n: number) {
@@ -96,10 +96,10 @@ export default function RoomTab({ config, setConfig, classCounts }: Props) {
       {zones.map(z => (
         <div key={z.id} className="card p-3 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <input value={z.floor} onChange={e => updateZone(z.id, { floor: e.target.value })}
-              placeholder="樓層（如 1樓）" className="input py-1 text-sm w-24" />
             <input value={z.area} onChange={e => updateZone(z.id, { area: e.target.value })}
               placeholder="區域（如 A區）" className="input py-1 text-sm w-24" />
+            <input value={z.floor} onChange={e => updateZone(z.id, { floor: e.target.value })}
+              placeholder="樓層（如 1樓）" className="input py-1 text-sm w-24" />
             <label className="flex items-center gap-1 text-xs text-zinc-500">
               教室數
               <input type="number" min={0} max={30} value={z.rooms.length}
