@@ -3,7 +3,7 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import Link from 'next/link'
 import {
-  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, RULE_TEMPLATE_LABEL, defaultScheduleWeights,
+  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights,
   type ScheduleConfig, type ScheduleWeights, type BuiltinRules, type WeightLevel,
   type RuleTemplate, type TemplateRule,
 } from '@/lib/scheduling'
@@ -51,37 +51,25 @@ function Chips<T extends string | number>({ options, labels, selected, onToggle 
   )
 }
 
-// 內建規則的顯示定義（key、名稱、說明），依面向分組——全部都是「科任課落點」的規則
-type SimpleKey = Exclude<keyof BuiltinRules, 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'artBiweekly'>
-const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; name: string; desc: string }[] }[] = [
-  {
-    title: '科任教師課表',
-    rows: [
-      { key: 'compact', name: '減少零碎空堂', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
-      { key: 'dayBalance', name: '每日負擔平衡', desc: '避免科任老師某天塞滿、某天全空' },
-      { key: 'blockSplit', name: '連堂與單節隔半週', desc: '同一班同一科的連堂和單節，一個排週一～三、另一個排週三～五。例：3年1班自然連堂在週二、單節在週五，不會擠在同半週' },
-      { key: 'walkCost', name: '走動成本', desc: '老師連續兩節要跑不同教室時，距離越遠扣越多。例：第2節在A區1樓、第3節要衝到B區3樓就會被扣分（距離依教室設定的相鄰關係計算）' },
-    ],
-  },
-  {
-    title: '班級課表',
-    rows: [
-      { key: 'roomPrefer', name: '專科教室優先', desc: '有對應教室的科目盡量排進專科教室，不夠時回原班上課' },
-    ],
-  },
-  {
-    title: '導師留白保護',
-    note: '仍是科任課的限制——透過控制科任課落點，讓導師的自排空間品質好',
-    rows: [
-      { key: 'homeroomMorning', name: '上午留白給導師', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午' },
-      { key: 'homeroomBalance', name: '留白每日平衡', desc: '班級的科任課每日平均分布＝導師的每日負擔平衡，導師每天都有格子可自排' },
-    ],
-  },
+// 可調規則清單：依預設權重排序（高 → 中 → 低），tag 標示作用對象
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax'
+type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | 'artBiweekly'>
+const RULE_ROWS: { key: SimpleKey | ParamKey; hasN?: boolean; name: string; tag: string; def: string; desc: string }[] = [
+  { key: 'dailyMax', hasN: true, name: '科任每日節數上限', tag: '科任', def: '高', desc: '科任老師一天最多授課 N 節' },
+  { key: 'consecMax', hasN: true, name: '連續授課上限', tag: '科任', def: '高', desc: '連上 N 節後應有空堂（另有固定硬限制：永不連 7）' },
+  { key: 'homeroomDailyMax', hasN: true, name: '導師每日節數上限', tag: '導師', def: '高', desc: '每班每日留白 ≤ N 格，避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）' },
+  { key: 'roomPrefer', name: '專科教室優先', tag: '教室', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班上課' },
+  { key: 'walkCost', name: '走動成本', tag: '科任', def: '中', desc: '老師連續兩節跨教室，距離越遠扣越多（依教室設定的相鄰關係）' },
+  { key: 'homeroomMorning', name: '上午留白給導師', tag: '導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午' },
+  { key: 'compact', name: '減少零碎空堂', tag: '科任', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
+  { key: 'dayBalance', name: '科任每日負擔平衡', tag: '科任', def: '低', desc: '避免科任老師某天塞滿、某天全空' },
+  { key: 'homeroomBalance', name: '導師每日負擔平衡', tag: '導師', def: '低', desc: '班級的科任課每日平均分布＝導師每天的課量平均' },
 ]
 
-const TEMPLATE_TYPES: RuleTemplate[] = ['avoidPeriods', 'noConsecDays', 'doublePeriod', 'timePrefer']
+const SMART = '智慧探究家：科技創新任務'
+const shortName = (s: string) => s === SMART ? '智慧探究' : s
 
-/** 分頁七：權重設定。內建規則（調權重與參數）＋模板規則（可自行新增實例）。 */
+/** 分頁七：權重設定。固定硬限制＋可調規則（依預設權重排序）＋連堂設定＋自訂規則。 */
 export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   const w = config.weights
   const [addOpen, setAddOpen] = useState(false)
@@ -98,7 +86,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   }
   function addTemplate(template: RuleTemplate) {
     const t: TemplateRule = {
-      id: crypto.randomUUID(), template, subjects: [], grades: [], level: 'mid',
+      id: crypto.randomUUID(), template, subjects: [], grades: [], level: template === 'doublePeriod' ? 'high' : 'mid',
       ...(template === 'avoidPeriods' ? { periods: [] } : {}),
       ...(template === 'timePrefer' ? { pref: 'morning' as const } : {}),
     }
@@ -106,7 +94,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
     setAddOpen(false)
   }
   function removeTemplate(t: TemplateRule) {
-    if (!confirm(`刪除規則「${RULE_TEMPLATE_LABEL[t.template]}：${t.subjects.join('、') || '未選科目'}」？`)) return
+    if (!confirm(`刪除「${t.template === 'doublePeriod' ? '連堂科目' : '自訂規則'}：${t.subjects.map(shortName).join('、') || '未選科目'}」？`)) return
     setWeights(x => ({ ...x, templates: x.templates.filter(p => p.id !== t.id) }))
   }
   function resetAll() {
@@ -115,12 +103,22 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   }
   const toggleIn = <T,>(arr: T[], v: T) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
 
+  const dblTemplates = w.templates.filter(t => t.template === 'doublePeriod')
+  const customTemplates = w.templates.filter(t => t.template === 'avoidPeriods' || t.template === 'timePrefer')
+
+  const levelOf = (key: SimpleKey | ParamKey): WeightLevel =>
+    key === 'dailyMax' || key === 'consecMax' || key === 'homeroomDailyMax' ? w.builtin[key].level : w.builtin[key]
+  const setLevel = (key: SimpleKey | ParamKey, l: WeightLevel) => {
+    if (key === 'dailyMax' || key === 'consecMax' || key === 'homeroomDailyMax') setBuiltin({ [key]: { ...w.builtin[key], level: l } } as Partial<BuiltinRules>)
+    else setBuiltin({ [key]: l } as Partial<BuiltinRules>)
+  }
+
   return (
     <div className="space-y-4 max-w-4xl">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-zinc-400">
           引擎只排科任課，所有規則都作用在「科任課的落點」。權重四段：關閉／低／中／高，「高」一項約抵「低」九項。
-          硬性要求（絕不違反）一律列在下方固定硬限制，不提供「必須」權重。
+          硬性要求（絕不違反）一律列在固定硬限制，不提供「必須」權重。
         </p>
         <span className="flex gap-2 flex-shrink-0">
           <button onClick={resetAll} className="btn btn-secondary text-xs py-0.5">恢復預設</button>
@@ -128,102 +126,80 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
         </span>
       </div>
 
-      {/* 固定硬限制（不可調） */}
+      {/* 一、固定硬限制 */}
       <div className="card p-3 space-y-1">
-        <div className="text-sm font-semibold text-zinc-700">固定硬限制 <span className="text-xs font-normal text-zinc-400 ml-1">引擎絕不違反、不可調整</span></div>
+        <div className="text-sm font-semibold text-zinc-700">一、固定硬限制 <span className="text-xs font-normal text-zinc-400 ml-1">引擎絕不違反、不可調整；排不下的課列入未排清單</span></div>
         <ul className="text-xs text-zinc-500 list-disc pl-5 space-y-0.5">
           <li>同班／同師／同教室同時段只有一堂課；只用年段可排課時段；避開鎖課格</li>
-          <li>不排課標記的時段：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
+          <li>不排課標記：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
           <li>永不連 7 節（連續授課絕對上限 6 節）</li>
-          <li>科任老師單日課間空堂最多一段——任何老師絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
+          <li>任何老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
           <li>同型態同日：老師同一天不混排連堂與單節（連堂日／單節日分開）</li>
           <li>同科同日：同班同科一天最多一次（連堂本身不算）</li>
-          <li>同科不隔天：同班同科不排在相鄰兩天</li>
+          <li>同科不隔天：同班同科不排相鄰兩天（每週每科最多 3 個落點：一、三、五）</li>
           <li>科任課同日成塊：同班同日（上、下午各自計）科任課與鎖課連成一塊，導師課不被切碎</li>
+          <li>連堂 2 節成對永不拆散；視藝單雙週固定兩格輪替（單週組起始 1/3/5、雙週組 2/4/6）</li>
         </ul>
       </div>
 
-      {/* 內建規則 */}
-      <div className="card p-3 space-y-3">
-        <div className="text-sm font-semibold text-zinc-700">內建規則</div>
-
-        {/* 有參數的兩條 */}
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-zinc-500">科任教師課表</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex-1 min-w-48">
-              <div className="text-sm text-zinc-700">每日節數上限</div>
-              <div className="text-[11px] text-zinc-400">科任老師一天最多授課節數</div>
-            </div>
-            <label className="text-xs text-zinc-500 flex items-center gap-1">N=
-              <input type="number" min={1} max={7} value={w.builtin.dailyMax.n}
-                onChange={e => setBuiltin({ dailyMax: { ...w.builtin.dailyMax, n: Number(e.target.value) || 6 } })}
-                className="input py-0.5 text-xs w-14 text-center" />
-            </label>
-            <LevelPicker value={w.builtin.dailyMax.level} onChange={l => setBuiltin({ dailyMax: { ...w.builtin.dailyMax, level: l } })} />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex-1 min-w-48">
-              <div className="text-sm text-zinc-700">連續授課上限</div>
-              <div className="text-[11px] text-zinc-400">連上 N 節後應有空堂（另有絕對上限 6 連，固定硬限制）</div>
-            </div>
-            <label className="text-xs text-zinc-500 flex items-center gap-1">N=
-              <input type="number" min={1} max={6} value={w.builtin.consecMax.n}
-                onChange={e => setBuiltin({ consecMax: { ...w.builtin.consecMax, n: Number(e.target.value) || 3 } })}
-                className="input py-0.5 text-xs w-14 text-center" />
-            </label>
-            <LevelPicker value={w.builtin.consecMax.level} onChange={l => setBuiltin({ consecMax: { ...w.builtin.consecMax, level: l } })} />
-          </div>
-          {BUILTIN_GROUPS[0].rows.map(row => (
-            <div key={row.key} className="flex items-center gap-2 flex-wrap">
-              <div className="flex-1 min-w-48">
-                <div className="text-sm text-zinc-700">{row.name}</div>
-                <div className="text-[11px] text-zinc-400">{row.desc}</div>
+      {/* 二、可調規則（依預設權重排序） */}
+      <div className="card p-3 space-y-2">
+        <div className="text-sm font-semibold text-zinc-700">二、可調規則 <span className="text-xs font-normal text-zinc-400 ml-1">依預設權重由高到低排序；標籤＝作用對象</span></div>
+        {RULE_ROWS.map(row => (
+          <div key={row.key} className="flex items-center gap-2 flex-wrap border-b border-zinc-100 last:border-0 pb-2 last:pb-0">
+            <div className="flex-1 min-w-52">
+              <div className="text-sm text-zinc-700 flex items-center gap-1.5">
+                {row.name}
+                <span className="text-[10px] px-1 py-0 rounded-sm bg-zinc-100 text-zinc-500 border border-zinc-200">{row.tag}</span>
+                <span className="text-[10px] text-zinc-400">預設：{row.def}</span>
               </div>
-              <LevelPicker value={w.builtin[row.key]} onChange={l => setBuiltin({ [row.key]: l } as Partial<BuiltinRules>)} />
+              <div className="text-[11px] text-zinc-400">{row.desc}</div>
+            </div>
+            {row.hasN && (
+              <label className="text-xs text-zinc-500 flex items-center gap-1">N=
+                <input type="number" min={1} max={7}
+                  value={(w.builtin[row.key as ParamKey]).n}
+                  onChange={e => setBuiltin({ [row.key]: { ...w.builtin[row.key as ParamKey], n: Number(e.target.value) || (w.builtin[row.key as ParamKey]).n } } as Partial<BuiltinRules>)}
+                  className="input py-0.5 text-xs w-14 text-center" />
+              </label>
+            )}
+            <LevelPicker value={levelOf(row.key)} onChange={l => setLevel(row.key, l)} />
+          </div>
+        ))}
+      </div>
+
+      {/* 三、連堂設定（結構） */}
+      <div className="card p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-zinc-700">三、連堂設定 <span className="text-xs font-normal text-zinc-400 ml-1">結構設定，非權重：該科每 2 節排成一組連堂（如生活 6 節＝3 組）；「不同天」由硬限制自動保證</span></div>
+          <button onClick={() => addTemplate('doublePeriod')} className="btn btn-secondary text-xs py-0.5">＋ 新增連堂科目</button>
+        </div>
+        {dblTemplates.length === 0 && <p className="text-xs text-zinc-400">尚無連堂科目。</p>}
+        <div className="space-y-2">
+          {dblTemplates.map(t => (
+            <div key={t.id} className="rounded-md border border-zinc-200 p-2 space-y-1.5">
+              <div className="flex items-start gap-2 flex-wrap">
+                <span className="text-[11px] text-zinc-400 w-8 pt-0.5 flex-shrink-0">科目</span>
+                <Chips options={subjectOptions} labels={shortName} selected={t.subjects}
+                  onToggle={s => updateTemplate(t.id, { subjects: toggleIn(t.subjects, s) })} />
+                <button onClick={() => removeTemplate(t)} className="btn btn-danger text-xs py-0.5 ml-auto flex-shrink-0">刪除</button>
+              </div>
+              <div className="flex items-start gap-2 flex-wrap">
+                <span className="text-[11px] text-zinc-400 w-8 pt-0.5 flex-shrink-0">年級</span>
+                <Chips options={[...GRADES]} labels={g => GRADE_LABEL[g]} selected={t.grades}
+                  onToggle={g => updateTemplate(t.id, { grades: toggleIn(t.grades, g) })} />
+                {t.grades.length === 0 && <span className="text-[11px] text-zinc-400 pt-0.5">（未勾＝全年級）</span>}
+              </div>
             </div>
           ))}
         </div>
-
-        {BUILTIN_GROUPS.slice(1).map(group => (
-          <div key={group.title} className="space-y-2 pt-2 border-t border-zinc-100">
-            <div className="text-xs font-semibold text-zinc-500">{group.title}
-              {group.note && <span className="font-normal text-zinc-400 ml-1">（{group.note}）</span>}
-            </div>
-            {group.rows.map(row => (
-              <div key={row.key} className="flex items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-48">
-                  <div className="text-sm text-zinc-700">{row.name}</div>
-                  <div className="text-[11px] text-zinc-400">{row.desc}</div>
-                </div>
-                <LevelPicker value={w.builtin[row.key]} onChange={l => setBuiltin({ [row.key]: l } as Partial<BuiltinRules>)} />
-              </div>
-            ))}
-            {group.title === '導師留白保護' && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-48">
-                  <div className="text-sm text-zinc-700">導師每日節數上限</div>
-                  <div className="text-[11px] text-zinc-400">每班每日留白 ≤ N 格（科任課至少補到「每日格數 − N」），避免導師單日上課超過 N 節</div>
-                </div>
-                <label className="text-xs text-zinc-500 flex items-center gap-1">N=
-                  <input type="number" min={1} max={7} value={w.builtin.homeroomDailyMax.n}
-                    onChange={e => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, n: Number(e.target.value) || 5 } })}
-                    className="input py-0.5 text-xs w-14 text-center" />
-                </label>
-                <LevelPicker value={w.builtin.homeroomDailyMax.level} onChange={l => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, level: l } })} />
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* 視藝單雙週（結構性） */}
+        {/* 視藝單雙週 */}
         <div className="space-y-1 pt-2 border-t border-zinc-100">
-          <div className="text-xs font-semibold text-zinc-500">視覺藝術單雙週連堂（結構性）</div>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="flex items-center gap-1 text-sm text-zinc-700">
               <input type="checkbox" checked={w.builtin.artBiweekly.enabled}
                 onChange={e => setBuiltin({ artBiweekly: { ...w.builtin.artBiweekly, enabled: e.target.checked } })} />
-              啟用
+              視覺藝術單雙週連堂
             </label>
             <span className="text-xs text-zinc-400">適用年級</span>
             <Chips options={[...GRADES]} labels={g => GRADE_LABEL[g]}
@@ -232,34 +208,32 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           </div>
           <p className="text-[11px] text-zinc-400">
             課表占固定連續兩格：藝術週由視藝老師上、另一週該兩格還給導師（隔週輪替）。
-            單週組連堂起始節次 1、3、5，雙週組 2、4、6，視藝老師可交錯服務兩組班不衝突。
           </p>
         </div>
       </div>
 
-      {/* 模板規則 */}
+      {/* 四、自訂規則 */}
       <div className="card p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-zinc-700">自訂規則 <span className="text-xs font-normal text-zinc-400 ml-1">從模板建立，可無限新增</span></div>
+          <div className="text-sm font-semibold text-zinc-700">四、自訂規則 <span className="text-xs font-normal text-zinc-400 ml-1">從模板建立，可無限新增</span></div>
           <div className="relative">
             <button onClick={() => setAddOpen(o => !o)} className="btn btn-primary text-xs py-0.5">＋ 新增規則</button>
             {addOpen && (
               <div className="absolute right-0 mt-1 bg-white border border-zinc-200 rounded-md shadow-md z-10 w-40">
-                {TEMPLATE_TYPES.map(t => (
-                  <button key={t} onClick={() => addTemplate(t)} className="block w-full text-left px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50">
-                    {RULE_TEMPLATE_LABEL[t]}
-                  </button>
-                ))}
+                <button onClick={() => addTemplate('avoidPeriods')} className="block w-full text-left px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50">科目避開節次</button>
+                <button onClick={() => addTemplate('timePrefer')} className="block w-full text-left px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50">科目時段偏好</button>
               </div>
             )}
           </div>
         </div>
-        {w.templates.length === 0 && <p className="text-xs text-zinc-400">尚無自訂規則。</p>}
+        {customTemplates.length === 0 && <p className="text-xs text-zinc-400">尚無自訂規則。</p>}
         <div className="space-y-2">
-          {w.templates.map(t => (
+          {customTemplates.map(t => (
             <div key={t.id} className="rounded-md border border-zinc-200 p-2 space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200 flex-shrink-0">{RULE_TEMPLATE_LABEL[t.template]}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200 flex-shrink-0">
+                  {t.template === 'avoidPeriods' ? '科目避開節次' : '科目時段偏好'}
+                </span>
                 {t.template === 'timePrefer' && (
                   <select value={t.pref ?? 'morning'} onChange={e => updateTemplate(t.id, { pref: e.target.value as 'morning' | 'afternoon' })} className="input py-0.5 text-xs w-24">
                     <option value="morning">偏好上午</option>
@@ -273,7 +247,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
               </div>
               <div className="flex items-start gap-2 flex-wrap">
                 <span className="text-[11px] text-zinc-400 w-8 pt-0.5 flex-shrink-0">科目</span>
-                <Chips options={subjectOptions} selected={t.subjects}
+                <Chips options={subjectOptions} labels={shortName} selected={t.subjects}
                   onToggle={s => updateTemplate(t.id, { subjects: toggleIn(t.subjects, s) })} />
               </div>
               <div className="flex items-start gap-2 flex-wrap">
@@ -293,12 +267,6 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                     僅整天日適用（半天日不受限）
                   </label>
                 </div>
-              )}
-              {t.template === 'doublePeriod' && (
-                <p className="text-[11px] text-zinc-400 pl-10">該科每週節數中取兩節排成一組連堂（2＋1 結構為硬性保證，不會拆散）；權重＝「連堂與單節必須排在不同天」的強度。</p>
-              )}
-              {t.template === 'noConsecDays' && (
-                <p className="text-[11px] text-zinc-400 pl-10">同班該科不排在連續兩天（如週二有體育，週一週三就避開）。</p>
               )}
             </div>
           ))}

@@ -514,9 +514,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
 
   // ── 班級面 ──
   const tplAvoid = input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
-  const tplNoConsec = input.weights.templates.filter(t => t.template === 'noConsecDays' && t.level !== 'off')
   const tplTime = input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
-  const tplDouble = input.weights.templates.filter(t => t.template === 'doublePeriod' && t.level !== 'off')
   const matches = (t: TemplateRule, l: EngineLesson) =>
     t.subjects.includes(l.subject) && (t.grades.length === 0 || t.grades.includes(l.grade))
 
@@ -564,41 +562,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         acc(map, 'sameSubjectSameDay', '同科同日（硬限制）', MUST * (n - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${n} 次`)
       }
     }
-    // 硬限制安全網：同科不隔天（相鄰兩日禁止）；模板不連續日已被硬限制涵蓋，保留供未來例外
+    // 硬限制安全網：同科不隔天（相鄰兩日禁止）
+    // 註：連堂與單節「不同天／分半週」由同科同日＋不隔天硬限制自動保證，毋須另計
     const uniq = Array.from(new Set(days)).sort()
     for (let i = 1; i < uniq.length; i++) {
       if (uniq[i] - uniq[i - 1] === 1) {
         acc(map, 'subjectSpread', '同科不隔天（硬限制）', MUST, `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
-        for (const t of tplNoConsec) {
-          if (t.subjects.includes(subject) && (t.grades.length === 0 || t.grades.includes(arr[0].l.grade))) {
-            acc(map, `tpl-consec-${t.id}`, `不連續日：${t.subjects.join('、')}`, pen(t.level), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}`)
-          }
-        }
-      }
-    }
-    // 連堂模板權重＝該科「連堂與單節不同天」的強度（2+1 結構本身於組裝時保證）
-    {
-      const dbl0 = arr.filter(x => x.l.size === 2 && x.l.parity === 'weekly')
-      const sgl0 = arr.filter(x => x.l.size === 1)
-      if (dbl0.length && sgl0.length) {
-        for (const t of tplDouble) {
-          if (!t.subjects.includes(subject) || (t.grades.length > 0 && !t.grades.includes(arr[0].l.grade))) continue
-          for (const d0 of dbl0) {
-            const n = sgl0.filter(s0 => s0.p.day === d0.p.day).length
-            if (n > 0) acc(map, `tpl-dbl-${t.id}`, `連堂單節不同天：${t.subjects.join('、')}`, pen(t.level) * n, `${labelOf(key2)} ${subject} 連堂與單節同在週${DAY_ZH[d0.p.day]}`)
-          }
-        }
-      }
-    }
-    // 連堂與單節分半週
-    if (w.blockSplit !== 'off') {
-      const dbl = arr.filter(x => x.l.size === 2 && x.l.parity === 'weekly')
-      const sgl = arr.filter(x => x.l.size === 1)
-      if (dbl.length && sgl.length) {
-        const inA = (d: number) => d <= 3, inB = (d: number) => d >= 3
-        const ok = dbl.every(x => inA(x.p.day)) && sgl.every(x => inB(x.p.day))
-          || dbl.every(x => inB(x.p.day)) && sgl.every(x => inA(x.p.day))
-        if (!ok) acc(map, 'blockSplit', '連堂單節分半週', pen(w.blockSplit), `${labelOf(key2)} ${subject} 連堂與單節未分屬前後半週`)
       }
     }
   })

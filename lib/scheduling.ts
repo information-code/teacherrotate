@@ -102,9 +102,9 @@ export interface BuiltinRules {
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
   dayBalance: WeightLevel                         // 教師每日負擔平衡
-  blockSplit: WeightLevel                         // 連堂與單節分屬前半週（一二三）／後半週（三四五）
   // 已升級為固定硬限制（2026-07-04 使用者拍板，不再是權重）：
   //   同型態同日（連堂日/單節日不混）、同科同日、同科不隔天、科任課同日成塊
+  // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
@@ -141,7 +141,6 @@ export function defaultScheduleWeights(): ScheduleWeights {
       consecMax: { level: 'high', n: 3 },
       compact: 'low',
       dayBalance: 'low',
-      blockSplit: 'mid',
       walkCost: 'mid',
       roomPrefer: 'high',
       homeroomMorning: 'mid',
@@ -152,7 +151,6 @@ export function defaultScheduleWeights(): ScheduleWeights {
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
       { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'mid' },
-      { id: 'tpl-pe-days', template: 'noConsecDays', subjects: ['體育'], grades: [], level: 'mid' },
       { id: 'tpl-dbl-nature', template: 'doublePeriod', subjects: ['自然'], grades: [], level: 'high' },
       { id: 'tpl-dbl-social', template: 'doublePeriod', subjects: ['社會'], grades: [], level: 'high' },
       { id: 'tpl-dbl-life', template: 'doublePeriod', subjects: ['生活'], grades: [], level: 'high' },
@@ -180,7 +178,6 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
       dayBalance: normLevel(b.dayBalance, db.dayBalance),
-      blockSplit: normLevel(b.blockSplit, db.blockSplit),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
@@ -192,7 +189,8 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       },
     },
     templates: Array.isArray(r.templates)
-      ? r.templates.map(t => ({
+      ? r.templates.filter(t => t.template !== 'noConsecDays')   // 已被硬限制「同科不隔天」涵蓋
+        .map(t => ({
           id: String(t.id ?? ''),
           template: (['avoidPeriods', 'noConsecDays', 'doublePeriod', 'timePrefer'] as RuleTemplate[]).includes(t.template as RuleTemplate) ? t.template as RuleTemplate : 'avoidPeriods',
           subjects: Array.isArray(t.subjects) ? t.subjects.map(String) : [],
