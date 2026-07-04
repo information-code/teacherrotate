@@ -544,12 +544,26 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
-  // 留白每日平衡（班級的科任課分布）
+  // 留白每日平衡（班級的科任課分布＝導師的每日負擔平衡）
   if (w.homeroomBalance !== 'off') {
     for (const c of input.classes) {
       const counts = SCHEDULE_DAYS.map(d => byClassDayCount.get(`${c.classKey}|${d}`) ?? 0)
       const diff = Math.max(...counts) - Math.min(...counts)
       if (diff > 2) acc(map, 'homeroomBalance', '留白每日平衡', pen(w.homeroomBalance) * (diff - 2), `${c.label} 科任課最多日與最少日差 ${diff} 節`)
+    }
+  }
+
+  // 導師每日節數上限：每班每日留白（可排格−科任課）≤ N
+  if (w.homeroomDailyMax.level !== 'off') {
+    for (const c of input.classes) {
+      const avail = input.classSlots[c.classKey] ?? []
+      const occ = st.classOcc.get(c.classKey)!
+      for (const d of SCHEDULE_DAYS) {
+        const daySlots = avail.filter(s => parseSlotKey(s).day === d)
+        const free = daySlots.filter(s => !occ.has(s)).length
+        const over = free - w.homeroomDailyMax.n
+        if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${w.homeroomDailyMax.n}`, pen(w.homeroomDailyMax.level) * over, `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${w.homeroomDailyMax.n} 節`)
+      }
     }
   }
 

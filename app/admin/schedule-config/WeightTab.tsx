@@ -52,7 +52,7 @@ function Chips<T extends string | number>({ options, labels, selected, onToggle 
 }
 
 // 內建規則的顯示定義（key、名稱、說明），依面向分組——全部都是「科任課落點」的規則
-type SimpleKey = Exclude<keyof BuiltinRules, 'dailyMax' | 'consecMax' | 'artBiweekly'>
+type SimpleKey = Exclude<keyof BuiltinRules, 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'artBiweekly'>
 const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; name: string; desc: string }[] }[] = [
   {
     title: '科任教師課表',
@@ -78,7 +78,7 @@ const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; na
     note: '仍是科任課的限制——透過控制科任課落點，讓導師的自排空間品質好',
     rows: [
       { key: 'homeroomMorning', name: '上午留白給導師', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午' },
-      { key: 'homeroomBalance', name: '留白每日平衡', desc: '班級的科任課每日平均分布，導師每天都有格子可自排' },
+      { key: 'homeroomBalance', name: '留白每日平衡', desc: '班級的科任課每日平均分布＝導師的每日負擔平衡，導師每天都有格子可自排' },
     ],
   },
 ]
@@ -198,6 +198,20 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                 <LevelPicker value={w.builtin[row.key]} onChange={l => setBuiltin({ [row.key]: l } as Partial<BuiltinRules>)} />
               </div>
             ))}
+            {group.title === '導師留白保護' && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-48">
+                  <div className="text-sm text-zinc-700">導師每日節數上限</div>
+                  <div className="text-[11px] text-zinc-400">每班每日留白 ≤ N 格（科任課至少補到「每日格數 − N」），避免導師單日上課超過 N 節</div>
+                </div>
+                <label className="text-xs text-zinc-500 flex items-center gap-1">N=
+                  <input type="number" min={1} max={7} value={w.builtin.homeroomDailyMax.n}
+                    onChange={e => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, n: Number(e.target.value) || 5 } })}
+                    className="input py-0.5 text-xs w-14 text-center" />
+                </label>
+                <LevelPicker value={w.builtin.homeroomDailyMax.level} onChange={l => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, level: l } })} />
+              </div>
+            )}
           </div>
         ))}
 

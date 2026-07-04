@@ -108,7 +108,8 @@ export interface BuiltinRules {
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
-  homeroomBalance: WeightLevel                    // 班級科任課每日平衡（導師留白每日分布平均）
+  homeroomBalance: WeightLevel                    // 班級科任課每日平衡＝導師的每日負擔平衡（留白分散）
+  homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
   artBiweekly: { enabled: boolean; grades: number[] }  // 視藝單雙週連堂（占固定兩格，藝術週/導師週輪替；單週組起始 1,3,5、雙週組 2,4,6）
 }
 
@@ -149,6 +150,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomPrefer: 'high',
       homeroomMorning: 'mid',
       homeroomBalance: 'low',
+      homeroomDailyMax: { level: 'high', n: 5 },
       artBiweekly: { enabled: true, grades: [4, 6] },
     },
     templates: [
@@ -190,6 +192,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
       homeroomBalance: normLevel(b.homeroomBalance, db.homeroomBalance),
+      homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
       artBiweekly: {
         enabled: b.artBiweekly?.enabled !== false,
         grades: Array.isArray(b.artBiweekly?.grades) ? b.artBiweekly!.grades.map(Number) : [...db.artBiweekly.grades],
