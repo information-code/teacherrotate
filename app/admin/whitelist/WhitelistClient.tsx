@@ -107,7 +107,35 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     })
     const data = await res.json()
     setSaving(false)
-    if (!res.ok) { setEditError(data.error ?? '儲存失敗'); return }
+    if (!res.ok) {
+      // 待聘帳號撞到既有老師 → 詢問是否合併（配課帶過去、引用改指、刪除待聘帳號）
+      if (data.canMerge) {
+        const ok = confirm(
+          `此 Email 屬於既有老師「${data.conflictName ?? '（未知）'}」。\n\n` +
+          `要將此待聘帳號合併過去嗎？\n` +
+          `・配課資料轉移給既有老師（同年度以待聘帳號的配課為準）\n` +
+          `・配班、排課、撕榜引用全部改指既有老師\n` +
+          `・待聘帳號隨後刪除（無法復原）`,
+        )
+        if (!ok) return
+        setSaving(true)
+        const res2 = await fetch('/api/admin/whitelist', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, email: editEmail, merge: true }),
+        })
+        const data2 = await res2.json()
+        setSaving(false)
+        if (!res2.ok) { setEditError(data2.error ?? '合併失敗'); return }
+        setEntries(prev => prev.filter(e => e.id !== id))
+        setEditingId(null)
+        alert(`已合併到「${data2.target?.name ?? ''}」，待聘帳號已刪除。`)
+        router.refresh()
+        return
+      }
+      setEditError(data.error ?? '儲存失敗')
+      return
+    }
     setEntries(prev => prev.map(e => e.id === id ? { ...e, email: data.email, name: data.name ?? e.name } : e))
     setEditingId(null)
     router.refresh()

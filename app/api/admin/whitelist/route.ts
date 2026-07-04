@@ -127,14 +127,46 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // email 異動（虛擬帳號轉正時可同時更新姓名）
-  const { email, name: newName } = body
+  // email 異動（虛擬帳號轉正時可同時更新姓名；merge=true 為合併到既有帳號）
+  const { email, name: newName, merge } = body
   if (!email?.trim()) return NextResponse.json({ error: 'email 為必填' }, { status: 400 })
+  const normEmail = email.trim().toLowerCase()
+
+  const { data: current } = await admin.from('profiles').select('id, email').eq('id', id).maybeSingle()
+  if (!current) return NextResponse.json({ error: '帳號不存在' }, { status: 404 })
+  const isVirtual = Boolean(current.email?.endsWith(VIRTUAL_EMAIL_DOMAIN))
+
+  // 合併：待聘（虛擬）帳號 → 既有老師。把配課帶過去（同年度以待聘帳號為準）、
+  // 配班/排課/撕榜 JSON 引用改指既有帳號，最後刪除虛擬帳號。
+  if (merge === true) {
+    if (!isVirtual) return NextResponse.json({ error: '僅待聘帳號可合併' }, { status: 400 })
+    const { data: target } = await admin.from('profiles').select('id, name, email').eq('email', normEmail).maybeSingle()
+    if (!target) return NextResponse.json({ error: '找不到該 Email 的既有帳號' }, { status: 404 })
+    if (target.id === id) return NextResponse.json({ error: '不可合併到自己' }, { status: 400 })
+
+    const { data: vAllocs } = await admin.from('allocation').select('year, data').eq('teacher_id', id)
+    for (const row of vAllocs ?? []) {
+      const { error: e1 } = await admin.from('allocation').upsert(
+        { year: row.year, teacher_id: target.id, data: row.data },
+        { onConflict: 'year,teacher_id' },
+      )
+      if (e1) return NextResponse.json({ error: `配課轉移失敗：${e1.message}` }, { status: 500 })
+    }
+    await admin.from('allocation').delete().eq('teacher_id', id)
+
+    const { error: e2 } = await admin.rpc('relink_profile_refs', { old_id: id, new_id: target.id })
+    if (e2) return NextResponse.json({ error: `引用轉移失敗：${e2.message}` }, { status: 500 })
+
+    const { error: e3 } = await admin.from('profiles').delete().eq('id', id)
+    if (e3) return NextResponse.json({ error: `刪除待聘帳號失敗：${e3.message}` }, { status: 500 })
+
+    return NextResponse.json({ merged: true, target })
+  }
 
   const { data, error } = await admin
     .from('profiles')
     .update({
-      email: email.trim().toLowerCase(),
+      email: normEmail,
       ...(typeof newName === 'string' && newName.trim() ? { name: newName.trim() } : {}),
     })
     .eq('id', id)
@@ -143,6 +175,15 @@ export async function PATCH(request: NextRequest) {
 
   if (error) {
     if (error.code === '23505') {
+      // 待聘帳號撞到既有帳號 → 回傳可合併資訊，讓前端詢問
+      if (isVirtual) {
+        const { data: exist } = await admin.from('profiles').select('name').eq('email', normEmail).maybeSingle()
+        return NextResponse.json({
+          error: '此 Email 已被其他帳號使用',
+          canMerge: true,
+          conflictName: exist?.name ?? null,
+        }, { status: 409 })
+      }
       return NextResponse.json({ error: '此 Email 已被其他帳號使用' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
