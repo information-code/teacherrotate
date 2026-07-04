@@ -430,6 +430,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const tplAvoid = input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
   const tplNoConsec = input.weights.templates.filter(t => t.template === 'noConsecDays' && t.level !== 'off')
   const tplTime = input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
+  const tplDouble = input.weights.templates.filter(t => t.template === 'doublePeriod' && t.level !== 'off')
   const matches = (t: TemplateRule, l: EngineLesson) =>
     t.subjects.includes(l.subject) && (t.grades.length === 0 || t.grades.includes(l.grade))
 
@@ -485,6 +486,20 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         for (const t of tplNoConsec) {
           if (t.subjects.includes(subject) && (t.grades.length === 0 || t.grades.includes(arr[0].l.grade))) {
             acc(map, `tpl-consec-${t.id}`, `不連續日：${t.subjects.join('、')}`, pen(t.level), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}`)
+          }
+        }
+      }
+    }
+    // 連堂模板權重＝該科「連堂與單節不同天」的強度（2+1 結構本身於組裝時保證）
+    {
+      const dbl0 = arr.filter(x => x.l.size === 2 && x.l.parity === 'weekly')
+      const sgl0 = arr.filter(x => x.l.size === 1)
+      if (dbl0.length && sgl0.length) {
+        for (const t of tplDouble) {
+          if (!t.subjects.includes(subject) || (t.grades.length > 0 && !t.grades.includes(arr[0].l.grade))) continue
+          for (const d0 of dbl0) {
+            const n = sgl0.filter(s0 => s0.p.day === d0.p.day).length
+            if (n > 0) acc(map, `tpl-dbl-${t.id}`, `連堂單節不同天：${t.subjects.join('、')}`, pen(t.level) * n, `${labelOf(key2)} ${subject} 連堂與單節同在週${DAY_ZH[d0.p.day]}`)
           }
         }
       }

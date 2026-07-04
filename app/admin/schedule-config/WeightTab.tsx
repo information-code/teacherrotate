@@ -280,7 +280,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                 </div>
               )}
               {t.template === 'doublePeriod' && (
-                <p className="text-[11px] text-zinc-400 pl-10">該科每週節數中取兩節排成一組連堂，其餘單節。</p>
+                <p className="text-[11px] text-zinc-400 pl-10">該科每週節數中取兩節排成一組連堂（2＋1 結構為硬性保證，不會拆散）；權重＝「連堂與單節必須排在不同天」的強度。</p>
               )}
               {t.template === 'noConsecDays' && (
                 <p className="text-[11px] text-zinc-400 pl-10">同班該科不排在連續兩天（如週二有體育，週一週三就避開）。</p>
