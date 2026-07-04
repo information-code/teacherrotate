@@ -6,6 +6,7 @@ import {
   GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, ADMIN_KIND_LABEL,
   gradeDemand, planTotal, sortSubjects, type AllocationConfig, type GradeConfig, type GradeScenario, type AllocationPlan, type Reduction,
 } from '@/lib/allocation'
+import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 
 interface Props {
   year: number
@@ -25,6 +26,9 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
   const [grade, setGrade] = useState<number>(1)
   const [dirty, setDirty] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+
+  // 尚未儲存（或儲存中）離開頁面要確認
+  useUnsavedGuard(dirty || saveStatus === 'saving')
 
   const g = config.grades[grade]
 

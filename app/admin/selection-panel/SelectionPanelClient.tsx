@@ -8,6 +8,7 @@ import {
   ADMIN_GROUPS, SUBJECT_AREAS, HOMEROOM_SLOTS, HOMEROOM_INPUT_PAIRS,
   DEFAULT_QUOTAS, MIDLOW_LIMIT, subjectDisplayLabel, type Quotas,
 } from '@/lib/selection-slots'
+import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import type { PanelTeacher } from './page'
 
 interface Props {
@@ -54,6 +55,9 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
       return false
     }
   }
+
+  // 自動儲存尚未完成時，離開頁面要確認
+  useUnsavedGuard(saveStatus === 'saving')
 
   function resetAll() {
     if (!confirm('確定要清空所有名額設定與已分配教師？此操作無法復原。')) return

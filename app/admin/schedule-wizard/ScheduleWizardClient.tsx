@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { assembleEngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
+import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -33,6 +34,12 @@ export default function ScheduleWizardClient(props: Props) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
+
+  // 排課進行中或結果尚未儲存時，離開頁面要確認
+  useUnsavedGuard(
+    running || (result !== null && saveStatus !== 'saved'),
+    '排課仍在進行或結果尚未儲存，離開將遺失本次排課結果。確定要離開嗎？',
+  )
 
   const { input, preflight } = useMemo(
     () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours }),

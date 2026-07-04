@@ -6,6 +6,7 @@ import {
   classKey, classLabel, type ScheduleConfig, type Band,
 } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
+import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import SubjectAssignTab from './SubjectAssignTab'
 import RoomTab from './RoomTab'
 import LockTab from './LockTab'
@@ -39,7 +40,7 @@ const TABS: { key: TabKey; label: string }[] = [
 export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
   const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // 自動儲存（debounce）
   const firstRun = useRef(true)
@@ -48,16 +49,19 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
     setSaveStatus('saving')
     const t = setTimeout(async () => {
       try {
-        await fetch('/api/admin/schedule-config', {
+        const res = await fetch('/api/admin/schedule-config', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ year, config }),
         })
-        setSaveStatus('saved')
-      } catch { setSaveStatus('idle') }
+        setSaveStatus(res.ok ? 'saved' : 'error')
+      } catch { setSaveStatus('error') }
     }, 600)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
+
+  // 儲存未完成（或失敗）時，離開頁面要確認，避免變更遺失
+  useUnsavedGuard(saveStatus === 'saving' || saveStatus === 'error')
 
   function toggleCell(band: Band, day: number, period: number) {
     setConfig(c => {
@@ -83,6 +87,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
         </div>
         {saveStatus === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
         {saveStatus === 'saved' && <span className="text-xs text-green-600">✓ 已自動儲存</span>}
+        {saveStatus === 'error' && <span className="text-xs text-red-600">⚠ 儲存失敗，請檢查網路（變更尚未寫入，請勿離開）</span>}
       </div>
 
       {/* 分頁列 */}
