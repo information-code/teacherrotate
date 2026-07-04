@@ -17,6 +17,9 @@ interface Props {
 export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandByGradeSubject }: Props) {
   const router = useRouter()
   const [teachers, setTeachers] = useState<TeacherStat[]>(initial)
+  // 「重新整理」按鈕靠 router.refresh() 抓新資料，但 useState(initial) 只在掛載時讀一次，
+  // props 更新後必須同步進 state，否則新增的老師（如補建工作紀錄者）不會出現在名單
+  useEffect(() => { setTeachers(initial) }, [initial])
   const [reduction, setReduction] = useState<Reduction>(0)
   const [view, setView] = useState<string>('1') // '1'..'6' | 'subj:<領域>' | 'admin'
   const [savingId, setSavingId] = useState<string | null>(null)
