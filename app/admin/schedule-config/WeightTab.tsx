@@ -16,14 +16,14 @@ interface Props {
   gradeSubjects: Record<number, GradeSubject[]>
 }
 
-/** 五段權重選鈕。 */
+/** 四段權重選鈕（關/低/中/高）。硬性要求一律列為固定硬限制，不提供「必須」。 */
 function LevelPicker({ value, onChange }: { value: WeightLevel; onChange: (l: WeightLevel) => void }) {
   return (
     <div className="flex rounded-sm border border-zinc-200 overflow-hidden flex-shrink-0">
       {WEIGHT_LEVELS.map(l => (
         <button key={l} onClick={() => onChange(l)}
           className={`px-2 py-1 text-xs ${value === l
-            ? l === 'must' ? 'bg-red-600 text-white' : l === 'off' ? 'bg-zinc-400 text-white' : 'bg-zinc-700 text-white'
+            ? l === 'off' ? 'bg-zinc-400 text-white' : 'bg-zinc-700 text-white'
             : 'bg-white text-zinc-500 hover:bg-zinc-50'}`}>
           {WEIGHT_LEVEL_LABEL[l]}
         </button>
@@ -57,9 +57,8 @@ const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; na
   {
     title: '科任教師課表',
     rows: [
-      { key: 'compact', name: '減少零碎空堂', desc: '科任課盡量緊湊，避免上一節空一節' },
+      { key: 'compact', name: '減少零碎空堂', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
       { key: 'dayBalance', name: '每日負擔平衡', desc: '避免科任老師某天塞滿、某天全空' },
-      { key: 'batchType', name: '連堂日與單節日分開', desc: '老師某天有連堂課，那天就盡量都排連堂、不混單節課。例：自然老師週一上滿各班連堂（實驗），週四上滿各班單節（講述），備一次課用一整天' },
       { key: 'blockSplit', name: '連堂與單節隔半週', desc: '同一班同一科的連堂和單節，一個排週一～三、另一個排週三～五。例：3年1班自然連堂在週二、單節在週五，不會擠在同半週' },
       { key: 'walkCost', name: '走動成本', desc: '老師連續兩節要跑不同教室時，距離越遠扣越多。例：第2節在A區1樓、第3節要衝到B區3樓就會被扣分（距離依教室設定的相鄰關係計算）' },
     ],
@@ -67,9 +66,6 @@ const BUILTIN_GROUPS: { title: string; note?: string; rows: { key: SimpleKey; na
   {
     title: '班級課表',
     rows: [
-      { key: 'sameSubjectSameDay', name: '同科同日避免', desc: '同班同科一天不排兩次（連堂本身不算違反）' },
-      { key: 'subjectSpread', name: '同科隔天分散', desc: '同班同科盡量分散到不相鄰的天' },
-      { key: 'classCohesion', name: '科任課同日成塊', desc: '同班同一天（上、下午分開計）科任課與鎖課要連成一塊，不出現「導師、科任、導師、科任」交錯' },
       { key: 'roomPrefer', name: '專科教室優先', desc: '有對應教室的科目盡量排進專科教室，不夠時回原班上課' },
     ],
   },
@@ -123,8 +119,8 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
     <div className="space-y-4 max-w-4xl">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-zinc-400">
-          引擎只排科任課，所有規則都作用在「科任課的落點」。權重五段：關閉／低／中／高／必須；
-          「高」一項約抵「低」九項。<span className="text-amber-600">「必須」＝硬限制，排不下的課會列入未排清單，請謹慎使用。</span>
+          引擎只排科任課，所有規則都作用在「科任課的落點」。權重四段：關閉／低／中／高，「高」一項約抵「低」九項。
+          硬性要求（絕不違反）一律列在下方固定硬限制，不提供「必須」權重。
         </p>
         <span className="flex gap-2 flex-shrink-0">
           <button onClick={resetAll} className="btn btn-secondary text-xs py-0.5">恢復預設</button>
@@ -139,7 +135,11 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           <li>同班／同師／同教室同時段只有一堂課；只用年段可排課時段；避開鎖課格</li>
           <li>不排課標記的時段：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
           <li>永不連 7 節（連續授課絕對上限 6 節）</li>
-          <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
+          <li>科任老師單日課間空堂最多一段——任何老師絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
+          <li>同型態同日：老師同一天不混排連堂與單節（連堂日／單節日分開）</li>
+          <li>同科同日：同班同科一天最多一次（連堂本身不算）</li>
+          <li>同科不隔天：同班同科不排在相鄰兩天</li>
+          <li>科任課同日成塊：同班同日（上、下午各自計）科任課與鎖課連成一塊，導師課不被切碎</li>
         </ul>
       </div>
 

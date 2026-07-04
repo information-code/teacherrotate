@@ -169,13 +169,18 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         const wantsDouble = dblTemplates.some(t =>
           t.level !== 'off' && t.subjects.includes(s.name) && (t.grades.length === 0 || t.grades.includes(g)))
         let n = 0
-        if (wantsDouble && hours >= 2) {
+        // 連堂科目盡量成組：每 2 節一組連堂（如生活 6 節＝3 組連堂），
+        // 否則高節數科目無法滿足「同科不隔天」硬限制（每週最多 3 個落點）
+        let d2 = 0
+        while (wantsDouble && hours >= 2) {
           lessons.push({
-            id: `${key}|${s.name}|d`, classKey: key, grade: g, classLabel: classLabel(g, i),
+            id: `${key}|${s.name}|d${d2++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 2, parity: 'weekly',
           })
           hours -= 2
         }
+        // 落點數（連堂組數＋單節數）> 3 即無法滿足同科不隔天
+        if (d2 + hours > 3) preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週 ${d2 + hours} 個落點，超過「同科不隔天」硬限制的上限 3（一三五），必有未排。` })
         while (hours > 0) {
           lessons.push({
             id: `${key}|${s.name}|s${n++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
@@ -295,7 +300,65 @@ class State {
     if (this.teacherRunAfter(l, p) > 6) return false
     // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
     if (this.teacherGapSegsAfter(l, p) > 1) return false
+    // 硬限制：同班同科同日禁止、相鄰日禁止（連堂自身除外）
+    if (this.subjectDayConflict(l, p)) return false
+    // 硬限制：同型態同日——老師同日連堂與單節不混
+    if (this.batchMixConflict(l, p)) return false
+    // 硬限制：科任課同日成塊（上、下午各自連成一塊）
+    if (this.cohesionConflict(l, p)) return false
     return true
+  }
+
+  /** 同班同科已排在同日或相鄰日？ */
+  private subjectDayConflict(l: EngineLesson, p: Placement): boolean {
+    const cOcc = this.classOcc.get(l.classKey)!
+    for (const [slot, id] of Array.from(cOcc)) {
+      if (id === l.id) continue
+      const other = this.lessonById.get(id)!
+      if (other.subject !== l.subject) continue
+      const d = Number(slot.split('-')[0])
+      if (Math.abs(d - p.day) <= 1) return true
+    }
+    return false
+  }
+
+  /** 老師該日已有不同型態（連堂 vs 單節）的課？（週型感知） */
+  private batchMixConflict(l: EngineLesson, p: Placement): boolean {
+    const tOcc = this.teacherOcc.get(l.teacherId)!
+    const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
+    for (let q = 1; q <= 7; q++) {
+      const cell = tOcc.get(`${p.day}-${q}`)
+      if (!cell) continue
+      const ids = new Set<string>()
+      if (cell.w) ids.add(cell.w)
+      for (const par of parities) { const v = par === 'o' ? cell.o : cell.e; if (v) ids.add(v) }
+      for (const id of Array.from(ids)) {
+        if (id === l.id) continue
+        if (this.lessonById.get(id)!.size !== l.size) return true
+      }
+    }
+    return false
+  }
+
+  /** 放置後該班該日的上／下午內，科任課＋鎖課是否裂成多塊？ */
+  private cohesionConflict(l: EngineLesson, p: Placement): boolean {
+    const cOcc = this.classOcc.get(l.classKey)!
+    const locks = this.input.lockedCells[l.classKey] ?? {}
+    const avail = this.input.classSlots[l.classKey] ?? []
+    const newSlots = this.slotsOf(l, p)
+    for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
+      if (!newSlots.some(s => seg.includes(parseSlotKey(s).period))) continue
+      let blocks = 0, inBlock = false
+      for (const q of seg) {
+        const k = `${p.day}-${q}`
+        const teachable = avail.includes(k) || k in locks
+        if (!teachable) { inBlock = false; continue }
+        const taken = cOcc.has(k) || k in locks || newSlots.includes(k)
+        if (taken) { if (!inBlock) blocks++; inBlock = true } else inBlock = false
+      }
+      if (blocks > 1) return true
+    }
+    return false
   }
 
   /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。 */
@@ -493,19 +556,19 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   byClassSubject.forEach((arr, k) => {
     const [key2, subject] = k.split('|')
     const days = arr.map(x => x.p.day)
-    // 同科同日
-    if (w.sameSubjectSameDay !== 'off') {
+    // 硬限制安全網：同科同日
+    {
       const cnt: Record<number, number> = {}
       for (const d of days) cnt[d] = (cnt[d] ?? 0) + 1
       for (const [d, n] of Object.entries(cnt)) if (n > 1) {
-        acc(map, 'sameSubjectSameDay', '同科同日避免', pen(w.sameSubjectSameDay) * (n - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${n} 次`)
+        acc(map, 'sameSubjectSameDay', '同科同日（硬限制）', MUST * (n - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${n} 次`)
       }
     }
-    // 同科隔天分散＋模板不連續日
+    // 硬限制安全網：同科不隔天（相鄰兩日禁止）；模板不連續日已被硬限制涵蓋，保留供未來例外
     const uniq = Array.from(new Set(days)).sort()
     for (let i = 1; i < uniq.length; i++) {
       if (uniq[i] - uniq[i - 1] === 1) {
-        if (w.subjectSpread !== 'off') acc(map, 'subjectSpread', '同科隔天分散', pen(w.subjectSpread), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
+        acc(map, 'subjectSpread', '同科不隔天（硬限制）', MUST, `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
         for (const t of tplNoConsec) {
           if (t.subjects.includes(subject) && (t.grades.length === 0 || t.grades.includes(arr[0].l.grade))) {
             acc(map, `tpl-consec-${t.id}`, `不連續日：${t.subjects.join('、')}`, pen(t.level), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}`)
@@ -540,28 +603,25 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
-  // 科任課同日成塊：同班同日（上、下午各自計）科任課＋鎖課須連成一塊，
-  // 不出現「導師、科任、導師、科任」交錯
-  if (w.classCohesion !== 'off') {
-    for (const c of input.classes) {
-      const occ = st.classOcc.get(c.classKey)!
-      const avail = new Set(input.classSlots[c.classKey] ?? [])
-      const locks = input.lockedCells[c.classKey] ?? {}
-      for (const d of SCHEDULE_DAYS) {
-        for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
-          let blocks = 0, inBlock = false
-          for (const q of seg) {
-            const k = `${d}-${q}`
-            const teachable = avail.has(k) || k in locks
-            if (!teachable) { inBlock = false; continue }
-            const taken = occ.has(k) || k in locks   // 科任課或鎖課＝非導師
-            if (taken) { if (!inBlock) blocks++; inBlock = true }
-            else inBlock = false
-          }
-          if (blocks > 1) {
-            acc(map, 'classCohesion', '科任課同日成塊', pen(w.classCohesion) * (blocks - 1),
-              `${c.label} 週${DAY_ZH[d]}${seg[0] === 1 ? '上午' : '下午'}科任課分成 ${blocks} 塊（與導師課交錯）`)
-          }
+  // 硬限制安全網：科任課同日成塊——同班同日（上、下午各自計）科任課＋鎖課須連成一塊
+  for (const c of input.classes) {
+    const occ = st.classOcc.get(c.classKey)!
+    const avail = new Set(input.classSlots[c.classKey] ?? [])
+    const locks = input.lockedCells[c.classKey] ?? {}
+    for (const d of SCHEDULE_DAYS) {
+      for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
+        let blocks = 0, inBlock = false
+        for (const q of seg) {
+          const k = `${d}-${q}`
+          const teachable = avail.has(k) || k in locks
+          if (!teachable) { inBlock = false; continue }
+          const taken = occ.has(k) || k in locks   // 科任課或鎖課＝非導師
+          if (taken) { if (!inBlock) blocks++; inBlock = true }
+          else inBlock = false
+        }
+        if (blocks > 1) {
+          acc(map, 'classCohesion', '科任課同日成塊（硬限制）', MUST * (blocks - 1),
+            `${c.label} 週${DAY_ZH[d]}${seg[0] === 1 ? '上午' : '下午'}科任課分成 ${blocks} 塊（與導師課交錯）`)
         }
       }
     }
@@ -636,8 +696,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
-  // 同型態同日（老師當日連堂/單節不混）
-  if (w.batchType !== 'off') {
+  // 硬限制安全網：同型態同日（老師當日連堂/單節不混）
+  {
     const byTeacherDay = new Map<string, { dbl: number; sgl: number }>()
     for (const { l, p } of placedLessons) {
       const k = `${l.teacherId}|${p.day}`
@@ -648,7 +708,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     byTeacherDay.forEach((e, k) => {
       if (e.dbl > 0 && e.sgl > 0) {
         const [tid, d] = k.split('|')
-        acc(map, 'batchType', '同型態同日', pen(w.batchType), `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂與單節混排`)
+        acc(map, 'batchType', '同型態同日（硬限制）', MUST, `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂與單節混排`)
       }
     })
   }
@@ -948,6 +1008,8 @@ export class EngineRun {
     while (Date.now() < end) {
       this.iterations++
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
+      if (this.iterations % 8 === 4) { this.tryPlaceUnplacedWithEject(); continue }
+      if (this.rnd() < 0.3) { this.trySwap(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
       const oldP = this.st.pos.get(l.id) ?? null
       if (oldP) this.st.remove(l)
@@ -964,6 +1026,96 @@ export class EngineRun {
         } else this.st.remove(l)
       }
       if (!moved && oldP) this.st.place(l, oldP)
+    }
+  }
+
+  /** 交換移動：同班或同師的兩堂同型態課互換位置（硬限制緊繃時比單堂移動有效）。 */
+  private trySwap() {
+    const placedIds = Array.from(this.st.pos.keys())
+    if (placedIds.length < 2) return
+    const id1 = placedIds[Math.floor(this.rnd() * placedIds.length)]
+    const l1 = this.st.lessonById.get(id1)!
+    const p1 = this.st.pos.get(id1)!
+    const partners: string[] = []
+    for (const id of placedIds) {
+      if (id === id1) continue
+      const l = this.st.lessonById.get(id)!
+      if (l.size === l1.size && l.parity === l1.parity && (l.classKey === l1.classKey || l.teacherId === l1.teacherId)) partners.push(id)
+    }
+    if (!partners.length) return
+    const l2 = this.st.lessonById.get(partners[Math.floor(this.rnd() * partners.length)])!
+    const p2 = this.st.pos.get(l2.id)!
+    this.st.remove(l1); this.st.remove(l2)
+    let done = false
+    if (this.st.canPlace(l1, p2)) {
+      this.st.place(l1, p2)
+      if (this.st.canPlace(l2, p1)) {
+        this.st.place(l2, p1)
+        const sc = scoreState(this.st)
+        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); done = true }
+        else this.st.remove(l2)
+      }
+      if (!done) this.st.remove(l1)
+    }
+    if (!done) { this.st.place(l1, p1); this.st.place(l2, p2) }
+  }
+
+  /** 未排課逐出安插：把擋住老師的別班課搬走後放入未排課。 */
+  private tryPlaceUnplacedWithEject() {
+    const unplaced = this.input.lessons.filter(l => !this.st.pos.has(l.id))
+    if (!unplaced.length) return
+    const l = unplaced[Math.floor(this.rnd() * unplaced.length)]
+    const avail = this.input.classSlots[l.classKey] ?? []
+    const cOcc = this.st.classOcc.get(l.classKey)!
+    const blockedT = this.input.teacherBlocked[l.teacherId] ?? []
+    const start = Math.floor(this.rnd() * Math.max(1, avail.length))
+    for (let k = 0; k < avail.length; k++) {
+      const p = parseSlotKey(avail[(start + k) % avail.length])
+      if (l.size === 2 && p.period >= 7) continue
+      if (l.parity === 'odd' && ![1, 3, 5].includes(p.period)) continue
+      if (l.parity === 'even' && ![2, 4, 6].includes(p.period)) continue
+      const slots = this.st.slotsOf(l, p)
+      if (!slots.every(x => avail.includes(x) && !cOcc.has(x) && !blockedT.includes(x))) continue
+      if (this.st.canPlace(l, p)) {
+        this.st.place(l, p)
+        const sc = scoreState(this.st)
+        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        this.st.remove(l)
+        continue
+      }
+      // 教師衝堂 → 逐出（最多 2 堂，不動已覆蓋必排格的課）
+      const tOcc = this.st.teacherOcc.get(l.teacherId)!
+      const blockers = new Set<string>()
+      for (const x of slots) {
+        const cell = tOcc.get(x)
+        if (!cell) continue
+        const ids = [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]
+        for (const id of ids) if (id && id !== l.id) blockers.add(id)
+      }
+      if (blockers.size === 0 || blockers.size > 2) continue
+      const moved: { bl: EngineLesson; from: Placement }[] = []
+      let fail = false
+      for (const bid of Array.from(blockers)) {
+        const bl = this.st.lessonById.get(bid)!
+        const from = this.st.pos.get(bid)
+        if (!from) { fail = true; break }
+        const bMust = this.mustSetByClass.get(bl.classKey)
+        if (bMust && this.st.slotsOf(bl, from).some(x => bMust.has(x))) { fail = true; break }
+        this.st.remove(bl); moved.push({ bl, from })
+        const cands = this.st.candidates(bl).filter(pp => !this.st.slotsOf(bl, pp).some(x => slots.includes(x)))
+        if (!cands.length) { fail = true; break }
+        this.st.place(bl, cands[Math.floor(this.rnd() * cands.length)])
+      }
+      if (!fail && this.st.canPlace(l, p)) {
+        this.st.place(l, p)
+        const sc = scoreState(this.st)
+        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        this.st.remove(l)
+      }
+      for (const m of moved.reverse()) {
+        if (this.st.pos.has(m.bl.id)) this.st.remove(m.bl)
+        this.st.place(m.bl, m.from)
+      }
     }
   }
 

@@ -89,8 +89,10 @@ export const SUBJECT_ROOM_PRESETS = [
 // 引擎只排科任課，所有規則的作用對象都是「科任課的落點」；保護導師是部分規則的目的，不是機制。
 // 權重五段：關/低/中/高/必須 → 罰分 0/1/3/9/硬限制（指數型，高一項抵低九項）。
 
+// 權重四段：關/低/中/高。硬性要求一律列為固定硬限制（引擎絕不違反），不提供「必須」權重。
+// type 仍保留 'must' 以相容舊資料，normalize 時自動降為 'high'。
 export type WeightLevel = 'off' | 'low' | 'mid' | 'high' | 'must'
-export const WEIGHT_LEVELS: WeightLevel[] = ['off', 'low', 'mid', 'high', 'must']
+export const WEIGHT_LEVELS: WeightLevel[] = ['off', 'low', 'mid', 'high']
 export const WEIGHT_LEVEL_LABEL: Record<WeightLevel, string> = { off: '關閉', low: '低', mid: '中', high: '高', must: '必須' }
 export const WEIGHT_PENALTY: Record<WeightLevel, number> = { off: 0, low: 1, mid: 3, high: 9, must: Infinity }
 
@@ -98,13 +100,11 @@ export const WEIGHT_PENALTY: Record<WeightLevel, number> = { off: 0, low: 1, mid
 export interface BuiltinRules {
   dailyMax: { level: WeightLevel; n: number }     // 科任每日節數上限 N
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
-  compact: WeightLevel                            // 減少零碎空堂
+  compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
   dayBalance: WeightLevel                         // 教師每日負擔平衡
-  batchType: WeightLevel                          // 同型態同日：連堂日／單節日不混
   blockSplit: WeightLevel                         // 連堂與單節分屬前半週（一二三）／後半週（三四五）
-  sameSubjectSameDay: WeightLevel                 // 同班同科同日避免
-  subjectSpread: WeightLevel                      // 同科隔天分散
-  classCohesion: WeightLevel                      // 科任課同日成塊：不出現「導師、科任、導師、科任」交錯（上、下午各自計）
+  // 已升級為固定硬限制（2026-07-04 使用者拍板，不再是權重）：
+  //   同型態同日（連堂日/單節日不混）、同科同日、同科不隔天、科任課同日成塊
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
@@ -141,11 +141,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       consecMax: { level: 'high', n: 3 },
       compact: 'low',
       dayBalance: 'low',
-      batchType: 'mid',
       blockSplit: 'mid',
-      sameSubjectSameDay: 'high',
-      subjectSpread: 'mid',
-      classCohesion: 'must',
       walkCost: 'mid',
       roomPrefer: 'high',
       homeroomMorning: 'mid',
@@ -168,6 +164,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
 
 const WEIGHT_LEVEL_SET = new Set<string>(WEIGHT_LEVELS)
 function normLevel(v: unknown, fallback: WeightLevel): WeightLevel {
+  if (v === 'must') return 'high'   // 舊資料的「必須」一律降為「高」（硬性要求已改為固定硬限制）
   return WEIGHT_LEVEL_SET.has(String(v)) ? v as WeightLevel : fallback
 }
 
@@ -183,11 +180,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
       dayBalance: normLevel(b.dayBalance, db.dayBalance),
-      batchType: normLevel(b.batchType, db.batchType),
       blockSplit: normLevel(b.blockSplit, db.blockSplit),
-      sameSubjectSameDay: normLevel(b.sameSubjectSameDay, db.sameSubjectSameDay),
-      subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
-      classCohesion: normLevel(b.classCohesion, db.classCohesion),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
