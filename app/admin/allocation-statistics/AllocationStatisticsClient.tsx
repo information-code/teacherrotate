@@ -236,10 +236,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const meta = gradesMeta[grade]
         const subjects = meta?.subjects ?? []
         const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-        // 導師（本班）目標 = 實際節數 + 自主超鐘（老師自願、自動計入；意願超鐘屬另填的核定超鐘，不計入本班目標）
+        // 導師（本班）目標 = 實際節數 + 自願超鐘（老師同意、自動計入；意願超鐘屬另填的核定超鐘，不計入本班目標）
         const actualPeriod = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0)
-        const autonomousOf = (t: TeacherStat) => t.data.autonomousOvertime?.[String(actualPeriod(t))] ?? 0
-        const target = (t: TeacherStat) => actualPeriod(t) + autonomousOf(t)
+        // 自願超鐘：優先取老師同意紀錄（鍵＝實際節數）。管理者核實調整專案減課後實際節數會改變、
+        // 對不到老師同意時的鍵 → 以「合計−實際」推得，但以老師曾同意的最大自願超鐘為上限
+        //（從未同意者維持 0，超配仍會被合計≠目標標紅）。
+        const autonomousOf = (t: TeacherStat, sum: number) => {
+          const rec = t.data.autonomousOvertime ?? {}
+          const exact = rec[String(actualPeriod(t))]
+          if (exact !== undefined) return Number(exact) || 0
+          const maxAgreed = Math.max(0, ...Object.values(rec).map(n => Number(n) || 0))
+          return Math.min(Math.max(0, sum - actualPeriod(t)), maxAgreed)
+        }
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
         return (
           <>
@@ -258,7 +266,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   {homeroomTeachers.length === 0 && <tr><td colSpan={subjects.length + 6} className="text-sm text-zinc-400 text-center py-3">此年級無導師資料（請先在撕榜套用工作紀錄）</td></tr>}
                   {homeroomTeachers.map(t => {
                     const sum = subjects.reduce((s, sub) => s + (Number(breakdown(t)[sub]) || 0), 0)
-                    const tgt = target(t)
+                    const auto = autonomousOf(t, sum)
+                    const tgt = actualPeriod(t) + auto
                     const ch = t.data.scenarios?.[rkey]
                     const tag = ch?.planName ? `方案：${ch.planName}` : (ch && Object.keys(ch.breakdown).length ? '自選' : '未填')
                     const mismatch = sum !== tgt
@@ -279,8 +288,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
                         <td className="text-center whitespace-nowrap"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
-                        <td className="text-center font-medium text-sky-700">{Math.max(0, sum - actualPeriod(t))}</td>
-                        {(() => { const auto = Math.max(0, sum - actualPeriod(t)); const cap = Math.max(0, 6 - auto); return (
+                        <td className="text-center font-medium text-sky-700">{auto}</td>
+                        {(() => { const cap = Math.max(0, 6 - auto); return (
                           <td className="text-center"><NumberInput min={0} max={cap} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(cap, Math.max(0, n)) }))} className="input w-11 text-center py-0.5 text-xs" /></td>
                         ) })()}
                       </tr>
