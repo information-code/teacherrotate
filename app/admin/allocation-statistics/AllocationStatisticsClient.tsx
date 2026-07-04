@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NumberInput } from '@/components/ui/NumberInput'
-import { GRADES, GRADE_LABEL, REDUCTIONS, REDUCTION_LABEL, PROJECT_PRESETS, adminKind, ADMIN_KIND_ORDER, orderSubjectNames, type Reduction } from '@/lib/allocation'
+import { GRADES, GRADE_LABEL, REDUCTION_LABEL, PROJECT_PRESETS, adminKind, ADMIN_KIND_ORDER, orderSubjectNames, type Reduction } from '@/lib/allocation'
 import type { TeacherStat, GradeMeta } from './page'
 
 interface Props {
@@ -12,15 +12,16 @@ interface Props {
   teachers: TeacherStat[]
   gradesMeta: Record<number, GradeMeta>
   demandByGradeSubject: Record<number, Record<string, number>>
+  reductions: number[]   // 配課設定有啟用的情境（未啟用者不列於下拉）
 }
 
-export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandByGradeSubject }: Props) {
+export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandByGradeSubject, reductions }: Props) {
   const router = useRouter()
   const [teachers, setTeachers] = useState<TeacherStat[]>(initial)
   // 「重新整理」按鈕靠 router.refresh() 抓新資料，但 useState(initial) 只在掛載時讀一次，
   // props 更新後必須同步進 state，否則新增的老師（如補建工作紀錄者）不會出現在名單
   useEffect(() => { setTeachers(initial) }, [initial])
-  const [reduction, setReduction] = useState<Reduction>(0)
+  const [reduction, setReduction] = useState<Reduction>((reductions[0] ?? 0) as Reduction)
   const [view, setView] = useState<string>('1') // '1'..'6' | 'subj:<領域>' | 'admin'
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -218,7 +219,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-500">情境（影響導師供給）</span>
           <select value={reduction} onChange={e => setReduction(Number(e.target.value) as Reduction)} className="input py-1 text-sm w-28">
-            {REDUCTIONS.map(r => <option key={r} value={r}>{REDUCTION_LABEL[r]}</option>)}
+            {reductions.map(r => <option key={r} value={r}>{REDUCTION_LABEL[r as Reduction]}</option>)}
           </select>
         </div>
         <div className="flex gap-1 flex-wrap items-center">

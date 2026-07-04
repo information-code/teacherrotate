@@ -76,6 +76,10 @@ export default async function AllocationStatisticsPage() {
     })
   }
 
+  // 情境下拉只列配課設定有啟用者（任一年級啟用即列；全都沒啟用則保留「無減課」）
+  const enabledReductions = ([0, 1, 2] as const).filter(r => GRADES.some(g => config.grades[g].scenarios[r].enabled))
+  const reductions = enabledReductions.length ? enabledReductions : [0]
+
   const gradesMeta: Record<number, GradeMeta> = {}
   const demandByGradeSubject: Record<number, Record<string, number>> = {}
   for (const g of GRADES) {
@@ -90,5 +94,5 @@ export default async function AllocationStatisticsPage() {
     demandByGradeSubject[g] = m
   }
 
-  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} reductions={reductions} />
 }
