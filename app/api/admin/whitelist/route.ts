@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'crypto'
+import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
+import { defaultTeacherAllocation } from '@/lib/allocation'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -41,25 +43,30 @@ export async function GET() {
   return NextResponse.json(result)
 }
 
-// POST: 新增教師（管理者預建 profile）
+// POST: 新增教師（管理者預建 profile）。
+// virtual=true 為「待聘（虛擬）帳號」：甄選未放榜先建帳號假性配課排課，
+// email 以占位格式產生，考上後改為真實信箱即轉正。
 export async function POST(request: NextRequest) {
   const caller = await requireAdmin()
   if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, email, employmentType } = await request.json()
-  if (!name?.trim() || !email?.trim()) {
+  const { name, email, employmentType, virtual, virtualRole, virtualGrade } = await request.json()
+  if (!name?.trim() || (!virtual && !email?.trim())) {
     return NextResponse.json({ error: '姓名與 Email 為必填' }, { status: 400 })
   }
 
   const admin = getAdminClient()
+  const finalEmail = virtual
+    ? `pending-${randomUUID().slice(0, 8)}${VIRTUAL_EMAIL_DOMAIN}`
+    : email.trim().toLowerCase()
   const { data, error } = await admin
     .from('profiles')
     .insert({
       id: randomUUID(),
       name: name.trim(),
-      email: email.trim().toLowerCase(),
+      email: finalEmail,
       role: 'teacher',
-      employment_type: employmentType === 'substitute' ? 'substitute' : 'formal',
+      employment_type: virtual || employmentType === 'substitute' ? 'substitute' : 'formal',
     })
     .select('id, name, email, employment_type, created_at')
     .single()
@@ -69,6 +76,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '此 Email 已存在' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // 虛擬帳號同時建立配課角色（代理導師/代理科任），讓配班與排課立即可用
+  if (virtual && data && (virtualRole === 'homeroom' || virtualRole === 'subject')) {
+    const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
+    const year = Number(settingsRows?.[0]?.value ?? 115)
+    const work = virtualRole === 'homeroom' ? '代理導師' : '代理科任'
+    const grade = virtualRole === 'homeroom' ? (Number(virtualGrade) || null) : null
+    await admin.from('allocation').upsert(
+      { year, teacher_id: data.id, data: JSON.parse(JSON.stringify(defaultTeacherAllocation(virtualRole, work, grade))) },
+      { onConflict: 'year,teacher_id' },
+    )
   }
 
   return NextResponse.json({ ...data, logged_in: false }, { status: 201 })
@@ -108,13 +127,16 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // email 異動
-  const { email } = body
+  // email 異動（虛擬帳號轉正時可同時更新姓名）
+  const { email, name: newName } = body
   if (!email?.trim()) return NextResponse.json({ error: 'email 為必填' }, { status: 400 })
 
   const { data, error } = await admin
     .from('profiles')
-    .update({ email: email.trim().toLowerCase() })
+    .update({
+      email: email.trim().toLowerCase(),
+      ...(typeof newName === 'string' && newName.trim() ? { name: newName.trim() } : {}),
+    })
     .eq('id', id)
     .select('id, name, email, role, created_at')
     .single()

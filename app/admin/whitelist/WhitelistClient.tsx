@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { isVirtualEmail } from '@/lib/utils'
+
+const GRADE_LABELS = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級']
 
 interface TeacherEntry {
   id: string
@@ -26,6 +29,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [employmentType, setEmploymentType] = useState<'formal' | 'substitute'>('formal')
+  const [virtualMode, setVirtualMode] = useState(false)          // 待聘（虛擬）帳號
+  const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom'>('subject')
+  const [virtualGrade, setVirtualGrade] = useState(1)
   const [addError, setAddError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [empTogglingId, setEmpTogglingId] = useState<string | null>(null)
@@ -33,9 +39,10 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   // 搜尋
   const [query, setQuery] = useState('')
 
-  // 編輯 email
+  // 編輯 email（虛擬帳號轉正時同時可改姓名）
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editEmail, setEditEmail] = useState('')
+  const [editName, setEditName] = useState('')
   const [editError, setEditError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -61,7 +68,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     const res = await fetch('/api/admin/whitelist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, employmentType }),
+      body: JSON.stringify(virtualMode
+        ? { name, virtual: true, virtualRole, virtualGrade: virtualRole === 'homeroom' ? virtualGrade : undefined }
+        : { name, email, employmentType }),
     })
     const data = await res.json()
     setSubmitting(false)
@@ -88,18 +97,18 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     router.refresh()
   }
 
-  async function handleSaveEmail(id: string) {
+  async function handleSaveEmail(id: string, withName: boolean) {
     setEditError('')
     setSaving(true)
     const res = await fetch('/api/admin/whitelist', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, email: editEmail }),
+      body: JSON.stringify(withName ? { id, email: editEmail, name: editName } : { id, email: editEmail }),
     })
     const data = await res.json()
     setSaving(false)
     if (!res.ok) { setEditError(data.error ?? '儲存失敗'); return }
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, email: data.email } : e))
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, email: data.email, name: data.name ?? e.name } : e))
     setEditingId(null)
     router.refresh()
   }
@@ -132,6 +141,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
 
   function renderRow(entry: TeacherEntry) {
     const isEditing = editingId === entry.id
+    const virtual = isVirtualEmail(entry.email)
     return (
       <div key={entry.id} className="py-2.5 border-b border-zinc-100 last:border-0">
         <div className="flex items-center justify-between gap-3">
@@ -141,26 +151,41 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
               {entry.role === 'admin' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-white rounded-sm">管理員</span>
               )}
+              {virtual && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-sm">待聘</span>
+              )}
               {entry.employment_type === 'substitute' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>
               )}
             </div>
             {isEditing ? (
-              <div className="mt-1.5 flex items-center gap-2">
+              <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                {virtual && (
+                  <input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="真實姓名"
+                    className="input text-xs py-1 w-28"
+                    autoFocus
+                  />
+                )}
                 <input
                   type="email"
                   value={editEmail}
                   onChange={e => setEditEmail(e.target.value)}
+                  placeholder={virtual ? '真實 Google Email' : ''}
                   className="input text-xs py-1"
-                  autoFocus
+                  autoFocus={!virtual}
                 />
-                <button onClick={() => handleSaveEmail(entry.id)} disabled={saving} className="btn-primary text-xs py-1 px-2 whitespace-nowrap">
-                  {saving ? '儲存中...' : '儲存'}
+                <button onClick={() => handleSaveEmail(entry.id, virtual)} disabled={saving} className="btn-primary text-xs py-1 px-2 whitespace-nowrap">
+                  {saving ? '儲存中...' : virtual ? '轉正' : '儲存'}
                 </button>
                 <button onClick={() => setEditingId(null)} className="text-xs text-zinc-400 hover:text-zinc-600">取消</button>
               </div>
             ) : (
-              <span className="text-xs text-zinc-400 ml-0">{entry.email}</span>
+              <span className="text-xs text-zinc-400 ml-0">
+                {virtual ? '尚未綁定 Email——考上後點「轉正」填入真實姓名與信箱' : entry.email}
+              </span>
             )}
             {isEditing && editError && <p className="text-xs text-red-500 mt-1">{editError}</p>}
           </div>
@@ -184,8 +209,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                   {entry.employment_type === 'substitute' ? '改正式' : '設為代理'}
                 </button>
               )}
-              <button onClick={() => { setEditingId(entry.id); setEditEmail(entry.email); setEditError('') }} className="text-xs text-zinc-400 hover:text-zinc-700">
-                改 Email
+              <button onClick={() => { setEditingId(entry.id); setEditEmail(virtual ? '' : entry.email); setEditName(virtual ? '' : (entry.name ?? '')); setEditError('') }}
+                className={`text-xs whitespace-nowrap ${virtual ? 'text-amber-600 hover:text-amber-700 font-medium' : 'text-zinc-400 hover:text-zinc-700'}`}>
+                {virtual ? '轉正' : '改 Email'}
               </button>
               <button
                 onClick={() => handleDelete(entry.id, entry.name)}
@@ -217,25 +243,53 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
       <div className="card">
         <h2 className="text-sm font-medium text-zinc-700 mb-3">新增教師帳號</h2>
         <form onSubmit={handleAdd} className="flex gap-2 items-end flex-wrap">
-          <div className="flex-1">
+          <div className="flex-1 min-w-32">
             <label className="block text-xs text-zinc-500 mb-1">姓名</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="王小明" required className="input" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={virtualMode ? '待聘代理A' : '王小明'} required className="input" />
           </div>
-          <div className="flex-[2]">
-            <label className="block text-xs text-zinc-500 mb-1">Google 登入 Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teacher@gmail.com" required className="input" />
-          </div>
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1">聘任別</label>
-            <select value={employmentType} onChange={e => setEmploymentType(e.target.value as 'formal' | 'substitute')} className="input">
-              <option value="formal">正式</option>
-              <option value="substitute">代理</option>
-            </select>
-          </div>
+          {!virtualMode && (
+            <>
+              <div className="flex-[2] min-w-48">
+                <label className="block text-xs text-zinc-500 mb-1">Google 登入 Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teacher@gmail.com" required className="input" />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">聘任別</label>
+                <select value={employmentType} onChange={e => setEmploymentType(e.target.value as 'formal' | 'substitute')} className="input">
+                  <option value="formal">正式</option>
+                  <option value="substitute">代理</option>
+                </select>
+              </div>
+            </>
+          )}
+          {virtualMode && (
+            <>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">預定職務</label>
+                <select value={virtualRole} onChange={e => setVirtualRole(e.target.value as 'subject' | 'homeroom')} className="input">
+                  <option value="subject">代理科任</option>
+                  <option value="homeroom">代理導師</option>
+                </select>
+              </div>
+              {virtualRole === 'homeroom' && (
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1">年級</label>
+                  <select value={virtualGrade} onChange={e => setVirtualGrade(Number(e.target.value))} className="input">
+                    {GRADE_LABELS.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
           <button type="submit" disabled={submitting} className="btn-primary whitespace-nowrap">
-            {submitting ? '新增中...' : '新增'}
+            {submitting ? '新增中...' : virtualMode ? '新增待聘帳號' : '新增'}
           </button>
         </form>
+        <label className="flex items-center gap-1.5 mt-2 text-xs text-zinc-500">
+          <input type="checkbox" checked={virtualMode} onChange={e => setVirtualMode(e.target.checked)} />
+          待聘（虛擬）帳號——甄選未放榜先建帳號假性配課排課，考上後點「轉正」填入真實姓名與 Email，
+          所有配課、配班、排課自動保留
+        </label>
         {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
       </div>
 

@@ -41,17 +41,22 @@ export async function GET(request: NextRequest) {
         if (!profile && user.email) {
           const byEmail = await admin
             .from('profiles')
-            .select('role')
+            .select('id, role')
             .eq('email', user.email)
             .maybeSingle()
           lookupFailed = lookupFailed || !!byEmail.error
 
           if (byEmail.data) {
-            // 將 profile.id 更新為真實 auth UUID（trigger 已處理，這裡是備援）
+            // 將 profile.id 更新為真實 auth UUID（trigger 已處理，這裡是備援），
+            // 並同步 JSON 引用（配班、排課、撕榜）
+            const oldId = byEmail.data.id
             await admin
               .from('profiles')
               .update({ id: user.id })
               .eq('email', user.email)
+            if (oldId && oldId !== user.id) {
+              await admin.rpc('relink_profile_refs', { old_id: oldId, new_id: user.id })
+            }
             profile = byEmail.data
           }
         }
