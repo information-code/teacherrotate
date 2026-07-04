@@ -91,7 +91,7 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
     <div className="space-y-4">
       <p className="text-xs text-zinc-400">
         依配課結果（科目 × 年級 × 節數）列出可授課教師，指定每班由誰授課；也可手動改派任何科任／行政教師。
-        「導師自上」＝該班該科由導師授課、不派科任。
+        「導師自上」＝該班該科由導師授課、不派科任。已派滿容量的老師（手動名單選過一次）不再出現在下拉。
       </p>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -149,6 +149,10 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         const homeroomName = nameOf(config.classTeacher[classKey(grade, i)] ?? '')
                         const warned = Boolean(val && val !== HOMEROOM_SELF && avoidMap[val]?.includes(grade))
                         const warnOf = (tid: string) => avoidMap[tid]?.includes(grade)
+                        // 選滿即隱藏：有配課者以容量計（已派 ≥ 容量），手動名單選過一次即消失；當前選中者仍顯示
+                        const capOf = (t: SubjectTeacher) => Math.max(1, Math.floor(hoursOf(t, s.name, grade) / s.perClass))
+                        const eligibleVisible = eligible.filter(t => t.id === val || assignedCount(t.id, s.name, grade) < capOf(t))
+                        const othersVisible = others.filter(t => t.id === val || assignedCount(t.id, s.name, grade) < 1)
                         return (
                           <label key={i} className="flex items-center gap-2 text-sm">
                             <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}</span>
@@ -156,14 +160,14 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                               className={`input py-1 text-sm flex-1 min-w-0 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                               <option value="">未指定</option>
                               <option value={HOMEROOM_SELF}>導師自上{homeroomName !== '？' ? `（${homeroomName}）` : ''}</option>
-                              {eligible.length > 0 && (
+                              {eligibleVisible.length > 0 && (
                                 <optgroup label="有配課">
-                                  {eligible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}
+                                  {eligibleVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}
                                 </optgroup>
                               )}
-                              {others.length > 0 && (
+                              {othersVisible.length > 0 && (
                                 <optgroup label="其他科任／行政（手動調整）">
-                                  {others.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}{warnOf(t.id) ? '（⚠ 子女在此年段）' : ''}</option>)}
+                                  {othersVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}{warnOf(t.id) ? '（⚠ 子女在此年段）' : ''}</option>)}
                                 </optgroup>
                               )}
                             </select>

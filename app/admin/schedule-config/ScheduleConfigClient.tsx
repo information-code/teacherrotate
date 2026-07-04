@@ -158,7 +158,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
       {/* ── 二、導師配班 ── */}
       {tab === 'homeroom' && (
         <section className="space-y-3">
-          <p className="text-xs text-zinc-400">指定每個班級的導師（排課時導師教自己班的配課科目）。</p>
+          <p className="text-xs text-zinc-400">指定每個班級的導師（排課時導師教自己班的配課科目）。已被選走的導師不會再出現在其他班的下拉。</p>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {GRADES.map(g => {
               const count = classCounts[g] ?? 0
@@ -177,13 +177,20 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
                     : Array.from({ length: count }, (_, i) => {
                       const val = config.classTeacher[classKey(g, i)] ?? ''
                       const warned = Boolean(val && avoidMap[val]?.includes(g))
+                      // 已被其他班選走的導師不再出現在下拉
+                      const usedElsewhere = new Set(
+                        Array.from({ length: count }, (_, j) => j)
+                          .filter(j => j !== i)
+                          .map(j => config.classTeacher[classKey(g, j)] ?? '')
+                          .filter(Boolean),
+                      )
                       return (
                         <label key={i} className="flex items-center gap-2 text-sm">
                           <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(g, i)}</span>
                           <select value={val} onChange={e => setClassTeacher(g, i, e.target.value)}
                             className={`input py-1 text-sm flex-1 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                             <option value="">未指定</option>
-                            {list.map(h => {
+                            {list.filter(h => h.id === val || !usedElsewhere.has(h.id)).map(h => {
                               const warn = avoidMap[h.id]?.includes(g)
                               return <option key={h.id} value={h.id} style={warn ? { color: '#b45309' } : undefined}>{h.name}{warn ? '（⚠ 子女在此年段）' : ''}</option>
                             })}
