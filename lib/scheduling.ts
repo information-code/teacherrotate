@@ -69,8 +69,9 @@ export type RoomKind = 'class' | 'subject' | 'native' | 'none'
 export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室', subject: '科任教室', native: '本土語言教室', none: '其他／未使用' }
 
 /** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）
- *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string }
+ *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）
+ *  ＋管理教師（managerId，選填）：排課時該教室優先給管理教師的課使用。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerId: string }
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
 export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
@@ -107,6 +108,7 @@ export interface BuiltinRules {
   // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
+  roomManagerFirst: WeightLevel                   // 教室管理教師優先：管理者必得自己的教室（結構保證）；非管理者用到有管理者的教室時扣分
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
   homeroomBalance: WeightLevel                    // 班級科任課每日平衡＝導師的每日負擔平衡（留白分散）
   homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
@@ -143,6 +145,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dayBalance: 'low',
       walkCost: 'mid',
       roomPrefer: 'high',
+      roomManagerFirst: 'mid',
       homeroomMorning: 'mid',
       homeroomBalance: 'low',
       homeroomDailyMax: { level: 'high', n: 5 },
@@ -180,6 +183,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       dayBalance: normLevel(b.dayBalance, db.dayBalance),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
+      roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
       homeroomBalance: normLevel(b.homeroomBalance, db.homeroomBalance),
       homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
@@ -310,7 +314,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                 id: String(rm.id ?? ''),
                 kind: (['class', 'subject', 'native', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
                 classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
-                subject: String(rm.subject ?? ''),
+                subject: String(rm.subject ?? ''), managerId: String(rm.managerId ?? ''),
               }))
             : [],
         }))

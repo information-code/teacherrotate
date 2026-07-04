@@ -223,7 +223,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
 
       {/* ── 四、教室設定 ── */}
       {tab === 'room' && (
-        <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
+        <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} subjectTeachers={subjectTeachers} />
       )}
 
       {/* ── 五、鎖課設定 ── */}

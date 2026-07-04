@@ -59,6 +59,7 @@ const RULE_ROWS: { key: SimpleKey | ParamKey; hasN?: boolean; name: string; tag:
   { key: 'consecMax', hasN: true, name: '連續授課上限', tag: '科任', def: '高', desc: '連上 N 節後應有空堂（另有固定硬限制：永不連 7）' },
   { key: 'homeroomDailyMax', hasN: true, name: '導師每日節數上限', tag: '導師', def: '高', desc: '每班每日留白 ≤ N 格，避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）' },
   { key: 'roomPrefer', name: '專科教室優先', tag: '教室', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班上課' },
+  { key: 'roomManagerFirst', name: '教室管理教師優先', tag: '教室', def: '中', desc: '管理教師的課必分到自己管理的教室（結構保證）；其他老師借用有管理者的教室時扣分，優先引導至無管理者的教室' },
   { key: 'walkCost', name: '走動成本', tag: '科任', def: '中', desc: '老師連續兩節跨教室，距離越遠扣越多（依教室設定的相鄰關係）' },
   { key: 'homeroomMorning', name: '上午留白給導師', tag: '導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午' },
   { key: 'compact', name: '減少零碎空堂', tag: '科任', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },

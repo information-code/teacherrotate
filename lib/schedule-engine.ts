@@ -25,7 +25,7 @@ export interface EngineLesson {
   parity: Parity
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; zone: number; index: number; zoneSize: number; ring: boolean }
+export interface RoomInfo { id: string; label: string; subject: string; managerId: string; zone: number; index: number; zoneSize: number; ring: boolean }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -236,7 +236,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring })
       }
       if (r.kind === 'class' && r.classKey) {
         classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring }
@@ -471,6 +471,41 @@ function acc(map: Map<string, Acc & { label: string }>, key: string, label: stri
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 function slotZh(day: number, period: number) { return `週${DAY_ZH[day]}第${period}節` }
 
+/** 教室分配（scoreState 與 finalize 共用）：管理教師必得自己的教室；
+ *  非管理者先用無管理者的教室、再用有管理者的（此時依權重扣分）。回傳 lessonId → roomId。 */
+function assignRooms(input: EngineInput, st: State): Map<string, string> {
+  const bySubject: Record<string, RoomInfo[]> = {}
+  for (const r of input.rooms) (bySubject[r.subject] ??= []).push(r)
+  const roomOf = new Map<string, string>()
+  const taken = new Map<string, Set<string>>()   // slotKey → roomIds
+  const entries: { l: EngineLesson; p: Placement }[] = []
+  st.pos.forEach((p, id) => {
+    const l = st.lessonById.get(id)!
+    if (bySubject[l.subject]) entries.push({ l, p })
+  })
+  entries.sort((a, b) => {
+    const am = bySubject[a.l.subject].some(r => r.managerId === a.l.teacherId) ? 0 : 1
+    const bm = bySubject[b.l.subject].some(r => r.managerId === b.l.teacherId) ? 0 : 1
+    if (am !== bm) return am - bm                 // 管理教師的課先分
+    return a.l.id < b.l.id ? -1 : 1
+  })
+  for (const { l, p } of entries) {
+    const rooms = bySubject[l.subject]
+    const slots = st.slotsOf(l, p)
+    const free = (r: RoomInfo) => slots.every(s => !(taken.get(s)?.has(r.id)))
+    const ordered = [
+      ...rooms.filter(r => r.managerId === l.teacherId),   // 自己管理的教室
+      ...rooms.filter(r => !r.managerId),                  // 無管理者的教室
+      ...rooms.filter(r => r.managerId && r.managerId !== l.teacherId),
+    ]
+    const room = ordered.find(free)
+    if (!room) continue
+    roomOf.set(l.id, room.id)
+    for (const s of slots) (taken.get(s) ?? taken.set(s, new Set()).get(s)!).add(room.id)
+  }
+  return roomOf
+}
+
 const UNPLACED_PEN = 1e5   // 每堂未排課的罰分：低於「必須」、高於一切軟規則，確保搜尋優先塞入
 
 export function scoreState(st: State): { total: number; soft: number; penalties: RulePenalty[]; uncovered: { classKey: string; slot: string }[] } {
@@ -481,26 +516,23 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const nameOf = (id: string) => input.teacherNames[id] ?? '？'
   const labelOf = (key2: string) => input.classes.find(c => c.classKey === key2)?.label ?? key2
 
-  // 教室容量：每時段每科目已用教室數（供 roomPrefer / 走動）
-  const roomCap: Record<string, number> = {}
-  for (const r of input.rooms) roomCap[r.subject] = (roomCap[r.subject] ?? 0) + 1
-  const roomUse = new Map<string, string[]>()   // `${slot}|${subject}` → lessonIds（先到先得）
+  // 教室分配：管理教師優先（結構）；roomPrefer＝分不到教室、roomManagerFirst＝借用他人管理的教室
   const placedLessons: { l: EngineLesson; p: Placement }[] = []
   st.pos.forEach((p, id) => placedLessons.push({ l: st.lessonById.get(id)!, p }))
   placedLessons.sort((a2, b2) => a2.l.id < b2.l.id ? -1 : 1)
-  const hasRoom = new Map<string, boolean>()
+  const roomOf = assignRooms(input, st)
+  const subjectHasRooms = new Set(input.rooms.map(r => r.subject))
+  const roomById = new Map(input.rooms.map(r => [r.id, r]))
   for (const { l, p } of placedLessons) {
-    if (!(l.subject in roomCap)) continue
-    for (const s of st.slotsOf(l, p)) {
-      const k = `${s}|${l.subject}`
-      const arr = roomUse.get(k) ?? []
-      if (!arr.includes(l.id)) arr.push(l.id)
-      roomUse.set(k, arr)
+    if (!subjectHasRooms.has(l.subject)) continue
+    const rid = roomOf.get(l.id)
+    if (!rid) {
+      if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
+      continue
     }
-    const got = st.slotsOf(l, p).every(s => (roomUse.get(`${s}|${l.subject}`) ?? []).indexOf(l.id) < roomCap[l.subject])
-    hasRoom.set(l.id, got)
-    if (!got && w.roomPrefer !== 'off') {
-      acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
+    const r = roomById.get(rid)!
+    if (w.roomManagerFirst !== 'off' && r.managerId && r.managerId !== l.teacherId) {
+      acc(map, 'roomManagerFirst', '教室管理教師優先', pen(w.roomManagerFirst), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 借用 ${r.label}（管理者非授課者）`)
     }
   }
 
@@ -686,13 +718,11 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 走動成本：老師連續兩節在不同位置
+  // 走動成本：老師連續兩節在不同位置（用實際分配到的教室）
   if (w.walkCost !== 'off') {
     const posOf = (l: EngineLesson): RoomInfo | { zone: number; index: number; zoneSize: number; ring: boolean } | null => {
-      if (hasRoom.get(l.id)) {
-        const r = input.rooms.find(x => x.subject === l.subject)
-        if (r) return r
-      }
+      const rid = roomOf.get(l.id)
+      if (rid) return roomById.get(rid)!
       return input.classRoom[l.classKey] ?? null
     }
     st.teacherOcc.forEach((occ, tid) => {
@@ -1112,25 +1142,13 @@ export class EngineRun {
 
     const placed: PlacedResult[] = []
     const unplaced: UnplacedResult[] = []
-    // 教室分配（與 scoreState 同邏輯：先到先得）
-    const roomCap: Record<string, RoomInfo[]> = {}
-    for (const r of this.input.rooms) (roomCap[r.subject] ??= []).push(r)
-    const roomTaken = new Map<string, Set<string>>()
+    // 教室分配（與 scoreState 同邏輯：管理教師優先）
+    const roomOf = assignRooms(this.input, st)
     const sorted: { l: EngineLesson; p: Placement }[] = []
     st.pos.forEach((p, id) => sorted.push({ l: st.lessonById.get(id)!, p }))
     sorted.sort((a, b) => a.l.id < b.l.id ? -1 : 1)
     for (const { l, p } of sorted) {
-      let roomId: string | null = null
-      const rooms = roomCap[l.subject] ?? []
-      const slots = st.slotsOf(l, p)
-      for (const r of rooms) {
-        if (slots.every(s => !(roomTaken.get(s)?.has(r.id)))) {
-          roomId = r.id
-          for (const s of slots) (roomTaken.get(s) ?? roomTaken.set(s, new Set()).get(s)!).add(r.id)
-          break
-        }
-      }
-      placed.push({ ...l, day: p.day, period: p.period, roomId })
+      placed.push({ ...l, day: p.day, period: p.period, roomId: roomOf.get(l.id) ?? null })
     }
     for (const l of this.input.lessons) {
       if (st.pos.has(l.id)) continue

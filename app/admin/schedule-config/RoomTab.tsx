@@ -6,22 +6,24 @@ import {
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
 } from '@/lib/scheduling'
 import { GRADES, orderSubjectNames } from '@/lib/allocation'
-import type { GradeSubject } from './page'
+import type { GradeSubject, SubjectTeacher } from './page'
 
 interface Props {
   config: ScheduleConfig
   setConfig: Dispatch<SetStateAction<ScheduleConfig>>
   classCounts: Record<number, number>
   gradeSubjects: Record<number, GradeSubject[]>
+  subjectTeachers: SubjectTeacher[]
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '' }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerId: '' }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
  *  用途：一、排課知道哪些教室彼此接近；二、統計科任教室數（每間一張科任教室課表）。 */
-export default function RoomTab({ config, setConfig, classCounts, gradeSubjects }: Props) {
+export default function RoomTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers }: Props) {
+  const managerOptions = [...subjectTeachers].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const zones = config.roomZones
   const [dragging, setDragging] = useState<{ zid: string; rid: string } | null>(null)
   const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
@@ -196,6 +198,11 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects 
                           title="對應科目：排課據此計算教室衝突與走動成本" className="input py-0.5 text-xs w-full">
                           <option value="">不綁科目</option>
                           {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <select value={r.managerId} onChange={e => updateRoom(z.id, r.id, { managerId: e.target.value })}
+                          title="管理教師：排課時此教室優先給管理教師的課使用" className="input py-0.5 text-xs w-full">
+                          <option value="">無管理教師</option>
+                          {managerOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                       </>
                     )}
