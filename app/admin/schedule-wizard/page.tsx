@@ -11,15 +11,29 @@ export default async function ScheduleWizardPage() {
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)
 
-  const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }] = await Promise.all([
+  const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }, { data: allocs }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     admin.from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin'),
     admin.from('schedule_plan').select('generated_at').eq('year', year).maybeSingle(),
+    admin.from('allocation').select('teacher_id, data').eq('year', year),
   ])
   const allocConfig = normalizeConfig(cfgRow?.config)
   const scheduleConfig = normalizeScheduleConfig(schRow?.config)
   const teacherNames = Object.fromEntries((profiles ?? []).map(p => [p.id, p.name ?? '']))
+
+  // 導師自上節數（同科分擔）：由導師配班對應的配課 breakdown 帶出（無減課鏡射，退而求其次取第一個方案）
+  const allocMap = Object.fromEntries((allocs ?? []).map(a => [a.teacher_id, a.data as {
+    scenarios?: Record<string, { breakdown?: Record<string, number> }>
+    plans?: Record<string, { breakdown?: Record<string, number> }>
+  }]))
+  const homeroomHours: Record<string, Record<string, number>> = {}
+  for (const [ck, tid] of Object.entries(scheduleConfig.classTeacher)) {
+    if (!tid) continue
+    const d = allocMap[tid]
+    const bd = d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown
+    if (bd && Object.values(bd).some(v => Number(v) > 0)) homeroomHours[ck] = bd
+  }
 
   const classCounts: Record<number, number> = {}
   const gradeSubjects: Record<number, GradeSubject[]> = {}
@@ -38,6 +52,7 @@ export default async function ScheduleWizardPage() {
       gradeSubjects={gradeSubjects}
       gradeHomeroomBase={gradeHomeroomBase}
       teacherNames={teacherNames}
+      homeroomHours={homeroomHours}
       lastGeneratedAt={planRow?.generated_at ?? null}
     />
   )

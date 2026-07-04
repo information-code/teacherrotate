@@ -78,6 +78,9 @@ export interface AssembleArgs {
   gradeSubjects: Record<number, { name: string; perClass: number; homeroom: boolean }[]>
   gradeHomeroomBase: Record<number, number>
   teacherNames: Record<string, string>
+  /** 導師自上節數（同科分擔用）：classKey → 科目 → 節數。
+   *  科目有指派科任時，科任只排「每班節數 − 鎖課 − 導師分擔」的剩餘節數（如生活 6＝導師 3＋科任 3）。 */
+  homeroomHours?: Record<string, Record<string, number>>
   seed?: number
 }
 
@@ -146,12 +149,13 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const lockCountBySubject: Record<string, number> = {}
       for (const txt of Object.values(lockDisplay)) lockCountBySubject[txt] = (lockCountBySubject[txt] ?? 0) + 1
 
-      // 展開科任課
+      // 展開科任課（支援同科分擔：科任只排扣除導師自上節數後的剩餘）
       for (const s of subjects) {
         const assigned = config.subjectClassTeacher[subjectClassKey(g, i, s.name)] ?? ''
-        if (!assigned || assigned === HOMEROOM_SELF) continue   // 未指派或導師自上 → 導師自排，不進引擎
+        if (!assigned || assigned === HOMEROOM_SELF) continue   // 未指派或全導師自上 → 不進引擎
         const teacherName = a.teacherNames[assigned] ?? '？'
-        let hours = s.perClass - (lockCountBySubject[s.name] ?? 0)
+        const selfHours = a.homeroomHours?.[key]?.[s.name] ?? 0
+        let hours = s.perClass - (lockCountBySubject[s.name] ?? 0) - selfHours
         if (hours <= 0) continue
 
         const isArtBiweekly = art.enabled && s.name === '視覺藝術' && art.grades.includes(g)
