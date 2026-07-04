@@ -30,6 +30,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
+  const [remindOpen, setRemindOpen] = useState(false)                // 未鎖定提醒訊息 modal
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)    // 已複製回饋（'all' | teacherId）
 
   const teachersRef = useRef(teachers)
   useEffect(() => { teachersRef.current = teachers }, [teachers])
@@ -75,6 +77,14 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const adminTeachers = teachers.filter(t => t.role === 'admin')
     .sort((a, b) => ADMIN_KIND_ORDER[adminKind(a.work)] - ADMIN_KIND_ORDER[adminKind(b.work)])
+
+  // 目前分頁的老師範圍與未鎖定名單（提示條＋提醒訊息共用）
+  const scopeInfo = (() => {
+    if (/^\d$/.test(view)) { const g = Number(view); return { label: `${GRADE_LABEL[g]}導師`, list: teachers.filter(t => t.role === 'homeroom' && t.grade === g) } }
+    if (view === 'subject') return { label: '科任', list: subjectTeachers }
+    return { label: '行政', list: adminTeachers }
+  })()
+  const unlockedTeachers = scopeInfo.list.filter(t => !t.data.locked)
 
   // 供給計算（共用）。科任與行政皆以 subjectGradeHours（領域×年級）統計。
   function homeroomSupply(grade: number, subj: string) {
@@ -230,6 +240,22 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </div>
       </div>
 
+      {/* ── 尚未送出鎖定提示（依目前分頁）── */}
+      {scopeInfo.list.length > 0 && (unlockedTeachers.length > 0
+        ? <div className="card border-amber-200 bg-amber-50 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm text-amber-800">
+                <span className="font-semibold">⏳ {scopeInfo.label}尚未送出鎖定（{unlockedTeachers.length}/{scopeInfo.list.length}）：</span>
+                <span className="ml-1">{unlockedTeachers.map(t => t.name).join('、')}</span>
+              </p>
+              <button onClick={() => setRemindOpen(true)} className="btn-secondary text-xs flex-shrink-0">💬 產生 LINE 提醒訊息</button>
+            </div>
+          </div>
+        : <div className="card border-green-200 bg-green-50 px-4 py-2.5">
+            <p className="text-sm text-green-700">✓ {scopeInfo.label}全數已送出鎖定（{scopeInfo.list.length} 位）</p>
+          </div>
+      )}
+
       {/* ── 年級檢視 ── */}
       {/^\d$/.test(view) && (() => {
         const grade = Number(view)
@@ -365,6 +391,51 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               </ul>}
         </div>
       )}
+
+      {/* ── LINE 提醒訊息 modal（帶入目前分頁未鎖定老師）── */}
+      {remindOpen && (() => {
+        const origin = typeof window !== 'undefined' ? window.location.origin : ''
+        const link = `${origin}/teacher/allocation`
+        const groupMsg = `【配課選填提醒】\n提醒以下老師：${year} 學年度配課選填尚未完成「送出並鎖定」——\n${unlockedTeachers.map(t => `${t.name}老師`).join('、')}\n再麻煩抽空登入系統完成填寫，並於最後一步按「送出並鎖定」：\n${link}\n已填寫者也請記得完成最後的送出，謝謝大家！`
+        const oneMsg = (name: string) => `【配課選填提醒】\n${name}老師您好：\n${year} 學年度配課選填還差最後的「送出並鎖定」尚未完成。\n再麻煩您抽空登入系統，完成各步驟後於最後一步按「送出並鎖定」：\n${link}\n操作上有任何問題都可以直接跟我說，謝謝您！`
+        async function copy(key: string, text: string) {
+          try { await navigator.clipboard.writeText(text) } catch { window.prompt('自動複製失敗，請手動全選複製：', text); return }
+          setCopiedKey(key); setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1500)
+        }
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setRemindOpen(false)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-lg p-5 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">LINE 提醒訊息</h3>
+                  <p className="text-xs text-zinc-500">{scopeInfo.label} · 未鎖定 {unlockedTeachers.length} 位。複製後貼到 LINE 即可。</p>
+                </div>
+                <button onClick={() => setRemindOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-zinc-500">群發版（貼到群組，一次提醒全部）</div>
+                  <button onClick={() => copy('all', groupMsg)} className="btn-secondary text-xs">{copiedKey === 'all' ? '✓ 已複製' : '複製'}</button>
+                </div>
+                <pre className="text-xs text-zinc-700 whitespace-pre-wrap bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2">{groupMsg}</pre>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-xs font-semibold text-zinc-500">個別版（一對一私訊）</div>
+                {unlockedTeachers.map(t => (
+                  <div key={t.id} className="flex items-center justify-between gap-2 border border-zinc-200 rounded-sm px-3 py-1.5">
+                    <span className="text-sm text-zinc-700">{t.name}</span>
+                    <button onClick={() => copy(t.id, oneMsg(t.name))} className="btn-secondary text-xs flex-shrink-0">{copiedKey === t.id ? '✓ 已複製' : '複製訊息'}</button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-1"><button onClick={() => setRemindOpen(false)} className="btn-primary text-sm">完成</button></div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── 配課理由 modal ── */}
       {reasonView && (() => {
