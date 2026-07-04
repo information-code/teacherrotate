@@ -139,6 +139,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           <li>同班／同師／同教室同時段只有一堂課；只用年段可排課時段；避開鎖課格</li>
           <li>不排課標記的時段：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
           <li>永不連 7 節（連續授課絕對上限 6 節）</li>
+          <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
         </ul>
       </div>
 

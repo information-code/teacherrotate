@@ -293,7 +293,30 @@ class State {
     }
     // 永不連 7（絕對 6 連）：模擬放置後檢查該日連續數
     if (this.teacherRunAfter(l, p) > 6) return false
+    // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
+    if (this.teacherGapSegsAfter(l, p) > 1) return false
     return true
+  }
+
+  /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。 */
+  private teacherGapSegsAfter(l: EngineLesson, p: Placement): number {
+    const tOcc = this.teacherOcc.get(l.teacherId)!
+    const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
+    let worst = 0
+    for (const par of parities) {
+      const taught: number[] = []
+      for (let q = 1; q <= 7; q++) {
+        const cell = tOcc.get(`${p.day}-${q}`)
+        if (cell && (cell.w || cell[par])) taught.push(q)
+      }
+      taught.push(p.period)
+      if (l.size === 2) taught.push(p.period + 1)
+      const qs = Array.from(new Set(taught)).sort((a, b) => a - b)
+      let segs = 0
+      for (let i = 1; i < qs.length; i++) if (qs[i] - qs[i - 1] > 1) segs++
+      worst = Math.max(worst, segs)
+    }
+    return worst
   }
 
   private teacherRunAfter(l: EngineLesson, p: Placement): number {
@@ -582,20 +605,23 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           if (cell.w || cell.e) taughtE.push(q)
         }
         const evalDay = (taught: number[]) => {
-          const res = { over: 0, run: 0, gaps: 0 }
+          const res = { over: 0, run: 0, gaps: 0, segs: 0 }
           if (taught.length === 0) return res
           res.over = Math.max(0, taught.length - w.dailyMax.n)
           let run = 0, best = 0
           for (let q = 1; q <= 7; q++) { run = taught.includes(q) ? run + 1 : 0; best = Math.max(best, run) }
           res.run = Math.max(0, best - w.consecMax.n)
           res.gaps = (taught[taught.length - 1] - taught[0] + 1) - taught.length
+          for (let i = 1; i < taught.length; i++) if (taught[i] - taught[i - 1] > 1) res.segs++
           return res
         }
         const eo = evalDay(taughtO), ee = evalDay(taughtE)
-        const worse = { over: Math.max(eo.over, ee.over), run: Math.max(eo.run, ee.run), gaps: Math.max(eo.gaps, ee.gaps) }
+        const worse = { over: Math.max(eo.over, ee.over), run: Math.max(eo.run, ee.run), gaps: Math.max(eo.gaps, ee.gaps), segs: Math.max(eo.segs, ee.segs) }
         if (worse.over > 0 && w.dailyMax.level !== 'off') acc(map, 'dailyMax', `每日節數上限 ${w.dailyMax.n}`, pen(w.dailyMax.level) * worse.over, `${nameOf(tid)} 週${DAY_ZH[d]}超 ${worse.over} 節`)
         if (worse.run > 0 && w.consecMax.level !== 'off') acc(map, 'consecMax', `連續授課上限 ${w.consecMax.n}`, pen(w.consecMax.level) * worse.run, `${nameOf(tid)} 週${DAY_ZH[d]}連續超 ${worse.run} 節`)
         if (worse.gaps > 0 && w.compact !== 'off') acc(map, 'compact', '減少零碎空堂', pen(w.compact) * worse.gaps, `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
+        // 硬限制：課間空堂最多一段（禁止上空上空交錯）
+        if (worse.segs > 1) acc(map, 'gapAlternate', '課間空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}空堂分成 ${worse.segs} 段（上空上空）`)
       }
     }
     // 每日負擔平衡
