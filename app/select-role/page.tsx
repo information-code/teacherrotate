@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { getSiteTitle } from '@/lib/site'
 import Link from 'next/link'
 
 export default async function SelectRolePage() {
@@ -17,11 +18,13 @@ export default async function SelectRolePage() {
 
   if (profile?.role !== 'admin' && profile?.role !== 'superadmin') redirect('/teacher')
 
+  const siteTitle = await getSiteTitle()
+
   return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-zinc-900">教師輪動系統</h1>
+          <h1 className="text-2xl font-semibold text-zinc-900">{siteTitle}</h1>
           <p className="mt-2 text-sm text-zinc-500">
             {profile?.name ?? profile?.email}，請選擇進入身份
           </p>

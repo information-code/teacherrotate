@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { TeacherSidebar } from '@/components/layout/TeacherSidebar'
+import { getSiteTitle } from '@/lib/site'
 import { TopBar } from '@/components/layout/TopBar'
 import { MobileNavProvider } from '@/components/layout/MobileNav'
 
@@ -36,11 +37,12 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   if (!profile) redirect('/unauthorized')
 
   const isSubstitute = profile.employment_type === 'substitute'
+  const siteTitle = await getSiteTitle()
 
   return (
     <MobileNavProvider>
       <div className="flex h-screen bg-zinc-50 overflow-hidden">
-        <TeacherSidebar isSubstitute={isSubstitute} />
+        <TeacherSidebar isSubstitute={isSubstitute} siteTitle={siteTitle} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopBar
             userName={profile?.name ?? profile?.email ?? user.email ?? ''}

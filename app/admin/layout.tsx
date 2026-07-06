@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
+import { getSiteTitle } from '@/lib/site'
 import { TopBar } from '@/components/layout/TopBar'
 import { MobileNavProvider } from '@/components/layout/MobileNav'
 
@@ -20,10 +21,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!profile) redirect('/teacher')
   if (profile.role !== 'admin' && profile.role !== 'superadmin') redirect('/teacher')
 
+  const siteTitle = await getSiteTitle()
+
   return (
     <MobileNavProvider>
       <div className="flex h-screen bg-zinc-50 overflow-hidden">
-        <AdminSidebar />
+        <AdminSidebar siteTitle={siteTitle} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopBar
             userName={profile.name ?? profile.email ?? user.email ?? ''}

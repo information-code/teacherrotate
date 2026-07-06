@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+export default function LoginPage({ siteTitle = '教師系統' }: { siteTitle?: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
@@ -28,7 +28,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* 標題區 */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-zinc-900">教師輪動系統</h1>
+          <h1 className="text-2xl font-semibold text-zinc-900">{siteTitle}</h1>
           <p className="mt-2 text-sm text-zinc-500">請使用學校 Google 帳號登入</p>
         </div>
 

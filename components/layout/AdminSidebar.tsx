@@ -20,6 +20,7 @@ const navSections = [
       { href: '/admin/confirmations',     label: '確認統計' },
       { href: '/admin/statistics',        label: '志願統計' },
       { href: '/admin/selection-panel',   label: '選填面板' },
+      { href: '/admin/scoremap',          label: '分數對照表' },
     ],
   },
   {
@@ -44,14 +45,14 @@ const navSections = [
     ],
   },
   {
-    title: '規則設定',
+    title: '系統',
     items: [
-      { href: '/admin/scoremap', label: '分數對照表' },
+      { href: '/admin/system', label: '系統偏好' },
     ],
   },
 ]
 
-export function AdminSidebar() {
+export function AdminSidebar({ siteTitle = '教師系統' }: { siteTitle?: string }) {
   const pathname = usePathname()
   const { open, setOpen } = useMobileNav()
 
@@ -72,7 +73,7 @@ export function AdminSidebar() {
       >
         {/* Logo */}
         <div className="h-12 border-b border-zinc-200 flex items-center px-5">
-          <span className="text-sm font-semibold text-zinc-900">教師輪動系統</span>
+          <span className="text-sm font-semibold text-zinc-900">{siteTitle}</span>
         </div>
 
         {/* 導覽 */}

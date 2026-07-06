@@ -19,7 +19,13 @@ const SUBSTITUTE_ITEMS = [
   { href: '/teacher/equipment',  label: '設備借用' },
 ]
 
-export function TeacherSidebar({ isSubstitute = false }: { isSubstitute?: boolean }) {
+export function TeacherSidebar({
+  isSubstitute = false,
+  siteTitle = '教師系統',
+}: {
+  isSubstitute?: boolean
+  siteTitle?: string
+}) {
   const pathname = usePathname()
   const navItems = isSubstitute ? SUBSTITUTE_ITEMS : FORMAL_ITEMS
   const { open, setOpen } = useMobileNav()
@@ -41,7 +47,7 @@ export function TeacherSidebar({ isSubstitute = false }: { isSubstitute?: boolea
       >
         {/* Logo */}
         <div className="h-12 border-b border-zinc-200 flex items-center px-5">
-          <span className="text-sm font-semibold text-zinc-900">教師輪動系統</span>
+          <span className="text-sm font-semibold text-zinc-900">{siteTitle}</span>
         </div>
 
         {/* 導覽 */}

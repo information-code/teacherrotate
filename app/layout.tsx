@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next'
+import { getSiteTitle } from '@/lib/site'
 import './globals.css'
 
-export const metadata: Metadata = {
-  title: '教師輪動系統',
-  description: '教師工作輪動管理平台',
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: await getSiteTitle(),
+    description: '教師管理平台',
+  }
 }
 
 export const viewport: Viewport = {
