@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useMobileNav } from '@/components/layout/MobileNav'
+import { InstallGuide } from '@/components/layout/InstallGuide'
 
 interface TopBarProps {
   userName: string
@@ -50,6 +51,8 @@ export function TopBar({ userName, role, isAdmin }: TopBarProps) {
             切換至{role === 'admin' ? '教師端' : '管理端'}
           </Link>
         )}
+        {/* 加到主畫面教學（教師端；手機/平板首次進入自動跳出） */}
+        {role === 'teacher' && <InstallGuide autoPrompt />}
         <button
           onClick={handleLogout}
           className="text-sm text-zinc-500 hover:text-zinc-800 transition-colors"
