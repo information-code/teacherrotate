@@ -25,6 +25,7 @@ type EditorState =
   | { mode: 'closed' }
   | { mode: 'create'; row: EquipmentRow }
   | { mode: 'edit'; row: EquipmentRow }
+  | { mode: 'copy'; row: EquipmentRow }
 
 const EMPTY_ROW: EquipmentRow = {
   id: '',
@@ -224,10 +225,7 @@ export default function EquipmentConfigClient({
                     <td className="text-right whitespace-nowrap space-x-1">
                       <button
                         className="btn-secondary !px-3 !py-1"
-                        onClick={() => setEditor({
-                          mode: 'create',
-                          row: { ...row, id: '', name: `${row.name}（複製）` },
-                        })}
+                        onClick={() => setEditor({ mode: 'copy', row: { ...row } })}
                       >
                         複製
                       </button>
@@ -361,7 +359,7 @@ export default function EquipmentConfigClient({
         </div>
       )}
 
-      {editor.mode !== 'closed' && (
+      {(editor.mode === 'create' || editor.mode === 'edit') && (
         <EquipmentEditor
           row={editor.row}
           isCreate={editor.mode === 'create'}
@@ -370,6 +368,93 @@ export default function EquipmentConfigClient({
           onClose={() => setEditor({ mode: 'closed' })}
         />
       )}
+      {editor.mode === 'copy' && (
+        <CopyModal
+          row={editor.row}
+          onSingle={() => setEditor({
+            mode: 'create',
+            row: { ...editor.row, id: '', name: `${editor.row.name}（複製）` },
+          })}
+          onBulkDone={created => {
+            setEquipment(list => [...list, ...created])
+            setEditor({ mode: 'closed' })
+            flash(`已建立 ${created.length} 台複製設備，可逐台編輯細節`)
+          }}
+          onClose={() => setEditor({ mode: 'closed' })}
+        />
+      )}
+    </div>
+  )
+}
+
+/** 複製設備 Modal：一份→開編輯器改名另存；多份→自動編號批次建立後逐台編輯 */
+function CopyModal({
+  row,
+  onSingle,
+  onBulkDone,
+  onClose,
+}: {
+  row: EquipmentRow
+  onSingle: () => void
+  onBulkDone: (created: EquipmentRow[]) => void
+  onClose: () => void
+}) {
+  const [count, setCount] = useState(1)
+  const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  const submit = async () => {
+    if (count <= 1) {
+      onSingle()
+      return
+    }
+    setRunning(true)
+    try {
+      const created: EquipmentRow[] = []
+      for (let i = 1; i <= count; i++) {
+        const res = await fetch('/api/admin/equipment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...row, id: undefined, name: `${row.name}-${i}` }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          alert(`第 ${i} 台建立失敗：${data.error}，已成功建立 ${created.length} 台。`)
+          break
+        }
+        created.push(data)
+        setProgress(i)
+      }
+      onBulkDone(created)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-md shadow-xl w-full max-w-sm p-5 space-y-4">
+        <h3 className="font-semibold text-zinc-900">複製設備：{row.name}</h3>
+        <div>
+          <span className="label">複製數量</span>
+          <input
+            type="number" min={1} max={30} className="input"
+            value={count}
+            onChange={e => setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+          />
+          <p className="text-xs text-zinc-500 mt-1.5">
+            {count <= 1
+              ? '複製 1 台：開啟編輯視窗確認內容後儲存。'
+              : `將直接建立 ${count} 台，名稱自動編號為「${row.name}-1」～「${row.name}-${count}」，週邊與檢查清單一併帶入，建立後可逐台編輯細節。`}
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={running}>取消</button>
+          <button className="btn-primary" onClick={submit} disabled={running}>
+            {running ? `建立中… ${progress}/${count}` : count <= 1 ? '複製並編輯' : `建立 ${count} 台`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
