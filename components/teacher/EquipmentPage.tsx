@@ -352,6 +352,20 @@ function ShortTab({
             />
           </div>
           <div>
+            <span className="label">結束日期</span>
+            <input
+              type="date"
+              className="input"
+              value={to}
+              min={from || data.config.today}
+              max={data.config.maxDate}
+              onChange={e => {
+                setShowResults(false)
+                onRangeChange(from, e.target.value)
+              }}
+            />
+          </div>
+          <div>
             <span className="label">開始時段</span>
             <select
               className="input"
@@ -368,20 +382,6 @@ function ShortTab({
               <option value="">請選擇</option>
               {openPeriods.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
-          </div>
-          <div>
-            <span className="label">結束日期</span>
-            <input
-              type="date"
-              className="input"
-              value={to}
-              min={from || data.config.today}
-              max={data.config.maxDate}
-              onChange={e => {
-                setShowResults(false)
-                onRangeChange(from, e.target.value)
-              }}
-            />
           </div>
           <div>
             <span className="label">結束時段</span>
