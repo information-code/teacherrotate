@@ -166,8 +166,8 @@ export default function EquipmentConfigClient({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a className="btn-secondary" href="/api/admin/equipment-template">下載範本</a>
-            <button className="btn-secondary" onClick={() => setShowImport(true)}>批次匯入</button>
+            <a className="btn-secondary" href="/api/admin/equipment-template">下載設備庫</a>
+            <button className="btn-secondary" onClick={() => setShowImport(true)}>Excel 匯入</button>
             <button className="btn-primary" onClick={() => setEditor({ mode: 'create', row: { ...EMPTY_ROW } })}>
               新增設備
             </button>
@@ -370,10 +370,12 @@ export default function EquipmentConfigClient({
       )}
       {showImport && (
         <ImportModal
-          onDone={created => {
-            setEquipment(list => [...list, ...created])
+          onDone={async summary => {
+            // 匯入含更新既有設備，直接重新載入整份清單
+            const res = await fetch('/api/admin/equipment')
+            if (res.ok) setEquipment(await res.json())
             setShowImport(false)
-            flash(`已匯入 ${created.length} 台設備`)
+            flash(`匯入完成：新增 ${summary.createdCount} 台、更新 ${summary.updatedCount} 台`)
           }}
           onClose={() => setShowImport(false)}
         />
@@ -387,7 +389,7 @@ function ImportModal({
   onDone,
   onClose,
 }: {
-  onDone: (created: EquipmentRow[]) => void
+  onDone: (summary: { createdCount: number; updatedCount: number }) => void
   onClose: () => void
 }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
@@ -448,9 +450,9 @@ function ImportModal({
         return
       }
       if ((data.errors ?? []).length > 0) {
-        alert(`已匯入 ${data.created.length} 台，以下列有問題被略過：\n${data.errors.join('\n')}`)
+        alert(`已套用 ${data.createdCount + data.updatedCount} 列，以下列有問題被略過：\n${data.errors.join('\n')}`)
       }
-      onDone(data.created)
+      onDone(data)
     } finally {
       setImporting(false)
     }
@@ -459,9 +461,10 @@ function ImportModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4">
-        <h3 className="font-semibold text-zinc-900">批次匯入設備</h3>
+        <h3 className="font-semibold text-zinc-900">Excel 匯入設備庫</h3>
         <p className="text-sm text-zinc-500">
-          請先「下載範本」填寫後上傳。週邊與檢查項目以「、」分隔，檢查項目結尾加「*」代表需拍照；範例列會自動略過。
+          請先「下載設備庫」，在 Excel 中編修或新增後上傳：有 id 的列會<b>更新</b>該設備、id 留空的列會<b>新增</b>；
+          檔案中沒列出的設備不受影響（刪除請在系統操作）。檢查項目結尾加「*」代表需拍照。
         </p>
 
         <div

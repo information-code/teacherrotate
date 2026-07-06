@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkAdmin } from '@/lib/equipment-server'
 import type { ChecklistItem } from '@/lib/equipment'
 
-const MAX_ROWS = 200
+const MAX_ROWS = 500
 const STATUS_MAP: Record<string, string> = {
   可借用: 'available',
   維修中: 'maintenance',
@@ -30,8 +30,12 @@ function parseChecklist(raw: unknown): ChecklistItem[] {
 }
 
 /**
- * 設備批次匯入。body: { rows: [{名稱, 位置, 編號, 狀態, 週邊配件, 借用檢查項目, 歸還檢查項目, 備註}] }
- * 名稱以「（範例）」開頭的列自動略過。回傳 { created, skipped, errors }
+ * 設備庫 Excel 匯入（與匯出檔互為同步）。
+ * body: { rows: [{id?, 名稱, 位置, 編號, 狀態, 週邊配件, 借用檢查項目, 歸還檢查項目, 備註}] }
+ * - 有 id 且存在 → 更新該設備
+ * - id 空白 → 新增設備
+ * - 檔案中未列出的設備不受影響（不做刪除）
+ * 回傳 { createdCount, updatedCount, skipped, errors }
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -47,7 +51,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `一次最多匯入 ${MAX_ROWS} 列` }, { status: 400 })
   }
 
-  const payloads: Record<string, unknown>[] = []
+  const { data: existing } = await supabaseAdmin.from('equipment').select('id')
+  const existingIds = new Set((existing ?? []).map(e => e.id))
+
+  const inserts: Record<string, unknown>[] = []
+  const updates: Record<string, unknown>[] = []
   const errors: string[] = []
   let skipped = 0
 
@@ -67,7 +75,13 @@ export async function POST(request: NextRequest) {
       errors.push(`第 ${line} 列：狀態「${statusRaw}」無效（可借用／維修中／停用）`)
       return
     }
-    payloads.push({
+    const id = String(row['id'] ?? '').trim()
+    if (id && !existingIds.has(id)) {
+      errors.push(`第 ${line} 列：id 不存在於系統中（請勿自行填寫 id，新增請留空）`)
+      return
+    }
+
+    const payload = {
       name,
       location: String(row['位置'] ?? '').trim(),
       asset_number: String(row['編號'] ?? '').trim(),
@@ -76,19 +90,32 @@ export async function POST(request: NextRequest) {
       borrow_checklist: parseChecklist(row['借用檢查項目']),
       return_checklist: parseChecklist(row['歸還檢查項目']),
       notes: String(row['備註'] ?? '').trim(),
-    })
+    }
+    if (id) updates.push({ ...payload, id, updated_at: new Date().toISOString() })
+    else inserts.push(payload)
   })
 
-  if (payloads.length === 0) {
+  if (inserts.length === 0 && updates.length === 0) {
     return NextResponse.json(
       { error: `沒有可匯入的資料。${errors.length > 0 ? errors.join('；') : ''}` },
       { status: 400 }
     )
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('equipment').insert(payloads as never).select()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (inserts.length > 0) {
+    const { error } = await supabaseAdmin.from('equipment').insert(inserts as never)
+    if (error) return NextResponse.json({ error: `新增失敗：${error.message}` }, { status: 500 })
+  }
+  if (updates.length > 0) {
+    const { error } = await supabaseAdmin
+      .from('equipment').upsert(updates as never, { onConflict: 'id' })
+    if (error) return NextResponse.json({ error: `更新失敗：${error.message}` }, { status: 500 })
+  }
 
-  return NextResponse.json({ created: data ?? [], skipped, errors })
+  return NextResponse.json({
+    createdCount: inserts.length,
+    updatedCount: updates.length,
+    skipped,
+    errors,
+  })
 }
