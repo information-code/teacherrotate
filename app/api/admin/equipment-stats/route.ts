@@ -20,7 +20,7 @@ export async function GET() {
   const today = todayStr()
   const [{ data: loans, error }, { data: longLoans }, { data: equipment }, { data: profiles }] = await Promise.all([
     supabaseAdmin.from('equipment_loans')
-      .select('id, equipment_id, teacher_id, loan_date, periods, status, borrowed_at, returned_at')
+      .select('id, equipment_id, teacher_id, loan_date, end_date, periods, status, borrowed_at, returned_at')
       .not('borrowed_at', 'is', null),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active').lt('due_date', today),
     supabaseAdmin.from('equipment').select('id, name'),
@@ -50,10 +50,12 @@ export async function GET() {
   }
 
   for (const l of loans ?? []) {
-    // 借用中的紀錄以「今天」計算目前逾期天數；已結束的以歸還/結案時間計
+    // 逾期基準＝借用期間的結束日（跨日借用取 end_date）；
+    // 借用中以「今天」計算目前逾期天數，已結束以歸還/結案時間計
+    const due = l.end_date ?? l.loan_date
     const days = l.status === 'borrowed'
-      ? overdueDays(l.loan_date, null, today)
-      : overdueDays(l.loan_date, l.returned_at, today)
+      ? overdueDays(due, null, today)
+      : overdueDays(due, l.returned_at, today)
     bump(byTeacher, l.teacher_id, days)
     bump(byEquipment, l.equipment_id, days)
 

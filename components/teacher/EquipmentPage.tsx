@@ -5,6 +5,10 @@ import { PageLoading } from '@/components/ui/PageLoading'
 import {
   EQUIPMENT_PERIODS,
   LOAN_STATUS_LABEL,
+  dateRangeList,
+  daySlotPeriods,
+  loanTimeText,
+  periodLabel,
   periodsText,
   type ChecklistItem,
   type ChecklistResult,
@@ -27,6 +31,9 @@ interface LoanRow {
   equipment_id: string
   equipment_name: string
   loan_date: string
+  end_date: string | null
+  start_period: string | null
+  end_period: string | null
   periods: string[]
   status: string
 }
@@ -39,9 +46,11 @@ interface ShortData {
     today: string
     maxDate: string
   }
-  date: string
+  from: string
+  to: string
   equipment: EquipmentRow[]
-  occupied: Record<string, string[]>
+  /** 日期 → 設備 id → 已占用節次 */
+  occupied: Record<string, Record<string, string[]>>
   myLoans: LoanRow[]
 }
 
@@ -85,12 +94,12 @@ export function EquipmentPage() {
   const [tab, setTab] = useState<'short' | 'long'>('short')
   const [shortData, setShortData] = useState<ShortData | null>(null)
   const [longData, setLongData] = useState<LongData | null>(null)
-  const [date, setDate] = useState('')
+  const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [error, setError] = useState('')
 
-  const loadShort = useCallback(async (targetDate?: string) => {
-    const query = targetDate ? `?date=${targetDate}` : ''
+  const loadShort = useCallback(async (from?: string, to?: string) => {
+    const query = from ? `?from=${from}&to=${to || from}` : ''
     const res = await fetch(`/api/teacher/equipment${query}`)
     if (!res.ok) {
       setError('載入失敗，請重新整理。')
@@ -98,7 +107,7 @@ export function EquipmentPage() {
     }
     const data: ShortData = await res.json()
     setShortData(data)
-    setDate(data.date)
+    setRange({ from: data.from, to: data.to })
   }, [])
 
   const loadLong = useCallback(async () => {
@@ -138,12 +147,13 @@ export function EquipmentPage() {
       {tab === 'short' ? (
         <ShortTab
           data={shortData}
-          date={date}
-          onDateChange={d => {
-            setDate(d)
-            loadShort(d)
+          from={range.from}
+          to={range.to}
+          onRangeChange={(from, to) => {
+            setRange({ from, to })
+            loadShort(from, to)
           }}
-          onReload={() => loadShort(date)}
+          onReload={() => loadShort(range.from, range.to)}
           onStartProcedure={(kind, loan) => {
             const equip = shortData.equipment.find(e => e.id === loan.equipment_id)
             setProcedure({
@@ -174,7 +184,7 @@ export function EquipmentPage() {
           maxPhotos={shortData.config.maxPhotos}
           onDone={() => {
             setProcedure(null)
-            loadShort(date)
+            loadShort(range.from, range.to)
           }}
           onClose={() => setProcedure(null)}
         />
@@ -200,18 +210,20 @@ export function EquipmentPage() {
 
 function ShortTab({
   data,
-  date,
-  onDateChange,
+  from,
+  to,
+  onRangeChange,
   onReload,
   onStartProcedure,
 }: {
   data: ShortData
-  date: string
-  onDateChange: (date: string) => void
+  from: string
+  to: string
+  onRangeChange: (from: string, to: string) => void
   onReload: () => void
   onStartProcedure: (kind: 'borrow' | 'return', loan: LoanRow) => void
 }) {
-  // 借用時段範圍：開始節次～結束節次（依學校節次固定順序）＋設備名稱 → 按確定列出可借編號
+  // 訂房式：開始日＋開始時段 ～ 結束日＋結束時段，選設備名稱後按確定列出可借編號
   const openPeriods = EQUIPMENT_PERIODS.filter(p => data.config.openPeriods.includes(p.key))
   const [startPeriod, setStartPeriod] = useState('')
   const [endPeriod, setEndPeriod] = useState('')
@@ -219,32 +231,44 @@ function ShortTab({
   const [showResults, setShowResults] = useState(false)
   const [submitting, setSubmitting] = useState('')
 
+  const sameDay = from === to
   const startIndex = openPeriods.findIndex(p => p.key === startPeriod)
   const endIndex = openPeriods.findIndex(p => p.key === endPeriod)
-  // 範圍內所有開放節次（含中間夾到的午休等），借用期間整段保留設備
-  const rangePeriods = startIndex >= 0 && endIndex >= startIndex
-    ? openPeriods.slice(startIndex, endIndex + 1).map(p => p.key)
-    : []
+  // 同日借用結束時段須不早於開始；跨日則各自獨立
+  const periodsValid = startIndex >= 0 && endIndex >= 0 && (!sameDay ? true : endIndex >= startIndex)
 
   const equipmentNames = Array.from(new Set(data.equipment.map(e => e.name)))
-  const canQuery = rangePeriods.length > 0 && Boolean(equipName)
+  const canQuery = Boolean(from && to && equipName) && periodsValid
+  const rangeDates = canQuery ? dateRangeList(from, to) : []
 
-  // 選定名稱的設備中，該時段範圍全程有空的
+  // 選定名稱的設備中，整段期間（首日起始時段～末日結束時段）全程有空的
   const availableEquipment = !canQuery ? [] : data.equipment.filter(equip => {
     if (equip.name !== equipName) return false
-    const occupied = data.occupied[equip.id] ?? []
-    return rangePeriods.every(period => !occupied.includes(period))
+    return rangeDates.every(date => {
+      const need = daySlotPeriods(data.config.openPeriods, date, from, to, startPeriod, endPeriod)
+      const taken = data.occupied[date]?.[equip.id] ?? []
+      return need.every(period => !taken.includes(period))
+    })
   })
 
+  const timeSummary = sameDay
+    ? `${from}｜${periodLabel(startPeriod)}${startPeriod !== endPeriod ? `～${periodLabel(endPeriod)}` : ''}`
+    : `${from} ${periodLabel(startPeriod)} ～ ${to} ${periodLabel(endPeriod)}`
+
   const reserve = async (equipmentId: string) => {
-    const periods = rangePeriods
-    if (periods.length === 0) return
+    if (!canQuery) return
     setSubmitting(equipmentId)
     try {
       const res = await fetch('/api/teacher/equipment/loans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ equipment_id: equipmentId, date, periods }),
+        body: JSON.stringify({
+          equipment_id: equipmentId,
+          start_date: from,
+          end_date: to,
+          start_period: startPeriod,
+          end_period: endPeriod,
+        }),
       })
       const result = await res.json()
       if (!res.ok) alert(result.error ?? '預約失敗')
@@ -279,9 +303,7 @@ function ShortTab({
             <div key={loan.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
               <div className="flex-1 min-w-[180px]">
                 <div className="text-sm font-medium text-zinc-900">{loan.equipment_name}</div>
-                <div className="text-xs text-zinc-500 mt-0.5">
-                  {loan.loan_date}｜{periodsText(loan.periods)}
-                </div>
+                <div className="text-xs text-zinc-500 mt-0.5">{loanTimeText(loan)}</div>
               </div>
               <span className={loan.status === 'borrowed' ? 'badge-warn' : 'badge-default'}>
                 {LOAN_STATUS_LABEL[loan.status]}
@@ -313,18 +335,19 @@ function ShortTab({
       <div className="card space-y-4">
         <h2 className="font-medium text-zinc-900">預約借用</h2>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <span className="label">借用日期</span>
+            <span className="label">開始日期</span>
             <input
               type="date"
               className="input"
-              value={date}
+              value={from}
               min={data.config.today}
               max={data.config.maxDate}
               onChange={e => {
                 setShowResults(false)
-                onDateChange(e.target.value)
+                const newFrom = e.target.value
+                onRangeChange(newFrom, to && to >= newFrom ? to : newFrom)
               }}
             />
           </div>
@@ -337,14 +360,28 @@ function ShortTab({
                 const key = e.target.value
                 setStartPeriod(key)
                 setShowResults(false)
-                // 結束時段自動跟上，避免出現結束早於開始
+                // 同日借用時結束時段自動跟上，避免結束早於開始
                 const newStart = openPeriods.findIndex(p => p.key === key)
-                if (endIndex < newStart) setEndPeriod(key)
+                if (sameDay && endIndex >= 0 && endIndex < newStart) setEndPeriod(key)
               }}
             >
               <option value="">請選擇</option>
               {openPeriods.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
+          </div>
+          <div>
+            <span className="label">結束日期</span>
+            <input
+              type="date"
+              className="input"
+              value={to}
+              min={from || data.config.today}
+              max={data.config.maxDate}
+              onChange={e => {
+                setShowResults(false)
+                onRangeChange(from, e.target.value)
+              }}
+            />
           </div>
           <div>
             <span className="label">結束時段</span>
@@ -358,12 +395,15 @@ function ShortTab({
               disabled={!startPeriod}
             >
               <option value="">請選擇</option>
-              {openPeriods.slice(Math.max(startIndex, 0)).map(p => (
+              {(sameDay ? openPeriods.slice(Math.max(startIndex, 0)) : openPeriods).map(p => (
                 <option key={p.key} value={p.key}>{p.label}</option>
               ))}
             </select>
           </div>
-          <div>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[160px]">
             <span className="label">借用設備</span>
             <select
               className="input"
@@ -377,21 +417,20 @@ function ShortTab({
               {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
             </select>
           </div>
-          <div className="flex items-end">
-            <button className="btn-primary w-full" disabled={!canQuery} onClick={() => setShowResults(true)}>
-              確定
-            </button>
-          </div>
+          <button className="btn-primary" disabled={!canQuery} onClick={() => setShowResults(true)}>
+            確定
+          </button>
         </div>
 
         {!showResults || !canQuery ? (
           <p className="text-sm text-zinc-500">
-            請選擇借用日期、時段範圍與設備後按「確定」，就會列出可借用的設備編號。
+            請選擇借用的起訖日期與時段、設備後按「確定」，就會列出可借用的設備編號。
+            跨日借用時，首日從開始時段起、末日到結束時段止，期間整段保留。
           </p>
         ) : (
           <>
             <p className="text-sm text-zinc-600">
-              {date}｜{periodsText(rangePeriods)}｜{equipName}，可借用 {availableEquipment.length} 台：
+              {timeSummary}｜{equipName}，可借用 {availableEquipment.length} 台：
             </p>
             {availableEquipment.length === 0 ? (
               <p className="text-sm text-zinc-500">這個時段「{equipName}」已全數借出，請換其他時段或日期。</p>
@@ -435,14 +474,13 @@ function ShortTab({
           <div className="overflow-x-auto">
             <table className="table-base">
               <thead>
-                <tr><th>日期</th><th>設備</th><th>時段</th><th>狀態</th></tr>
+                <tr><th>設備</th><th>時間</th><th>狀態</th></tr>
               </thead>
               <tbody>
                 {historyLoans.map(loan => (
                   <tr key={loan.id}>
-                    <td>{loan.loan_date}</td>
                     <td>{loan.equipment_name}</td>
-                    <td>{periodsText(loan.periods)}</td>
+                    <td>{loanTimeText(loan)}</td>
                     <td>
                       <span className={loan.status === 'returned' ? 'badge-success' : 'badge-default'}>
                         {LOAN_STATUS_LABEL[loan.status]}
@@ -607,9 +645,7 @@ function ProcedureModal({
           <h3 className="font-semibold text-zinc-900">
             {title}（{step}/2）：{loan.equipment_name}
           </h3>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {loan.loan_date}｜{periodsText(loan.periods)}
-          </p>
+          <p className="text-xs text-zinc-500 mt-0.5">{loanTimeText(loan)}</p>
         </div>
 
         {step === 1 ? (

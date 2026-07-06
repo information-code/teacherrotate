@@ -184,6 +184,7 @@ export type Database = {
         Row: {
           id: string; equipment_id: string; teacher_id: string
           loan_date: string; periods: string[]; status: string
+          end_date: string | null; start_period: string | null; end_period: string | null
           borrow_agreed_at: string | null; borrow_checklist: Json | null; borrowed_at: string | null
           return_agreed_at: string | null; return_checklist: Json | null; returned_at: string | null
           closed_by: string | null; created_at: string; updated_at: string
@@ -191,6 +192,7 @@ export type Database = {
         Insert: {
           id?: string; equipment_id: string; teacher_id: string
           loan_date: string; periods: string[]; status?: string
+          end_date?: string | null; start_period?: string | null; end_period?: string | null
           borrow_agreed_at?: string | null; borrow_checklist?: Json | null; borrowed_at?: string | null
           return_agreed_at?: string | null; return_checklist?: Json | null; returned_at?: string | null
           closed_by?: string | null; created_at?: string; updated_at?: string
@@ -239,6 +241,15 @@ export type Database = {
       }
       reserve_equipment_loan: {
         Args: { p_equipment_id: string; p_teacher_id: string; p_loan_date: string; p_periods: string[] }
+        Returns: string
+      }
+      reserve_equipment_loan_range: {
+        Args: {
+          p_equipment_id: string; p_teacher_id: string
+          p_start_date: string; p_end_date: string
+          p_start_period: string; p_end_period: string
+          p_slots: Json
+        }
         Returns: string
       }
     }

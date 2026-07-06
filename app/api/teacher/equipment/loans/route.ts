@@ -3,28 +3,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { loadEquipmentConfig, validateChecklistResult } from '@/lib/equipment-server'
-import { addDays, todayStr, type ChecklistItem } from '@/lib/equipment'
+import { addDays, dateRangeList, daySlotPeriods, todayStr, type ChecklistItem } from '@/lib/equipment'
 
-/** 預約借用。body: { equipment_id, date, periods: string[] } */
+/**
+ * 預約借用（訂房式，支援跨日）。
+ * body: { equipment_id, start_date, end_date, start_period, end_period }
+ * 首日從開始時段起、末日到結束時段止、中間日整天保留。
+ */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { equipment_id, date, periods } = await request.json()
-  if (!equipment_id || !date || !Array.isArray(periods) || periods.length === 0) {
-    return NextResponse.json({ error: '請選擇設備、日期與時段' }, { status: 400 })
+  const { equipment_id, start_date, end_date, start_period, end_period } = await request.json()
+  if (!equipment_id || !start_date || !end_date || !start_period || !end_period) {
+    return NextResponse.json({ error: '請選擇設備、起訖日期與時段' }, { status: 400 })
   }
 
   const config = await loadEquipmentConfig()
   const today = todayStr()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < today || date > addDays(today, config.maxAdvanceDays)) {
+  const maxDate = addDays(today, config.maxAdvanceDays)
+  const dateOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= today && d <= maxDate
+  if (!dateOk(start_date) || !dateOk(end_date)) {
     return NextResponse.json({ error: `借用日期須在今天起 ${config.maxAdvanceDays} 天內` }, { status: 400 })
   }
-
-  const uniquePeriods = Array.from(new Set(periods.map(String)))
-  if (uniquePeriods.some(p => !config.openPeriods.includes(p))) {
+  if (end_date < start_date) {
+    return NextResponse.json({ error: '結束日期不可早於開始日期' }, { status: 400 })
+  }
+  if (!config.openPeriods.includes(start_period) || !config.openPeriods.includes(end_period)) {
     return NextResponse.json({ error: '包含未開放借用的時段' }, { status: 400 })
+  }
+
+  // 每一天實際占用的節次；同日借用須開始不晚於結束
+  const slots = dateRangeList(start_date, end_date).map(date => ({
+    date,
+    periods: daySlotPeriods(config.openPeriods, date, start_date, end_date, start_period, end_period),
+  }))
+  if (slots.some(s => s.periods.length === 0)) {
+    return NextResponse.json({ error: '時段範圍無效，結束時段不可早於開始時段' }, { status: 400 })
   }
 
   const { data: equip } = await supabaseAdmin
@@ -33,12 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '此設備目前無法借用' }, { status: 400 })
   }
 
-  // 交易式寫入：任一節次已被占用則整筆回滾（DB unique 防撞）
-  const { data: loanId, error } = await supabaseAdmin.rpc('reserve_equipment_loan', {
+  // 交易式寫入：期間內任一格已被占用則整筆回滾（DB unique 防撞）
+  const { data: loanId, error } = await supabaseAdmin.rpc('reserve_equipment_loan_range', {
     p_equipment_id: equipment_id,
     p_teacher_id: user.id,
-    p_loan_date: date,
-    p_periods: uniquePeriods,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_start_period: start_period,
+    p_end_period: end_period,
+    p_slots: slots as never,
   })
 
   if (error) {

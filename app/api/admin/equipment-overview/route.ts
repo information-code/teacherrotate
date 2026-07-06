@@ -22,7 +22,7 @@ export async function GET() {
     supabaseAdmin.from('equipment').select('id, name, asset_number, location, status')
       .order('name').order('asset_number'),
     supabaseAdmin.from('equipment_loans')
-      .select('equipment_id, teacher_id, loan_date, periods')
+      .select('equipment_id, teacher_id, loan_date, end_date, start_period, end_period, periods')
       .eq('status', 'borrowed'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
     supabaseAdmin.from('profiles').select('id, name, email'),
@@ -40,8 +40,11 @@ export async function GET() {
       shortLoan: short ? {
         teacher_name: profileMap.get(short.teacher_id) ?? '（未知）',
         loan_date: short.loan_date,
+        end_date: short.end_date,
+        start_period: short.start_period,
+        end_period: short.end_period,
         periods: short.periods,
-        overdue: short.loan_date < today,
+        overdue: (short.end_date ?? short.loan_date) < today,
       } : null,
       longLoan: long ? {
         borrower_name: long.teacher_id

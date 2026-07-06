@@ -112,6 +112,63 @@ export const LOAN_STATUS_LABEL: Record<string, string> = {
   closed: '管理者結案',
 }
 
+/** 借用期間（跨日用）：loan_date～end_date、start_period～end_period */
+export interface LoanRange {
+  loan_date: string
+  end_date?: string | null
+  periods: string[]
+  start_period?: string | null
+  end_period?: string | null
+}
+
+/** 借用的實際到期日（跨日取結束日，舊單日資料取借用日） */
+export function loanDueDate(l: { loan_date: string; end_date?: string | null }): string {
+  return l.end_date ?? l.loan_date
+}
+
+/** 借用時間顯示文字：單日「日期｜節次」、跨日「起日 節次 ～ 迄日 節次」 */
+export function loanTimeText(l: LoanRange): string {
+  const end = loanDueDate(l)
+  if (end === l.loan_date) return `${l.loan_date}｜${periodsText(l.periods)}`
+  return `${l.loan_date} ${periodLabel(l.start_period ?? '')} ～ ${end} ${periodLabel(l.end_period ?? '')}`
+}
+
+/**
+ * 跨日借用中，某一天占用的節次（開放節次依固定順序）：
+ * 首日從開始時段到當日最後、末日從當日第一節到結束時段、中間日整天，同日取區間。
+ */
+export function daySlotPeriods(
+  openPeriods: string[],
+  date: string,
+  startDate: string,
+  endDate: string,
+  startPeriod: string,
+  endPeriod: string
+): string[] {
+  const order = EQUIPMENT_PERIODS.map(p => p.key as string)
+  const open = order.filter(k => openPeriods.includes(k))
+  const si = open.indexOf(startPeriod)
+  const ei = open.indexOf(endPeriod)
+  if (si < 0 || ei < 0) return []
+  const isFirst = date === startDate
+  const isLast = date === endDate
+  if (isFirst && isLast) return si <= ei ? open.slice(si, ei + 1) : []
+  if (isFirst) return open.slice(si)
+  if (isLast) return open.slice(0, ei + 1)
+  return open
+}
+
+/** startDate～endDate（含兩端）的日期清單 */
+export function dateRangeList(startDate: string, endDate: string): string[] {
+  const dates: string[] = []
+  let d = startDate
+  while (d <= endDate && dates.length <= 62) {
+    dates.push(d)
+    d = addDays(d, 1)
+  }
+  return dates
+}
+
 /** 逾期判定基準：借用日當天結束（23:59）仍未歸還即逾期，以「天」計 */
 export function overdueDays(loanDate: string, endAt: string | null, today: string): number {
   const end = (endAt ? endAt.slice(0, 10) : today)

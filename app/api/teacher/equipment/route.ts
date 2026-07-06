@@ -7,8 +7,9 @@ import { addDays, todayStr } from '@/lib/equipment'
 
 /**
  * 教師端短期借用總覽。
- * query: date?（預設今天）
- * 回傳 { config, date, equipment（僅可借用狀態）, occupied: {設備id: 節次[]}, myLoans }
+ * query: from? / to?（借用起訖日，預設今天）
+ * 回傳 { config, from, to, equipment（僅可借用狀態）,
+ *        occupied: {日期: {設備id: 節次[]}}, myLoans }
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -19,15 +20,22 @@ export async function GET(request: NextRequest) {
   const today = todayStr()
   const maxDate = addDays(today, config.maxAdvanceDays)
 
-  let date = request.nextUrl.searchParams.get('date') ?? today
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = today
-  if (date < today) date = today
-  if (date > maxDate) date = maxDate
+  const clamp = (raw: string | null): string => {
+    let d = raw ?? today
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = today
+    if (d < today) d = today
+    if (d > maxDate) d = maxDate
+    return d
+  }
+  const from = clamp(request.nextUrl.searchParams.get('from'))
+  let to = clamp(request.nextUrl.searchParams.get('to'))
+  if (to < from) to = from
 
   const [{ data: equipment }, { data: slots }, { data: myLoans }] = await Promise.all([
     supabaseAdmin.from('equipment').select('*')
       .eq('status', 'available').order('name').order('asset_number'),
-    supabaseAdmin.from('equipment_loan_slots').select('equipment_id, period').eq('loan_date', date),
+    supabaseAdmin.from('equipment_loan_slots').select('equipment_id, loan_date, period')
+      .gte('loan_date', from).lte('loan_date', to),
     supabaseAdmin.from('equipment_loans').select('*')
       .eq('teacher_id', user.id)
       .in('status', ['reserved', 'borrowed', 'returned', 'closed'])
@@ -36,9 +44,11 @@ export async function GET(request: NextRequest) {
       .limit(30),
   ])
 
-  const occupied: Record<string, string[]> = {}
+  // 占用格：日期 → 設備 → 節次
+  const occupied: Record<string, Record<string, string[]>> = {}
   for (const s of slots ?? []) {
-    ;(occupied[s.equipment_id] ??= []).push(s.period)
+    const day = (occupied[s.loan_date] ??= {})
+    ;(day[s.equipment_id] ??= []).push(s.period)
   }
 
   const equipMap = new Map((equipment ?? []).map(e => [e.id, e.name]))
@@ -53,7 +63,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     config: { ...config, today, maxDate },
-    date,
+    from,
+    to,
     equipment: equipment ?? [],
     occupied,
     myLoans: (myLoans ?? []).map(l => ({

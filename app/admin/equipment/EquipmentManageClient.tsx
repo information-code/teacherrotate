@@ -5,6 +5,8 @@ import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 import {
   LOAN_STATUS_LABEL,
+  loanDueDate,
+  loanTimeText,
   overdueDays,
   periodsText,
   renderOverdueMessage,
@@ -23,6 +25,9 @@ interface AdminLoanRow {
   teacher_name: string
   equipment_asset_number: string
   loan_date: string
+  end_date: string | null
+  start_period: string | null
+  end_period: string | null
   periods: string[]
   status: string
   borrow_agreed_at: string | null
@@ -127,7 +132,15 @@ interface OverviewRow {
   asset_number: string
   location: string
   status: string
-  shortLoan: { teacher_name: string; loan_date: string; periods: string[]; overdue: boolean } | null
+  shortLoan: {
+    teacher_name: string
+    loan_date: string
+    end_date: string | null
+    start_period: string | null
+    end_period: string | null
+    periods: string[]
+    overdue: boolean
+  } | null
   longLoan: { borrower_name: string; is_external: boolean; start_date: string; due_date: string; overdue: boolean } | null
 }
 
@@ -227,7 +240,7 @@ function OverviewTab() {
                     {!r.shortLoan && !r.longLoan && '—'}
                   </td>
                   <td className="text-sm">
-                    {r.shortLoan && <div>{r.shortLoan.loan_date}｜{periodsText(r.shortLoan.periods)}</div>}
+                    {r.shortLoan && <div>{loanTimeText(r.shortLoan)}</div>}
                     {r.longLoan && <div>{r.longLoan.start_date} ～ {r.longLoan.due_date}</div>}
                     {!r.shortLoan && !r.longLoan && '—'}
                   </td>
@@ -298,7 +311,7 @@ function ShortLoansTab({
     load()
   }
 
-  const isOverdue = (loan: AdminLoanRow) => loan.status === 'borrowed' && loan.loan_date < today
+  const isOverdue = (loan: AdminLoanRow) => loan.status === 'borrowed' && loanDueDate(loan) < today
 
   return (
     <div className="space-y-4">
@@ -345,14 +358,13 @@ function ShortLoansTab({
             <table className="table-base">
               <thead>
                 <tr>
-                  <th>日期</th><th>設備</th><th>老師</th><th>時段</th><th>狀態</th><th></th>
+                  <th>設備</th><th>老師</th><th>時間</th><th>狀態</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {loans.map(loan => (
                   <Fragment key={loan.id}>
                     <tr>
-                      <td className="whitespace-nowrap">{loan.loan_date}</td>
                       <td>
                         {loan.equipment_name}
                         {loan.equipment_asset_number && (
@@ -360,7 +372,7 @@ function ShortLoansTab({
                         )}
                       </td>
                       <td>{loan.teacher_name}</td>
-                      <td>{periodsText(loan.periods)}</td>
+                      <td className="whitespace-nowrap">{loanTimeText(loan)}</td>
                       <td className="whitespace-nowrap">
                         <span className={
                           loan.status === 'returned' ? 'badge-success'
@@ -368,7 +380,7 @@ function ShortLoansTab({
                           : 'badge-default'
                         }>
                           {isOverdue(loan)
-                            ? `逾期 ${overdueDays(loan.loan_date, null, today)} 天`
+                            ? `逾期 ${overdueDays(loanDueDate(loan), null, today)} 天`
                             : LOAN_STATUS_LABEL[loan.status] ?? loan.status}
                         </span>
                       </td>
@@ -379,8 +391,12 @@ function ShortLoansTab({
                             onClick={() => onCopy({
                               teacher: loan.teacher_name,
                               equipment: loan.equipment_name,
-                              date: loan.loan_date,
-                              periods: periodsText(loan.periods),
+                              date: loanDueDate(loan) === loan.loan_date
+                                ? loan.loan_date
+                                : `${loan.loan_date}～${loanDueDate(loan)}`,
+                              periods: loanDueDate(loan) === loan.loan_date
+                                ? periodsText(loan.periods)
+                                : '',
                             })}
                           >
                             複製通知
@@ -403,7 +419,7 @@ function ShortLoansTab({
                     </tr>
                     {expanded === loan.id && (
                       <tr>
-                        <td colSpan={6} className="!bg-zinc-50">
+                        <td colSpan={5} className="!bg-zinc-50">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-1">
                             <ChecklistDetail
                               title={`借用檢查${loan.borrowed_at ? `（${loan.borrowed_at.slice(0, 16).replace('T', ' ')}）` : ''}`}
