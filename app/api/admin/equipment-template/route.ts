@@ -22,7 +22,7 @@ export async function GET() {
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: equipment } = await supabaseAdmin
-    .from('equipment').select('*').order('sort_order').order('created_at')
+    .from('equipment').select('*').order('name').order('asset_number')
 
   const rows = (equipment ?? []).map(e => ({
     id: e.id,

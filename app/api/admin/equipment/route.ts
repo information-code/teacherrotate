@@ -29,7 +29,7 @@ export async function GET() {
   if ('error' in auth) return auth.error
 
   const { data, error } = await supabaseAdmin
-    .from('equipment').select('*').order('sort_order').order('created_at')
+    .from('equipment').select('*').order('name').order('asset_number')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
 }

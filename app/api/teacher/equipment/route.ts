@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   const [{ data: equipment }, { data: slots }, { data: myLoans }] = await Promise.all([
     supabaseAdmin.from('equipment').select('*')
-      .eq('status', 'available').order('sort_order').order('created_at'),
+      .eq('status', 'available').order('name').order('asset_number'),
     supabaseAdmin.from('equipment_loan_slots').select('equipment_id, period').eq('loan_date', date),
     supabaseAdmin.from('equipment_loans').select('*')
       .eq('teacher_id', user.id)

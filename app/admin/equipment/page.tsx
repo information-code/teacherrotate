@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 export default async function EquipmentManagePage() {
   const admin = getAdminClient()
   const [{ data: equipment }, { data: profiles }, { data: configRow }] = await Promise.all([
-    admin.from('equipment').select('id, name, status, asset_number').order('sort_order').order('created_at'),
+    admin.from('equipment').select('id, name, status, asset_number').order('name').order('asset_number'),
     admin.from('profiles').select('id, name, email').order('name'),
     admin.from('equipment_config').select('config').eq('id', 1).maybeSingle(),
   ])
