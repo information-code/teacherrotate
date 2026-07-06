@@ -271,7 +271,17 @@ function ShortTab({
         }),
       })
       const result = await res.json()
-      if (!res.ok) alert(result.error ?? '預約失敗')
+      if (!res.ok) {
+        alert(result.error ?? '預約失敗')
+      } else {
+        // 預約成功：清空查詢條件與可借清單，捲回頁面頂端看「我的借用」
+        setStartPeriod('')
+        setEndPeriod('')
+        setEquipName('')
+        setShowResults(false)
+        document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
       onReload()
     } finally {
       setSubmitting('')
