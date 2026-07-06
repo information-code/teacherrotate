@@ -31,11 +31,13 @@ export async function GET(request: NextRequest) {
   let to = clamp(request.nextUrl.searchParams.get('to'))
   if (to < from) to = from
 
-  const [{ data: equipment }, { data: slots }, { data: myLoans }] = await Promise.all([
+  const [{ data: allEquipment }, { data: slots }, { data: longLoans }, { data: myLoans }] = await Promise.all([
     supabaseAdmin.from('equipment').select('*')
       .eq('status', 'available').order('name').order('asset_number'),
     supabaseAdmin.from('equipment_loan_slots').select('equipment_id, loan_date, period')
       .gte('loan_date', from).lte('loan_date', to),
+    supabaseAdmin.from('equipment_long_loans').select('equipment_id, start_date')
+      .eq('status', 'active'),
     supabaseAdmin.from('equipment_loans').select('*')
       .eq('teacher_id', user.id)
       .in('status', ['reserved', 'borrowed', 'returned', 'closed'])
@@ -43,6 +45,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(30),
   ])
+
+  // 長期借用中的設備不開放短期借用（到期後未歸還仍在外，直到管理者結束借用）
+  const longLoanedIds = new Set(
+    (longLoans ?? []).filter(l => l.start_date <= to).map(l => l.equipment_id)
+  )
+  const equipment = (allEquipment ?? []).filter(e => !longLoanedIds.has(e.id))
 
   // 占用格：日期 → 設備 → 節次
   const occupied: Record<string, Record<string, string[]>> = {}

@@ -49,6 +49,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '此設備目前無法借用' }, { status: 400 })
   }
 
+  // 長期借用中的設備不可短期借用
+  const { data: longLoan } = await supabaseAdmin
+    .from('equipment_long_loans').select('id, start_date')
+    .eq('equipment_id', equipment_id).eq('status', 'active')
+    .lte('start_date', end_date)
+    .limit(1).maybeSingle()
+  if (longLoan) {
+    return NextResponse.json({ error: '此設備目前為長期借用中，無法短期借用。' }, { status: 400 })
+  }
+
   // 交易式寫入：期間內任一格已被占用則整筆回滾（DB unique 防撞）
   const { data: loanId, error } = await supabaseAdmin.rpc('reserve_equipment_loan_range', {
     p_equipment_id: equipment_id,
