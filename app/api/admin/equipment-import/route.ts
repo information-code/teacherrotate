@@ -51,13 +51,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `一次最多匯入 ${MAX_ROWS} 列` }, { status: 400 })
   }
 
-  const { data: existing } = await supabaseAdmin.from('equipment').select('id, asset_number')
+  const { data: existing } = await supabaseAdmin.from('equipment').select('id, name, asset_number')
   const existingIds = new Set((existing ?? []).map(e => e.id))
-  // 編號 → 設備 id（僅非空編號），用於唯一性檢查
+  // 「名稱|編號」→ 設備 id（僅非空編號）：同名設備編號不可重複，不同名可同編號
   const numberOwner = new Map<string, string>(
-    (existing ?? []).filter(e => e.asset_number).map(e => [e.asset_number, e.id])
+    (existing ?? []).filter(e => e.asset_number).map(e => [`${e.name}|${e.asset_number}`, e.id])
   )
-  const seenNumbers = new Map<string, number>() // 檔案內編號 → 首次出現列號
+  const seenNumbers = new Map<string, number>() // 檔案內「名稱|編號」→ 首次出現列號
 
   const inserts: Record<string, unknown>[] = []
   const updates: Record<string, unknown>[] = []
@@ -86,20 +86,21 @@ export async function POST(request: NextRequest) {
       return
     }
 
-    // 編號唯一：檔案內不可重複；與資料庫比對（更新自己那台除外）
+    // 同名設備編號唯一：檔案內不可重複；與資料庫比對（更新自己那台除外）
     const assetNumber = String(row['編號'] ?? '').trim()
     if (assetNumber) {
-      const firstLine = seenNumbers.get(assetNumber)
+      const key = `${name}|${assetNumber}`
+      const firstLine = seenNumbers.get(key)
       if (firstLine !== undefined) {
-        errors.push(`第 ${line} 列：編號「${assetNumber}」與第 ${firstLine} 列重複，編號不可重複`)
+        errors.push(`第 ${line} 列：「${name}」編號「${assetNumber}」與第 ${firstLine} 列重複，同名設備編號不可重複`)
         return
       }
-      const ownerId = numberOwner.get(assetNumber)
+      const ownerId = numberOwner.get(key)
       if (ownerId && ownerId !== id) {
-        errors.push(`第 ${line} 列：編號「${assetNumber}」已被系統中其他設備使用，編號不可重複`)
+        errors.push(`第 ${line} 列：「${name}」已有編號「${assetNumber}」的設備，同名設備編號不可重複`)
         return
       }
-      seenNumbers.set(assetNumber, line)
+      seenNumbers.set(key, line)
     }
 
     const payload = {

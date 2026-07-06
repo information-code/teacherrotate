@@ -12,14 +12,15 @@ async function requireAdmin() {
   return { user }
 }
 
-/** 編號唯一檢查（名稱可重複、非空編號不可重複）。回傳衝突設備名稱或 null */
-async function assetNumberConflict(assetNumber: string, excludeId?: string): Promise<string | null> {
+/** 同名設備編號唯一檢查（不同名稱可同編號）。有衝突回傳 true */
+async function assetNumberConflict(name: string, assetNumber: string, excludeId?: string): Promise<boolean> {
   const num = assetNumber.trim()
-  if (!num) return null
-  let query = supabaseAdmin.from('equipment').select('id, name').eq('asset_number', num)
+  if (!num) return false
+  let query = supabaseAdmin.from('equipment')
+    .select('id').eq('name', name.trim()).eq('asset_number', num)
   if (excludeId) query = query.neq('id', excludeId)
   const { data } = await query.limit(1)
-  return data && data.length > 0 ? data[0].name : null
+  return Boolean(data && data.length > 0)
 }
 
 /** 設備庫列表 */
@@ -41,9 +42,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   if (!body?.name?.trim()) return NextResponse.json({ error: '請填寫設備名稱' }, { status: 400 })
 
-  const conflict = await assetNumberConflict(String(body.asset_number ?? ''))
-  if (conflict) {
-    return NextResponse.json({ error: `編號「${String(body.asset_number).trim()}」已被「${conflict}」使用，編號不可重複。` }, { status: 400 })
+  if (await assetNumberConflict(String(body.name), String(body.asset_number ?? ''))) {
+    return NextResponse.json(
+      { error: `「${String(body.name).trim()}」已有編號「${String(body.asset_number).trim()}」的設備，同名設備編號不可重複。` },
+      { status: 400 }
+    )
   }
 
   const { data, error } = await supabaseAdmin.from('equipment').insert({
@@ -72,10 +75,18 @@ export async function PUT(request: NextRequest) {
   if (fields.name !== undefined && !String(fields.name).trim()) {
     return NextResponse.json({ error: '設備名稱不可為空' }, { status: 400 })
   }
-  if (fields.asset_number !== undefined) {
-    const conflict = await assetNumberConflict(String(fields.asset_number ?? ''), id)
-    if (conflict) {
-      return NextResponse.json({ error: `編號「${String(fields.asset_number).trim()}」已被「${conflict}」使用，編號不可重複。` }, { status: 400 })
+  // 名稱或編號有變動時，以「更新後的名稱＋編號」檢查同名唯一
+  if (fields.name !== undefined || fields.asset_number !== undefined) {
+    const { data: current } = await supabaseAdmin
+      .from('equipment').select('name, asset_number').eq('id', id).maybeSingle()
+    if (!current) return NextResponse.json({ error: '找不到設備' }, { status: 404 })
+    const effectiveName = String(fields.name ?? current.name)
+    const effectiveNumber = String(fields.asset_number ?? current.asset_number)
+    if (await assetNumberConflict(effectiveName, effectiveNumber, id)) {
+      return NextResponse.json(
+        { error: `「${effectiveName.trim()}」已有編號「${effectiveNumber.trim()}」的設備，同名設備編號不可重複。` },
+        { status: 400 }
+      )
     }
   }
 
