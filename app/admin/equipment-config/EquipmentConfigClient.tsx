@@ -172,7 +172,7 @@ export default function EquipmentConfigClient({
         <div className="flex flex-wrap gap-2">
           <input
             className="input !w-64"
-            placeholder="搜尋名稱、位置、財編、週邊、備註…"
+            placeholder="搜尋名稱、位置、編號、週邊、備註…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -200,7 +200,7 @@ export default function EquipmentConfigClient({
                 <tr>
                   <th>名稱</th>
                   <th>位置</th>
-                  <th>財產編號</th>
+                  <th>編號</th>
                   <th>週邊</th>
                   <th>檢查項目</th>
                   <th>狀態</th>
@@ -507,7 +507,7 @@ function EquipmentEditor({
             <input className="input" value={draft.location} onChange={e => set('location', e.target.value)} placeholder="例：教務處設備櫃" />
           </div>
           <div>
-            <span className="label">財產編號</span>
+            <span className="label">編號</span>
             <input className="input" value={draft.asset_number} onChange={e => set('asset_number', e.target.value)} />
           </div>
           <div>
