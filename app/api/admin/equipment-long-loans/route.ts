@@ -71,6 +71,22 @@ export async function POST(request: NextRequest) {
   }
   if (due_date < start_date) return NextResponse.json({ error: '到期日不可早於起始日' }, { status: 400 })
 
+  // 期間內已有短期借用（預約中/借用中的占用格）→ 不可建立長期借用
+  const { data: conflicts } = await supabaseAdmin
+    .from('equipment_loan_slots')
+    .select('loan_date')
+    .eq('equipment_id', equipment_id)
+    .gte('loan_date', start_date)
+    .lte('loan_date', due_date)
+    .order('loan_date')
+    .limit(1)
+  if (conflicts && conflicts.length > 0) {
+    return NextResponse.json(
+      { error: `長期借用期間內已有短期借用（${conflicts[0].loan_date}），請先取消/結案該短期借用，或調整長期借用日期。` },
+      { status: 400 }
+    )
+  }
+
   const { data, error } = await supabaseAdmin.from('equipment_long_loans').insert({
     equipment_id,
     teacher_id: teacher_id || null,

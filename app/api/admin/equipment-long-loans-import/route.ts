@@ -44,11 +44,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `一次最多匯入 ${MAX_ROWS} 列` }, { status: 400 })
   }
 
-  const [{ data: equipment }, { data: profiles }, { data: activeLoans }] = await Promise.all([
+  const [{ data: equipment }, { data: profiles }, { data: activeLoans }, { data: shortSlots }] = await Promise.all([
     supabaseAdmin.from('equipment').select('id, name, asset_number'),
     supabaseAdmin.from('profiles').select('id, name, email'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
+    // 有效短期借用的占用格（歸還/取消即刪），用於長短期衝突檢查
+    supabaseAdmin.from('equipment_loan_slots').select('equipment_id, loan_date'),
   ])
+
+  const slotDates = new Map<string, string[]>()
+  for (const s of shortSlots ?? []) {
+    const list = slotDates.get(s.equipment_id) ?? []
+    list.push(s.loan_date)
+    slotDates.set(s.equipment_id, list)
+  }
+  /** 期間內第一個短期借用日，無衝突回傳 undefined */
+  const shortConflict = (equipId: string, start: string, due: string) =>
+    (slotDates.get(equipId) ?? []).find(d => d >= start && d <= due)
 
   // 姓名 → 老師 id 清單（偵測同名）；email → id（同名時的精準比對）
   const teachersByName = new Map<string, string[]>()
@@ -170,7 +182,17 @@ export async function POST(request: NextRequest) {
         unchanged++
         return
       }
+      const conflict = shortConflict(equipmentId, startDate, dueDate)
+      if (conflict) {
+        errors.push(`第 ${line} 列：長期借用期間內已有短期借用（${conflict}），請先處理該短期借用`)
+        return
+      }
       updates.push({ ...current, start_date: startDate, due_date: dueDate, notes, updated_at: now })
+      return
+    }
+    const conflict = shortConflict(equipmentId, startDate, dueDate)
+    if (conflict) {
+      errors.push(`第 ${line} 列：長期借用期間內已有短期借用（${conflict}），請先處理該短期借用`)
       return
     }
     if (current) {
