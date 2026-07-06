@@ -4,7 +4,6 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 import {
-  LOAN_STATUS_LABEL,
   loanDueDate,
   loanTimeText,
   overdueDays,
@@ -16,27 +15,6 @@ import {
 
 interface EquipmentOption { id: string; name: string; status: string; asset_number: string }
 interface TeacherOption { id: string; name: string }
-
-interface AdminLoanRow {
-  id: string
-  equipment_id: string
-  equipment_name: string
-  teacher_id: string
-  teacher_name: string
-  equipment_asset_number: string
-  loan_date: string
-  end_date: string | null
-  start_period: string | null
-  end_period: string | null
-  periods: string[]
-  status: string
-  borrow_agreed_at: string | null
-  borrow_checklist: ChecklistResult[] | null
-  borrowed_at: string | null
-  return_agreed_at: string | null
-  return_checklist: ChecklistResult[] | null
-  returned_at: string | null
-}
 
 interface AdminLongLoanRow {
   id: string
@@ -108,8 +86,8 @@ export default function EquipmentManageClient({
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab />}
-      {tab === 'short' && <ShortLoansTab equipment={equipment} onCopy={copyOverdueMessage} onFlash={flash} />}
+      {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} />}
+      {tab === 'short' && <LogTab />}
       {tab === 'long' && (
         <LongLoansTab
           equipment={equipment}
@@ -126,47 +104,75 @@ export default function EquipmentManageClient({
 
 // ---------- 設備總覽 ----------
 
+interface OverviewShortLoan {
+  id: string
+  status: string // reserved | borrowed
+  teacher_name: string
+  loan_date: string
+  end_date: string | null
+  start_period: string | null
+  end_period: string | null
+  periods: string[]
+  overdue: boolean
+}
+
 interface OverviewRow {
   id: string
   name: string
   asset_number: string
   location: string
   status: string
-  shortLoan: {
-    teacher_name: string
-    loan_date: string
-    end_date: string | null
-    start_period: string | null
-    end_period: string | null
-    periods: string[]
-    overdue: boolean
-  } | null
+  shortLoans: OverviewShortLoan[]
   longLoan: { borrower_name: string; is_external: boolean; start_date: string; due_date: string; overdue: boolean } | null
 }
 
-function OverviewTab() {
+function OverviewTab({
+  onCopy,
+  onFlash,
+}: {
+  onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
+  onFlash: (text: string) => void
+}) {
   const [rows, setRows] = useState<OverviewRow[] | null>(null)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('') // '' | free | short | long | maintenance | retired | overdue
+  const [filter, setFilter] = useState('') // '' | free | reserved | short | long | maintenance | retired | overdue
 
-  useEffect(() => {
-    fetch('/api/admin/equipment-overview').then(async res => {
-      if (res.ok) setRows((await res.json()).rows)
-    })
+  const load = useCallback(async () => {
+    const res = await fetch('/api/admin/equipment-overview')
+    if (res.ok) setRows((await res.json()).rows)
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   if (!rows) return <div className="card"><p className="text-sm text-zinc-500">載入中…</p></div>
 
+  const act = async (loan: OverviewShortLoan, action: 'release' | 'close', confirmText: string, doneText: string) => {
+    if (!confirm(confirmText)) return
+    const res = await fetch('/api/admin/equipment-loans', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: loan.id, action }),
+    })
+    const data = await res.json()
+    if (!res.ok) alert(data.error ?? '操作失敗')
+    else onFlash(doneText)
+    load()
+  }
+
+  const borrowed = (r: OverviewRow) => r.shortLoans.filter(l => l.status === 'borrowed')
+  const reserved = (r: OverviewRow) => r.shortLoans.filter(l => l.status === 'reserved')
+
   const keyword = search.trim().toLowerCase()
   const matches = (r: OverviewRow) => {
-    if (filter === 'free' && (r.status !== 'available' || r.shortLoan || r.longLoan)) return false
-    if (filter === 'short' && !r.shortLoan) return false
+    if (filter === 'free' && (r.status !== 'available' || r.shortLoans.length > 0 || r.longLoan)) return false
+    if (filter === 'reserved' && reserved(r).length === 0) return false
+    if (filter === 'short' && borrowed(r).length === 0) return false
     if (filter === 'long' && !r.longLoan) return false
     if (filter === 'maintenance' && r.status !== 'maintenance') return false
     if (filter === 'retired' && r.status !== 'retired') return false
-    if (filter === 'overdue' && !(r.shortLoan?.overdue || r.longLoan?.overdue)) return false
+    if (filter === 'overdue' && !(r.shortLoans.some(l => l.overdue) || r.longLoan?.overdue)) return false
     if (!keyword) return true
-    return [r.name, r.asset_number, r.location, r.shortLoan?.teacher_name, r.longLoan?.borrower_name]
+    return [r.name, r.asset_number, r.location, r.longLoan?.borrower_name, ...r.shortLoans.map(l => l.teacher_name)]
       .some(text => (text ?? '').toLowerCase().includes(keyword))
   }
   const filtered = rows.filter(matches)
@@ -183,6 +189,7 @@ function OverviewTab() {
         <select className="input !w-36" value={filter} onChange={e => setFilter(e.target.value)}>
           <option value="">全部狀態</option>
           <option value="free">未出借</option>
+          <option value="reserved">已預約</option>
           <option value="short">短期出借</option>
           <option value="long">長期出借</option>
           <option value="overdue">逾期中</option>
@@ -202,7 +209,7 @@ function OverviewTab() {
         <div className="overflow-x-auto">
           <table className="table-base">
             <thead>
-              <tr><th>設備</th><th>位置</th><th>狀態</th><th>使用人</th><th>使用時間</th></tr>
+              <tr><th>設備</th><th>位置</th><th>狀態</th><th>使用人／時間</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(r => (
@@ -215,34 +222,79 @@ function OverviewTab() {
                   <td className="whitespace-nowrap space-x-1">
                     {r.status === 'maintenance' && <span className="badge-warn">維修中</span>}
                     {r.status === 'retired' && <span className="badge-default">停用</span>}
-                    {r.shortLoan && (
-                      <span className={r.shortLoan.overdue ? 'badge-warn' : 'badge-default'}>
-                        {r.shortLoan.overdue ? '短期逾期' : '短期出借'}
+                    {borrowed(r).length > 0 && (
+                      <span className={borrowed(r).some(l => l.overdue) ? 'badge-warn' : 'badge-default'}>
+                        {borrowed(r).some(l => l.overdue) ? '短期逾期' : '短期出借'}
                       </span>
                     )}
+                    {reserved(r).length > 0 && <span className="badge-default">已預約</span>}
                     {r.longLoan && (
                       <span className={r.longLoan.overdue ? 'badge-warn' : 'badge-default'}>
                         {r.longLoan.overdue ? '長期逾期' : '長期出借'}
                       </span>
                     )}
-                    {r.status === 'available' && !r.shortLoan && !r.longLoan && (
+                    {r.status === 'available' && r.shortLoans.length === 0 && !r.longLoan && (
                       <span className="badge-success">未出借</span>
                     )}
                   </td>
-                  <td>
-                    {r.shortLoan && <div>{r.shortLoan.teacher_name}</div>}
+                  <td className="text-sm">
+                    {r.shortLoans.map(l => (
+                      <div key={l.id} className="py-0.5">
+                        {l.teacher_name}
+                        <span className="text-zinc-500">｜{loanTimeText(l)}</span>
+                        {l.status === 'reserved' && <span className="ml-1 text-xs text-zinc-400">（預約，未取用）</span>}
+                        {l.overdue && <span className="badge-warn ml-1">逾期 {overdueDays(loanDueDate(l), null, todayStr())} 天</span>}
+                      </div>
+                    ))}
                     {r.longLoan && (
-                      <div>
+                      <div className="py-0.5">
                         {r.longLoan.borrower_name}
                         {r.longLoan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
+                        <span className="text-zinc-500">｜{r.longLoan.start_date} ～ {r.longLoan.due_date}</span>
                       </div>
                     )}
-                    {!r.shortLoan && !r.longLoan && '—'}
+                    {r.shortLoans.length === 0 && !r.longLoan && '—'}
                   </td>
-                  <td className="text-sm">
-                    {r.shortLoan && <div>{loanTimeText(r.shortLoan)}</div>}
-                    {r.longLoan && <div>{r.longLoan.start_date} ～ {r.longLoan.due_date}</div>}
-                    {!r.shortLoan && !r.longLoan && '—'}
+                  <td className="text-right whitespace-nowrap space-y-1">
+                    {r.shortLoans.map(l => (
+                      <div key={l.id} className="space-x-1">
+                        {l.status === 'reserved' && (
+                          <button
+                            className="btn-secondary !px-2.5 !py-1 text-xs"
+                            onClick={() => act(l, 'release',
+                              `確定釋出 ${l.teacher_name} 對「${r.name}」的預約？時段將開放其他老師借用。`,
+                              '已釋出預約')}
+                          >
+                            釋出
+                          </button>
+                        )}
+                        {l.status === 'borrowed' && (
+                          <>
+                            {l.overdue && (
+                              <button
+                                className="btn-secondary !px-2.5 !py-1 text-xs"
+                                onClick={() => onCopy({
+                                  teacher: l.teacher_name,
+                                  equipment: r.name,
+                                  date: loanDueDate(l) === l.loan_date ? l.loan_date : `${l.loan_date}～${loanDueDate(l)}`,
+                                  periods: loanDueDate(l) === l.loan_date ? periodsText(l.periods) : '',
+                                })}
+                              >
+                                複製通知
+                              </button>
+                            )}
+                            <button
+                              className="btn-secondary !px-2.5 !py-1 text-xs"
+                              onClick={() => act(l, 'close',
+                                `確定將 ${l.teacher_name} 借用的「${r.name}」代為結案？`,
+                                '已結案')}
+                            >
+                              結案
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </td>
                 </tr>
               ))}
@@ -254,77 +306,90 @@ function OverviewTab() {
   )
 }
 
-// ---------- 短期借用 ----------
+// ---------- 短期借用（操作日誌，唯讀） ----------
 
-function ShortLoansTab({
-  equipment,
-  onCopy,
-  onFlash,
-}: {
-  equipment: EquipmentOption[]
-  onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
-  onFlash: (text: string) => void
-}) {
-  const [filters, setFilters] = useState({ equipment_name: '', from: '', to: '', status: '' })
-  const [loans, setLoans] = useState<AdminLoanRow[]>([])
+const EVENT_LABEL: Record<string, string> = {
+  reserved: '預約',
+  borrowed: '開始借用',
+  returned: '歸還',
+  cancelled: '取消預約',
+  released: '管理者釋出',
+  closed: '管理者結案',
+}
+
+interface LoanEvent {
+  id: string
+  loan_id: string | null
+  equipment_name: string
+  asset_number: string
+  teacher_name: string
+  action: string
+  detail: string
+  actor_name: string
+  created_at: string
+}
+
+/** 短期借用操作日誌：一個操作一條、唯讀。管理動作（釋出/結案）在「設備總覽」。 */
+function LogTab() {
+  const [filters, setFilters] = useState({ from: '', to: '', action: '' })
+  const [events, setEvents] = useState<LoanEvent[]>([])
+  const [loanDetails, setLoanDetails] = useState<Record<string, {
+    borrow_checklist: ChecklistResult[] | null
+    return_checklist: ChecklistResult[] | null
+  }>>({})
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState('')
   const [loading, setLoading] = useState(true)
-  const today = todayStr()
-
-  // 同名設備視為同一類：下拉去重，選定後一次查詢所有同名設備
-  const equipmentNames = Array.from(new Set(equipment.map(eq => eq.name)))
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (filters.equipment_name) {
-        const ids = equipment.filter(eq => eq.name === filters.equipment_name).map(eq => eq.id)
-        params.set('equipment_ids', ids.join(','))
-      }
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
-      if (filters.status) params.set('status', filters.status)
-      const res = await fetch(`/api/admin/equipment-loans?${params}`)
+      if (filters.action) params.set('action', filters.action)
+      const res = await fetch(`/api/admin/equipment-loan-events?${params}`)
       if (!res.ok) return
       const data = await res.json()
-      setLoans(data.loans)
+      setEvents(data.events)
+      setLoanDetails(data.loanDetails)
       setPhotoUrls(data.photoUrls)
     } finally {
       setLoading(false)
     }
-  }, [filters, equipment])
+  }, [filters])
 
   useEffect(() => { load() }, [load])
 
-  const closeLoan = async (loan: AdminLoanRow) => {
-    if (!confirm(`確定將 ${loan.teacher_name} 借用的「${loan.equipment_name}」代為結案？`)) return
-    const res = await fetch('/api/admin/equipment-loans', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: loan.id }),
-    })
-    const data = await res.json()
-    if (!res.ok) alert(data.error ?? '結案失敗')
-    else onFlash('已結案')
-    load()
-  }
+  const keyword = search.trim().toLowerCase()
+  const filtered = events.filter(ev => !keyword ||
+    [ev.equipment_name, ev.asset_number, ev.teacher_name, ev.actor_name, ev.detail]
+      .some(text => (text ?? '').toLowerCase().includes(keyword)))
 
-  const isOverdue = (loan: AdminLoanRow) => loan.status === 'borrowed' && loanDueDate(loan) < today
+  const badgeClass = (action: string) =>
+    action === 'returned' ? 'badge-success'
+      : action === 'released' || action === 'closed' ? 'badge-warn'
+      : 'badge-default'
+
+  /** 明細可展開的事件（有檢查照片可看） */
+  const detailChecklist = (ev: LoanEvent): ChecklistResult[] | null => {
+    if (!ev.loan_id) return null
+    const detail = loanDetails[ev.loan_id]
+    if (!detail) return null
+    if (ev.action === 'borrowed') return detail.borrow_checklist
+    if (ev.action === 'returned' || ev.action === 'closed') return detail.return_checklist
+    return null
+  }
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-zinc-500">
+        所有短期借用操作的歷史日誌（一個操作一條，唯讀）。預約釋出與借用結案請到「設備總覽」操作。
+      </p>
+
       <div className="card">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
-            <span className="label">設備</span>
-            <select className="input" value={filters.equipment_name}
-              onChange={e => setFilters(f => ({ ...f, equipment_name: e.target.value }))}>
-              <option value="">全部</option>
-              {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
           <div>
             <span className="label">起始日期</span>
             <input type="date" className="input" value={filters.from}
@@ -336,14 +401,19 @@ function ShortLoansTab({
               onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
           </div>
           <div>
-            <span className="label">狀態</span>
-            <select className="input" value={filters.status}
-              onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
+            <span className="label">動作</span>
+            <select className="input" value={filters.action}
+              onChange={e => setFilters(f => ({ ...f, action: e.target.value }))}>
               <option value="">全部</option>
-              {Object.entries(LOAN_STATUS_LABEL).map(([key, label]) => (
+              {Object.entries(EVENT_LABEL).map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <span className="label">關鍵字</span>
+            <input className="input" placeholder="設備、編號、老師…" value={search}
+              onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
       </div>
@@ -351,92 +421,60 @@ function ShortLoansTab({
       <div className="card">
         {loading ? (
           <p className="text-sm text-zinc-500">載入中…</p>
-        ) : loans.length === 0 ? (
-          <p className="text-sm text-zinc-500">沒有符合條件的借用紀錄。</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-zinc-500">沒有符合條件的紀錄。</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table-base">
               <thead>
                 <tr>
-                  <th>設備</th><th>老師</th><th>時間</th><th>狀態</th><th></th>
+                  <th>時間</th><th>動作</th><th>設備</th><th>老師</th><th>借用期間</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {loans.map(loan => (
-                  <Fragment key={loan.id}>
-                    <tr>
-                      <td>
-                        {loan.equipment_name}
-                        {loan.equipment_asset_number && (
-                          <span className="ml-1 text-xs text-zinc-400">#{loan.equipment_asset_number}</span>
-                        )}
-                      </td>
-                      <td>{loan.teacher_name}</td>
-                      <td className="whitespace-nowrap">{loanTimeText(loan)}</td>
-                      <td className="whitespace-nowrap">
-                        <span className={
-                          loan.status === 'returned' ? 'badge-success'
-                          : isOverdue(loan) ? 'badge-warn'
-                          : 'badge-default'
-                        }>
-                          {isOverdue(loan)
-                            ? `逾期 ${overdueDays(loanDueDate(loan), null, today)} 天`
-                            : LOAN_STATUS_LABEL[loan.status] ?? loan.status}
-                        </span>
-                      </td>
-                      <td className="text-right whitespace-nowrap space-x-1">
-                        {isOverdue(loan) && (
-                          <button
-                            className="btn-secondary !px-2.5 !py-1 text-xs"
-                            onClick={() => onCopy({
-                              teacher: loan.teacher_name,
-                              equipment: loan.equipment_name,
-                              date: loanDueDate(loan) === loan.loan_date
-                                ? loan.loan_date
-                                : `${loan.loan_date}～${loanDueDate(loan)}`,
-                              periods: loanDueDate(loan) === loan.loan_date
-                                ? periodsText(loan.periods)
-                                : '',
-                            })}
-                          >
-                            複製通知
-                          </button>
-                        )}
-                        {(loan.status === 'borrowed' || loan.status === 'reserved') && (
-                          <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => closeLoan(loan)}>
-                            結案
-                          </button>
-                        )}
-                        {(loan.borrow_checklist || loan.return_checklist) && (
-                          <button
-                            className="btn-secondary !px-2.5 !py-1 text-xs"
-                            onClick={() => setExpanded(expanded === loan.id ? '' : loan.id)}
-                          >
-                            {expanded === loan.id ? '收合' : '明細'}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                    {expanded === loan.id && (
+                {filtered.map(ev => {
+                  const checklist = detailChecklist(ev)
+                  return (
+                    <Fragment key={ev.id}>
                       <tr>
-                        <td colSpan={5} className="!bg-zinc-50">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-1">
-                            <ChecklistDetail
-                              title={`借用檢查${loan.borrowed_at ? `（${loan.borrowed_at.slice(0, 16).replace('T', ' ')}）` : ''}`}
-                              checklist={loan.borrow_checklist}
-                              photoUrls={photoUrls}
-                            />
-                            <ChecklistDetail
-                              title={`歸還檢查${loan.returned_at ? `（${loan.returned_at.slice(0, 16).replace('T', ' ')}）` : ''}`}
-                              checklist={loan.return_checklist}
-                              photoUrls={photoUrls}
-                            />
-                          </div>
+                        <td className="whitespace-nowrap">{ev.created_at.slice(0, 16).replace('T', ' ')}</td>
+                        <td className="whitespace-nowrap">
+                          <span className={badgeClass(ev.action)}>{EVENT_LABEL[ev.action] ?? ev.action}</span>
+                          {ev.actor_name && ev.actor_name !== ev.teacher_name && (
+                            <span className="ml-1 text-xs text-zinc-400">by {ev.actor_name}</span>
+                          )}
+                        </td>
+                        <td>
+                          {ev.equipment_name}
+                          {ev.asset_number && <span className="ml-1 text-xs text-zinc-400">#{ev.asset_number}</span>}
+                        </td>
+                        <td>{ev.teacher_name}</td>
+                        <td className="whitespace-nowrap">{ev.detail || '—'}</td>
+                        <td className="text-right whitespace-nowrap">
+                          {checklist && checklist.length > 0 && (
+                            <button
+                              className="btn-secondary !px-2.5 !py-1 text-xs"
+                              onClick={() => setExpanded(expanded === ev.id ? '' : ev.id)}
+                            >
+                              {expanded === ev.id ? '收合' : '明細'}
+                            </button>
+                          )}
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
+                      {expanded === ev.id && checklist && (
+                        <tr>
+                          <td colSpan={6} className="!bg-zinc-50">
+                            <ChecklistDetail
+                              title={ev.action === 'borrowed' ? '借用檢查' : '歸還檢查'}
+                              checklist={checklist}
+                              photoUrls={photoUrls}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>

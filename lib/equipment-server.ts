@@ -28,6 +28,43 @@ export async function signPhotoUrls(paths: string[]): Promise<Record<string, str
   return map
 }
 
+/**
+ * 寫入借用操作日誌（一個操作一條）。設備與人名以快照存文字。
+ * 日誌寫入失敗不影響主流程。
+ */
+export async function logLoanEvent(opts: {
+  loanId: string
+  equipmentId: string
+  teacherId: string
+  action: 'reserved' | 'borrowed' | 'returned' | 'cancelled' | 'released' | 'closed'
+  detail: string
+  actorId?: string
+}): Promise<void> {
+  try {
+    const [equipRes, teacherRes, actorRes] = await Promise.all([
+      supabaseAdmin.from('equipment').select('name, asset_number').eq('id', opts.equipmentId).maybeSingle(),
+      supabaseAdmin.from('profiles').select('name, email').eq('id', opts.teacherId).maybeSingle(),
+      opts.actorId && opts.actorId !== opts.teacherId
+        ? supabaseAdmin.from('profiles').select('name, email').eq('id', opts.actorId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+    const teacherName = teacherRes.data?.name ?? teacherRes.data?.email ?? ''
+    await supabaseAdmin.from('equipment_loan_events').insert({
+      loan_id: opts.loanId,
+      equipment_id: opts.equipmentId,
+      equipment_name: equipRes.data?.name ?? '（已刪除設備）',
+      asset_number: equipRes.data?.asset_number ?? '',
+      teacher_id: opts.teacherId,
+      teacher_name: teacherName,
+      action: opts.action,
+      detail: opts.detail,
+      actor_name: actorRes.data ? (actorRes.data.name ?? actorRes.data.email ?? '') : teacherName,
+    })
+  } catch {
+    // 日誌失敗不影響借用主流程
+  }
+}
+
 /** 從檢查結果快照收集所有照片 path */
 export function collectChecklistPhotos(checklist: unknown): string[] {
   if (!Array.isArray(checklist)) return []

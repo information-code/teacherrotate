@@ -2,8 +2,8 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { loadEquipmentConfig, validateChecklistResult } from '@/lib/equipment-server'
-import { addDays, dateRangeList, daySlotPeriods, todayStr, type ChecklistItem } from '@/lib/equipment'
+import { loadEquipmentConfig, logLoanEvent, validateChecklistResult } from '@/lib/equipment-server'
+import { addDays, dateRangeList, daySlotPeriods, loanTimeText, todayStr, type ChecklistItem } from '@/lib/equipment'
 
 /**
  * 預約借用（訂房式，支援跨日）。
@@ -76,6 +76,16 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  await logLoanEvent({
+    loanId: String(loanId),
+    equipmentId: equipment_id,
+    teacherId: user.id,
+    action: 'reserved',
+    detail: loanTimeText({
+      loan_date: start_date, end_date, periods: slots[0].periods, start_period, end_period,
+    }),
+  })
   return NextResponse.json({ ok: true, id: loanId })
 }
 
@@ -100,6 +110,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const now = new Date().toISOString()
+  const timeText = loanTimeText(loan)
 
   if (action === 'cancel') {
     if (loan.status !== 'reserved') {
@@ -109,6 +120,7 @@ export async function PATCH(request: NextRequest) {
       .update({ status: 'cancelled', updated_at: now }).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
+    await logLoanEvent({ loanId: id, equipmentId: loan.equipment_id, teacherId: user.id, action: 'cancelled', detail: timeText })
     return NextResponse.json({ ok: true })
   }
 
@@ -137,6 +149,7 @@ export async function PATCH(request: NextRequest) {
       updated_at: now,
     }).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await logLoanEvent({ loanId: id, equipmentId: loan.equipment_id, teacherId: user.id, action: 'borrowed', detail: timeText })
     return NextResponse.json({ ok: true })
   }
 
@@ -156,5 +169,6 @@ export async function PATCH(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
+  await logLoanEvent({ loanId: id, equipmentId: loan.equipment_id, teacherId: user.id, action: 'returned', detail: timeText })
   return NextResponse.json({ ok: true })
 }

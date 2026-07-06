@@ -8,8 +8,9 @@ import { todayStr } from '@/lib/equipment'
 /**
  * 設備總覽：每台設備目前的狀態。
  * 回傳 rows: { id, name, asset_number, location, status（設備狀態）,
- *   shortLoan: null | { teacher_name, loan_date, periods, overdue },
+ *   shortLoans: [{ id, status(reserved|borrowed), teacher_name, 期間欄位, overdue }],
  *   longLoan:  null | { borrower_name, is_external, start_date, due_date, overdue } }
+ * 已預約未取用的可由管理者「釋出」，借用中的可「結案」。
  */
 export async function GET() {
   const supabase = await createClient()
@@ -22,30 +23,37 @@ export async function GET() {
     supabaseAdmin.from('equipment').select('id, name, asset_number, location, status')
       .order('name').order('asset_number'),
     supabaseAdmin.from('equipment_loans')
-      .select('equipment_id, teacher_id, loan_date, end_date, start_period, end_period, periods')
-      .eq('status', 'borrowed'),
+      .select('id, equipment_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods')
+      .in('status', ['reserved', 'borrowed'])
+      .order('loan_date'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
     supabaseAdmin.from('profiles').select('id, name, email'),
   ])
 
   const profileMap = new Map((profiles ?? []).map(p => [p.id, p.name ?? p.email]))
-  const shortByEquipment = new Map((shortLoans ?? []).map(l => [l.equipment_id, l]))
+  const shortByEquipment = new Map<string, NonNullable<typeof shortLoans>>()
+  for (const l of shortLoans ?? []) {
+    const list = shortByEquipment.get(l.equipment_id) ?? []
+    list.push(l)
+    shortByEquipment.set(l.equipment_id, list)
+  }
   const longByEquipment = new Map((longLoans ?? []).map(l => [l.equipment_id, l]))
 
   const rows = (equipment ?? []).map(e => {
-    const short = shortByEquipment.get(e.id)
     const long = longByEquipment.get(e.id)
     return {
       ...e,
-      shortLoan: short ? {
-        teacher_name: profileMap.get(short.teacher_id) ?? '（未知）',
-        loan_date: short.loan_date,
-        end_date: short.end_date,
-        start_period: short.start_period,
-        end_period: short.end_period,
-        periods: short.periods,
-        overdue: (short.end_date ?? short.loan_date) < today,
-      } : null,
+      shortLoans: (shortByEquipment.get(e.id) ?? []).map(l => ({
+        id: l.id,
+        status: l.status,
+        teacher_name: profileMap.get(l.teacher_id) ?? '（未知）',
+        loan_date: l.loan_date,
+        end_date: l.end_date,
+        start_period: l.start_period,
+        end_period: l.end_period,
+        periods: l.periods,
+        overdue: l.status === 'borrowed' && (l.end_date ?? l.loan_date) < today,
+      })),
       longLoan: long ? {
         borrower_name: long.teacher_id
           ? (profileMap.get(long.teacher_id) ?? '（未知）')

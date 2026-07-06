@@ -2,7 +2,8 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin, collectChecklistPhotos, signPhotoUrls } from '@/lib/equipment-server'
+import { checkAdmin, collectChecklistPhotos, logLoanEvent, signPhotoUrls } from '@/lib/equipment-server'
+import { loanTimeText } from '@/lib/equipment'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -64,29 +65,57 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ loans: rows, photoUrls })
 }
 
-/** 管理者代為結案。body: { id } — 借用中/已預約的紀錄結案並釋出時段 */
+/**
+ * 管理者操作。body: { id, action?: 'close' | 'release' }
+ * - release：已預約但未取用 → 取消預約並釋出時段
+ * - close（預設）：借用中 → 代為結案並釋出時段
+ */
 export async function PATCH(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
-  const { id } = await request.json()
+  const { id, action = 'close' } = await request.json()
   if (!id) return NextResponse.json({ error: '缺少借用紀錄 id' }, { status: 400 })
 
   const { data: loan } = await supabaseAdmin
-    .from('equipment_loans').select('id, status').eq('id', id).maybeSingle()
+    .from('equipment_loans').select('*').eq('id', id).maybeSingle()
   if (!loan) return NextResponse.json({ error: '找不到借用紀錄' }, { status: 404 })
-  if (loan.status !== 'borrowed' && loan.status !== 'reserved') {
-    return NextResponse.json({ error: '此紀錄已結束，無需結案' }, { status: 400 })
+
+  const now = new Date().toISOString()
+
+  if (action === 'release') {
+    if (loan.status !== 'reserved') {
+      return NextResponse.json({ error: '只有「已預約」的紀錄可以釋出' }, { status: 400 })
+    }
+    const { error } = await supabaseAdmin.from('equipment_loans').update({
+      status: 'cancelled',
+      closed_by: auth.user.id,
+      updated_at: now,
+    }).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
+    await logLoanEvent({
+      loanId: id, equipmentId: loan.equipment_id, teacherId: loan.teacher_id,
+      action: 'released', detail: loanTimeText(loan), actorId: auth.user.id,
+    })
+    return NextResponse.json({ ok: true })
   }
 
+  if (loan.status !== 'borrowed') {
+    return NextResponse.json({ error: '只有「借用中」的紀錄可以結案' }, { status: 400 })
+  }
   const { error } = await supabaseAdmin.from('equipment_loans').update({
     status: 'closed',
-    returned_at: new Date().toISOString(),
+    returned_at: now,
     closed_by: auth.user.id,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   }).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
+  await logLoanEvent({
+    loanId: id, equipmentId: loan.equipment_id, teacherId: loan.teacher_id,
+    action: 'closed', detail: loanTimeText(loan), actorId: auth.user.id,
+  })
   return NextResponse.json({ ok: true })
 }

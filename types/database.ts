@@ -206,6 +206,22 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['equipment_loan_slots']['Insert']>
         Relationships: []
       }
+      equipment_loan_events: {
+        Row: {
+          id: string; loan_id: string | null; equipment_id: string | null
+          equipment_name: string; asset_number: string
+          teacher_id: string | null; teacher_name: string
+          action: string; detail: string; actor_name: string; created_at: string
+        }
+        Insert: {
+          id?: string; loan_id?: string | null; equipment_id?: string | null
+          equipment_name?: string; asset_number?: string
+          teacher_id?: string | null; teacher_name?: string
+          action: string; detail?: string; actor_name?: string; created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['equipment_loan_events']['Insert']>
+        Relationships: []
+      }
       equipment_long_loans: {
         Row: {
           id: string; equipment_id: string; teacher_id: string | null; external_name: string
