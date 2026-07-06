@@ -12,6 +12,16 @@ async function requireAdmin() {
   return { user }
 }
 
+/** 編號唯一檢查（名稱可重複、非空編號不可重複）。回傳衝突設備名稱或 null */
+async function assetNumberConflict(assetNumber: string, excludeId?: string): Promise<string | null> {
+  const num = assetNumber.trim()
+  if (!num) return null
+  let query = supabaseAdmin.from('equipment').select('id, name').eq('asset_number', num)
+  if (excludeId) query = query.neq('id', excludeId)
+  const { data } = await query.limit(1)
+  return data && data.length > 0 ? data[0].name : null
+}
+
 /** 設備庫列表 */
 export async function GET() {
   const auth = await requireAdmin()
@@ -30,6 +40,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   if (!body?.name?.trim()) return NextResponse.json({ error: '請填寫設備名稱' }, { status: 400 })
+
+  const conflict = await assetNumberConflict(String(body.asset_number ?? ''))
+  if (conflict) {
+    return NextResponse.json({ error: `編號「${String(body.asset_number).trim()}」已被「${conflict}」使用，編號不可重複。` }, { status: 400 })
+  }
 
   const { data, error } = await supabaseAdmin.from('equipment').insert({
     name: String(body.name).trim(),
@@ -56,6 +71,12 @@ export async function PUT(request: NextRequest) {
   if (!id) return NextResponse.json({ error: '缺少設備 id' }, { status: 400 })
   if (fields.name !== undefined && !String(fields.name).trim()) {
     return NextResponse.json({ error: '設備名稱不可為空' }, { status: 400 })
+  }
+  if (fields.asset_number !== undefined) {
+    const conflict = await assetNumberConflict(String(fields.asset_number ?? ''), id)
+    if (conflict) {
+      return NextResponse.json({ error: `編號「${String(fields.asset_number).trim()}」已被「${conflict}」使用，編號不可重複。` }, { status: 400 })
+    }
   }
 
   const allowed = ['name', 'location', 'asset_number', 'peripherals', 'borrow_checklist', 'return_checklist', 'status', 'notes', 'sort_order'] as const
