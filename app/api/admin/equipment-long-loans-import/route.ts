@@ -4,8 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkAdmin } from '@/lib/equipment-server'
 
-const MAX_ROWS = 500
-const STATUS_MAP: Record<string, string> = { 使用中: 'active', 已結束: 'ended' }
+const MAX_ROWS = 1000
 
 /** 接受 'YYYY-MM-DD'、'YYYY/M/D' 或 Excel 日期序號，回傳 ISO 日期字串或 null */
 function parseDate(raw: unknown): string | null {
@@ -23,12 +22,13 @@ function parseDate(raw: unknown): string | null {
 }
 
 /**
- * 長期借用 Excel 匯入（與匯出檔互為同步）。
- * body: { rows: [{id?, 設備名稱, 設備編號, 老師Email, 起始日, 到期日, 狀態, 備註}] }
- * - 有 id 且存在 → 更新；id 空白 → 新增；未列出的紀錄不受影響
- * 檢查：設備存在（同名多台須以編號指定）、老師 Email 存在、日期格式與先後、
- *       同一設備同時只能有一筆「使用中」（檔案內互查＋與資料庫比對）。
- * 回傳 { createdCount, updatedCount, skipped, errors }
+ * 長期借用指派表匯入（每台設備一列）。
+ * body: { rows: [{設備名稱, 設備編號, 老師姓名, 起始日, 到期日, 備註}] }
+ * - 老師姓名留空 → 略過（不影響該設備現有借用）
+ * - 該設備已有使用中借用：同一位老師 → 更新起訖日/備註；換老師 → 原借用自動結束＋新增
+ * - 該設備無使用中借用 → 新增（狀態一律「使用中」）
+ * - 與匯出檔內容完全相同的列視為無變動，自動略過
+ * 檢查：設備存在且唯一、老師姓名存在且不同名、日期格式與先後、同設備檔內不可重複指派。
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -44,81 +44,77 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `一次最多匯入 ${MAX_ROWS} 列` }, { status: 400 })
   }
 
-  const [{ data: existingLoans }, { data: equipment }, { data: profiles }] = await Promise.all([
-    supabaseAdmin.from('equipment_long_loans').select('id, equipment_id, status'),
+  const [{ data: equipment }, { data: profiles }, { data: activeLoans }] = await Promise.all([
     supabaseAdmin.from('equipment').select('id, name, asset_number'),
-    supabaseAdmin.from('profiles').select('id, email'),
+    supabaseAdmin.from('profiles').select('id, name'),
+    supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
   ])
-  const existingIds = new Set((existingLoans ?? []).map(l => l.id))
-  const teacherByEmail = new Map((profiles ?? []).map(p => [p.email.toLowerCase(), p.id]))
+
+  // 姓名 → 老師 id 清單（偵測同名）
+  const teachersByName = new Map<string, string[]>()
+  for (const p of profiles ?? []) {
+    const name = (p.name ?? '').trim()
+    if (!name) continue
+    teachersByName.set(name, [...(teachersByName.get(name) ?? []), p.id])
+  }
+  const activeByEquipment = new Map((activeLoans ?? []).map(l => [l.equipment_id, l]))
 
   const inserts: Record<string, unknown>[] = []
   const updates: Record<string, unknown>[] = []
   const errors: string[] = []
   let skipped = 0
-
-  // 第一遍：解析與逐列驗證，並收齊本檔案要更新的紀錄 id
-  interface Candidate {
-    line: number
-    id: string
-    equipmentId: string
-    status: string
-    payload: Record<string, unknown>
-  }
-  const candidates: Candidate[] = []
-  const updateIdsInFile = new Set<string>()
+  let unchanged = 0
+  const assignedInFile = new Map<string, number>() // equipment_id → 首次指派列號
+  const now = new Date().toISOString()
 
   rows.forEach((row: Record<string, unknown>, index: number) => {
     const line = index + 2 // Excel 列號（含標題列）
-    const name = String(row['設備名稱'] ?? '').trim()
-    if (!name) {
-      errors.push(`第 ${line} 列：缺少設備名稱`)
-      return
-    }
-    if (name.startsWith('（範例）') || name.startsWith('(範例)')) {
+    const equipName = String(row['設備名稱'] ?? '').trim()
+    if (!equipName || equipName.startsWith('（範例）') || equipName.startsWith('(範例)') || equipName.startsWith('（尚無設備')) {
       skipped++
       return
     }
 
-    const id = String(row['id'] ?? '').trim()
-    if (id && !existingIds.has(id)) {
-      errors.push(`第 ${line} 列：id 不存在於系統中（請勿自行填寫 id，新增請留空）`)
+    // 老師姓名留空＝不指派，直接略過
+    const teacherNameRaw = String(row['老師姓名'] ?? '').trim()
+    if (!teacherNameRaw) {
+      skipped++
       return
     }
 
-    // 設備：名稱（＋編號）唯一定位
+    // 設備：名稱＋編號比對
     const assetNumber = String(row['設備編號'] ?? '').trim()
-    const matched = (equipment ?? []).filter(e =>
-      e.name === name && (!assetNumber || e.asset_number === assetNumber)
-    )
+    const matched = (equipment ?? []).filter(e => e.name === equipName && (e.asset_number ?? '') === assetNumber)
     if (matched.length === 0) {
-      errors.push(`第 ${line} 列：找不到設備「${name}${assetNumber ? ` #${assetNumber}` : ''}」，請確認名稱與編號和設備庫一致`)
+      errors.push(`第 ${line} 列：找不到設備「${equipName}${assetNumber ? ` #${assetNumber}` : ''}」，設備名稱與編號請勿修改`)
       return
     }
     if (matched.length > 1) {
-      errors.push(`第 ${line} 列：「${name}」有 ${matched.length} 台，請填寫設備編號指定是哪一台`)
+      errors.push(`第 ${line} 列：「${equipName}${assetNumber ? ` #${assetNumber}` : ''}」對應到多台設備，請先到設備庫補齊編號`)
       return
     }
+    const equipmentId = matched[0].id
 
-    const email = String(row['老師Email'] ?? '').trim().toLowerCase()
-    if (!email) {
-      errors.push(`第 ${line} 列：缺少老師Email`)
+    // 老師：姓名唯一比對，Email 由系統反查
+    const teacherIds = teachersByName.get(teacherNameRaw) ?? []
+    if (teacherIds.length === 0) {
+      errors.push(`第 ${line} 列：找不到老師「${teacherNameRaw}」，請從下拉選單選取`)
       return
     }
-    const teacherId = teacherByEmail.get(email)
-    if (!teacherId) {
-      errors.push(`第 ${line} 列：老師Email「${email}」不存在於系統帳號中`)
+    if (teacherIds.length > 1) {
+      errors.push(`第 ${line} 列：系統有 ${teacherIds.length} 位「${teacherNameRaw}」，同名無法自動比對，這筆請在系統手動建立`)
       return
     }
+    const teacherId = teacherIds[0]
 
     const startDate = parseDate(row['起始日'])
     const dueDate = parseDate(row['到期日'])
     if (!startDate) {
-      errors.push(`第 ${line} 列：起始日格式錯誤（請用 2026-08-01 格式）`)
+      errors.push(`第 ${line} 列：起始日缺少或格式錯誤（請用 2026-08-01 格式）`)
       return
     }
     if (!dueDate) {
-      errors.push(`第 ${line} 列：到期日格式錯誤（請用 2026-12-18 格式）`)
+      errors.push(`第 ${line} 列：到期日缺少或格式錯誤（請用 2026-12-18 格式）`)
       return
     }
     if (dueDate < startDate) {
@@ -126,65 +122,51 @@ export async function POST(request: NextRequest) {
       return
     }
 
-    const statusRaw = String(row['狀態'] ?? '').trim()
-    if (statusRaw && !STATUS_MAP[statusRaw]) {
-      errors.push(`第 ${line} 列：狀態「${statusRaw}」無效（使用中／已結束）`)
+    const firstLine = assignedInFile.get(equipmentId)
+    if (firstLine !== undefined) {
+      errors.push(`第 ${line} 列：與第 ${firstLine} 列是同一台設備，同一設備只能指派給一位老師`)
       return
     }
-    const status = STATUS_MAP[statusRaw] ?? 'active'
+    assignedInFile.set(equipmentId, line)
 
-    if (id) updateIdsInFile.add(id)
-    candidates.push({
-      line,
-      id,
-      equipmentId: matched[0].id,
-      status,
-      payload: {
-        equipment_id: matched[0].id,
-        teacher_id: teacherId,
-        start_date: startDate,
-        due_date: dueDate,
-        status,
-        notes: String(row['備註'] ?? '').trim(),
-      },
+    const notes = String(row['備註'] ?? '').trim()
+    const current = activeByEquipment.get(equipmentId)
+
+    if (current && current.teacher_id === teacherId) {
+      // 同一位老師：內容沒變就略過，有變才更新
+      if (current.start_date === startDate && current.due_date === dueDate && current.notes === notes) {
+        unchanged++
+        return
+      }
+      updates.push({ ...current, start_date: startDate, due_date: dueDate, notes, updated_at: now })
+      return
+    }
+    if (current) {
+      // 換老師：原借用結束，另立新紀錄（保留續借歷史歸屬）
+      updates.push({ ...current, status: 'ended', updated_at: now })
+    }
+    inserts.push({
+      equipment_id: equipmentId,
+      teacher_id: teacherId,
+      start_date: startDate,
+      due_date: dueDate,
+      status: 'active',
+      notes,
     })
   })
 
-  // 第二遍：同一設備同時只能有一筆「使用中」。
-  // 檔案內互查用各列更新後的狀態；資料庫既有的使用中紀錄若也在本檔案更新名單中，
-  // 以檔案內容為準、不算占用。
-  const activeInFile = new Map<string, number>() // equipment_id → 首次出現列號
-  const dbActiveOwner = new Map<string, string>() // equipment_id → 使用中紀錄 id
-  for (const l of existingLoans ?? []) {
-    if (l.status === 'active') dbActiveOwner.set(l.equipment_id, l.id)
-  }
-
-  for (const c of candidates) {
-    if (c.status === 'active') {
-      const firstLine = activeInFile.get(c.equipmentId)
-      if (firstLine !== undefined) {
-        errors.push(`第 ${c.line} 列：與第 ${firstLine} 列同一台設備都是「使用中」，同一設備同時只能借給一位老師`)
-        continue
-      }
-      const ownerId = dbActiveOwner.get(c.equipmentId)
-      if (ownerId && ownerId !== c.id && !updateIdsInFile.has(ownerId)) {
-        errors.push(`第 ${c.line} 列：這台設備已有使用中的長期借用，請先結束原借用或改用其他設備`)
-        continue
-      }
-      activeInFile.set(c.equipmentId, c.line)
-    }
-    if (c.id) updates.push({ ...c.payload, id: c.id, updated_at: new Date().toISOString() })
-    else inserts.push(c.payload)
-  }
-
   if (inserts.length === 0 && updates.length === 0) {
     return NextResponse.json(
-      { error: `沒有可匯入的資料。${errors.length > 0 ? errors.join('；') : ''}` },
+      {
+        error: errors.length > 0
+          ? `沒有可套用的變更。${errors.join('；')}`
+          : '沒有變更：檔案內容與系統現況相同，或老師欄皆為空白。',
+      },
       { status: 400 }
     )
   }
 
-  // 先更新後新增：更新可先結束原借用，新紀錄才能接手同一台設備
+  // 先更新（含結束原借用），再新增接手的借用
   if (updates.length > 0) {
     const { error } = await supabaseAdmin
       .from('equipment_long_loans').upsert(updates as never, { onConflict: 'id' })
@@ -198,6 +180,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     createdCount: inserts.length,
     updatedCount: updates.length,
+    unchanged,
     skipped,
     errors,
   })

@@ -680,8 +680,9 @@ function LongLoanImportModal({
       <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4">
         <h3 className="font-semibold text-zinc-900">Excel 匯入長期借用</h3>
         <p className="text-sm text-zinc-500">
-          請先「下載清單」，在 Excel 中編修或新增後上傳：有 id 的列會<b>更新</b>、id 留空的列會<b>新增</b>；
-          老師以 Email 比對、設備以名稱＋編號比對，同一台設備同時只能有一筆「使用中」。
+          請先「下載清單」（每台設備一列），下拉選<b>老師姓名</b>＋填<b>起訖日</b>後上傳；
+          老師欄留空的列自動略過。已借出的設備改老師＝換人借用（原借用自動結束）、
+          改日期＝調整期限；內容沒變的列不會重複寫入。
         </p>
 
         <div
