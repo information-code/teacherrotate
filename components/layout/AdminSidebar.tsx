@@ -39,8 +39,8 @@ const navSections = [
   {
     title: '設備管理',
     items: [
-      { href: '/admin/equipment',        label: '借用管理' },
       { href: '/admin/equipment-config', label: '設備設定' },
+      { href: '/admin/equipment',        label: '借用管理' },
     ],
   },
   {
