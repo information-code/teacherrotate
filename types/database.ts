@@ -158,12 +158,88 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['schedule_plan']['Insert']>
         Relationships: []
       }
+      equipment: {
+        Row: {
+          id: string; name: string; location: string; asset_number: string
+          peripherals: Json; borrow_checklist: Json; return_checklist: Json
+          status: string; notes: string; sort_order: number
+          created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; name: string; location?: string; asset_number?: string
+          peripherals?: Json; borrow_checklist?: Json; return_checklist?: Json
+          status?: string; notes?: string; sort_order?: number
+          created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['equipment']['Insert']>
+        Relationships: []
+      }
+      equipment_config: {
+        Row: { id: number; config: Json; updated_at: string }
+        Insert: { id?: number; config?: Json; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['equipment_config']['Insert']>
+        Relationships: []
+      }
+      equipment_loans: {
+        Row: {
+          id: string; equipment_id: string; teacher_id: string
+          loan_date: string; periods: string[]; status: string
+          borrow_agreed_at: string | null; borrow_checklist: Json | null; borrowed_at: string | null
+          return_agreed_at: string | null; return_checklist: Json | null; returned_at: string | null
+          closed_by: string | null; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; equipment_id: string; teacher_id: string
+          loan_date: string; periods: string[]; status?: string
+          borrow_agreed_at?: string | null; borrow_checklist?: Json | null; borrowed_at?: string | null
+          return_agreed_at?: string | null; return_checklist?: Json | null; returned_at?: string | null
+          closed_by?: string | null; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['equipment_loans']['Insert']>
+        Relationships: []
+      }
+      equipment_loan_slots: {
+        Row: { loan_id: string; equipment_id: string; loan_date: string; period: string }
+        Insert: { loan_id: string; equipment_id: string; loan_date: string; period: string }
+        Update: Partial<Database['public']['Tables']['equipment_loan_slots']['Insert']>
+        Relationships: []
+      }
+      equipment_long_loans: {
+        Row: {
+          id: string; equipment_id: string; teacher_id: string
+          start_date: string; due_date: string; status: string; notes: string
+          created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; equipment_id: string; teacher_id: string
+          start_date: string; due_date: string; status?: string; notes?: string
+          created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['equipment_long_loans']['Insert']>
+        Relationships: []
+      }
+      equipment_renewals: {
+        Row: {
+          id: string; long_loan_id: string; photos: Json
+          old_due_date: string; new_due_date: string; agreed_at: string
+        }
+        Insert: {
+          id?: string; long_loan_id: string; photos?: Json
+          old_due_date: string; new_due_date: string; agreed_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['equipment_renewals']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
       relink_profile_refs: {
         Args: { old_id: string; new_id: string }
         Returns: undefined
+      }
+      reserve_equipment_loan: {
+        Args: { p_equipment_id: string; p_teacher_id: string; p_loan_date: string; p_periods: string[] }
+        Returns: string
       }
     }
     Enums: { [_ in never]: never }
