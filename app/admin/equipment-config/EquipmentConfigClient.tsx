@@ -49,7 +49,17 @@ export default function EquipmentConfigClient({
   const [equipment, setEquipment] = useState<EquipmentRow[]>(initialEquipment)
   const [config, setConfig] = useState<EquipmentConfig>(initialConfig)
   const [tab, setTab] = useState<'equipment' | 'rules' | 'agreements' | 'overdue'>('equipment')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
+
+  const keyword = search.trim().toLowerCase()
+  const filteredEquipment = equipment.filter(row => {
+    if (statusFilter && row.status !== statusFilter) return false
+    if (!keyword) return true
+    return [row.name, row.location, row.asset_number, row.notes, ...(row.peripherals ?? [])]
+      .some(text => (text ?? '').toLowerCase().includes(keyword))
+  })
   const [savingConfig, setSavingConfig] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -157,8 +167,31 @@ export default function EquipmentConfigClient({
           </button>
         </div>
 
+        {/* 搜尋與篩選 */}
+        <div className="flex flex-wrap gap-2">
+          <input
+            className="input !w-64"
+            placeholder="搜尋名稱、位置、財編、週邊、備註…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select className="input !w-32" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="">全部狀態</option>
+            {Object.entries(EQUIPMENT_STATUS_LABEL).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+          {(keyword || statusFilter) && (
+            <span className="self-center text-xs text-zinc-500">
+              符合 {filteredEquipment.length}／{equipment.length} 台
+            </span>
+          )}
+        </div>
+
         {equipment.length === 0 ? (
           <p className="text-sm text-zinc-500">尚未建立任何設備。</p>
+        ) : filteredEquipment.length === 0 ? (
+          <p className="text-sm text-zinc-500">沒有符合搜尋條件的設備。</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table-base">
@@ -174,7 +207,7 @@ export default function EquipmentConfigClient({
                 </tr>
               </thead>
               <tbody>
-                {equipment.map(row => (
+                {filteredEquipment.map(row => (
                   <tr key={row.id}>
                     <td className="font-medium">{row.name}</td>
                     <td>{row.location || '—'}</td>
