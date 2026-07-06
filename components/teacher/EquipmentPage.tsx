@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
 import {
+  EQUIPMENT_PERIODS,
   LOAN_STATUS_LABEL,
-  periodLabel,
   periodsText,
   type ChecklistItem,
   type ChecklistResult,
@@ -15,6 +15,7 @@ import {
 interface EquipmentRow {
   id: string
   name: string
+  asset_number: string
   location: string
   peripherals: string[]
   borrow_checklist: ChecklistItem[]
@@ -210,24 +211,33 @@ function ShortTab({
   onReload: () => void
   onStartProcedure: (kind: 'borrow' | 'return', loan: LoanRow) => void
 }) {
-  // 每台設備目前勾選的節次
-  const [selected, setSelected] = useState<Record<string, string[]>>({})
+  // 借用時段範圍：開始節次～結束節次（依學校節次固定順序）＋設備名稱 → 按確定列出可借編號
+  const openPeriods = EQUIPMENT_PERIODS.filter(p => data.config.openPeriods.includes(p.key))
+  const [startPeriod, setStartPeriod] = useState('')
+  const [endPeriod, setEndPeriod] = useState('')
+  const [equipName, setEquipName] = useState('')
+  const [showResults, setShowResults] = useState(false)
   const [submitting, setSubmitting] = useState('')
 
-  const togglePeriod = (equipmentId: string, period: string) => {
-    setSelected(prev => {
-      const current = prev[equipmentId] ?? []
-      return {
-        ...prev,
-        [equipmentId]: current.includes(period)
-          ? current.filter(p => p !== period)
-          : [...current, period],
-      }
-    })
-  }
+  const startIndex = openPeriods.findIndex(p => p.key === startPeriod)
+  const endIndex = openPeriods.findIndex(p => p.key === endPeriod)
+  // 範圍內所有開放節次（含中間夾到的午休等），借用期間整段保留設備
+  const rangePeriods = startIndex >= 0 && endIndex >= startIndex
+    ? openPeriods.slice(startIndex, endIndex + 1).map(p => p.key)
+    : []
+
+  const equipmentNames = Array.from(new Set(data.equipment.map(e => e.name)))
+  const canQuery = rangePeriods.length > 0 && Boolean(equipName)
+
+  // 選定名稱的設備中，該時段範圍全程有空的
+  const availableEquipment = !canQuery ? [] : data.equipment.filter(equip => {
+    if (equip.name !== equipName) return false
+    const occupied = data.occupied[equip.id] ?? []
+    return rangePeriods.every(period => !occupied.includes(period))
+  })
 
   const reserve = async (equipmentId: string) => {
-    const periods = selected[equipmentId] ?? []
+    const periods = rangePeriods
     if (periods.length === 0) return
     setSubmitting(equipmentId)
     try {
@@ -237,11 +247,7 @@ function ShortTab({
         body: JSON.stringify({ equipment_id: equipmentId, date, periods }),
       })
       const result = await res.json()
-      if (!res.ok) {
-        alert(result.error ?? '預約失敗')
-      } else {
-        setSelected(prev => ({ ...prev, [equipmentId]: [] }))
-      }
+      if (!res.ok) alert(result.error ?? '預約失敗')
       onReload()
     } finally {
       setSubmitting('')
@@ -303,69 +309,122 @@ function ShortTab({
         </div>
       )}
 
-      {/* 可借設備 */}
+      {/* 預約借用：先選日期與時段範圍，再從可借設備中挑選 */}
       <div className="card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-medium text-zinc-900">預約借用</h2>
-          <input
-            type="date"
-            className="input !w-auto"
-            value={date}
-            min={data.config.today}
-            max={data.config.maxDate}
-            onChange={e => onDateChange(e.target.value)}
-          />
+        <h2 className="font-medium text-zinc-900">預約借用</h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div>
+            <span className="label">借用日期</span>
+            <input
+              type="date"
+              className="input"
+              value={date}
+              min={data.config.today}
+              max={data.config.maxDate}
+              onChange={e => {
+                setShowResults(false)
+                onDateChange(e.target.value)
+              }}
+            />
+          </div>
+          <div>
+            <span className="label">開始時段</span>
+            <select
+              className="input"
+              value={startPeriod}
+              onChange={e => {
+                const key = e.target.value
+                setStartPeriod(key)
+                setShowResults(false)
+                // 結束時段自動跟上，避免出現結束早於開始
+                const newStart = openPeriods.findIndex(p => p.key === key)
+                if (endIndex < newStart) setEndPeriod(key)
+              }}
+            >
+              <option value="">請選擇</option>
+              {openPeriods.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <span className="label">結束時段</span>
+            <select
+              className="input"
+              value={endPeriod}
+              onChange={e => {
+                setEndPeriod(e.target.value)
+                setShowResults(false)
+              }}
+              disabled={!startPeriod}
+            >
+              <option value="">請選擇</option>
+              {openPeriods.slice(Math.max(startIndex, 0)).map(p => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className="label">借用設備</span>
+            <select
+              className="input"
+              value={equipName}
+              onChange={e => {
+                setEquipName(e.target.value)
+                setShowResults(false)
+              }}
+            >
+              <option value="">請選擇</option>
+              {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button className="btn-primary w-full" disabled={!canQuery} onClick={() => setShowResults(true)}>
+              確定
+            </button>
+          </div>
         </div>
 
-        {data.equipment.length === 0 ? (
-          <p className="text-sm text-zinc-500">目前沒有可借用的設備。</p>
+        {!showResults || !canQuery ? (
+          <p className="text-sm text-zinc-500">
+            請選擇借用日期、時段範圍與設備後按「確定」，就會列出可借用的設備編號。
+          </p>
         ) : (
-          data.equipment.map(equip => {
-            const occupied = data.occupied[equip.id] ?? []
-            const chosen = selected[equip.id] ?? []
-            return (
-              <div key={equip.id} className="border border-zinc-200 rounded p-3 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="text-sm font-medium text-zinc-900">{equip.name}</span>
-                    {equip.location && <span className="ml-2 text-xs text-zinc-500">存放：{equip.location}</span>}
+          <>
+            <p className="text-sm text-zinc-600">
+              {date}｜{periodsText(rangePeriods)}｜{equipName}，可借用 {availableEquipment.length} 台：
+            </p>
+            {availableEquipment.length === 0 ? (
+              <p className="text-sm text-zinc-500">這個時段「{equipName}」已全數借出，請換其他時段或日期。</p>
+            ) : (
+              <div className="space-y-2">
+                {availableEquipment.map(equip => (
+                  <div key={equip.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                    <div className="flex-1 min-w-[180px]">
+                      <div className="text-sm font-medium text-zinc-900">
+                        {equip.name}
+                        {equip.asset_number && (
+                          <span className="ml-1 text-xs text-zinc-400 font-normal">#{equip.asset_number}</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-0.5">
+                        {equip.location && <>存放：{equip.location}</>}
+                        {(equip.peripherals ?? []).length > 0 && (
+                          <>{equip.location && '｜'}週邊：{(equip.peripherals ?? []).join('、')}</>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      className="btn-primary !px-3 !py-1.5"
+                      disabled={submitting === equip.id}
+                      onClick={() => reserve(equip.id)}
+                    >
+                      {submitting === equip.id ? '預約中…' : '預約借用'}
+                    </button>
                   </div>
-                  <button
-                    className="btn-primary !px-3 !py-1.5"
-                    disabled={chosen.length === 0 || submitting === equip.id}
-                    onClick={() => reserve(equip.id)}
-                  >
-                    {submitting === equip.id ? '預約中…' : chosen.length > 0 ? `預約 ${chosen.length} 個時段` : '預約借用'}
-                  </button>
-                </div>
-                {(equip.peripherals ?? []).length > 0 && (
-                  <div className="text-xs text-zinc-500">週邊：{(equip.peripherals ?? []).join('、')}</div>
-                )}
-                <div className="flex flex-wrap gap-1.5">
-                  {data.config.openPeriods.map(period => {
-                    const taken = occupied.includes(period)
-                    const active = chosen.includes(period)
-                    return (
-                      <button
-                        key={period}
-                        disabled={taken}
-                        className={`px-2.5 py-1 text-xs border rounded transition-colors ${
-                          taken
-                            ? 'bg-zinc-100 text-zinc-300 border-zinc-200 cursor-not-allowed line-through'
-                            : active
-                              ? 'bg-zinc-800 text-white border-zinc-800'
-                              : 'bg-white text-zinc-600 border-zinc-300 hover:bg-zinc-50'
-                        }`}
-                        onClick={() => togglePeriod(equip.id, period)}
-                      >
-                        {periodLabel(period)}
-                      </button>
-                    )
-                  })}
-                </div>
+                ))}
               </div>
-            )
-          })
+            )}
+          </>
         )}
       </div>
 
