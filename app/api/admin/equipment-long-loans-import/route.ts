@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
 
   const [{ data: equipment }, { data: profiles }, { data: activeLoans }, { data: shortSlots }] = await Promise.all([
     supabaseAdmin.from('equipment').select('id, name, asset_number'),
-    supabaseAdmin.from('profiles').select('id, name, email'),
+    // 借用人比對排除離校教師（離校者姓名會被視為系統外人員並附提醒）
+    supabaseAdmin.from('profiles').select('id, name, email').neq('status', 'inactive'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
     // 有效短期借用的占用格（歸還/取消即刪），用於長短期衝突檢查
     supabaseAdmin.from('equipment_loan_slots').select('equipment_id, loan_date'),

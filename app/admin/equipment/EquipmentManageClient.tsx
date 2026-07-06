@@ -332,6 +332,7 @@ interface LoanEvent {
 /** 短期借用操作日誌：一個操作一條、唯讀。管理動作（釋出/結案）在「設備總覽」。 */
 function LogTab() {
   const [filters, setFilters] = useState({ from: '', to: '', action: '' })
+  const [equipName, setEquipName] = useState('')
   const [events, setEvents] = useState<LoanEvent[]>([])
   const [loanDetails, setLoanDetails] = useState<Record<string, {
     borrow_checklist: ChecklistResult[] | null
@@ -362,10 +363,14 @@ function LogTab() {
 
   useEffect(() => { load() }, [load])
 
+  const equipmentNames = Array.from(new Set(events.map(ev => ev.equipment_name))).sort()
   const keyword = search.trim().toLowerCase()
-  const filtered = events.filter(ev => !keyword ||
-    [ev.equipment_name, ev.asset_number, ev.teacher_name, ev.actor_name, ev.detail]
-      .some(text => (text ?? '').toLowerCase().includes(keyword)))
+  const filtered = events.filter(ev => {
+    if (equipName && ev.equipment_name !== equipName) return false
+    if (!keyword) return true
+    return [ev.equipment_name, ev.asset_number, ev.teacher_name, ev.actor_name, ev.detail]
+      .some(text => (text ?? '').toLowerCase().includes(keyword))
+  })
 
   const badgeClass = (action: string) =>
     action === 'returned' ? 'badge-success'
@@ -389,7 +394,7 @@ function LogTab() {
       </p>
 
       <div className="card">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <span className="label">起始日期</span>
             <input type="date" className="input" value={filters.from}
@@ -399,6 +404,13 @@ function LogTab() {
             <span className="label">結束日期</span>
             <input type="date" className="input" value={filters.to}
               onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
+          </div>
+          <div>
+            <span className="label">設備</span>
+            <select className="input" value={equipName} onChange={e => setEquipName(e.target.value)}>
+              <option value="">全部</option>
+              {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
           </div>
           <div>
             <span className="label">動作</span>
@@ -412,7 +424,7 @@ function LogTab() {
           </div>
           <div>
             <span className="label">關鍵字</span>
-            <input className="input" placeholder="設備、編號、老師…" value={search}
+            <input className="input" placeholder="編號、老師…" value={search}
               onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
@@ -539,7 +551,7 @@ function LongLoansTab({
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState('')
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [search, setSearch] = useState('')
   const [filterName, setFilterName] = useState('')
@@ -552,9 +564,10 @@ function LongLoansTab({
     return d.toISOString().slice(0, 10)
   }
   const [form, setForm] = useState({
-    equipment_id: '', teacher_id: '', external_name: '', start_date: todayStr(), due_date: defaultDue(), notes: '',
+    equipment_name: '', teacher_id: '', external_name: '', start_date: todayStr(), due_date: defaultDue(), notes: '',
   })
   const isExternal = form.teacher_id === '__external__'
+  const borrowerReady = Boolean(form.teacher_id) && (!isExternal || Boolean(form.external_name.trim()))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -571,14 +584,17 @@ function LongLoansTab({
 
   useEffect(() => { load() }, [load])
 
-  const create = async () => {
-    setCreating(true)
+  const create = async (equipmentId: string) => {
+    setCreating(equipmentId)
     try {
       const res = await fetch('/api/admin/equipment-long-loans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          equipment_id: equipmentId,
+          start_date: form.start_date,
+          due_date: form.due_date,
+          notes: form.notes,
           teacher_id: isExternal ? '' : form.teacher_id,
           external_name: isExternal ? form.external_name : '',
         }),
@@ -588,11 +604,10 @@ function LongLoansTab({
         alert(data.error ?? '建立失敗')
         return
       }
-      setForm(f => ({ ...f, equipment_id: '', teacher_id: '', external_name: '', notes: '' }))
       onFlash('已建立長期借用')
       load()
     } finally {
-      setCreating(false)
+      setCreating('')
     }
   }
 
@@ -637,16 +652,14 @@ function LongLoansTab({
             <button className="btn-secondary !px-3 !py-1.5" onClick={() => setShowImport(true)}>Excel 匯入</button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <span className="label">設備</span>
-            <select className="input" value={form.equipment_id}
-              onChange={e => setForm(f => ({ ...f, equipment_id: e.target.value }))}>
+            <span className="label">設備名稱</span>
+            <select className="input" value={form.equipment_name}
+              onChange={e => setForm(f => ({ ...f, equipment_name: e.target.value }))}>
               <option value="">請選擇</option>
-              {equipment.filter(eq => eq.status !== 'retired').map(eq => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name}{eq.asset_number ? `（#${eq.asset_number}）` : ''}
-                </option>
+              {Array.from(new Set(equipment.filter(eq => eq.status !== 'retired').map(eq => eq.name))).map(name => (
+                <option key={name} value={name}>{name}</option>
               ))}
             </select>
           </div>
@@ -677,18 +690,43 @@ function LongLoansTab({
             <input type="date" className="input" value={form.due_date}
               onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
           </div>
-          <div className="flex items-end">
-            <button
-              className="btn-primary w-full"
-              disabled={!form.equipment_id || !form.teacher_id || (isExternal && !form.external_name.trim()) || creating}
-              onClick={create}
-            >
-              {creating ? '建立中…' : '建立'}
-            </button>
-          </div>
         </div>
         <input className="input" placeholder="備註（選填）" value={form.notes}
           onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+
+        {/* 選定名稱後羅列該設備所有編號與長借狀態，逐台指派 */}
+        {form.equipment_name && (
+          <div className="space-y-2">
+            {equipment
+              .filter(eq => eq.status !== 'retired' && eq.name === form.equipment_name)
+              .map(eq => {
+                const current = loans.find(l => l.status === 'active' && l.equipment_id === eq.id)
+                return (
+                  <div key={eq.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                    <div className="flex-1 min-w-[180px] text-sm">
+                      <span className="font-medium text-zinc-900">{eq.name}</span>
+                      {eq.asset_number && <span className="ml-1 text-xs text-zinc-400">#{eq.asset_number}</span>}
+                      <div className="text-xs text-zinc-500 mt-0.5">
+                        {current
+                          ? <>長期借用中：{current.teacher_name}{current.is_external && '（系統外）'}｜{current.start_date} ～ {current.due_date}</>
+                          : '可指派'}
+                      </div>
+                    </div>
+                    <button
+                      className="btn-primary !px-3 !py-1.5"
+                      disabled={Boolean(current) || !borrowerReady || creating === eq.id}
+                      onClick={() => create(eq.id)}
+                    >
+                      {creating === eq.id ? '建立中…' : current ? '已借出' : '指派'}
+                    </button>
+                  </div>
+                )
+              })}
+            {!borrowerReady && (
+              <p className="text-xs text-zinc-400">請先選擇借用人（與起訖日期），再按「指派」。</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 列表 */}

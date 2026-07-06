@@ -8,7 +8,8 @@ export default async function EquipmentManagePage() {
   const admin = getAdminClient()
   const [{ data: equipment }, { data: profiles }, { data: configRow }] = await Promise.all([
     admin.from('equipment').select('id, name, status, asset_number').order('name').order('asset_number'),
-    admin.from('profiles').select('id, name, email').order('name'),
+    // 借用人選單排除離校教師
+    admin.from('profiles').select('id, name, email').neq('status', 'inactive').order('name'),
     admin.from('equipment_config').select('config').eq('id', 1).maybeSingle(),
   ])
   const config = normalizeEquipmentConfig(configRow?.config)
