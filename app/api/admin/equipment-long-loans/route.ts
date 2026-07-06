@@ -38,7 +38,10 @@ export async function GET() {
   const rows = (loans ?? []).map(l => ({
     ...l,
     equipment_name: equipMap.get(l.equipment_id)?.name ?? '（已刪除設備）',
-    teacher_name: profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）',
+    teacher_name: l.teacher_id
+      ? (profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）')
+      : l.external_name,
+    is_external: !l.teacher_id,
     renewals: renewalsByLoan.get(l.id) ?? [],
   }))
 
@@ -48,20 +51,30 @@ export async function GET() {
   return NextResponse.json({ loans: rows, photoUrls })
 }
 
-/** 建立長期借用。body: { equipment_id, teacher_id, start_date, due_date, notes? } */
+/**
+ * 建立長期借用。body: { equipment_id, teacher_id? , external_name?, start_date, due_date, notes? }
+ * teacher_id＝系統帳號；external_name＝系統外人員（沒有帳號、不登入系統），兩者擇一。
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
   const body = await request.json()
   const { equipment_id, teacher_id, start_date, due_date } = body ?? {}
-  if (!equipment_id || !teacher_id || !start_date || !due_date) {
-    return NextResponse.json({ error: '請完整填寫設備、老師與起訖日期' }, { status: 400 })
+  const externalName = String(body?.external_name ?? '').trim()
+  if (!equipment_id || !start_date || !due_date) {
+    return NextResponse.json({ error: '請完整填寫設備與起訖日期' }, { status: 400 })
+  }
+  if (!teacher_id && !externalName) {
+    return NextResponse.json({ error: '請選擇老師，或填寫系統外人員姓名' }, { status: 400 })
   }
   if (due_date < start_date) return NextResponse.json({ error: '到期日不可早於起始日' }, { status: 400 })
 
   const { data, error } = await supabaseAdmin.from('equipment_long_loans').insert({
-    equipment_id, teacher_id, start_date, due_date,
+    equipment_id,
+    teacher_id: teacher_id || null,
+    external_name: teacher_id ? '' : externalName,
+    start_date, due_date,
     notes: String(body.notes ?? ''),
   }).select().single()
 

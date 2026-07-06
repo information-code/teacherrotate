@@ -37,8 +37,9 @@ interface AdminLongLoanRow {
   id: string
   equipment_id: string
   equipment_name: string
-  teacher_id: string
+  teacher_id: string | null
   teacher_name: string
+  is_external: boolean
   start_date: string
   due_date: string
   status: string
@@ -370,8 +371,9 @@ function LongLoansTab({
     return d.toISOString().slice(0, 10)
   }
   const [form, setForm] = useState({
-    equipment_id: '', teacher_id: '', start_date: todayStr(), due_date: defaultDue(), notes: '',
+    equipment_id: '', teacher_id: '', external_name: '', start_date: todayStr(), due_date: defaultDue(), notes: '',
   })
+  const isExternal = form.teacher_id === '__external__'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -394,14 +396,18 @@ function LongLoansTab({
       const res = await fetch('/api/admin/equipment-long-loans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          teacher_id: isExternal ? '' : form.teacher_id,
+          external_name: isExternal ? form.external_name : '',
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         alert(data.error ?? '建立失敗')
         return
       }
-      setForm(f => ({ ...f, equipment_id: '', teacher_id: '', notes: '' }))
+      setForm(f => ({ ...f, equipment_id: '', teacher_id: '', external_name: '', notes: '' }))
       onFlash('已建立長期借用')
       load()
     } finally {
@@ -450,12 +456,21 @@ function LongLoansTab({
             </select>
           </div>
           <div>
-            <span className="label">老師</span>
+            <span className="label">借用人</span>
             <select className="input" value={form.teacher_id}
               onChange={e => setForm(f => ({ ...f, teacher_id: e.target.value }))}>
               <option value="">請選擇</option>
               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="__external__">系統外人員（手動輸入姓名）</option>
             </select>
+            {isExternal && (
+              <input
+                className="input mt-2"
+                placeholder="輸入系統外人員姓名"
+                value={form.external_name}
+                onChange={e => setForm(f => ({ ...f, external_name: e.target.value }))}
+              />
+            )}
           </div>
           <div>
             <span className="label">起始日</span>
@@ -468,7 +483,11 @@ function LongLoansTab({
               onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
           </div>
           <div className="flex items-end">
-            <button className="btn-primary w-full" disabled={!form.equipment_id || !form.teacher_id || creating} onClick={create}>
+            <button
+              className="btn-primary w-full"
+              disabled={!form.equipment_id || !form.teacher_id || (isExternal && !form.external_name.trim()) || creating}
+              onClick={create}
+            >
               {creating ? '建立中…' : '建立'}
             </button>
           </div>
@@ -497,7 +516,10 @@ function LongLoansTab({
                     <Fragment key={loan.id}>
                       <tr>
                         <td>{loan.equipment_name}</td>
-                        <td>{loan.teacher_name}</td>
+                        <td>
+                          {loan.teacher_name}
+                          {loan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
+                        </td>
                         <td>{loan.start_date}</td>
                         <td className="whitespace-nowrap">
                           {loan.due_date}
@@ -666,8 +688,15 @@ function LongLoanImportModal({
         alert(data.error ?? '匯入失敗')
         return
       }
+      const notices: string[] = []
       if ((data.errors ?? []).length > 0) {
-        alert(`已套用 ${data.createdCount + data.updatedCount} 列，以下列有問題被略過：\n${data.errors.join('\n')}`)
+        notices.push(`以下列有問題被略過：\n${data.errors.join('\n')}`)
+      }
+      if ((data.warnings ?? []).length > 0) {
+        notices.push(`請留意：\n${data.warnings.join('\n')}`)
+      }
+      if (notices.length > 0) {
+        alert(`已套用 ${data.createdCount + data.updatedCount} 列。\n\n${notices.join('\n\n')}`)
       }
       onDone(data)
     } finally {

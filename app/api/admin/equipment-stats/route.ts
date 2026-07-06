@@ -96,7 +96,7 @@ export async function GET() {
     id: l.id,
     equipment_name: equipName(l.equipment_id),
     teacher_id: l.teacher_id,
-    teacher_name: teacherName(l.teacher_id),
+    teacher_name: l.teacher_id ? teacherName(l.teacher_id) : `${l.external_name}（系統外）`,
     due_date: l.due_date,
     overdueDays: overdueDays(l.due_date, null, today),
   })).sort((a, b) => b.overdueDays - a.overdueDays)

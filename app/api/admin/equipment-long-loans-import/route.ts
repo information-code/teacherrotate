@@ -46,22 +46,52 @@ export async function POST(request: NextRequest) {
 
   const [{ data: equipment }, { data: profiles }, { data: activeLoans }] = await Promise.all([
     supabaseAdmin.from('equipment').select('id, name, asset_number'),
-    supabaseAdmin.from('profiles').select('id, name'),
+    supabaseAdmin.from('profiles').select('id, name, email'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
   ])
 
-  // 姓名 → 老師 id 清單（偵測同名）
+  // 姓名 → 老師 id 清單（偵測同名）；email → id（同名時的精準比對）
   const teachersByName = new Map<string, string[]>()
+  const teacherByEmail = new Map<string, string>()
   for (const p of profiles ?? []) {
     const name = (p.name ?? '').trim()
-    if (!name) continue
-    teachersByName.set(name, [...(teachersByName.get(name) ?? []), p.id])
+    if (name) teachersByName.set(name, [...(teachersByName.get(name) ?? []), p.id])
+    teacherByEmail.set(p.email.toLowerCase(), p.id)
   }
   const activeByEquipment = new Map((activeLoans ?? []).map(l => [l.equipment_id, l]))
+
+  /**
+   * 解析借用人欄位：
+   * 「姓名（系統外）」→ 系統外人員；「姓名（email）」→ email 精準比對（同名老師用）；
+   * 純姓名 → 唯一比對，同名回報錯誤，查無視為系統外人員（附提醒讓管理者確認非打錯字）。
+   */
+  const resolveBorrower = (raw: string):
+    | { teacherId: string }
+    | { externalName: string; note?: string }
+    | { error: string } => {
+    const m = raw.match(/^(.+?)[（(]([^（()）]+)[)）]$/)
+    if (m) {
+      const base = m[1].trim()
+      const inner = m[2].trim()
+      if (inner === '系統外') return { externalName: base }
+      if (inner.includes('@')) {
+        const id = teacherByEmail.get(inner.toLowerCase())
+        return id ? { teacherId: id } : { error: `Email「${inner}」不存在於系統帳號中` }
+      }
+    }
+    const ids = teachersByName.get(raw) ?? []
+    if (ids.length === 1) return { teacherId: ids[0] }
+    if (ids.length > 1) return { error: `系統有 ${ids.length} 位「${raw}」，請用下拉選單的「姓名（email）」格式指定` }
+    return {
+      externalName: raw,
+      note: `「${raw}」不在系統名單中，已建立為【系統外人員】，請確認不是打錯字`,
+    }
+  }
 
   const inserts: Record<string, unknown>[] = []
   const updates: Record<string, unknown>[] = []
   const errors: string[] = []
+  const warnings: string[] = []
   let skipped = 0
   let unchanged = 0
   const assignedInFile = new Map<string, number>() // equipment_id → 首次指派列號
@@ -95,17 +125,15 @@ export async function POST(request: NextRequest) {
     }
     const equipmentId = matched[0].id
 
-    // 老師：姓名唯一比對，Email 由系統反查
-    const teacherIds = teachersByName.get(teacherNameRaw) ?? []
-    if (teacherIds.length === 0) {
-      errors.push(`第 ${line} 列：找不到老師「${teacherNameRaw}」，請從下拉選單選取`)
+    // 借用人解析：系統帳號或系統外人員
+    const borrower = resolveBorrower(teacherNameRaw)
+    if ('error' in borrower) {
+      errors.push(`第 ${line} 列：${borrower.error}`)
       return
     }
-    if (teacherIds.length > 1) {
-      errors.push(`第 ${line} 列：系統有 ${teacherIds.length} 位「${teacherNameRaw}」，同名無法自動比對，這筆請在系統手動建立`)
-      return
-    }
-    const teacherId = teacherIds[0]
+    const teacherId = 'teacherId' in borrower ? borrower.teacherId : null
+    const externalName = 'externalName' in borrower ? borrower.externalName : ''
+    if ('note' in borrower && borrower.note) warnings.push(`第 ${line} 列：${borrower.note}`)
 
     const startDate = parseDate(row['起始日'])
     const dueDate = parseDate(row['到期日'])
@@ -131,9 +159,13 @@ export async function POST(request: NextRequest) {
 
     const notes = String(row['備註'] ?? '').trim()
     const current = activeByEquipment.get(equipmentId)
+    const sameBorrower = current && (
+      teacherId ? current.teacher_id === teacherId
+                : !current.teacher_id && current.external_name === externalName
+    )
 
-    if (current && current.teacher_id === teacherId) {
-      // 同一位老師：內容沒變就略過，有變才更新
+    if (current && sameBorrower) {
+      // 同一位借用人：內容沒變就略過，有變才更新
       if (current.start_date === startDate && current.due_date === dueDate && current.notes === notes) {
         unchanged++
         return
@@ -142,12 +174,13 @@ export async function POST(request: NextRequest) {
       return
     }
     if (current) {
-      // 換老師：原借用結束，另立新紀錄（保留續借歷史歸屬）
+      // 換借用人：原借用結束，另立新紀錄（保留續借歷史歸屬）
       updates.push({ ...current, status: 'ended', updated_at: now })
     }
     inserts.push({
       equipment_id: equipmentId,
       teacher_id: teacherId,
+      external_name: teacherId ? '' : externalName,
       start_date: startDate,
       due_date: dueDate,
       status: 'active',
@@ -183,5 +216,6 @@ export async function POST(request: NextRequest) {
     unchanged,
     skipped,
     errors,
+    warnings,
   })
 }

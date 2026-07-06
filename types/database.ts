@@ -206,12 +206,12 @@ export type Database = {
       }
       equipment_long_loans: {
         Row: {
-          id: string; equipment_id: string; teacher_id: string
+          id: string; equipment_id: string; teacher_id: string | null; external_name: string
           start_date: string; due_date: string; status: string; notes: string
           created_at: string; updated_at: string
         }
         Insert: {
-          id?: string; equipment_id: string; teacher_id: string
+          id?: string; equipment_id: string; teacher_id?: string | null; external_name?: string
           start_date: string; due_date: string; status?: string; notes?: string
           created_at?: string; updated_at?: string
         }
