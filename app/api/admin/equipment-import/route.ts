@@ -64,6 +64,19 @@ export async function POST(request: NextRequest) {
   const errors: string[] = []
   let skipped = 0
 
+  // 第一遍：基本驗證與解析，並先收齊「本檔案要更新的設備 id」——
+  // 這些設備的名稱與編號會被檔案內容整個覆蓋，其資料庫舊編號視為已釋出，
+  // 讓「舊設備換編號＋新設備接手舊編號」能在同一份檔案一次完成。
+  interface Candidate {
+    line: number
+    id: string
+    name: string
+    assetNumber: string
+    payload: Record<string, unknown>
+  }
+  const candidates: Candidate[] = []
+  const updateIdsInFile = new Set<string>()
+
   rows.forEach((row: Record<string, unknown>, index: number) => {
     const line = index + 2 // Excel 列號（含標題列）
     const name = String(row['名稱'] ?? '').trim()
@@ -85,37 +98,47 @@ export async function POST(request: NextRequest) {
       errors.push(`第 ${line} 列：id 不存在於系統中（請勿自行填寫 id，新增請留空）`)
       return
     }
+    if (id) updateIdsInFile.add(id)
 
-    // 同名設備編號唯一：檔案內不可重複；與資料庫比對（更新自己那台除外）
-    const assetNumber = String(row['編號'] ?? '').trim()
-    if (assetNumber) {
-      const key = `${name}|${assetNumber}`
+    candidates.push({
+      line,
+      id,
+      name,
+      assetNumber: String(row['編號'] ?? '').trim(),
+      payload: {
+        name,
+        location: String(row['位置'] ?? '').trim(),
+        asset_number: String(row['編號'] ?? '').trim(),
+        status: STATUS_MAP[statusRaw] ?? 'available',
+        peripherals: splitList(row['週邊配件']),
+        borrow_checklist: parseChecklist(row['借用檢查項目']),
+        return_checklist: parseChecklist(row['歸還檢查項目']),
+        notes: String(row['備註'] ?? '').trim(),
+      },
+    })
+  })
+
+  // 第二遍：同名編號唯一檢查。
+  // 檔案內互查靠 seenNumbers（用各列「更新後」的名稱＋編號）；
+  // 與資料庫比對時，占用者若也在本檔案更新名單中，舊編號視為釋出、不算衝突。
+  for (const c of candidates) {
+    if (c.assetNumber) {
+      const key = `${c.name}|${c.assetNumber}`
       const firstLine = seenNumbers.get(key)
       if (firstLine !== undefined) {
-        errors.push(`第 ${line} 列：「${name}」編號「${assetNumber}」與第 ${firstLine} 列重複，同名設備編號不可重複`)
-        return
+        errors.push(`第 ${c.line} 列：「${c.name}」編號「${c.assetNumber}」與第 ${firstLine} 列重複，同名設備編號不可重複`)
+        continue
       }
       const ownerId = numberOwner.get(key)
-      if (ownerId && ownerId !== id) {
-        errors.push(`第 ${line} 列：「${name}」已有編號「${assetNumber}」的設備，同名設備編號不可重複`)
-        return
+      if (ownerId && ownerId !== c.id && !updateIdsInFile.has(ownerId)) {
+        errors.push(`第 ${c.line} 列：「${c.name}」已有編號「${c.assetNumber}」的設備，同名設備編號不可重複`)
+        continue
       }
-      seenNumbers.set(key, line)
+      seenNumbers.set(key, c.line)
     }
-
-    const payload = {
-      name,
-      location: String(row['位置'] ?? '').trim(),
-      asset_number: String(row['編號'] ?? '').trim(),
-      status: STATUS_MAP[statusRaw] ?? 'available',
-      peripherals: splitList(row['週邊配件']),
-      borrow_checklist: parseChecklist(row['借用檢查項目']),
-      return_checklist: parseChecklist(row['歸還檢查項目']),
-      notes: String(row['備註'] ?? '').trim(),
-    }
-    if (id) updates.push({ ...payload, id, updated_at: new Date().toISOString() })
-    else inserts.push(payload)
-  })
+    if (c.id) updates.push({ ...c.payload, id: c.id, updated_at: new Date().toISOString() })
+    else inserts.push(c.payload)
+  }
 
   if (inserts.length === 0 && updates.length === 0) {
     return NextResponse.json(
@@ -124,14 +147,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (inserts.length > 0) {
-    const { error } = await supabaseAdmin.from('equipment').insert(inserts as never)
-    if (error) return NextResponse.json({ error: `新增失敗：${error.message}` }, { status: 500 })
-  }
+  // 先更新後新增：更新會釋出舊編號，新設備才能在同一批接手該編號
   if (updates.length > 0) {
     const { error } = await supabaseAdmin
       .from('equipment').upsert(updates as never, { onConflict: 'id' })
     if (error) return NextResponse.json({ error: `更新失敗：${error.message}` }, { status: 500 })
+  }
+  if (inserts.length > 0) {
+    const { error } = await supabaseAdmin.from('equipment').insert(inserts as never)
+    if (error) return NextResponse.json({ error: `新增失敗：${error.message}` }, { status: 500 })
   }
 
   return NextResponse.json({
