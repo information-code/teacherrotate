@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import * as XLSX from 'xlsx'
 import {
   EQUIPMENT_PERIODS,
   EQUIPMENT_STATUS_LABEL,
@@ -25,7 +27,6 @@ type EditorState =
   | { mode: 'closed' }
   | { mode: 'create'; row: EquipmentRow }
   | { mode: 'edit'; row: EquipmentRow }
-  | { mode: 'copy'; row: EquipmentRow }
 
 const EMPTY_ROW: EquipmentRow = {
   id: '',
@@ -53,6 +54,7 @@ export default function EquipmentConfigClient({
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
+  const [showImport, setShowImport] = useState(false)
 
   const keyword = search.trim().toLowerCase()
   const filteredEquipment = equipment.filter(row => {
@@ -163,9 +165,13 @@ export default function EquipmentConfigClient({
               每台設備各自維護週邊配件與借用／歸還檢查清單（可逐項設定是否需拍照）。
             </p>
           </div>
-          <button className="btn-primary" onClick={() => setEditor({ mode: 'create', row: { ...EMPTY_ROW } })}>
-            新增設備
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <a className="btn-secondary" href="/api/admin/equipment-template">下載範本</a>
+            <button className="btn-secondary" onClick={() => setShowImport(true)}>批次匯入</button>
+            <button className="btn-primary" onClick={() => setEditor({ mode: 'create', row: { ...EMPTY_ROW } })}>
+              新增設備
+            </button>
+          </div>
         </div>
 
         {/* 搜尋與篩選 */}
@@ -223,12 +229,6 @@ export default function EquipmentConfigClient({
                       </span>
                     </td>
                     <td className="text-right whitespace-nowrap space-x-1">
-                      <button
-                        className="btn-secondary !px-3 !py-1"
-                        onClick={() => setEditor({ mode: 'copy', row: { ...row } })}
-                      >
-                        複製
-                      </button>
                       <button className="btn-secondary !px-3 !py-1" onClick={() => setEditor({ mode: 'edit', row: { ...row } })}>
                         編輯
                       </button>
@@ -368,90 +368,120 @@ export default function EquipmentConfigClient({
           onClose={() => setEditor({ mode: 'closed' })}
         />
       )}
-      {editor.mode === 'copy' && (
-        <CopyModal
-          row={editor.row}
-          onSingle={() => setEditor({
-            mode: 'create',
-            row: { ...editor.row, id: '', name: `${editor.row.name}（複製）` },
-          })}
-          onBulkDone={created => {
+      {showImport && (
+        <ImportModal
+          onDone={created => {
             setEquipment(list => [...list, ...created])
-            setEditor({ mode: 'closed' })
-            flash(`已建立 ${created.length} 台複製設備，可逐台編輯細節`)
+            setShowImport(false)
+            flash(`已匯入 ${created.length} 台設備`)
           }}
-          onClose={() => setEditor({ mode: 'closed' })}
+          onClose={() => setShowImport(false)}
         />
       )}
     </div>
   )
 }
 
-/** 複製設備 Modal：一份→開編輯器改名另存；多份→自動編號批次建立後逐台編輯 */
-function CopyModal({
-  row,
-  onSingle,
-  onBulkDone,
+/** 批次匯入 Modal：拖放/選擇 Excel → 預覽列數 → 送出匯入 */
+function ImportModal({
+  onDone,
   onClose,
 }: {
-  row: EquipmentRow
-  onSingle: () => void
-  onBulkDone: (created: EquipmentRow[]) => void
+  onDone: (created: EquipmentRow[]) => void
   onClose: () => void
 }) {
-  const [count, setCount] = useState(1)
-  const [running, setRunning] = useState(false)
-  const [progress, setProgress] = useState(0)
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [fileName, setFileName] = useState('')
+  const [parseError, setParseError] = useState('')
+  const [importing, setImporting] = useState(false)
+
+  const onDrop = useCallback((files: File[]) => {
+    const file = files[0]
+    if (!file) return
+    setParseError('')
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target?.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws)
+        if (parsed.length === 0) {
+          setParseError('檔案中沒有資料列，請確認第一個工作表已填寫。')
+          setRows([])
+          return
+        }
+        if (parsed.every(r => !String(r['名稱'] ?? '').trim())) {
+          setParseError('找不到「名稱」欄位資料，請使用系統提供的範本填寫。')
+          setRows([])
+          return
+        }
+        setRows(parsed)
+        setFileName(file.name)
+      } catch {
+        setParseError('無法讀取檔案，請確認為 Excel（.xlsx）格式。')
+        setRows([])
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }, [])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+    },
+    multiple: false,
+  })
 
   const submit = async () => {
-    if (count <= 1) {
-      onSingle()
-      return
-    }
-    setRunning(true)
+    setImporting(true)
     try {
-      const created: EquipmentRow[] = []
-      for (let i = 1; i <= count; i++) {
-        const res = await fetch('/api/admin/equipment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...row, id: undefined, name: `${row.name}-${i}` }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          alert(`第 ${i} 台建立失敗：${data.error}，已成功建立 ${created.length} 台。`)
-          break
-        }
-        created.push(data)
-        setProgress(i)
+      const res = await fetch('/api/admin/equipment-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? '匯入失敗')
+        return
       }
-      onBulkDone(created)
+      if ((data.errors ?? []).length > 0) {
+        alert(`已匯入 ${data.created.length} 台，以下列有問題被略過：\n${data.errors.join('\n')}`)
+      }
+      onDone(data.created)
     } finally {
-      setRunning(false)
+      setImporting(false)
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-md shadow-xl w-full max-w-sm p-5 space-y-4">
-        <h3 className="font-semibold text-zinc-900">複製設備：{row.name}</h3>
-        <div>
-          <span className="label">複製數量</span>
-          <input
-            type="number" min={1} max={30} className="input"
-            value={count}
-            onChange={e => setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-          />
-          <p className="text-xs text-zinc-500 mt-1.5">
-            {count <= 1
-              ? '複製 1 台：開啟編輯視窗確認內容後儲存。'
-              : `將直接建立 ${count} 台，名稱自動編號為「${row.name}-1」～「${row.name}-${count}」，週邊與檢查清單一併帶入，建立後可逐台編輯細節。`}
-          </p>
+      <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4">
+        <h3 className="font-semibold text-zinc-900">批次匯入設備</h3>
+        <p className="text-sm text-zinc-500">
+          請先「下載範本」填寫後上傳。週邊與檢查項目以「、」分隔，檢查項目結尾加「*」代表需拍照；範例列會自動略過。
+        </p>
+
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded p-6 text-center text-sm cursor-pointer transition-colors ${
+            isDragActive ? 'border-zinc-500 bg-zinc-50 text-zinc-700' : 'border-zinc-300 text-zinc-500 hover:bg-zinc-50'
+          }`}
+        >
+          <input {...getInputProps()} />
+          {fileName
+            ? <>已選擇：<span className="font-medium text-zinc-800">{fileName}</span>（{rows.length} 列）<br />點擊或拖放可更換檔案</>
+            : '點擊選擇或拖放 Excel 檔案（.xlsx）'}
         </div>
+
+        {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose} disabled={running}>取消</button>
-          <button className="btn-primary" onClick={submit} disabled={running}>
-            {running ? `建立中… ${progress}/${count}` : count <= 1 ? '複製並編輯' : `建立 ${count} 台`}
+          <button className="btn-secondary" onClick={onClose} disabled={importing}>取消</button>
+          <button className="btn-primary" onClick={submit} disabled={rows.length === 0 || importing}>
+            {importing ? '匯入中…' : `匯入 ${rows.length} 列`}
           </button>
         </div>
       </div>
