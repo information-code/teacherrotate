@@ -127,12 +127,12 @@ export function EquipmentPage() {
     <div className="space-y-4 max-w-4xl">
       <h1 className="text-lg font-semibold text-zinc-900">設備借用</h1>
 
-      {/* Tab 切換 */}
+      {/* Tab 切換（手機整行好點按） */}
       <div className="flex border-b border-zinc-200">
         {([['short', '短期借用'], ['long', '長期借用']] as const).map(([key, label]) => (
           <button
             key={key}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === key
                 ? 'border-zinc-800 text-zinc-900'
                 : 'border-transparent text-zinc-500 hover:text-zinc-700'
@@ -318,20 +318,23 @@ function ShortTab({
               <span className={loan.status === 'borrowed' ? 'badge-warn' : 'badge-default'}>
                 {LOAN_STATUS_LABEL[loan.status]}
               </span>
+              {/* 手機：按鈕整行放大好點按；平板以上恢復緊湊排列 */}
               {loan.status === 'reserved' && (
-                <>
-                  <button className="btn-primary !px-3 !py-1.5" onClick={() => onStartProcedure('borrow', loan)}>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button className="btn-primary flex-1 sm:flex-none sm:!px-3 sm:!py-1.5" onClick={() => onStartProcedure('borrow', loan)}>
                     開始借用
                   </button>
-                  <button className="btn-secondary !px-3 !py-1.5" onClick={() => cancel(loan)}>
+                  <button className="btn-secondary flex-1 sm:flex-none sm:!px-3 sm:!py-1.5" onClick={() => cancel(loan)}>
                     取消預約
                   </button>
-                </>
+                </div>
               )}
               {loan.status === 'borrowed' && (
-                <button className="btn-primary !px-3 !py-1.5" onClick={() => onStartProcedure('return', loan)}>
-                  辦理歸還
-                </button>
+                <div className="flex w-full sm:w-auto">
+                  <button className="btn-primary flex-1 sm:flex-none sm:!px-3 sm:!py-1.5" onClick={() => onStartProcedure('return', loan)}>
+                    辦理歸還
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -463,7 +466,7 @@ function ShortTab({
                       </div>
                     </div>
                     <button
-                      className="btn-primary !px-3 !py-1.5"
+                      className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
                       disabled={submitting === equip.id}
                       onClick={() => reserve(equip.id)}
                     >
@@ -549,7 +552,7 @@ function LongTab({
                 <span className="badge-success">借用中</span>
               )}
               {loan.renewable && (
-                <button className="btn-primary !px-3 !py-1.5" onClick={() => onStartRenewal(loan)}>
+                <button className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5" onClick={() => onStartRenewal(loan)}>
                   續借回傳
                 </button>
               )}
@@ -668,8 +671,8 @@ function ProcedureModal({
               我已閱讀並同意上述內容
             </label>
             <div className="flex justify-end gap-2">
-              <button className="btn-secondary" onClick={onClose}>取消</button>
-              <button className="btn-primary" disabled={!agreed} onClick={() => setStep(2)}>下一步</button>
+              <button className="btn-secondary flex-1 sm:flex-none" onClick={onClose}>取消</button>
+              <button className="btn-primary flex-1 sm:flex-none" disabled={!agreed} onClick={() => setStep(2)}>下一步</button>
             </div>
           </>
         ) : (
@@ -704,8 +707,8 @@ function ProcedureModal({
               ))}
             </div>
             <div className="flex justify-between gap-2">
-              <button className="btn-secondary" onClick={() => setStep(1)}>上一步</button>
-              <button className="btn-primary" disabled={!canSubmit || submitting} onClick={submit}>
+              <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setStep(1)}>上一步</button>
+              <button className="btn-primary flex-1 sm:flex-none" disabled={!canSubmit || submitting} onClick={submit}>
                 {submitting ? '送出中…' : kind === 'borrow' ? '完成借用' : '完成歸還'}
               </button>
             </div>
@@ -781,8 +784,8 @@ function RenewalModal({
         </label>
 
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>取消</button>
-          <button className="btn-primary" disabled={photos.length === 0 || !agreed || submitting} onClick={submit}>
+          <button className="btn-secondary flex-1 sm:flex-none" onClick={onClose}>取消</button>
+          <button className="btn-primary flex-1 sm:flex-none" disabled={photos.length === 0 || !agreed || submitting} onClick={submit}>
             {submitting ? '送出中…' : '送出續借'}
           </button>
         </div>
@@ -832,10 +835,10 @@ function PhotoUploader({
         {photos.map(photo => (
           <div key={photo.path} className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo.url} alt="上傳照片" className="w-20 h-20 object-cover rounded border border-zinc-200" />
+            <img src={photo.url} alt="上傳照片" className="w-24 h-24 sm:w-20 sm:h-20 object-cover rounded border border-zinc-200" />
             <button
               type="button"
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-zinc-700 text-white text-xs leading-none"
+              className="absolute -top-2 -right-2 w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-zinc-700 text-white text-xs leading-none"
               onClick={() => onChange(photos.filter(p => p.path !== photo.path))}
             >
               ×
@@ -843,7 +846,7 @@ function PhotoUploader({
           </div>
         ))}
         {photos.length < max && (
-          <label className="w-20 h-20 border border-dashed border-zinc-300 rounded flex flex-col items-center justify-center text-zinc-400 text-xs cursor-pointer hover:bg-zinc-50">
+          <label className="w-24 h-24 sm:w-20 sm:h-20 border border-dashed border-zinc-300 rounded flex flex-col items-center justify-center text-zinc-400 text-xs cursor-pointer hover:bg-zinc-50 active:bg-zinc-100">
             {uploading ? '上傳中…' : <>📷<span className="mt-0.5">拍照/選圖</span></>}
             <input
               type="file"
