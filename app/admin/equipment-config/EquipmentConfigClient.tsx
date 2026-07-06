@@ -164,7 +164,16 @@ export default function EquipmentConfigClient({
                         {EQUIPMENT_STATUS_LABEL[row.status] ?? row.status}
                       </span>
                     </td>
-                    <td className="text-right">
+                    <td className="text-right whitespace-nowrap space-x-1">
+                      <button
+                        className="btn-secondary !px-3 !py-1"
+                        onClick={() => setEditor({
+                          mode: 'create',
+                          row: { ...row, id: '', name: `${row.name}（複製）` },
+                        })}
+                      >
+                        複製
+                      </button>
                       <button className="btn-secondary !px-3 !py-1" onClick={() => setEditor({ mode: 'edit', row: { ...row } })}>
                         編輯
                       </button>
