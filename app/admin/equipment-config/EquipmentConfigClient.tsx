@@ -48,6 +48,7 @@ export default function EquipmentConfigClient({
 }) {
   const [equipment, setEquipment] = useState<EquipmentRow[]>(initialEquipment)
   const [config, setConfig] = useState<EquipmentConfig>(initialConfig)
+  const [tab, setTab] = useState<'equipment' | 'rules' | 'agreements' | 'overdue'>('equipment')
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
   const [savingConfig, setSavingConfig] = useState(false)
   const [message, setMessage] = useState('')
@@ -113,13 +114,36 @@ export default function EquipmentConfigClient({
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-4 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-zinc-900">設備借用設定</h1>
         {message && <span className="text-sm text-zinc-600">{message}</span>}
       </div>
 
+      {/* Tab 切換 */}
+      <div className="flex border-b border-zinc-200">
+        {([
+          ['equipment', '設備庫'],
+          ['rules', '節次與規則'],
+          ['agreements', '同意書'],
+          ['overdue', '逾期通知'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === key
+                ? 'border-zinc-800 text-zinc-900'
+                : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* 設備庫 */}
+      {tab === 'equipment' && (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -186,7 +210,10 @@ export default function EquipmentConfigClient({
         )}
       </div>
 
+      )}
+
       {/* 開放節次與借用規則 */}
+      {tab === 'rules' && (
       <div className="card space-y-4">
         <h2 className="font-medium text-zinc-900">開放節次與借用規則</h2>
         <div>
@@ -248,7 +275,10 @@ export default function EquipmentConfigClient({
         </div>
       </div>
 
+      )}
+
       {/* 同意書 */}
+      {tab === 'agreements' && (
       <div className="card space-y-4">
         <h2 className="font-medium text-zinc-900">同意書內容</h2>
         {([
@@ -268,7 +298,10 @@ export default function EquipmentConfigClient({
         ))}
       </div>
 
+      )}
+
       {/* 逾期通知模板 */}
+      {tab === 'overdue' && (
       <div className="card space-y-3">
         <h2 className="font-medium text-zinc-900">逾期通知訊息模板</h2>
         <p className="text-sm text-zinc-500">
@@ -284,12 +317,16 @@ export default function EquipmentConfigClient({
           onChange={e => setConfig(c => ({ ...c, overdueMessageTemplate: e.target.value }))}
         />
       </div>
+      )}
 
-      <div className="flex justify-end">
-        <button className="btn-primary" onClick={saveConfig} disabled={savingConfig}>
-          {savingConfig ? '儲存中…' : '儲存設定'}
-        </button>
-      </div>
+      {/* 設備庫逐筆儲存；其餘分頁共用一顆儲存設定 */}
+      {tab !== 'equipment' && (
+        <div className="flex justify-end">
+          <button className="btn-primary" onClick={saveConfig} disabled={savingConfig}>
+            {savingConfig ? '儲存中…' : '儲存設定'}
+          </button>
+        </div>
+      )}
 
       {editor.mode !== 'closed' && (
         <EquipmentEditor
