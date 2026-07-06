@@ -37,6 +37,7 @@ interface AdminLongLoanRow {
   id: string
   equipment_id: string
   equipment_name: string
+  equipment_asset_number: string
   teacher_id: string | null
   teacher_name: string
   is_external: boolean
@@ -363,6 +364,9 @@ function LongLoansTab({
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [search, setSearch] = useState('')
+  const [filterName, setFilterName] = useState('')
+  const [filterType, setFilterType] = useState('') // '' | 'internal' | 'external' | 'overdue'
   const today = todayStr()
 
   const defaultDue = () => {
@@ -428,8 +432,22 @@ function LongLoansTab({
     load()
   }
 
-  const active = loans.filter(l => l.status === 'active')
-  const ended = loans.filter(l => l.status !== 'active')
+  // 搜尋（設備/編號/借用人/備註）＋設備名稱＋類型篩選
+  const keyword = search.trim().toLowerCase()
+  const equipmentNames = Array.from(new Set(equipment.map(eq => eq.name)))
+  const matches = (l: AdminLongLoanRow) => {
+    if (filterName && l.equipment_name !== filterName) return false
+    if (filterType === 'internal' && l.is_external) return false
+    if (filterType === 'external' && !l.is_external) return false
+    if (filterType === 'overdue' && !(l.status === 'active' && l.due_date < today)) return false
+    if (!keyword) return true
+    return [l.equipment_name, l.equipment_asset_number, l.teacher_name, l.notes]
+      .some(text => (text ?? '').toLowerCase().includes(keyword))
+  }
+  const active = loans.filter(l => l.status === 'active' && matches(l))
+  const ended = loans.filter(l => l.status !== 'active' && matches(l))
+  const totalActive = loans.filter(l => l.status === 'active').length
+  const hasFilter = Boolean(keyword || filterName || filterType)
 
   return (
     <div className="space-y-4">
@@ -499,10 +517,38 @@ function LongLoansTab({
       {/* 列表 */}
       <div className="card">
         <h2 className="font-medium text-zinc-900 mb-3">長期借用中</h2>
+
+        {/* 搜尋與篩選 */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input
+            className="input !w-60"
+            placeholder="搜尋設備、編號、借用人、備註…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select className="input !w-40" value={filterName} onChange={e => setFilterName(e.target.value)}>
+            <option value="">全部設備</option>
+            {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <select className="input !w-36" value={filterType} onChange={e => setFilterType(e.target.value)}>
+            <option value="">全部借用人</option>
+            <option value="internal">系統帳號</option>
+            <option value="external">系統外人員</option>
+            <option value="overdue">已逾期</option>
+          </select>
+          {hasFilter && (
+            <span className="self-center text-xs text-zinc-500">
+              符合 {active.length}／{totalActive} 筆使用中
+            </span>
+          )}
+        </div>
+
         {loading ? (
           <p className="text-sm text-zinc-500">載入中…</p>
         ) : active.length === 0 ? (
-          <p className="text-sm text-zinc-500">目前沒有長期借用。</p>
+          <p className="text-sm text-zinc-500">
+            {hasFilter ? '沒有符合搜尋條件的長期借用。' : '目前沒有長期借用。'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table-base">
@@ -515,7 +561,12 @@ function LongLoansTab({
                   return (
                     <Fragment key={loan.id}>
                       <tr>
-                        <td>{loan.equipment_name}</td>
+                        <td>
+                          {loan.equipment_name}
+                          {loan.equipment_asset_number && (
+                            <span className="ml-1 text-xs text-zinc-400">#{loan.equipment_asset_number}</span>
+                          )}
+                        </td>
                         <td>
                           {loan.teacher_name}
                           {loan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
@@ -598,8 +649,16 @@ function LongLoansTab({
               <tbody>
                 {ended.map(loan => (
                   <tr key={loan.id}>
-                    <td>{loan.equipment_name}</td>
-                    <td>{loan.teacher_name}</td>
+                    <td>
+                      {loan.equipment_name}
+                      {loan.equipment_asset_number && (
+                        <span className="ml-1 text-xs text-zinc-400">#{loan.equipment_asset_number}</span>
+                      )}
+                    </td>
+                    <td>
+                      {loan.teacher_name}
+                      {loan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
+                    </td>
                     <td>{loan.start_date} ～ {loan.due_date}</td>
                   </tr>
                 ))}

@@ -21,7 +21,7 @@ export async function GET() {
     supabaseAdmin.from('equipment_long_loans').select('*')
       .order('status').order('due_date'),
     supabaseAdmin.from('equipment_renewals').select('*').order('agreed_at', { ascending: false }),
-    supabaseAdmin.from('equipment').select('id, name, location'),
+    supabaseAdmin.from('equipment').select('id, name, location, asset_number'),
     supabaseAdmin.from('profiles').select('id, name, email'),
   ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -38,6 +38,7 @@ export async function GET() {
   const rows = (loans ?? []).map(l => ({
     ...l,
     equipment_name: equipMap.get(l.equipment_id)?.name ?? '（已刪除設備）',
+    equipment_asset_number: equipMap.get(l.equipment_id)?.asset_number ?? '',
     teacher_name: l.teacher_id
       ? (profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）')
       : l.external_name,
