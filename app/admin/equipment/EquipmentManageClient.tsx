@@ -1,6 +1,8 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import * as XLSX from 'xlsx'
 import {
   LOAN_STATUS_LABEL,
   overdueDays,
@@ -359,6 +361,7 @@ function LongLoansTab({
   const [expanded, setExpanded] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const today = todayStr()
 
   const defaultDue = () => {
@@ -426,7 +429,13 @@ function LongLoansTab({
     <div className="space-y-4">
       {/* 建立 */}
       <div className="card space-y-3">
-        <h2 className="font-medium text-zinc-900">建立長期借用</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-medium text-zinc-900">建立長期借用</h2>
+          <div className="flex gap-2">
+            <a className="btn-secondary !px-3 !py-1.5" href="/api/admin/equipment-long-loans-template">下載清單</a>
+            <button className="btn-secondary !px-3 !py-1.5" onClick={() => setShowImport(true)}>Excel 匯入</button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <span className="label">設備</span>
@@ -577,6 +586,125 @@ function LongLoansTab({
           </div>
         </div>
       )}
+
+      {showImport && (
+        <LongLoanImportModal
+          onDone={summary => {
+            setShowImport(false)
+            onFlash(`匯入完成：新增 ${summary.createdCount} 筆、更新 ${summary.updatedCount} 筆`)
+            load()
+          }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** 長期借用批次匯入 Modal：拖放 Excel → 預覽列數 → 送出 */
+function LongLoanImportModal({
+  onDone,
+  onClose,
+}: {
+  onDone: (summary: { createdCount: number; updatedCount: number }) => void
+  onClose: () => void
+}) {
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [fileName, setFileName] = useState('')
+  const [parseError, setParseError] = useState('')
+  const [importing, setImporting] = useState(false)
+
+  const onDrop = useCallback((files: File[]) => {
+    const file = files[0]
+    if (!file) return
+    setParseError('')
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target?.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws)
+        if (parsed.length === 0) {
+          setParseError('檔案中沒有資料列，請確認第一個工作表已填寫。')
+          setRows([])
+          return
+        }
+        if (parsed.every(r => !String(r['設備名稱'] ?? '').trim())) {
+          setParseError('找不到「設備名稱」欄位資料，請使用系統提供的清單檔填寫。')
+          setRows([])
+          return
+        }
+        setRows(parsed)
+        setFileName(file.name)
+      } catch {
+        setParseError('無法讀取檔案，請確認為 Excel（.xlsx）格式。')
+        setRows([])
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }, [])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+    },
+    multiple: false,
+  })
+
+  const submit = async () => {
+    setImporting(true)
+    try {
+      const res = await fetch('/api/admin/equipment-long-loans-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? '匯入失敗')
+        return
+      }
+      if ((data.errors ?? []).length > 0) {
+        alert(`已套用 ${data.createdCount + data.updatedCount} 列，以下列有問題被略過：\n${data.errors.join('\n')}`)
+      }
+      onDone(data)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-4">
+        <h3 className="font-semibold text-zinc-900">Excel 匯入長期借用</h3>
+        <p className="text-sm text-zinc-500">
+          請先「下載清單」，在 Excel 中編修或新增後上傳：有 id 的列會<b>更新</b>、id 留空的列會<b>新增</b>；
+          老師以 Email 比對、設備以名稱＋編號比對，同一台設備同時只能有一筆「使用中」。
+        </p>
+
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded p-6 text-center text-sm cursor-pointer transition-colors ${
+            isDragActive ? 'border-zinc-500 bg-zinc-50 text-zinc-700' : 'border-zinc-300 text-zinc-500 hover:bg-zinc-50'
+          }`}
+        >
+          <input {...getInputProps()} />
+          {fileName
+            ? <>已選擇：<span className="font-medium text-zinc-800">{fileName}</span>（{rows.length} 列）<br />點擊或拖放可更換檔案</>
+            : '點擊選擇或拖放 Excel 檔案（.xlsx）'}
+        </div>
+
+        {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={importing}>取消</button>
+          <button className="btn-primary" onClick={submit} disabled={rows.length === 0 || importing}>
+            {importing ? '匯入中…' : `匯入 ${rows.length} 列`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
