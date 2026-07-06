@@ -66,7 +66,7 @@ export default function EquipmentManageClient({
   overdueTemplate: string
   renewalWeeks: number
 }) {
-  const [tab, setTab] = useState<'short' | 'long' | 'stats'>('short')
+  const [tab, setTab] = useState<'overview' | 'short' | 'long' | 'stats'>('overview')
   const [message, setMessage] = useState('')
 
   const flash = (text: string) => {
@@ -88,7 +88,7 @@ export default function EquipmentManageClient({
       </div>
 
       <div className="flex border-b border-zinc-200">
-        {([['short', '短期借用'], ['long', '長期借用'], ['stats', '逾期統計']] as const).map(([key, label]) => (
+        {([['overview', '設備總覽'], ['short', '短期借用'], ['long', '長期借用'], ['stats', '逾期統計']] as const).map(([key, label]) => (
           <button
             key={key}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -103,6 +103,7 @@ export default function EquipmentManageClient({
         ))}
       </div>
 
+      {tab === 'overview' && <OverviewTab />}
       {tab === 'short' && <ShortLoansTab equipment={equipment} onCopy={copyOverdueMessage} onFlash={flash} />}
       {tab === 'long' && (
         <LongLoansTab
@@ -114,6 +115,128 @@ export default function EquipmentManageClient({
         />
       )}
       {tab === 'stats' && <StatsTab />}
+    </div>
+  )
+}
+
+// ---------- 設備總覽 ----------
+
+interface OverviewRow {
+  id: string
+  name: string
+  asset_number: string
+  location: string
+  status: string
+  shortLoan: { teacher_name: string; loan_date: string; periods: string[]; overdue: boolean } | null
+  longLoan: { borrower_name: string; is_external: boolean; start_date: string; due_date: string; overdue: boolean } | null
+}
+
+function OverviewTab() {
+  const [rows, setRows] = useState<OverviewRow[] | null>(null)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('') // '' | free | short | long | maintenance | retired | overdue
+
+  useEffect(() => {
+    fetch('/api/admin/equipment-overview').then(async res => {
+      if (res.ok) setRows((await res.json()).rows)
+    })
+  }, [])
+
+  if (!rows) return <div className="card"><p className="text-sm text-zinc-500">載入中…</p></div>
+
+  const keyword = search.trim().toLowerCase()
+  const matches = (r: OverviewRow) => {
+    if (filter === 'free' && (r.status !== 'available' || r.shortLoan || r.longLoan)) return false
+    if (filter === 'short' && !r.shortLoan) return false
+    if (filter === 'long' && !r.longLoan) return false
+    if (filter === 'maintenance' && r.status !== 'maintenance') return false
+    if (filter === 'retired' && r.status !== 'retired') return false
+    if (filter === 'overdue' && !(r.shortLoan?.overdue || r.longLoan?.overdue)) return false
+    if (!keyword) return true
+    return [r.name, r.asset_number, r.location, r.shortLoan?.teacher_name, r.longLoan?.borrower_name]
+      .some(text => (text ?? '').toLowerCase().includes(keyword))
+  }
+  const filtered = rows.filter(matches)
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <input
+          className="input !w-60"
+          placeholder="搜尋設備、編號、位置、使用人…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className="input !w-36" value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="">全部狀態</option>
+          <option value="free">未出借</option>
+          <option value="short">短期出借</option>
+          <option value="long">長期出借</option>
+          <option value="overdue">逾期中</option>
+          <option value="maintenance">維修中</option>
+          <option value="retired">停用</option>
+        </select>
+        {(keyword || filter) && (
+          <span className="self-center text-xs text-zinc-500">符合 {filtered.length}／{rows.length} 台</span>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          {rows.length === 0 ? '尚未建立任何設備。' : '沒有符合搜尋條件的設備。'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead>
+              <tr><th>設備</th><th>位置</th><th>狀態</th><th>使用人</th><th>使用時間</th></tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.id}>
+                  <td className="font-medium">
+                    {r.name}
+                    {r.asset_number && <span className="ml-1 text-xs text-zinc-400 font-normal">#{r.asset_number}</span>}
+                  </td>
+                  <td>{r.location || '—'}</td>
+                  <td className="whitespace-nowrap space-x-1">
+                    {r.status === 'maintenance' && <span className="badge-warn">維修中</span>}
+                    {r.status === 'retired' && <span className="badge-default">停用</span>}
+                    {r.shortLoan && (
+                      <span className={r.shortLoan.overdue ? 'badge-warn' : 'badge-default'}>
+                        {r.shortLoan.overdue ? '短期逾期' : '短期出借'}
+                      </span>
+                    )}
+                    {r.longLoan && (
+                      <span className={r.longLoan.overdue ? 'badge-warn' : 'badge-default'}>
+                        {r.longLoan.overdue ? '長期逾期' : '長期出借'}
+                      </span>
+                    )}
+                    {r.status === 'available' && !r.shortLoan && !r.longLoan && (
+                      <span className="badge-success">未出借</span>
+                    )}
+                  </td>
+                  <td>
+                    {r.shortLoan && <div>{r.shortLoan.teacher_name}</div>}
+                    {r.longLoan && (
+                      <div>
+                        {r.longLoan.borrower_name}
+                        {r.longLoan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
+                      </div>
+                    )}
+                    {!r.shortLoan && !r.longLoan && '—'}
+                  </td>
+                  <td className="text-sm">
+                    {r.shortLoan && <div>{r.shortLoan.loan_date}｜{periodsText(r.shortLoan.periods)}</div>}
+                    {r.longLoan && <div>{r.longLoan.start_date} ～ {r.longLoan.due_date}</div>}
+                    {!r.shortLoan && !r.longLoan && '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
