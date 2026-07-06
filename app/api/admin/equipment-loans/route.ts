@@ -28,10 +28,12 @@ export async function GET(request: NextRequest) {
     .limit(500)
 
   const equipmentId = params.get('equipment_id')
+  const equipmentIds = params.get('equipment_ids') // 逗號分隔，用於同名設備一次查全部
   const from = params.get('from')
   const to = params.get('to')
   const status = params.get('status')
   if (equipmentId) query = query.eq('equipment_id', equipmentId)
+  if (equipmentIds) query = query.in('equipment_id', equipmentIds.split(',').filter(Boolean))
   if (from) query = query.gte('loan_date', from)
   if (to) query = query.lte('loan_date', to)
   if (status) query = query.eq('status', status)
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const [{ data: equipment }, { data: profiles }] = await Promise.all([
-    supabaseAdmin.from('equipment').select('id, name, location'),
+    supabaseAdmin.from('equipment').select('id, name, location, asset_number'),
     supabaseAdmin.from('profiles').select('id, name, email'),
   ])
   const equipMap = new Map((equipment ?? []).map(e => [e.id, e]))
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest) {
   const rows = (loans ?? []).map(l => ({
     ...l,
     equipment_name: equipMap.get(l.equipment_id)?.name ?? '（已刪除設備）',
+    equipment_asset_number: equipMap.get(l.equipment_id)?.asset_number ?? '',
     teacher_name: profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）',
   }))
 

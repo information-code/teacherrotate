@@ -10,7 +10,7 @@ import {
   type ChecklistResult,
 } from '@/lib/equipment'
 
-interface EquipmentOption { id: string; name: string; status: string }
+interface EquipmentOption { id: string; name: string; status: string; asset_number: string }
 interface TeacherOption { id: string; name: string }
 
 interface AdminLoanRow {
@@ -19,6 +19,7 @@ interface AdminLoanRow {
   equipment_name: string
   teacher_id: string
   teacher_name: string
+  equipment_asset_number: string
   loan_date: string
   periods: string[]
   status: string
@@ -124,18 +125,27 @@ function ShortLoansTab({
   onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
   onFlash: (text: string) => void
 }) {
-  const [filters, setFilters] = useState({ equipment_id: '', from: '', to: '', status: '' })
+  const [filters, setFilters] = useState({ equipment_name: '', from: '', to: '', status: '' })
   const [loans, setLoans] = useState<AdminLoanRow[]>([])
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState('')
   const [loading, setLoading] = useState(true)
   const today = todayStr()
 
+  // 同名設備視為同一類：下拉去重，選定後一次查詢所有同名設備
+  const equipmentNames = Array.from(new Set(equipment.map(eq => eq.name)))
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
+      if (filters.equipment_name) {
+        const ids = equipment.filter(eq => eq.name === filters.equipment_name).map(eq => eq.id)
+        params.set('equipment_ids', ids.join(','))
+      }
+      if (filters.from) params.set('from', filters.from)
+      if (filters.to) params.set('to', filters.to)
+      if (filters.status) params.set('status', filters.status)
       const res = await fetch(`/api/admin/equipment-loans?${params}`)
       if (!res.ok) return
       const data = await res.json()
@@ -144,7 +154,7 @@ function ShortLoansTab({
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters, equipment])
 
   useEffect(() => { load() }, [load])
 
@@ -169,10 +179,10 @@ function ShortLoansTab({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <span className="label">設備</span>
-            <select className="input" value={filters.equipment_id}
-              onChange={e => setFilters(f => ({ ...f, equipment_id: e.target.value }))}>
+            <select className="input" value={filters.equipment_name}
+              onChange={e => setFilters(f => ({ ...f, equipment_name: e.target.value }))}>
               <option value="">全部</option>
-              {equipment.map(eq => <option key={eq.id} value={eq.id}>{eq.name}</option>)}
+              {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
             </select>
           </div>
           <div>
@@ -216,7 +226,12 @@ function ShortLoansTab({
                   <Fragment key={loan.id}>
                     <tr>
                       <td className="whitespace-nowrap">{loan.loan_date}</td>
-                      <td>{loan.equipment_name}</td>
+                      <td>
+                        {loan.equipment_name}
+                        {loan.equipment_asset_number && (
+                          <span className="ml-1 text-xs text-zinc-400">#{loan.equipment_asset_number}</span>
+                        )}
+                      </td>
                       <td>{loan.teacher_name}</td>
                       <td>{periodsText(loan.periods)}</td>
                       <td className="whitespace-nowrap">
@@ -419,7 +434,9 @@ function LongLoansTab({
               onChange={e => setForm(f => ({ ...f, equipment_id: e.target.value }))}>
               <option value="">請選擇</option>
               {equipment.filter(eq => eq.status !== 'retired').map(eq => (
-                <option key={eq.id} value={eq.id}>{eq.name}</option>
+                <option key={eq.id} value={eq.id}>
+                  {eq.name}{eq.asset_number ? `（#${eq.asset_number}）` : ''}
+                </option>
               ))}
             </select>
           </div>
