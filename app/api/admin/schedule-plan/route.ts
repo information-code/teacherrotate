@@ -55,6 +55,14 @@ export async function PATCH(request: NextRequest) {
     if (plan.status === 'final') return NextResponse.json({ error: '已定案，無法撤回發布' }, { status: 400 })
     plan.status = 'draft'
     plan.publishedAt = null
+  } else if (action === 'finalize') {
+    if (plan.status !== 'published') return NextResponse.json({ error: '需先發布導師排課才能定案' }, { status: 400 })
+    plan.status = 'final'
+    plan.finalizedAt = new Date().toISOString()
+  } else if (action === 'unfinalize') {
+    if (plan.status !== 'final') return NextResponse.json({ error: '尚未定案' }, { status: 400 })
+    plan.status = 'published'
+    plan.finalizedAt = null
   } else {
     return NextResponse.json({ error: '無效的動作' }, { status: 400 })
   }

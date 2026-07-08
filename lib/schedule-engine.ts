@@ -72,6 +72,50 @@ function mulberry32(seed: number) {
 
 // ══════════════════ 組裝 ══════════════════
 
+/** 由排課設定重建科任教室清單（有綁科目者）。 */
+export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
+  const rooms: RoomInfo[] = []
+  config.roomZones.forEach((z, zi) => {
+    z.rooms.forEach((r, ri) => {
+      if (r.kind === 'subject' && r.subject) {
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring })
+      }
+    })
+  })
+  return rooms
+}
+
+/** 手動調整後重新分配教室（與排課時同邏輯：管理教師必得自己的教室、
+ *  非管理者先用無管理者教室）。失去教室的課 roomId=null＝回原班，零警告。 */
+export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[]): PlacedResult[] {
+  const bySubject: Record<string, RoomInfo[]> = {}
+  for (const r of rooms) (bySubject[r.subject] ??= []).push(r)
+  const taken = new Map<string, Set<string>>()
+  const roomOf = new Map<string, string>()
+  const entries = placed.filter(p => bySubject[p.subject])
+  entries.sort((a, b) => {
+    const am = bySubject[a.subject].some(r => r.managerId === a.teacherId) ? 0 : 1
+    const bm = bySubject[b.subject].some(r => r.managerId === b.teacherId) ? 0 : 1
+    if (am !== bm) return am - bm
+    return a.id < b.id ? -1 : 1
+  })
+  for (const p of entries) {
+    const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+    const rs = bySubject[p.subject]
+    const ordered = [
+      ...rs.filter(r => r.managerId === p.teacherId),
+      ...rs.filter(r => !r.managerId),
+      ...rs.filter(r => r.managerId && r.managerId !== p.teacherId),
+    ]
+    const room = ordered.find(r => slots.every(s => !(taken.get(s)?.has(r.id))))
+    if (room) {
+      roomOf.set(p.id, room.id)
+      for (const s of slots) (taken.get(s) ?? taken.set(s, new Set()).get(s)!).add(room.id)
+    }
+  }
+  return placed.map(p => ({ ...p, roomId: bySubject[p.subject] ? (roomOf.get(p.id) ?? null) : (p.roomId ?? null) }))
+}
+
 export interface AssembleArgs {
   config: ScheduleConfig
   classCounts: Record<number, number>
@@ -231,13 +275,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   }
 
   // 教室
-  const rooms: RoomInfo[] = []
+  const rooms: RoomInfo[] = roomsFromConfig(config)
   const classRoom: EngineInput['classRoom'] = {}
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
-      if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring })
-      }
       if (r.kind === 'class' && r.classKey) {
         classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring }
       }

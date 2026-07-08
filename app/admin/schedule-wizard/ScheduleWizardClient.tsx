@@ -6,6 +6,7 @@ import { SCHEDULE_DAYS, DAY_LABEL, bandOf, type ScheduleConfig } from '@/lib/sch
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { assembleEngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
+import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   homeroomHours: Record<string, Record<string, number>>
   lastGeneratedAt: string | null
   initialPlanStatus: string | null
+  savedPlan: Record<string, unknown> | null
+  homeroomRows: HomeroomRow[]
 }
 
 type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number }
@@ -264,6 +267,20 @@ export default function ScheduleWizardClient(props: Props) {
           </span>
         )}
       </div>
+
+      {/* 發布後：年級總覽與調整模式 */}
+      {(planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed) && (
+        <OverviewAdjust
+          year={year}
+          planStatus={planStatus}
+          setPlanStatus={setPlanStatus}
+          savedPlan={props.savedPlan}
+          homeroomRows={props.homeroomRows}
+          config={scheduleConfig}
+          classCounts={classCounts}
+          teacherNames={teacherNames}
+        />
+      )}
 
       {result && (
         <>

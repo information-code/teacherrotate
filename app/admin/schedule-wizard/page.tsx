@@ -11,12 +11,13 @@ export default async function ScheduleWizardPage() {
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)
 
-  const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }, { data: allocs }] = await Promise.all([
+  const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }, { data: allocs }, { data: hrRows }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     admin.from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin'),
     admin.from('schedule_plan').select('generated_at, plan').eq('year', year).maybeSingle(),
     admin.from('allocation').select('teacher_id, data').eq('year', year),
+    admin.from('schedule_homeroom').select('class_key, teacher_id, cells, confirmed_at').eq('year', year),
   ])
   const allocConfig = normalizeConfig(cfgRow?.config)
   const scheduleConfig = normalizeScheduleConfig(schRow?.config)
@@ -55,6 +56,8 @@ export default async function ScheduleWizardPage() {
       homeroomHours={homeroomHours}
       lastGeneratedAt={planRow?.generated_at ?? null}
       initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
+      savedPlan={(planRow?.plan ?? null) as Record<string, unknown> | null}
+      homeroomRows={(hrRows ?? []) as { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }[]}
     />
   )
 }
