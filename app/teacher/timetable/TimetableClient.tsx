@@ -55,7 +55,8 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
     const put = (day: number, period: number, v: { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string }) => m.set(`${day}-${period}`, v)
     if (view === 'class' && classSel) {
       for (const p of placed.filter(p => p.classKey === classSel)) {
-        const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
+        // 單雙週課：這兩格只有一半的週次上此課，另一週還給導師——標示清楚避免看成每週兩節
+        const bi = p.parity === 'odd' ? '單週・雙週導師' : p.parity === 'even' ? '雙週・單週導師' : undefined
         const v = { main: p.subject, sub: p.teacherName + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi }
         put(p.day, p.period, v)
         if (p.size === 2) put(p.day, p.period + 1, v)
@@ -125,7 +126,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
             : <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 align-middle">初版（導師排課進行中，內容可能異動）</span>}
         </h2>
         <p className="text-xs text-zinc-400">
-          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週。
+          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（僅單週或雙週上課，另一週為導師的課）。
           {planStatus === 'final'
             ? '課表已定案，如需調整請洽教務處。'
             : '初版期間，導師請至「排課選填」調整自己班級的課；其餘調整請洽教務處。'}

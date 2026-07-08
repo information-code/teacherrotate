@@ -477,6 +477,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                                 className={`w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
                                 <span className="truncate w-full font-medium">{occ.subject}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}</span>
+                                {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週・雙週導師' : '雙週・單週導師'}</span>}
                               </button>
                             </td>
                           )
