@@ -193,7 +193,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   }
 
   // ── 自動配班：未手動指派的班，依配課節數（supplyByTeacher）自動分給尚有容量的老師 ──
-  // 手動配班優先（先扣容量、必綁定該師）；本土語不自動配（未指派＝直播共學，需人工確認）。
+  // 手動配班優先（先扣容量、必綁定該師）。本土語同其他科自動配——
+  // 配到假師/虛擬帳號的班，之後由管理者視情況改直播共學即可。
   const assign: Record<string, string> = { ...config.subjectClassTeacher }
   const autoAgg = new Map<string, number>()   // `${grade}|${subject}` → 自動配班班數
   if (a.supplyByTeacher) {
@@ -208,11 +209,13 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       }
     }
     // 每班該科科任要上的節數 ＝ 每班節數 − 鎖課格 − 導師自上
+    // （本土語鎖課格不扣：那格正是配班的閩南語師要上的課）
     const remainderOf = (g: number, i: number, s: { name: string; perClass: number }) => {
       const key = ck(g, i)
       let lockCount = 0
       for (const tid of Object.values(config.lockCells[key] ?? {})) {
         const t = lockTypeMap[tid]
+        if (t?.isNative) continue
         if ((t?.subject || t?.label || '鎖課') === s.name) lockCount++
       }
       return s.perClass - lockCount - (a.homeroomHours?.[key]?.[s.name] ?? 0)
@@ -221,7 +224,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       for (const g of [1, 2, 3, 4, 5, 6]) {
         for (let i = 0; i < (classCounts[g] ?? 0); i++) {
           for (const s of (gradeSubjects[g] ?? [])) {
-            if (s.perClass <= 0 || s.name === '本土語') continue
+            if (s.perClass <= 0) continue
             const k = subjectClassKey(g, i, s.name)
             const cur = assign[k]
             const r = remainderOf(g, i, s)
