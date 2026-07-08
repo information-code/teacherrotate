@@ -33,7 +33,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'subject', label: '3 科任配班' },
   { key: 'room', label: '4 教室設定' },
   { key: 'lock', label: '5 鎖課設定' },
-  { key: 'off', label: '6 不排課標記' },
+  { key: 'off', label: '6 排課/不排課標記' },
   { key: 'weight', label: '7 權重設定' },
 ]
 
@@ -231,7 +231,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
         <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
       )}
 
-      {/* ── 六、不排課標記 ── */}
+      {/* ── 六、排課/不排課標記 ── */}
       {tab === 'off' && (
         <OffTab config={config} setConfig={setConfig} offTeachers={offTeachers} needsRefs={needsRefs} />
       )}

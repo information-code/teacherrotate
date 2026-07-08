@@ -54,11 +54,14 @@ export const OFF_CATEGORY_LABEL: Record<OffCategory, string> = {
   counseling: '輔導團', admin: '行政', training: '進修', other: '其他',
 }
 
-/** 個人不排課：該教師這些時段不排課（導師→班級課表該時段排科任課；科任→該時段留空）。 */
+/** 個人排課/不排課標記。
+ *  mode='off'（不排課）：該時段不排該師的課（導師→班級課表該時段排科任課；科任→該時段留空）。
+ *  mode='on'（排課）：該時段一定要排該師的課（導師→該格必留導師課、科任課不可放；科任→該時段必須排入其課）。 */
 export interface PersonalOff {
   id: string
   teacherId: string
   category: OffCategory
+  mode: 'off' | 'on'
   note: string            // 補充說明（類別為其他時建議填）
   slots: string[]         // slotKey 列表
 }
@@ -318,6 +321,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       ? r.personalOff.map(p => ({
           id: String(p.id ?? ''), teacherId: String(p.teacherId ?? ''),
           category: OFF_CATEGORIES.includes(p.category as OffCategory) ? p.category as OffCategory : 'other',
+          mode: p.mode === 'on' ? 'on' as const : 'off' as const,   // 舊資料無此欄＝不排課
           note: String(p.note ?? ''), slots: Array.isArray(p.slots) ? p.slots.map(String) : [],
         }))
       : [],

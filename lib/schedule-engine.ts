@@ -33,9 +33,11 @@ export interface EngineInput {
   lessons: EngineLesson[]
   classSlots: Record<string, string[]>       // classKey → 可放科任課的 slotKey（可排時段 − 鎖課格）
   classMustFill: Record<string, string[]>    // classKey → 必排科任課的格（導師不排課時段）
+  classMustLeave: Record<string, string[]>   // classKey → 必留導師課的格（導師排課標記，科任課不可放）
   classDayFull: Record<string, Record<number, boolean>>  // classKey → day → 是否整天日
   lockedCells: Record<string, Record<string, string>>    // classKey → slotKey → 顯示文字（鎖課科目）
   teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
+  teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean } | null>
@@ -143,10 +145,14 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     leftoverLow: [] as string[],    // 留白 < 導師基本授課
     artBiweekly: [] as string[],    // 視藝單雙週但每班節數 ≠ 1
     unassigned: new Map<string, number>(),   // `${grade}|${subject}` → 未指派班數
+    onOffConflict: [] as string[],  // 同格同時被標排課與不排課
+    onNoLesson: [] as string[],     // 標了排課但無科任課的教師
+    onBadSlot: [] as string[],      // 排課標記時段不可行（非授課班可排格或與封鎖衝突）
   }
   const classes: EngineInput['classes'] = []
   const classSlots: Record<string, string[]> = {}
   const classMustFill: Record<string, string[]> = {}
+  const classMustLeave: Record<string, string[]> = {}
   const classDayFull: Record<string, Record<number, boolean>> = {}
   const lockedCells: Record<string, Record<string, string>> = {}
   const lessons: EngineLesson[] = []
@@ -156,10 +162,13 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const art = config.weights.builtin.artBiweekly
 
   // 個人不排課 → teacherId → slots（科任用於自身封鎖；導師用於班級 mustFill）
+  // 個人排課（mode='on'）→ 反向：導師用於班級必留導師格；科任用於必排時段
   const offByTeacher: Record<string, string[]> = {}
+  const onByTeacher: Record<string, string[]> = {}
   for (const p of config.personalOff) {
     if (!p.teacherId) continue
-    offByTeacher[p.teacherId] = [...(offByTeacher[p.teacherId] ?? []), ...p.slots]
+    const box = p.mode === 'on' ? onByTeacher : offByTeacher
+    box[p.teacherId] = [...(box[p.teacherId] ?? []), ...p.slots]
   }
 
   // ── 本土語 ──
@@ -218,7 +227,19 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const homeroomOff = homeroomId ? (offByTeacher[homeroomId] ?? []) : []
       const mustSet = new Set<string>()
       for (const s of [...gradeOff, ...homeroomOff]) if (slots.includes(s)) mustSet.add(s)
+      // 必留導師格：該班導師的個人排課標記——科任課不可放（同格同時被標排課＋不排課＝矛盾，兩者皆忽略並警告）
+      const homeroomOn = homeroomId ? (onByTeacher[homeroomId] ?? []) : []
+      const leaveSet = new Set<string>()
+      for (const s of homeroomOn) if (slots.includes(s)) leaveSet.add(s)
+      for (const s of Array.from(leaveSet)) {
+        if (mustSet.has(s)) {
+          const { day, period } = parseSlotKey(s)
+          agg.onOffConflict.push(`${classLabel(g, i)}導師 週${'一二三四五'[day - 1]}第${period}節`)
+          mustSet.delete(s); leaveSet.delete(s)
+        }
+      }
       classMustFill[key] = Array.from(mustSet)
+      classMustLeave[key] = Array.from(leaveSet)
 
       // 鎖課占用後扣科目需求
       const lockCountBySubject: Record<string, number> = {}
@@ -325,6 +346,22 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     if (load > cap) preflight.push({ level: 'warn', text: `${a.teacherNames[tid] ?? tid} 配課 ${load} 節，但其授課班級的可排時段（扣除不排課）僅 ${cap} 格，至少 ${load - cap} 節必然排不進，請調整配班或不排課時段。` })
   }
 
+  // 排課標記（科任）：該時段必須排入該師的課。不可行的時段（非其授課班可排格、或與不排課/本土語封鎖衝突）先剔除並警告。
+  const homeroomIds = new Set(Object.values(config.classTeacher).filter(Boolean))
+  const teacherMustTeach: Record<string, string[]> = {}
+  for (const [tid, onSlots] of Object.entries(onByTeacher)) {
+    if (homeroomIds.has(tid)) continue   // 導師 → 已於班級側處理（必留導師格）
+    const name = a.teacherNames[tid] ?? tid
+    if (!teacherIds.has(tid)) { agg.onNoLesson.push(name); continue }
+    const feasible = slotsByTeacher[tid] ?? new Set<string>()
+    const good: string[] = []
+    for (const s of Array.from(new Set(onSlots))) {
+      if (feasible.has(s)) good.push(s)
+      else { const { day, period } = parseSlotKey(s); agg.onBadSlot.push(`${name} 週${'一二三四五'[day - 1]}第${period}節`) }
+    }
+    if (good.length) teacherMustTeach[tid] = good
+  }
+
   // 教室
   const rooms: RoomInfo[] = roomsFromConfig(config)
   const classRoom: EngineInput['classRoom'] = {}
@@ -359,11 +396,15 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
   for (const issue of derived.issues) preflight.push(issue)
   if (nativeAgg.streamClasses.length) preflight.push({ level: 'warn', text: `本土語未指派閩南語老師、將以直播共學處理（請確認非漏填）：${joinCap(nativeAgg.streamClasses)}`, tab: 'subject' })
+  // 排課標記檢核
+  if (agg.onOffConflict.length) preflight.push({ level: 'warn', text: `排課與不排課標記同格衝突（該格兩者皆忽略）：${joinCap(agg.onOffConflict)}`, tab: 'off' })
+  if (agg.onNoLesson.length) preflight.push({ level: 'warn', text: `標了排課但無科任課、標記無作用：${joinCap(agg.onNoLesson)}`, tab: 'off' })
+  if (agg.onBadSlot.length) preflight.push({ level: 'warn', text: `排課標記時段不可行（非其授課班可排格或與不排課衝突，已忽略）：${joinCap(agg.onBadSlot)}`, tab: 'off' })
 
   return {
     input: {
-      classes, lessons, classSlots, classMustFill, classDayFull, lockedCells,
-      teacherBlocked, teacherNames: a.teacherNames, rooms, classRoom,
+      classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells,
+      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, rooms, classRoom,
       weights: config.weights, seed: a.seed ?? 42,
     },
     preflight,
@@ -398,6 +439,7 @@ class State {
     const cOcc = this.classOcc.get(l.classKey)!
     const tOcc = this.teacherOcc.get(l.teacherId)!
     const blocked = this.input.teacherBlocked[l.teacherId] ?? []
+    const mustLeave = this.input.classMustLeave?.[l.classKey] ?? []
     // 視藝單雙週起始節次
     if (l.parity === 'odd' && ![1, 3, 5].includes(p.period)) return false
     if (l.parity === 'even' && ![2, 4, 6].includes(p.period)) return false
@@ -405,6 +447,7 @@ class State {
       if (!avail.includes(s)) return false
       if (cOcc.has(s)) return false
       if (blocked.includes(s)) return false
+      if (mustLeave.includes(s)) return false   // 導師排課標記格：必留導師課
       const cell = tOcc.get(s)
       if (cell) {
         if (cell.w) return false
@@ -657,6 +700,17 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         uncovered.push({ classKey: c.classKey, slot: s })
         const { day, period } = parseSlotKey(s)
         acc(map, 'mustFill', '導師不排課時段未排科任課', MUST, `${c.label} ${slotZh(day, period)}`)
+      }
+    }
+  }
+
+  // 排課標記覆蓋（科任）：標記時段必須有該師的課
+  for (const [tid, slots] of Object.entries(input.teacherMustTeach ?? {})) {
+    const occ = st.teacherOcc.get(tid)
+    for (const s of slots) {
+      if (!occ?.has(s)) {
+        const { day, period } = parseSlotKey(s)
+        acc(map, 'mustTeach', '排課標記時段未排課', MUST, `${nameOf(tid)} ${slotZh(day, period)}`)
       }
     }
   }
@@ -963,6 +1017,7 @@ export class EngineRun {
     const difficulty = (l: EngineLesson) =>
       (l.size === 2 ? 100 : 0) + (l.parity !== 'weekly' ? 50 : 0)
       + (input.teacherBlocked[l.teacherId]?.length ?? 0) * 3
+      + (input.teacherMustTeach[l.teacherId]?.length ?? 0) * 3
       + (input.classMustFill[l.classKey]?.length ?? 0) * 2
       + teacherLoad[l.teacherId]
     const ordered = [...input.lessons].filter(l => !this.st.pos.has(l.id)).sort((a, b) => difficulty(b) - difficulty(a))
@@ -972,11 +1027,14 @@ export class EngineRun {
       const cands = this.st.candidates(l)
       if (cands.length === 0) continue
       const must = new Set(input.classMustFill[l.classKey] ?? [])
+      const tmust = new Set(input.teacherMustTeach[l.teacherId] ?? [])
       let best: Placement | null = null
       let bestScore = Infinity
       for (const p of cands) {
         const slots = l.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
-        const coverMust = slots.filter(s => must.has(s) && !this.st.classOcc.get(l.classKey)!.has(s)).length
+        const coverMust = slots.filter(s =>
+          (must.has(s) && !this.st.classOcc.get(l.classKey)!.has(s))
+          || (tmust.has(s) && !this.st.teacherOcc.get(l.teacherId)!.has(s))).length
         const score = -coverMust * 1000 + (p.period <= 4 ? 5 : 0) + this.rnd()
         if (score < bestScore) { bestScore = score; best = p }
       }

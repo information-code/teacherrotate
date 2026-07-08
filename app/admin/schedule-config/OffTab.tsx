@@ -17,13 +17,16 @@ interface Props {
 }
 
 const OFF_ON_CLASS = 'bg-rose-400 text-white border-rose-400'
+const SCHED_ON_CLASS = 'bg-emerald-500 text-white border-emerald-500'
+// 標記模式：off＝不排課、on＝排課（一定要排，與不排課相反）
+const MODE_LABEL: Record<'off' | 'on', string> = { off: '不排課', on: '排課' }
 
-// 個人不排課的類別分頁：輔導團／公假進修／其他（含行政）
+// 個人標記的類別分頁：輔導團／公假進修／其他（含行政；排課標記僅此分頁）
 type PersonalTab = 'counseling' | 'training' | 'otherx'
 const PERSONAL_TABS: { key: PersonalTab; label: string }[] = [
   { key: 'counseling', label: '個人不排課（輔導團）' },
   { key: 'training', label: '個人不排課（公假進修）' },
-  { key: 'otherx', label: '個人不排課（其他）' },
+  { key: 'otherx', label: '個人排課/不排課（其他）' },
 ]
 function entryInTab(p: PersonalOff, tab: PersonalTab): boolean {
   if (tab === 'otherx') return p.category === 'other' || p.category === 'admin'
@@ -63,17 +66,17 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
 
   // ── 個人 ──
   function removeEntry(p: PersonalOff) {
-    if (p.slots.length > 0 && !confirm(`刪除「${nameOf(p.teacherId)}」的${OFF_CATEGORY_LABEL[p.category]}不排課標記？`)) return
+    if (p.slots.length > 0 && !confirm(`刪除「${nameOf(p.teacherId)}」的${OFF_CATEGORY_LABEL[p.category]}${MODE_LABEL[p.mode]}標記？`)) return
     setConfig(c => ({ ...c, personalOff: c.personalOff.filter(x => x.id !== p.id) }))
   }
   /** 開啟編輯 modal（舊資料的行政類別視同其他）。 */
   function openDraft(p: PersonalOff) {
     setDraft({ ...p, category: categoryGroup(p.category), slots: [...p.slots] })
   }
-  /** 同類別清單已有同一位教師的其他項目 → 擋下不能存。 */
+  /** 同類別清單已有同一位教師「同模式」的其他項目 → 擋下不能存（排課與不排課可各一筆）。 */
   function conflictOf(d: PersonalOff | null): boolean {
     if (!d || !d.teacherId) return false
-    return config.personalOff.some(p => p.id !== d.id && p.teacherId === d.teacherId && categoryGroup(p.category) === categoryGroup(d.category))
+    return config.personalOff.some(p => p.id !== d.id && p.teacherId === d.teacherId && p.mode === d.mode && categoryGroup(p.category) === categoryGroup(d.category))
   }
   function saveDraft() {
     if (!draft || !draft.teacherId || conflictOf(draft)) return
@@ -97,29 +100,29 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
     if (tab === 'training') return n.officialLeaveSlots
     return []
   }
-  function existingEntry(teacherId: string, tab: PersonalTab): PersonalOff | undefined {
-    return config.personalOff.find(p => p.teacherId === teacherId && entryInTab(p, tab))
+  function existingEntry(teacherId: string, tab: PersonalTab, mode: 'off' | 'on' = 'off'): PersonalOff | undefined {
+    return config.personalOff.find(p => p.teacherId === teacherId && p.mode === mode && entryInTab(p, tab))
   }
-  /** 帶入：依目前分頁的類別建立標記（已有同分頁項目或無時段則停用）。 */
+  /** 帶入：依目前分頁的類別建立不排課標記（已有同分頁項目或無時段則停用）。 */
   function importNeeds(n: NeedsRef, tab: PersonalTab) {
     const slots = declaredSlots(n, tab)
     if (!slots.length || existingEntry(n.teacherId, tab)) return
     setConfig(c => ({
       ...c,
       personalOff: [...c.personalOff, {
-        id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab),
+        id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab), mode: 'off',
         note: '教師申報帶入', slots: [...slots],
       }],
     }))
   }
   /** 編輯：已有項目 → 編輯該項目；沒有 → 以申報時段預填開新項目。
    *  其他分頁＝管理者認定理由可接受後手動標時段，說明留白由管理者自填。 */
-  function editNeeds(n: NeedsRef, tab: PersonalTab) {
-    const exist = existingEntry(n.teacherId, tab)
+  function editNeeds(n: NeedsRef, tab: PersonalTab, mode: 'off' | 'on' = 'off') {
+    const exist = existingEntry(n.teacherId, tab, mode)
     if (exist) { openDraft(exist); return }
     setDraft({
-      id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab),
-      note: tab === 'otherx' ? '' : '教師申報帶入', slots: [...declaredSlots(n, tab)],
+      id: crypto.randomUUID(), teacherId: n.teacherId, category: defaultCategory(tab), mode,
+      note: tab === 'otherx' ? '' : '教師申報帶入', slots: mode === 'on' ? [] : [...declaredSlots(n, tab)],
     })
   }
 
@@ -132,7 +135,8 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-400">
-        標記＝該時段不排該師的課：導師 → 班級課表該時段改排科任課；科任 → 該時段課表留空。
+        不排課標記＝該時段不排該師的課：導師 → 班級課表該時段改排科任課；科任 → 該時段課表留空。
+        排課標記（僅「其他」分頁）＝相反，該時段一定要排該師的課：導師 → 該格必留導師課；科任 → 該時段必須排入其課。
       </p>
 
       <div className="flex gap-2 flex-wrap">
@@ -197,6 +201,7 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                       {tabNeeds.map(n => {
                         const slots = declaredSlots(n, tab)
                         const exist = existingEntry(n.teacherId, tab)
+                        const existOn = existingEntry(n.teacherId, tab, 'on')
                         return (
                           <tr key={n.teacherId}>
                             <td className="font-medium text-zinc-800 whitespace-nowrap">{n.name}</td>
@@ -215,10 +220,21 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                                   {exist.note && <span className="text-zinc-400 ml-1">（{exist.note}）</span>}
                                 </div>
                               )}
+                              {existOn && (
+                                <div className="text-emerald-600">
+                                  ✓ 已標記排課{existOn.slots.length ? `：${slotText(existOn.slots)}` : '（尚未標時段）'}
+                                  {existOn.note && <span className="text-zinc-400 ml-1">（{existOn.note}）</span>}
+                                </div>
+                              )}
                             </td>
                             <td className="text-center whitespace-nowrap">
                               {tab === 'otherx'
-                                ? <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5">{exist ? '編輯不排課' : '不排課'}</button>
+                                ? (
+                                  <>
+                                    <button onClick={() => editNeeds(n, tab, 'on')} className="btn btn-secondary text-xs py-0.5 mr-1">{existOn ? '編輯排課' : '排課'}</button>
+                                    <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5">{exist ? '編輯不排課' : '不排課'}</button>
+                                  </>
+                                )
                                 : (
                                   <>
                                     <button onClick={() => editNeeds(n, tab)} className="btn btn-secondary text-xs py-0.5 mr-1">編輯</button>
@@ -246,6 +262,7 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                           {nameOf(p.teacherId)}
                           <span className="text-xs font-normal text-zinc-400 ml-1">{workOf(p.teacherId)}</span>
                         </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border flex-shrink-0 ${p.mode === 'on' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>{MODE_LABEL[p.mode]}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-500 border border-zinc-200 flex-shrink-0">{OFF_CATEGORY_LABEL[p.category]}</span>
                         <button onClick={() => openDraft(p)} className="btn btn-secondary text-xs py-0.5 flex-shrink-0">編輯</button>
                         <button onClick={() => removeEntry(p)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
@@ -257,8 +274,12 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
                 </div>
               )}
 
-            <div className="flex justify-end">
-              <button onClick={() => setDraft({ id: crypto.randomUUID(), teacherId: '', category: defaultCategory(tab), note: '', slots: [] })}
+            <div className="flex justify-end gap-2">
+              {tab === 'otherx' && (
+                <button onClick={() => setDraft({ id: crypto.randomUUID(), teacherId: '', category: defaultCategory(tab), mode: 'on', note: '', slots: [] })}
+                  className="btn btn-secondary text-sm py-1">＋ 新增個人排課</button>
+              )}
+              <button onClick={() => setDraft({ id: crypto.randomUUID(), teacherId: '', category: defaultCategory(tab), mode: 'off', note: '', slots: [] })}
                 className="btn btn-primary text-sm py-1">＋ 新增個人不排課</button>
             </div>
           </>
@@ -270,23 +291,26 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setDraft(null)}>
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto p-4 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="text-sm font-semibold text-zinc-700">
-              {config.personalOff.some(p => p.id === draft.id) ? '編輯' : '新增'}個人不排課
+              {config.personalOff.some(p => p.id === draft.id) ? '編輯' : '新增'}個人{MODE_LABEL[draft.mode]}
+              {draft.mode === 'on' && <span className="text-xs font-normal text-emerald-600 ml-2">標記時段一定要排該師的課</span>}
             </div>
             <select value={draft.teacherId} onChange={e => setDraft(d => d && { ...d, teacherId: e.target.value })} className="input py-1 text-sm w-full">
               <option value="">選擇教師…</option>
               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}{t.work ? `（${t.work}）` : ''}</option>)}
             </select>
-            <div className="flex gap-1 flex-wrap">
-              {MODAL_CATEGORIES.map(cat => (
-                <button key={cat} onClick={() => setDraft(d => d && { ...d, category: cat })}
-                  className={`text-xs px-2 py-0.5 rounded-sm border ${categoryGroup(draft.category) === cat ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'}`}>
-                  {OFF_CATEGORY_LABEL[cat]}
-                </button>
-              ))}
-            </div>
+            {draft.mode === 'off' && (
+              <div className="flex gap-1 flex-wrap">
+                {MODAL_CATEGORIES.map(cat => (
+                  <button key={cat} onClick={() => setDraft(d => d && { ...d, category: cat })}
+                    className={`text-xs px-2 py-0.5 rounded-sm border ${categoryGroup(draft.category) === cat ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'}`}>
+                    {OFF_CATEGORY_LABEL[cat]}
+                  </button>
+                ))}
+              </div>
+            )}
             {conflictOf(draft) && (
               <p className="text-xs text-red-600">
-                「{OFF_CATEGORY_LABEL[categoryGroup(draft.category)]}」清單已有 {nameOf(draft.teacherId)} 的標記，同一清單不能重複，請改編輯既有標記或換類別。
+                「{OFF_CATEGORY_LABEL[categoryGroup(draft.category)]}」清單已有 {nameOf(draft.teacherId)} 的{MODE_LABEL[draft.mode]}標記，同一清單同模式不能重複，請改編輯既有標記。
               </p>
             )}
             <input value={draft.note} onChange={e => setDraft(d => d && { ...d, note: e.target.value })}
@@ -296,9 +320,9 @@ export default function OffTab({ config, setConfig, offTeachers, needsRefs }: Pr
               periods={allPeriods}
               isOn={k => draft.slots.includes(k)}
               onToggle={k => setDraft(d => d && { ...d, slots: d.slots.includes(k) ? d.slots.filter(x => x !== k) : [...d.slots, k] })}
-              onLabel="休" onClass={OFF_ON_CLASS}
+              onLabel={draft.mode === 'on' ? '排' : '休'} onClass={draft.mode === 'on' ? SCHED_ON_CLASS : OFF_ON_CLASS}
             />
-            <div className="text-[11px] text-zinc-400 text-right">{draft.slots.length} 節不排課</div>
+            <div className="text-[11px] text-zinc-400 text-right">{draft.slots.length} 節{MODE_LABEL[draft.mode]}</div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setDraft(null)} className="btn btn-secondary text-sm py-1">取消</button>
               <button onClick={saveDraft} disabled={!draft.teacherId || conflictOf(draft)} className="btn btn-primary text-sm py-1">儲存</button>

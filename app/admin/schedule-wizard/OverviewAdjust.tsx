@@ -72,13 +72,27 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     }
     return m
   }, [placed])
-  // 科任個人不排課
+  // 科任個人不排課（mode='on' 是排課標記，不算封鎖）
   const teacherBlocked = useMemo(() => {
     const m: Record<string, Set<string>> = {}
     for (const p of config.personalOff) {
-      if (!p.teacherId) continue
+      if (!p.teacherId || p.mode === 'on') continue
       const set = (m[p.teacherId] ??= new Set())
       for (const s of p.slots) set.add(s)
+    }
+    return m
+  }, [config])
+  // 各班必留導師格（該班導師的個人排課標記：科任課不可放）
+  const mustLeaveOf = useMemo(() => {
+    const on: Record<string, Set<string>> = {}
+    for (const p of config.personalOff) {
+      if (!p.teacherId || p.mode !== 'on') continue
+      const set = (on[p.teacherId] ??= new Set())
+      for (const s of p.slots) set.add(s)
+    }
+    const m: Record<string, Set<string>> = {}
+    for (const [ck2, tid] of Object.entries(config.classTeacher)) {
+      if (tid && on[tid]) m[ck2] = on[tid]
     }
     return m
   }, [config])
@@ -132,6 +146,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     for (const s of slots) {
       if (!teach.has(s)) return { ok: false, why: '非可排課時段' }
       if (locks[s]) return { ok: false, why: '鎖課格' }
+      if (mustLeaveOf[l.classKey]?.has(s)) return { ok: false, why: '導師排課標記格（此格必須是導師課）' }
       const occ = cm?.get(s)
       if (occ && !ignoreIds.has(occ.id)) return { ok: false, why: '該格已有其他科任課' }
       if (hrCells[s] && !ignoreIds.has(`hr|${l.classKey}|${s}`)) return { ok: false, why: '該格為導師課（請用互換）' }
