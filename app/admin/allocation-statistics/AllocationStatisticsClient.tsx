@@ -30,6 +30,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
+  const [hourlySel, setHourlySel] = useState<string | null>(null)    // 鐘點檢視：下拉選定的教師
   const [remindOpen, setRemindOpen] = useState(false)                // 未鎖定提醒訊息 modal
   const [copiedKey, setCopiedKey] = useState<string | null>(null)    // 已複製回饋（'all' | teacherId）
 
@@ -73,15 +74,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
 
   const rkey = String(reduction)
-  const subjectTeachers = teachers.filter(t => t.role === 'subject')
+  const subjectTeachers = teachers.filter(t => t.role === 'subject' && !t.isHourly)
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const adminTeachers = teachers.filter(t => t.role === 'admin')
     .sort((a, b) => ADMIN_KIND_ORDER[adminKind(a.work)] - ADMIN_KIND_ORDER[adminKind(b.work)])
+  const hourlyTeachers = teachers.filter(t => t.isHourly)
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
 
-  // 目前分頁的老師範圍與未鎖定名單（提示條＋提醒訊息共用）
+  // 目前分頁的老師範圍與未鎖定名單（提示條＋提醒訊息共用；鐘點無鎖定概念不列）
   const scopeInfo = (() => {
     if (/^\d$/.test(view)) { const g = Number(view); return { label: `${GRADE_LABEL[g]}導師`, list: teachers.filter(t => t.role === 'homeroom' && t.grade === g) } }
     if (view === 'subject') return { label: '科任', list: subjectTeachers }
+    if (view === 'hourly') return { label: '鐘點', list: [] as TeacherStat[] }
     return { label: '行政', list: adminTeachers }
   })()
   const unlockedTeachers = scopeInfo.list.filter(t => !t.data.locked)
@@ -99,6 +103,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   // 行政供給：行政教師於各領域×年級填入的節數（與代理科任同樣存於 subjectGradeHours）
   function adminSupply(grade: number, subj: string) {
     return adminTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
+  }
+  // 鐘點供給：鐘點教師（課務組直接填），同樣存於 subjectGradeHours
+  function hourlySupply(grade: number, subj: string) {
+    return hourlyTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
   }
   // 全部領域（各年級需求科目之聯集，含非導師科目）
   const allSubjectsList = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => Object.keys(demandByGradeSubject[g] ?? {})))).filter(Boolean))
@@ -128,17 +136,22 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     updateTeacher(id, d => ({ ...d, subjectGradeHours: { ...(d.subjectGradeHours ?? {}), [subj]: { ...((d.subjectGradeHours ?? {})[subj] ?? {}), [String(grade)]: val } } }))
   }
 
-  // 科任／行政共用：下拉選人 + 年級×領域雙向表，合計需等於 基本−減課+超鐘=實際。
+  // 科任／行政／鐘點共用：下拉選人 + 年級×領域雙向表。
+  // 科任行政：合計需等於 基本−減課+超鐘=實際；鐘點（hourly=true）：無減課/超鐘/鎖定，只顯示合計。
   // 以函式（非元件）回傳 JSX，避免每次輸入造成輸入框重新掛載而失焦。
-  function gradeSubjectGrid(list: TeacherStat[], sel: string | null, setSel: (id: string) => void, kindLabel: string) {
-    if (list.length === 0) return <div className="card text-sm text-zinc-400 text-center py-3">無{kindLabel}資料</div>
+  function gradeSubjectGrid(list: TeacherStat[], sel: string | null, setSel: (id: string) => void, kindLabel: string, hourly = false) {
+    if (list.length === 0) {
+      return <div className="card text-sm text-zinc-400 text-center py-3">
+        無{kindLabel}資料{hourly && '——請先於「帳號資料」新增教師並將聘任別設為「鐘點」'}
+      </div>
+    }
     const cur = sel && list.some(t => t.id === sel) ? sel : list[0].id
     const t = list.find(x => x.id === cur)!
     const act = actualOf(t)
     const cell = (subj: string, g: number) => Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0
     const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined
     const total = allSubjectsList.reduce((s, subj) => s + GRADES.reduce((a, g) => a + cell(subj, g), 0), 0)
-    const mismatch = total !== act
+    const mismatch = !hourly && total !== act
     return (
       <div className="space-y-4">
         <div className="card p-4 space-y-2">
@@ -147,13 +160,16 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-48 sm:w-56 max-w-full">
               {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
             </select>
-            {reasonIcon(t)}
-            {t.data.locked && <span className="text-[10px]">🔒</span>}
-            <span className="flex items-center gap-1 text-xs text-zinc-600">減課 <span className="font-medium text-zinc-800">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="text-zinc-400 hover:text-sky-600">✎</button></span>
-            <label className="flex items-center gap-1 text-xs text-zinc-600">意願超鐘<NumberInput min={0} max={6} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(6, Math.max(0, n)) }))} className="input w-12 text-center py-0.5" /></label>
-            <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
+            {!hourly && <>
+              {reasonIcon(t)}
+              {t.data.locked && <span className="text-[10px]">🔒</span>}
+              <span className="flex items-center gap-1 text-xs text-zinc-600">減課 <span className="font-medium text-zinc-800">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="text-zinc-400 hover:text-sky-600">✎</button></span>
+              <label className="flex items-center gap-1 text-xs text-zinc-600">意願超鐘<NumberInput min={0} max={6} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(6, Math.max(0, n)) }))} className="input w-12 text-center py-0.5" /></label>
+              <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
+            </>}
+            {hourly && <span className="text-xs text-zinc-400 ml-1">鐘點教師無減課、超鐘與鎖定，由課務組直接填寫節數。</span>}
           </div>
-          {(() => {
+          {!hourly && (() => {
             const wishes = (t.data.subjectWishes ?? []).filter(Boolean)
             return wishes.length > 0
               ? <div className="text-xs text-zinc-600 border-t border-zinc-100 pt-2">老師想授課志願：<span className="font-medium text-zinc-800">{wishes.join(' ＞ ')}</span></div>
@@ -163,9 +179,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="card p-0 overflow-x-auto">
           <div className="px-4 pt-3 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-semibold text-zinc-700">{t.name} · 各領域×年級配課
-              <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　+超鐘 {t.data.overtimeApproved || 0}　= 實際 {act}</span>
+              {!hourly && <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　+超鐘 {t.data.overtimeApproved || 0}　= 實際 {act}</span>}
             </div>
-            <div className={`text-sm font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>合計 {total} / 實際 {act}{mismatch && `（${total < act ? '不足' : '超過'} ${Math.abs(total - act)}）`}</div>
+            {hourly
+              ? <div className="text-sm font-semibold text-zinc-700">合計 {total} 節</div>
+              : <div className={`text-sm font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>合計 {total} / 實際 {act}{mismatch && `（${total < act ? '不足' : '超過'} ${Math.abs(total - act)}）`}</div>}
           </div>
           <table className="table-base mt-2">
             <thead><tr><th>領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
@@ -237,6 +255,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           <span className="mx-1 text-zinc-300">|</span>
           <button onClick={() => setView('subject')} className={tabCls(view === 'subject')}>科任</button>
           <button onClick={() => setView('admin')} className={tabCls(view === 'admin')}>行政</button>
+          <button onClick={() => setView('hourly')} className={tabCls(view === 'hourly')}>鐘點</button>
         </div>
       </div>
 
@@ -334,6 +353,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     <td colSpan={5}></td>
                   </tr>
                   <tr>
+                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">鐘點供給</td>
+                    {subjects.map(s => <td key={s} className="text-center font-medium">{hourlySupply(grade, s)}</td>)}
+                    <td colSpan={5}></td>
+                  </tr>
+                  <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
                     {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
                     <td colSpan={5}></td>
@@ -341,7 +365,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
                     {subjects.map(s => {
-                      const diff = homeroomSupply(grade, s) + subjectSupply(grade, s) + adminSupply(grade, s) - (demandByGradeSubject[grade]?.[s] ?? 0)
+                      const diff = homeroomSupply(grade, s) + subjectSupply(grade, s) + adminSupply(grade, s) + hourlySupply(grade, s) - (demandByGradeSubject[grade]?.[s] ?? 0)
                       const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
                       return (
                         <td key={s} className={`text-center font-medium ${cls}`}>
@@ -365,6 +389,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
 
       {/* ── 行政檢視（候補：可跨領域×年級補課，合計需等於實際）── */}
       {view === 'admin' && gradeSubjectGrid(adminTeachers, adminSel, setAdminSel, '行政')}
+
+      {/* ── 鐘點檢視（無減課/超鐘/鎖定，課務組直接填）── */}
+      {view === 'hourly' && gradeSubjectGrid(hourlyTeachers, hourlySel, setHourlySel, '鐘點', true)}
 
       {/* ── 不足科目：願意超鐘點支援的老師（導師／科任檢視共用）── */}
       {otSubj && (

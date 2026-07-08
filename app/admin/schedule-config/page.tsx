@@ -72,11 +72,14 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   for (const id of ids) {
     const name = nameMap[id] ?? id
     const d = allocMap[id]
-    // 角色與職務：代理看配課資料，正式看工作紀錄
+    // 角色與職務：鐘點/代理看配課資料，正式看工作紀錄
     let role: AllocRole = 'none'
     let work = ''
     let grade: number | null = null
-    if (empMap[id] === 'substitute') {
+    if (empMap[id] === 'hourly') {
+      role = 'subject'
+      work = '鐘點教師'
+    } else if (empMap[id] === 'substitute') {
       role = d?.role ?? 'none'
       work = d?.work ?? '代理'
       grade = d?.role === 'homeroom' ? (d.grade ?? null) : null

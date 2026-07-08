@@ -17,6 +17,7 @@ export interface TeacherStat {
   grade: number | null
   base: number | null
   data: TeacherAllocation
+  isHourly?: boolean   // 鐘點教師：無減課/超鐘/鎖定，配課由課務組直接填
 }
 export interface GradeMeta {
   subjects: string[]      // 導師可配課科目（表格欄位）
@@ -32,8 +33,8 @@ export default async function AllocationStatisticsPage() {
 
   const [{ data: cfgRow }, { data: profiles }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
-    // 鐘點教師不參與配課，不列入統計母體
-    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin').neq('employment_type', 'hourly'),
+    // 鐘點教師也列入（配課由課務組於「鐘點」分頁直接填寫）
+    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin'),
   ])
   const config = normalizeConfig(cfgRow?.config)
   const ids = (profiles ?? []).map(p => p.id)
@@ -49,6 +50,16 @@ export default async function AllocationStatisticsPage() {
 
   const teachers: TeacherStat[] = []
   for (const id of ids) {
+    // 鐘點教師：無基本節數/減課/超鐘/鎖定，配課由課務組直接填 subjectGradeHours
+    if (empMap[id] === 'hourly') {
+      teachers.push({
+        id, name: nameMap[id] ?? id, role: 'subject', roleLabel: '鐘點',
+        work: '鐘點教師', grade: null, base: null,
+        data: allocMap[id] ?? defaultTeacherAllocation('subject', '鐘點教師', null),
+        isHourly: true,
+      })
+      continue
+    }
     // 代理教師：身分/年級來自其配課資料（自選），非 rotation
     if (empMap[id] === 'substitute') {
       const d = allocMap[id]
