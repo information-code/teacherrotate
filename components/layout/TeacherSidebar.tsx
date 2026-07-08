@@ -5,27 +5,54 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useMobileNav } from '@/components/layout/MobileNav'
 
-const FORMAL_ITEMS = [
-  { href: '/teacher/profile',     label: '基本資料' },
-  { href: '/teacher/scores',      label: '輪動分數' },
-  { href: '/teacher/preferences', label: '選填志願' },
-  { href: '/teacher/allocation',  label: '配課選填' },
-  { href: '/teacher/schedule-fill', label: '排課選填' },
-  { href: '/teacher/timetable',   label: '我的課表' },
-  { href: '/teacher/equipment',   label: '設備借用' },
+interface NavGroup { title: string; items: { href: string; label: string }[] }
+
+const FORMAL_GROUPS: NavGroup[] = [
+  {
+    title: '常用功能',
+    items: [
+      { href: '/teacher/profile',   label: '基本資料' },
+      { href: '/teacher/timetable', label: '我的課表' },
+      { href: '/teacher/equipment', label: '設備借用' },
+      { href: '/teacher/scores',    label: '輪動分數' },
+    ],
+  },
+  {
+    title: '選填調查',
+    items: [
+      { href: '/teacher/preferences',   label: '志願選填' },
+      { href: '/teacher/allocation',    label: '配課選填' },
+      { href: '/teacher/schedule-fill', label: '排課選填' },
+    ],
+  },
 ]
-// 代理：不輪動、不選志願，只看基本資料與配課選填
-const SUBSTITUTE_ITEMS = [
-  { href: '/teacher/profile',    label: '基本資料' },
-  { href: '/teacher/allocation', label: '配課選填' },
-  { href: '/teacher/schedule-fill', label: '排課選填' },
-  { href: '/teacher/timetable', label: '我的課表' },
-  { href: '/teacher/equipment',  label: '設備借用' },
+// 代理：不輪動、不選志願
+const SUBSTITUTE_GROUPS: NavGroup[] = [
+  {
+    title: '常用功能',
+    items: [
+      { href: '/teacher/profile',   label: '基本資料' },
+      { href: '/teacher/timetable', label: '我的課表' },
+      { href: '/teacher/equipment', label: '設備借用' },
+    ],
+  },
+  {
+    title: '選填調查',
+    items: [
+      { href: '/teacher/allocation',    label: '配課選填' },
+      { href: '/teacher/schedule-fill', label: '排課選填' },
+    ],
+  },
 ]
 // 鐘點：課表與設備借用
-const HOURLY_ITEMS = [
-  { href: '/teacher/timetable', label: '我的課表' },
-  { href: '/teacher/equipment',  label: '設備借用' },
+const HOURLY_GROUPS: NavGroup[] = [
+  {
+    title: '常用功能',
+    items: [
+      { href: '/teacher/timetable', label: '我的課表' },
+      { href: '/teacher/equipment', label: '設備借用' },
+    ],
+  },
 ]
 
 export function TeacherSidebar({
@@ -36,10 +63,10 @@ export function TeacherSidebar({
   siteTitle?: string
 }) {
   const pathname = usePathname()
-  const navItems =
-    employmentType === 'hourly' ? HOURLY_ITEMS
-    : employmentType === 'substitute' ? SUBSTITUTE_ITEMS
-    : FORMAL_ITEMS
+  const navGroups =
+    employmentType === 'hourly' ? HOURLY_GROUPS
+    : employmentType === 'substitute' ? SUBSTITUTE_GROUPS
+    : FORMAL_GROUPS
   const { open, setOpen } = useMobileNav()
 
   return (
@@ -63,19 +90,24 @@ export function TeacherSidebar({
         </div>
 
         {/* 導覽 */}
-        <nav className="flex-1 p-3 space-y-1">
-          {navItems.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={cn(
-                'sidebar-link',
-                pathname === item.href && 'active'
-              )}
-            >
-              {item.label}
-            </Link>
+        <nav className="flex-1 p-3 space-y-4">
+          {navGroups.map(group => (
+            <div key={group.title} className="space-y-1">
+              <div className="px-3 text-[11px] font-medium text-zinc-400">{group.title}</div>
+              {group.items.map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    'sidebar-link',
+                    pathname === item.href && 'active'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>
