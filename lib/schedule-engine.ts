@@ -131,6 +131,9 @@ export interface AssembleArgs {
   /** 其他課程（本土語語別課）＋各師配課節數：供本土語場次推導與語師占用。 */
   extraCourses?: ExtraCourse[]
   hoursByTeacher?: Record<string, Record<string, Record<string, number>>>
+  /** 全體科任/行政/鐘點的配課節數（tid → 科目 → 年級 → 節數）：
+   *  未手動配班的班級由此自動分配給尚有容量的老師（手動配班優先且必綁定該師）。 */
+  supplyByTeacher?: Record<string, Record<string, Record<string, number>>>
   seed?: number
 }
 
@@ -187,6 +190,60 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   })
   for (const s of derived.sessions) {
     if (s.state !== 'cancelled' && s.teacherId) blockNative(s.teacherId, s.slot)
+  }
+
+  // ── 自動配班：未手動指派的班，依配課節數（supplyByTeacher）自動分給尚有容量的老師 ──
+  // 手動配班優先（先扣容量、必綁定該師）；本土語不自動配（未指派＝直播共學，需人工確認）。
+  const assign: Record<string, string> = { ...config.subjectClassTeacher }
+  const autoAgg = new Map<string, number>()   // `${grade}|${subject}` → 自動配班班數
+  if (a.supplyByTeacher) {
+    // 剩餘容量：科目 → 年級 → tid → 節數
+    const left: Record<string, Record<string, Map<string, number>>> = {}
+    for (const [tid, m] of Object.entries(a.supplyByTeacher)) {
+      for (const [subj, byG] of Object.entries(m ?? {})) {
+        for (const [gs, h] of Object.entries(byG ?? {})) {
+          if (!(Number(h) > 0)) continue
+          ;((left[subj] ??= {})[gs] ??= new Map()).set(tid, Number(h))
+        }
+      }
+    }
+    // 每班該科科任要上的節數 ＝ 每班節數 − 鎖課格 − 導師自上
+    const remainderOf = (g: number, i: number, s: { name: string; perClass: number }) => {
+      const key = ck(g, i)
+      let lockCount = 0
+      for (const tid of Object.values(config.lockCells[key] ?? {})) {
+        const t = lockTypeMap[tid]
+        if ((t?.subject || t?.label || '鎖課') === s.name) lockCount++
+      }
+      return s.perClass - lockCount - (a.homeroomHours?.[key]?.[s.name] ?? 0)
+    }
+    for (const pass of ['manual', 'auto'] as const) {
+      for (const g of [1, 2, 3, 4, 5, 6]) {
+        for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+          for (const s of (gradeSubjects[g] ?? [])) {
+            if (s.perClass <= 0 || s.name === '本土語') continue
+            const k = subjectClassKey(g, i, s.name)
+            const cur = assign[k]
+            const r = remainderOf(g, i, s)
+            if (r <= 0) continue
+            const map = left[s.name]?.[String(g)]
+            if (pass === 'manual') {
+              // 先扣手動指派者的容量（可為負＝超派，不影響其綁定）
+              if (cur && cur !== HOMEROOM_SELF && map?.has(cur)) map.set(cur, map.get(cur)! - r)
+              continue
+            }
+            if (cur || !map) continue
+            // 自動配班：選剩餘容量最大且足夠者
+            let best: string | null = null, bestLeft = 0
+            for (const [tid, l] of Array.from(map)) if (l >= r && l > bestLeft) { best = tid; bestLeft = l }
+            if (!best) continue
+            map.set(best, bestLeft - r)
+            assign[k] = best
+            autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + 1)
+          }
+        }
+      }
+    }
   }
 
   for (const g of [1, 2, 3, 4, 5, 6]) {
@@ -252,7 +309,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         nativeAgg.notLocked.push(`${classLabel(g, i)}（鎖 ${nativeSlotsOfClass.length}/${nativePerClass}）`)
       }
       if (nativeSlotsOfClass.length > 0) {
-        const minnanTeacher = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
+        const minnanTeacher = assign[subjectClassKey(g, i, '本土語')] ?? ''
         if (minnanTeacher && minnanTeacher !== HOMEROOM_SELF) {
           for (const slot of nativeSlotsOfClass) blockNative(minnanTeacher, slot)
         } else if (!minnanTeacher) {
@@ -260,9 +317,9 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         }
       }
 
-      // 展開科任課（支援同科分擔：科任只排扣除導師自上節數後的剩餘）
+      // 展開科任課（支援同科分擔：科任只排扣除導師自上節數後的剩餘；assign 含自動配班）
       for (const s of subjects) {
-        const assigned = config.subjectClassTeacher[subjectClassKey(g, i, s.name)] ?? ''
+        const assigned = assign[subjectClassKey(g, i, s.name)] ?? ''
         if (!assigned || assigned === HOMEROOM_SELF) continue   // 未指派或全導師自上 → 不進引擎
         const teacherName = a.teacherNames[assigned] ?? '？'
         const selfHours = a.homeroomHours?.[key]?.[s.name] ?? 0
@@ -315,7 +372,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       if (!homeroomId) agg.noHomeroom.push(classLabel(g, i))
 
       for (const s of subjects) {
-        const v = config.subjectClassTeacher[subjectClassKey(g, i, s.name)] ?? ''
+        const v = assign[subjectClassKey(g, i, s.name)] ?? ''
         // 本土語未指派＝直播共學（另行確認），不列入未配滿警告
         if (!v && !s.homeroom && s.name !== '本土語') {
           const k2 = `${g}|${s.name}`
@@ -387,6 +444,13 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
     })
     preflight.push({ level: 'warn', text: `尚未配滿需求節數（未指派科任，暫視為導師自排）：${joinCap(parts)}`, tab: 'subject' })
+  }
+  if (autoAgg.size) {
+    const parts = Array.from(autoAgg.entries()).map(([k2, n]) => {
+      const [g, subj] = k2.split('|')
+      return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
+    })
+    preflight.push({ level: 'warn', text: `未手動配班、已依配課節數自動分配：${joinCap(parts)}——如需指定授課教師請至科任配班。`, tab: 'subject' })
   }
   if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `視藝單雙週假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })

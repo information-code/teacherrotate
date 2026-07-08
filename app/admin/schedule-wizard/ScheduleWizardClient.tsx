@@ -19,6 +19,7 @@ interface Props {
   homeroomHours: Record<string, Record<string, number>>
   extraCourses: ExtraCourse[]
   hoursByTeacher: Record<string, Record<string, Record<string, number>>>
+  supplyByTeacher: Record<string, Record<string, Record<string, number>>>
   lastGeneratedAt: string | null
   initialPlanStatus: string | null
   savedPlan: Record<string, unknown> | null
@@ -29,7 +30,7 @@ type Progress = { iter: number; best: number; softBest: number; elapsed: number;
 type ViewKey = 'class' | 'teacher' | 'room'
 
 export default function ScheduleWizardClient(props: Props) {
-  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher } = props
+  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [result, setResult] = useState<EngineResult | null>(null)
@@ -50,8 +51,8 @@ export default function ScheduleWizardClient(props: Props) {
   )
 
   const { input, preflight } = useMemo(
-    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher }),
-    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher],
+    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher }),
+    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher],
   )
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')

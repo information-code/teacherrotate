@@ -91,8 +91,9 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-400">
-        依配課結果（科目 × 年級 × 節數）列出可授課教師，指定每班由誰授課；也可手動改派任何科任／行政教師。
+        依配課結果（科目 × 年級 × 節數）列出可授課教師（含科任／行政／鐘點），指定每班由誰授課。
         「導師自上」＝該班該科由導師授課、不派科任。已派滿容量的老師（手動名單選過一次）不再出現在下拉。
+        <b>未指定的班＝排課精靈會依配課節數自動分配</b>；有指定則排課必用該師。
       </p>
 
       <div className="flex items-center gap-2 flex-wrap">

@@ -41,8 +41,11 @@ export default async function ScheduleWizardPage() {
   const extraCourses = allocConfig.extraCourses
   const extraNames = new Set(extraCourses.map(c => c.lang).filter(Boolean))
   const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
+  // 全體科任/行政/鐘點配課節數：未手動配班的班級由引擎自動分配
+  const supplyByTeacher: Record<string, Record<string, Record<string, number>>> = {}
   for (const a of allocs ?? []) {
     const sgh = allocMap[a.teacher_id]?.subjectGradeHours ?? {}
+    if (Object.keys(sgh).length) supplyByTeacher[a.teacher_id] = sgh
     for (const [subj, byGrade] of Object.entries(sgh)) {
       if (!extraNames.has(subj)) continue
       ;(hoursByTeacher[a.teacher_id] ??= {})[subj] = byGrade
@@ -69,6 +72,7 @@ export default async function ScheduleWizardPage() {
       homeroomHours={homeroomHours}
       extraCourses={extraCourses}
       hoursByTeacher={hoursByTeacher}
+      supplyByTeacher={supplyByTeacher}
       lastGeneratedAt={planRow?.generated_at ?? null}
       initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
       savedPlan={(planRow?.plan ?? null) as Record<string, unknown> | null}

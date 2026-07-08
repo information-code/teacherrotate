@@ -47,8 +47,8 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   const [{ data: cfgRow }, { data: schRow }, { data: profiles }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
-    // 鐘點教師不參與排課，不列入教師母體
-    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin').neq('employment_type', 'hourly'),
+    // 鐘點教師也列入（配課統計有配節數者可於科任配班指派、可標不排課）
+    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin'),
   ])
   const config = normalizeConfig(cfgRow?.config)
   const scheduleConfig = normalizeScheduleConfig(schRow?.config)
