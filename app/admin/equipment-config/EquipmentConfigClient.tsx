@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
+import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   EQUIPMENT_PERIODS,
   EQUIPMENT_STATUS_LABEL,
@@ -100,16 +101,29 @@ export default function EquipmentConfigClient({
     setTimeout(() => setMessage(''), 4000)
   }
 
+  const [busy, setBusy] = useState('')
+  /** 呼叫 API 期間顯示全螢幕遮罩，避免被誤認為當機或重複點擊 */
+  const runBusy = async (msg: string, fn: () => Promise<void>) => {
+    setBusy(msg)
+    try {
+      await fn()
+    } finally {
+      setBusy('')
+    }
+  }
+
   const saveConfig = async () => {
     setSavingConfig(true)
     try {
-      const res = await fetch('/api/admin/equipment-config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+      await runBusy('儲存設定中…', async () => {
+        const res = await fetch('/api/admin/equipment-config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        })
+        const data = await res.json()
+        flash(res.ok ? '設定已儲存' : `儲存失敗：${data.error}`)
       })
-      const data = await res.json()
-      flash(res.ok ? '設定已儲存' : `儲存失敗：${data.error}`)
     } finally {
       setSavingConfig(false)
     }
@@ -125,72 +139,81 @@ export default function EquipmentConfigClient({
   }
 
   const saveEquipment = async (row: EquipmentRow, isCreate: boolean) => {
-    const res = await fetch('/api/admin/equipment', {
-      method: isCreate ? 'POST' : 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isCreate ? { ...row, id: undefined } : row),
+    await runBusy('儲存設備中…', async () => {
+      const res = await fetch('/api/admin/equipment', {
+        method: isCreate ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isCreate ? { ...row, id: undefined } : row),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        flash(`儲存失敗：${data.error}`)
+        return
+      }
+      setEquipment(list =>
+        isCreate ? [...list, data] : list.map(e => (e.id === data.id ? data : e))
+      )
+      setEditor({ mode: 'closed' })
+      flash('設備已儲存')
     })
-    const data = await res.json()
-    if (!res.ok) {
-      flash(`儲存失敗：${data.error}`)
-      return
-    }
-    setEquipment(list =>
-      isCreate ? [...list, data] : list.map(e => (e.id === data.id ? data : e))
-    )
-    setEditor({ mode: 'closed' })
-    flash('設備已儲存')
   }
 
   const saveGroup = async (row: GroupRow) => {
     const isCreate = !row.id
-    const res = await fetch('/api/admin/equipment-groups', {
-      method: isCreate ? 'POST' : 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isCreate ? { ...row, id: undefined } : row),
+    await runBusy('儲存群組中…', async () => {
+      const res = await fetch('/api/admin/equipment-groups', {
+        method: isCreate ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isCreate ? { ...row, id: undefined } : row),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        flash(`儲存失敗：${data.error}`)
+        return
+      }
+      setGroups(list =>
+        isCreate
+          ? [...list, { ...row, id: data.id }]
+          : list.map(g => (g.id === row.id ? row : g))
+      )
+      setGroupEditor(null)
+      flash('群組已儲存')
     })
-    const data = await res.json()
-    if (!res.ok) {
-      flash(`儲存失敗：${data.error}`)
-      return
-    }
-    setGroups(list =>
-      isCreate
-        ? [...list, { ...row, id: data.id }]
-        : list.map(g => (g.id === row.id ? row : g))
-    )
-    setGroupEditor(null)
-    flash('群組已儲存')
   }
 
   const deleteGroup = async (row: GroupRow) => {
     if (!confirm(`確定刪除群組「${row.name}」？成員設備會脫離群組但不會被刪除。`)) return
-    const res = await fetch(`/api/admin/equipment-groups?id=${row.id}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (!res.ok) {
-      flash(`刪除失敗：${data.error}`)
-      return
-    }
-    setGroups(list => list.filter(g => g.id !== row.id))
-    setGroupEditor(null)
-    flash('群組已刪除')
+    await runBusy('刪除群組中…', async () => {
+      const res = await fetch(`/api/admin/equipment-groups?id=${row.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        flash(`刪除失敗：${data.error}`)
+        return
+      }
+      setGroups(list => list.filter(g => g.id !== row.id))
+      setGroupEditor(null)
+      flash('群組已刪除')
+    })
   }
 
   const deleteEquipment = async (row: EquipmentRow) => {
     if (!confirm(`確定刪除「${row.name}」？相關借用紀錄會一併刪除，若要保留歷史請改為「停用」。`)) return
-    const res = await fetch(`/api/admin/equipment?id=${row.id}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (!res.ok) {
-      flash(`刪除失敗：${data.error}`)
-      return
-    }
-    setEquipment(list => list.filter(e => e.id !== row.id))
-    setEditor({ mode: 'closed' })
-    flash('設備已刪除')
+    await runBusy('刪除設備中…', async () => {
+      const res = await fetch(`/api/admin/equipment?id=${row.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        flash(`刪除失敗：${data.error}`)
+        return
+      }
+      setEquipment(list => list.filter(e => e.id !== row.id))
+      setEditor({ mode: 'closed' })
+      flash('設備已刪除')
+    })
   }
 
   return (
     <div className="space-y-4 max-w-4xl">
+      {busy && <BusyOverlay text={busy} />}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-zinc-900">設備借用設定</h1>
         {message && <span className="text-sm text-zinc-600">{message}</span>}
@@ -494,11 +517,13 @@ export default function EquipmentConfigClient({
       {showImport && (
         <ImportModal
           onDone={async summary => {
-            // 匯入含更新既有設備，直接重新載入整份清單
-            const res = await fetch('/api/admin/equipment')
-            if (res.ok) setEquipment(await res.json())
             setShowImport(false)
             flash(`匯入完成：新增 ${summary.createdCount} 台、更新 ${summary.updatedCount} 台`)
+            // 匯入含更新既有設備，直接重新載入整份清單
+            await runBusy('更新清單中…', async () => {
+              const res = await fetch('/api/admin/equipment')
+              if (res.ok) setEquipment(await res.json())
+            })
           }}
           onClose={() => setShowImport(false)}
         />

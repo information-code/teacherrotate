@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
+import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   loanDueDate,
   loanTimeText,
@@ -55,11 +56,22 @@ export default function EquipmentManageClient({
 }) {
   const [tab, setTab] = useState<'overview' | 'short' | 'long' | 'stats'>('overview')
   const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState('')
 
   const flash = (text: string) => {
     setMessage(text)
     setTimeout(() => setMessage(''), 3000)
   }
+
+  /** 呼叫 API 期間顯示全螢幕遮罩 */
+  const runBusy = useCallback(async (msg: string, fn: () => Promise<void>) => {
+    setBusy(msg)
+    try {
+      await fn()
+    } finally {
+      setBusy('')
+    }
+  }, [])
 
   const copyOverdueMessage = async (vars: { teacher: string; equipment: string; date: string; periods: string }) => {
     const text = renderOverdueMessage(overdueTemplate, vars)
@@ -90,7 +102,9 @@ export default function EquipmentManageClient({
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} />}
+      {busy && <BusyOverlay text={busy} />}
+
+      {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} runBusy={runBusy} />}
       {tab === 'short' && <LogTab />}
       {tab === 'long' && (
         <LongLoansTab
@@ -100,6 +114,7 @@ export default function EquipmentManageClient({
           renewalWeeks={renewalWeeks}
           onCopy={copyOverdueMessage}
           onFlash={flash}
+          runBusy={runBusy}
         />
       )}
       {tab === 'stats' && <StatsTab />}
@@ -144,9 +159,11 @@ interface OverviewRow {
 function OverviewTab({
   onCopy,
   onFlash,
+  runBusy,
 }: {
   onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
   onFlash: (text: string) => void
+  runBusy: (msg: string, fn: () => Promise<void>) => Promise<void>
 }) {
   const [rows, setRows] = useState<OverviewRow[] | null>(null)
   const [search, setSearch] = useState('')
@@ -163,15 +180,17 @@ function OverviewTab({
 
   const act = async (loan: OverviewShortLoan, action: 'release' | 'close', confirmText: string, doneText: string) => {
     if (!confirm(confirmText)) return
-    const res = await fetch('/api/admin/equipment-loans', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: loan.id, action }),
+    await runBusy(action === 'release' ? '釋出預約中…' : '結案中…', async () => {
+      const res = await fetch('/api/admin/equipment-loans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: loan.id, action }),
+      })
+      const data = await res.json()
+      if (!res.ok) alert(data.error ?? '操作失敗')
+      else onFlash(doneText)
+      await load()
     })
-    const data = await res.json()
-    if (!res.ok) alert(data.error ?? '操作失敗')
-    else onFlash(doneText)
-    load()
   }
 
   const borrowed = (r: OverviewRow) => r.shortLoans.filter(l => l.status === 'borrowed')
@@ -558,6 +577,7 @@ function LongLoansTab({
   renewalWeeks,
   onCopy,
   onFlash,
+  runBusy,
 }: {
   equipment: EquipmentOption[]
   groups: GroupOption[]
@@ -565,6 +585,7 @@ function LongLoansTab({
   renewalWeeks: number
   onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
   onFlash: (text: string) => void
+  runBusy: (msg: string, fn: () => Promise<void>) => Promise<void>
 }) {
   const [loans, setLoans] = useState<AdminLongLoanRow[]>([])
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
@@ -606,25 +627,27 @@ function LongLoansTab({
   const create = async (target: { equipment_id?: string; group_id?: string }) => {
     setCreating(target.equipment_id ?? target.group_id ?? '')
     try {
-      const res = await fetch('/api/admin/equipment-long-loans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...target,
-          start_date: form.start_date,
-          due_date: form.due_date,
-          notes: form.notes,
-          teacher_id: isExternal ? '' : form.teacher_id,
-          external_name: isExternal ? form.external_name : '',
-        }),
+      await runBusy('建立長期借用中…', async () => {
+        const res = await fetch('/api/admin/equipment-long-loans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...target,
+            start_date: form.start_date,
+            due_date: form.due_date,
+            notes: form.notes,
+            teacher_id: isExternal ? '' : form.teacher_id,
+            external_name: isExternal ? form.external_name : '',
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          alert(data.error ?? '建立失敗')
+          return
+        }
+        onFlash('已建立長期借用')
+        await load()
       })
-      const data = await res.json()
-      if (!res.ok) {
-        alert(data.error ?? '建立失敗')
-        return
-      }
-      onFlash('已建立長期借用')
-      load()
     } finally {
       setCreating('')
     }
@@ -632,15 +655,17 @@ function LongLoansTab({
 
   const endLoan = async (loan: AdminLongLoanRow) => {
     if (!confirm(`確定結束 ${loan.teacher_name} 的「${loan.equipment_name}」長期借用？`)) return
-    const res = await fetch('/api/admin/equipment-long-loans', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: loan.id, action: 'end' }),
+    await runBusy('結束借用中…', async () => {
+      const res = await fetch('/api/admin/equipment-long-loans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: loan.id, action: 'end' }),
+      })
+      const data = await res.json()
+      if (!res.ok) alert(data.error ?? '操作失敗')
+      else onFlash('已結束借用')
+      await load()
     })
-    const data = await res.json()
-    if (!res.ok) alert(data.error ?? '操作失敗')
-    else onFlash('已結束借用')
-    load()
   }
 
   // 搜尋（設備/編號/借用人/備註）＋設備名稱＋類型篩選
@@ -944,7 +969,7 @@ function LongLoansTab({
           onDone={summary => {
             setShowImport(false)
             onFlash(`匯入完成：新增 ${summary.createdCount} 筆、更新 ${summary.updatedCount} 筆`)
-            load()
+            runBusy('更新清單中…', () => load())
           }}
           onClose={() => setShowImport(false)}
         />

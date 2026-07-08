@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
+import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   EQUIPMENT_PERIODS,
   LOAN_STATUS_LABEL,
@@ -107,6 +108,17 @@ export function EquipmentPage() {
   const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+
+  /** 呼叫 API 期間顯示全螢幕遮罩，避免被誤認為當機或重複點擊 */
+  const runBusy = useCallback(async (message: string, fn: () => Promise<void>) => {
+    setBusy(message)
+    try {
+      await fn()
+    } finally {
+      setBusy('')
+    }
+  }, [])
 
   const loadShort = useCallback(async (from?: string, to?: string) => {
     const query = from ? `?from=${from}&to=${to || from}` : ''
@@ -154,14 +166,17 @@ export function EquipmentPage() {
         ))}
       </div>
 
+      {busy && <BusyOverlay text={busy} />}
+
       {tab === 'short' ? (
         <ShortTab
           data={shortData}
           from={range.from}
           to={range.to}
+          runBusy={runBusy}
           onRangeChange={(from, to) => {
             setRange({ from, to })
-            loadShort(from, to)
+            runBusy('查詢可借狀態中…', () => loadShort(from, to))
           }}
           onReload={() => loadShort(range.from, range.to)}
           onStartProcedure={(kind, loan) => {
@@ -197,7 +212,7 @@ export function EquipmentPage() {
           maxPhotos={shortData.config.maxPhotos}
           onDone={() => {
             setProcedure(null)
-            loadShort(range.from, range.to)
+            runBusy('更新資料中…', () => loadShort(range.from, range.to))
           }}
           onClose={() => setProcedure(null)}
         />
@@ -210,7 +225,7 @@ export function EquipmentPage() {
           renewalWeeks={longData.config.renewalWeeks}
           onDone={() => {
             setProcedure(null)
-            loadLong()
+            runBusy('更新資料中…', () => loadLong())
           }}
           onClose={() => setProcedure(null)}
         />
@@ -225,6 +240,7 @@ function ShortTab({
   data,
   from,
   to,
+  runBusy,
   onRangeChange,
   onReload,
   onStartProcedure,
@@ -232,8 +248,9 @@ function ShortTab({
   data: ShortData
   from: string
   to: string
+  runBusy: (message: string, fn: () => Promise<void>) => Promise<void>
   onRangeChange: (from: string, to: string) => void
-  onReload: () => void
+  onReload: () => Promise<void>
   onStartProcedure: (kind: 'borrow' | 'return', loan: LoanRow) => void
 }) {
   // 訂房式：開始日＋開始時段 ～ 結束日＋結束時段，選設備名稱後按確定列出可借編號
@@ -288,30 +305,32 @@ function ShortTab({
     if (!canQuery) return
     setSubmitting(target.equipment_id ?? target.group_id ?? '')
     try {
-      const res = await fetch('/api/teacher/equipment/loans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...target,
-          start_date: from,
-          end_date: to,
-          start_period: startPeriod,
-          end_period: endPeriod,
-        }),
+      await runBusy('預約中…', async () => {
+        const res = await fetch('/api/teacher/equipment/loans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...target,
+            start_date: from,
+            end_date: to,
+            start_period: startPeriod,
+            end_period: endPeriod,
+          }),
+        })
+        const result = await res.json()
+        if (!res.ok) {
+          alert(result.error ?? '預約失敗')
+        } else {
+          // 預約成功：清空查詢條件與可借清單，捲回頁面頂端看「我的借用」
+          setStartPeriod('')
+          setEndPeriod('')
+          setEquipName('')
+          setShowResults(false)
+          document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+        await onReload()
       })
-      const result = await res.json()
-      if (!res.ok) {
-        alert(result.error ?? '預約失敗')
-      } else {
-        // 預約成功：清空查詢條件與可借清單，捲回頁面頂端看「我的借用」
-        setStartPeriod('')
-        setEndPeriod('')
-        setEquipName('')
-        setShowResults(false)
-        document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      }
-      onReload()
     } finally {
       setSubmitting('')
     }
@@ -319,14 +338,16 @@ function ShortTab({
 
   const cancel = async (loan: LoanRow) => {
     if (!confirm(`確定取消 ${loan.loan_date}「${loan.equipment_name}」的預約？`)) return
-    const res = await fetch('/api/teacher/equipment/loans', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: loan.id, action: 'cancel' }),
+    await runBusy('取消預約中…', async () => {
+      const res = await fetch('/api/teacher/equipment/loans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: loan.id, action: 'cancel' }),
+      })
+      const result = await res.json()
+      if (!res.ok) alert(result.error ?? '取消失敗')
+      await onReload()
     })
-    const result = await res.json()
-    if (!res.ok) alert(result.error ?? '取消失敗')
-    onReload()
   }
 
   const activeLoans = data.myLoans.filter(l => l.status === 'reserved' || l.status === 'borrowed')
