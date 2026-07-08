@@ -31,7 +31,7 @@ export interface BandGrid {
 }
 
 /** 鎖課名目：名目（label）給管理者辨識、科目（subject）顯示在課表格子上。
- *  isNative＝本土語鎖課（本土語開課表的時段來源、班級格顯示閩南語師，與名目取名無關）。 */
+ *  isNative＝本土語鎖課（語別場次的時段來源、班級格顯示閩南語師）——由科目＝「本土語」自動推導，無需手動勾選。 */
 export interface LockType { id: string; label: string; subject: string; color: string; isNative: boolean }
 
 // 鎖課名目可選的低彩度色票（key 存進設定，顯示時查表）
@@ -308,8 +308,8 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       ? r.lockTypes.map(t => ({
           id: String(t.id ?? ''), label: String(t.label ?? ''), subject: String(t.subject ?? ''),
           color: LOCK_COLORS[String(t.color ?? '')] ? String(t.color) : LOCK_COLOR_KEYS[0],
-          // 舊資料自動遷移：科目為「本土語」者視為本土語鎖課
-          isNative: t.isNative === true || String(t.subject ?? '') === '本土語',
+          // 科目＝「本土語」即本土語鎖課（純推導，不看存檔旗標，避免舊勾選殘留）
+          isNative: String(t.subject ?? '') === '本土語',
         }))
       : [],
     lockCells,
