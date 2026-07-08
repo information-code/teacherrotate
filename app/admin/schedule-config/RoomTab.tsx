@@ -25,6 +25,9 @@ function newRoom(): Room {
 export default function RoomTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers }: Props) {
   const managerOptions = [...subjectTeachers].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const zones = config.roomZones
+  // 顯示依「區域＋樓層」自然排序（A1、A2、A3、B2…；新增的區域不會掉到最後面）
+  const sortedZones = [...zones].sort((a, b) =>
+    `${a.area}${a.floor}`.localeCompare(`${b.area}${b.floor}`, 'zh-Hant', { numeric: true }))
   const [dragging, setDragging] = useState<{ zid: string; rid: string } | null>(null)
   const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
 
@@ -122,7 +125,7 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
         <div className="card text-sm text-zinc-400 text-center py-6">尚無教室區域，點「＋ 新增區域」開始（例如 A區 1樓 5間）。</div>
       )}
 
-      {zones.map(z => (
+      {sortedZones.map(z => (
         <div key={z.id} className="card p-3 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <input value={z.area} onChange={e => updateZone(z.id, { area: e.target.value })}
