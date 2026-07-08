@@ -83,16 +83,16 @@ export interface AdminBase {
   chief: number       // 組長
 }
 
-/** 其他課程（非年級科目）：本土語語別課（客語、手語、原民語…）等，
- *  需求以「總節數」計（不綁班級數）；配課仍按年級填於 subjectGradeHours。 */
-export interface ExtraCourse { name: string; lang: string; totalHours: number }
+/** 本土語額外授課（閩南語以外語別）：需求按「年級×語別」以總節數計（不綁班級數）；
+ *  配課於配課統計按年級填於 subjectGradeHours（科目名＝語別名）。 */
+export interface ExtraCourse { lang: string; grade: number; hours: number }
 
 /** 整年度配課設定 */
 export interface AllocationConfig {
   grades: Record<number, GradeConfig>   // 1..6
   subjectBase: number                   // 科任基本授課節數
   adminBase: AdminBase                  // 行政基本授課節數（校長/主任/組長）
-  extraCourses: ExtraCourse[]           // 其他課程（語別課等）
+  extraCourses: ExtraCourse[]           // 本土語額外授課（年級×語別×總節數）
 }
 
 // 各年級必修課（前端預設）。低年級(1-2) 有「生活」、無社會/自然/英語；
@@ -143,7 +143,9 @@ export function normalizeConfig(raw: unknown): AllocationConfig {
     adminBase,
     grades: {},
     extraCourses: Array.isArray(r.extraCourses)
-      ? r.extraCourses.map(c => ({ name: String(c.name ?? ''), lang: String(c.lang ?? ''), totalHours: Number(c.totalHours ?? 0) }))
+      ? r.extraCourses
+          .map(c => ({ lang: String(c.lang ?? ''), grade: Number(c.grade ?? 0), hours: Number(c.hours ?? 0) }))
+          .filter(c => (GRADES as readonly number[]).includes(c.grade))   // 舊版全域制（無年級欄）資料直接捨棄
       : [],
   }
   for (const g of GRADES) {

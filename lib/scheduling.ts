@@ -363,8 +363,8 @@ export interface DerivedNativeSession {
 
 export function deriveNativeSessions(opts: {
   config: ScheduleConfig
-  extraCourses: { name: string; lang: string; totalHours: number }[]
-  hoursByTeacher: Record<string, Record<string, Record<string, number>>>   // tid → 課程 → 年級 → 節數
+  extraCourses: { lang: string; grade: number; hours: number }[]   // 年級×語別×需求總節數
+  hoursByTeacher: Record<string, Record<string, Record<string, number>>>   // tid → 語別 → 年級 → 節數
 }): { sessions: DerivedNativeSession[]; issues: { level: 'error' | 'warn'; text: string; tab?: string }[] } {
   const { config, extraCourses, hoursByTeacher } = opts
   const issues: { level: 'error' | 'warn'; text: string; tab?: string }[] = []
@@ -392,39 +392,36 @@ export function deriveNativeSessions(opts: {
   const gradeZh = ['', '一', '二', '三', '四', '五', '六']
   const sessions: DerivedNativeSession[] = []
   for (const c of extraCourses) {
-    if (!c.name) continue
-    let allocatedTotal = 0
-    for (const g of [1, 2, 3, 4, 5, 6]) {
-      // 該課程×年級的老師（依配課節數展開，節數多者先認領時段）
-      const exp: string[] = []
-      for (const [tid, m] of Object.entries(hoursByTeacher)) {
-        const h = Number(m[c.name]?.[String(g)]) || 0
-        allocatedTotal += h
-        for (let i = 0; i < h; i++) exp.push(tid)
-      }
-      if (exp.length === 0) continue
-      const slots = gradeSlots[g] ?? []
-      if (exp.length !== slots.length) {
-        issues.push({
-          level: 'warn',
-          text: `「${c.name}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖課有 ${slots.length} 個相異時段——需相等才能自動推導場次（請調整配課或鎖課）。`,
-          tab: 'lock',
-        })
-      }
-      for (let i = 0; i < slots.length; i++) {
-        const key = `${slots[i]}|${c.name}|${g}`
-        sessions.push({
-          slot: slots[i], course: c.name, lang: c.lang || c.name, grade: g,
-          teacherId: exp[i] ?? '',
-          roomId: null,
-          state: config.nativeLang.states[key] ?? 'physical',
-        })
-      }
+    if (!c.lang) continue
+    const g = c.grade
+    // 該語別×年級的老師（依配課節數展開；科目名＝語別名）
+    const exp: string[] = []
+    for (const [tid, m] of Object.entries(hoursByTeacher)) {
+      const h = Number(m[c.lang]?.[String(g)]) || 0
+      for (let i = 0; i < h; i++) exp.push(tid)
     }
-    if (c.totalHours > 0 && allocatedTotal !== c.totalHours) {
+    if (c.hours > 0 && exp.length !== c.hours) {
       issues.push({
         level: 'warn',
-        text: `「${c.name}」已配 ${allocatedTotal} 節／需求 ${c.totalHours} 節${allocatedTotal < c.totalHours ? '——差額請於配課統計建立虛擬帳號補足' : '（超配）'}。`,
+        text: `「${c.lang}」${gradeZh[g]}年級已配 ${exp.length} 節／需求 ${c.hours} 節${exp.length < c.hours ? '——差額請於配課統計建立虛擬帳號補足' : '（超配）'}。`,
+      })
+    }
+    if (exp.length === 0 && c.hours === 0) continue
+    const slots = gradeSlots[g] ?? []
+    if (exp.length !== slots.length) {
+      issues.push({
+        level: 'warn',
+        text: `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖課有 ${slots.length} 個相異時段——需相等才能自動推導場次（請調整配課或鎖課）。`,
+        tab: 'lock',
+      })
+    }
+    for (let i = 0; i < slots.length; i++) {
+      const key = `${slots[i]}|${c.lang}|${g}`
+      sessions.push({
+        slot: slots[i], course: c.lang, lang: c.lang, grade: g,
+        teacherId: exp[i] ?? '',
+        roomId: null,
+        state: config.nativeLang.states[key] ?? 'physical',
       })
     }
   }

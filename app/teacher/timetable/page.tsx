@@ -87,7 +87,7 @@ export default async function TimetablePage() {
   // 本土語開課場次（教室／教師檢視用）：由鎖課時段×配課自動推導，取消／無教室者不顯示
   const extraCourses = normalizeAllocConfig(allocCfgRow?.config).extraCourses
   const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
-  const extraNames = new Set(extraCourses.map(c => c.name).filter(Boolean))
+  const extraNames = new Set(extraCourses.map(c => c.lang).filter(Boolean))
   for (const row of allocRows ?? []) {
     const sgh = (row.data as TeacherAllocation | null)?.subjectGradeHours ?? {}
     for (const [subj, byGrade] of Object.entries(sgh)) {

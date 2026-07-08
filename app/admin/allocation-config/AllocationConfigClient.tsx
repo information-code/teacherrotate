@@ -25,7 +25,6 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
     return { ...initialConfig, grades }
   })
   const [grade, setGrade] = useState<number>(1)
-  const [extraView, setExtraView] = useState(false)   // 「其他」分頁：語別課程（總節數制）
   const [dirty, setDirty] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
@@ -101,57 +100,15 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
         </div>
       </div>
 
-      {/* 年級分頁＋其他 */}
+      {/* 年級分頁 */}
       <div className="flex gap-1 flex-wrap">
         {GRADES.map(gr => (
-          <button key={gr} onClick={() => { setGrade(gr); setExtraView(false) }}
-            className={`px-3 py-1.5 text-sm rounded-sm border ${!extraView && grade === gr ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
+          <button key={gr} onClick={() => setGrade(gr)}
+            className={`px-3 py-1.5 text-sm rounded-sm border ${grade === gr ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
             {GRADE_LABEL[gr]}
           </button>
         ))}
-        <button onClick={() => setExtraView(true)}
-          className={`px-3 py-1.5 text-sm rounded-sm border ${extraView ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
-          其他
-        </button>
       </div>
-
-      {/* ── 其他課程（本土語語別課）：需求以總節數計，不綁班級數 ── */}
-      {extraView && (
-        <div className="card p-4 space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-700">其他課程（本土語語別課）</h3>
-            <p className="text-xs text-zinc-400 mt-1">
-              閩南語＝各年級的「本土語」科目（計入班級需求），不在此設定。
-              其他語別（客語、手語、原民語…）需求以<b>總節數</b>計；老師於配課統計按年級配課，
-              配不滿的差額由管理者建立虛擬帳號補足（假設全實體，課表生成後再依實際情況改直播／取消）。
-            </p>
-          </div>
-          {config.extraCourses.length === 0 && <p className="text-xs text-zinc-400">尚無其他課程。</p>}
-          {config.extraCourses.map((c, i) => (
-            <div key={i} className="flex items-center gap-2 flex-wrap">
-              <select value={c.lang}
-                onChange={e => { const lang = e.target.value; setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.map((x, idx) => idx === i ? { ...x, lang, name: x.name && x.name !== x.lang ? x.name : lang } : x) })); setDirty(true) }}
-                className="input py-1 text-sm w-36">
-                <option value="">選語別…</option>
-                {NATIVE_LANGS.filter(l => l !== '閩南語').map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
-              <input value={c.name}
-                onChange={e => { const name = e.target.value; setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.map((x, idx) => idx === i ? { ...x, name } : x) })); setDirty(true) }}
-                placeholder="課程名稱（可自訂，如 原住民族語（阿美））" className="input py-1 text-sm flex-1 min-w-48" />
-              <label className="flex items-center gap-1 text-sm text-zinc-600">
-                需求總節數
-                <NumberInput min={0} value={c.totalHours}
-                  onChange={n => { setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.map((x, idx) => idx === i ? { ...x, totalHours: n } : x) })); setDirty(true) }}
-                  className="input w-16 text-center py-0.5" />
-              </label>
-              <button onClick={() => { setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.filter((_, idx) => idx !== i) })); setDirty(true) }}
-                className="text-xs text-red-400 hover:text-red-600">刪除</button>
-            </div>
-          ))}
-          <button onClick={() => { setConfig(cf => ({ ...cf, extraCourses: [...cf.extraCourses, { name: '', lang: '', totalHours: 0 }] })); setDirty(true) }}
-            className="btn-secondary text-xs">＋ 新增語別課程</button>
-        </div>
-      )}
 
       {/* ── Setting 1：基本 / 需求 ── */}
       <div className="card p-4 space-y-4">
@@ -214,9 +171,63 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
           className="btn-secondary text-xs">+ 新增科目</button>
       </div>
 
-      {/* ── Setting 2：情境 / 方案 ── */}
+      {/* ── Setting 2：本土語額外授課（閩南語以外語別，需求以總節數計） ── */}
+      <div className="card p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-700">設定二 — {GRADE_LABEL[grade]} 本土語額外授課節數與需求</h3>
+          <p className="text-xs text-zinc-400 mt-1">
+            閩南語＝上方的「本土語」科目（計入班級需求），不在此設定。其他語別（客語、手語、原民語…）以<b>總節數</b>計、不綁班級數；
+            老師於配課統計按年級配課，配不滿的差額由管理者建立虛擬帳號補足（假設全實體，課表生成後再依實際情況改直播／取消）。
+          </p>
+        </div>
+        {(() => {
+          const rows = config.extraCourses.map((c, idx) => ({ c, idx })).filter(x => x.c.grade === grade)
+          const usedLangs = new Set(rows.map(x => x.c.lang).filter(Boolean))
+          const patchExtra = (idx: number, patch: Partial<typeof config.extraCourses[number]>) => {
+            setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.map((x, i) => i === idx ? { ...x, ...patch } : x) }))
+            setDirty(true)
+          }
+          return (
+            <>
+              {rows.length > 0 && (
+                <div className="card p-0 max-w-lg">
+                  <table className="table-base">
+                    <thead>
+                      <tr><th>本土語別</th><th className="text-center w-32">總需求節數</th><th className="w-16"></th></tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(({ c, idx }) => (
+                        <tr key={idx}>
+                          <td>
+                            <select value={c.lang} onChange={e => patchExtra(idx, { lang: e.target.value })} className="input py-1 text-sm w-44">
+                              <option value="">選語別…</option>
+                              {NATIVE_LANGS.filter(l => l !== '閩南語').filter(l => l === c.lang || !usedLangs.has(l)).map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                          </td>
+                          <td className="text-center">
+                            <NumberInput min={0} value={c.hours} onChange={n => patchExtra(idx, { hours: n })} className="input w-16 text-center py-1" />
+                          </td>
+                          <td>
+                            <button onClick={() => { setConfig(cf => ({ ...cf, extraCourses: cf.extraCourses.filter((_, i) => i !== idx) })); setDirty(true) }}
+                              className="btn-danger text-xs py-0.5 px-1.5">刪除</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {rows.length === 0 && <p className="text-xs text-zinc-400">此年級無額外語別（只有閩南語）。</p>}
+              <button onClick={() => { setConfig(cf => ({ ...cf, extraCourses: [...cf.extraCourses, { lang: '', grade, hours: 0 }] })); setDirty(true) }}
+                className="btn-secondary text-xs">＋ 新增語別</button>
+            </>
+          )
+        })()}
+      </div>
+
+      {/* ── Setting 3：情境 / 方案 ── */}
       <div className="card p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-700">設定二 — {GRADE_LABEL[grade]} 各情境的行政配課方案</h3>
+        <h3 className="text-sm font-semibold text-zinc-700">設定三 — {GRADE_LABEL[grade]} 各情境的行政配課方案</h3>
         {REDUCTIONS.map(r => {
           const sc = g.scenarios[r]
           const target = g.homeroomBase - r  // 標準情況（專案減課0、超鐘點0）的目標總節數

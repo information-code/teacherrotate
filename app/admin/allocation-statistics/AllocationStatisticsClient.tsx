@@ -111,13 +111,14 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
   // 全部領域（各年級需求科目之聯集，含非導師科目）
   const allSubjectsList = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => Object.keys(demandByGradeSubject[g] ?? {})))).filter(Boolean))
-  // 其他課程（本土語語別課）：附加於雙向表最後，任何年級皆可填（需求以總節數計、不綁班級）
-  const extraNames = extraCourses.map(c => c.name).filter(Boolean).filter(n => !allSubjectsList.includes(n))
+  // 本土語額外授課（語別×年級）：附加於雙向表最後，只開放有設需求的年級（需求以總節數計、不綁班級）
+  const extraNames = Array.from(new Set(extraCourses.map(c => c.lang).filter(Boolean))).filter(n => !allSubjectsList.includes(n))
   const gridSubjects = [...allSubjectsList, ...extraNames]
   const isExtra = (subj: string) => extraNames.includes(subj)
-  // 其他課程已配：所有教師（含虛擬/鐘點）於該課程各年級填入的節數總和
-  function extraAllocated(name: string) {
-    return teachers.reduce((s, t) => s + GRADES.reduce((a, g) => a + (Number(t.data.subjectGradeHours?.[name]?.[String(g)]) || 0), 0), 0)
+  const extraOffered = (subj: string, g: number) => extraCourses.some(c => c.lang === subj && c.grade === g)
+  // 語別×年級已配：所有教師（含虛擬/鐘點）於該語別該年級填入的節數總和
+  function extraAllocated(lang: string, g: number) {
+    return teachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[lang]?.[String(g)]) || 0), 0)
   }
   // 意願超鐘：老師在意願調查填的（willingOvertime + willingSubjects），供某科不足時參考
   function willingFor(subj: string) { return teachers.filter(t => (t.data.willingOvertime ?? t.data.overtimeHours ?? 0) > 0 && (t.data.willingSubjects ?? t.data.overtimeOrder ?? []).includes(subj)) }
@@ -158,7 +159,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     const t = list.find(x => x.id === cur)!
     const act = actualOf(t)
     const cell = (subj: string, g: number) => Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0
-    const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined || isExtra(subj)
+    const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined || extraOffered(subj, g)
     const total = gridSubjects.reduce((s, subj) => s + GRADES.reduce((a, g) => a + cell(subj, g), 0), 0)
     const mismatch = !hourly && total !== act
     return (
@@ -402,25 +403,25 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {/* ── 鐘點檢視（無減課/超鐘/鎖定，課務組直接填）── */}
       {view === 'hourly' && gradeSubjectGrid(hourlyTeachers, hourlySel, setHourlySel, '鐘點', true)}
 
-      {/* ── 其他課程供需（本土語語別課；於配課設定「其他」tab 定義需求）── */}
+      {/* ── 本土語額外授課供需（語別×年級；於配課設定各年級「設定二」定義需求）── */}
       {(view === 'subject' || view === 'admin' || view === 'hourly') && extraCourses.length > 0 && (
         <div className="card p-4 space-y-2">
           <div>
-            <h4 className="text-sm font-semibold text-zinc-700">其他課程供需（本土語語別課）</h4>
-            <p className="text-xs text-zinc-400 mt-0.5">需求於配課設定「其他」tab 設定總節數；已配＝所有教師（含鐘點、虛擬帳號）於雙向表填入該課程的節數合計。不足者請於帳號資料建立虛擬帳號並補配課。</p>
+            <h4 className="text-sm font-semibold text-zinc-700">本土語額外授課供需（閩南語以外語別）</h4>
+            <p className="text-xs text-zinc-400 mt-0.5">需求於配課設定各年級「設定二」設定總節數；已配＝所有教師（含鐘點、虛擬帳號）於雙向表填入該語別該年級的節數合計。不足者請於帳號資料建立虛擬帳號並補配課。</p>
           </div>
           <table className="table-base">
-            <thead><tr><th>課程</th><th>語別</th><th className="text-center">需求總節數</th><th className="text-center">已配</th><th className="text-center">差額</th></tr></thead>
+            <thead><tr><th>本土語別</th><th className="text-center">年級</th><th className="text-center">需求總節數</th><th className="text-center">已配</th><th className="text-center">差額</th></tr></thead>
             <tbody>
-              {extraCourses.map((c, i) => {
-                const alloc = c.name ? extraAllocated(c.name) : 0
-                const diff = alloc - c.totalHours
+              {[...extraCourses].sort((a, b) => a.grade - b.grade || a.lang.localeCompare(b.lang, 'zh-Hant')).map((c, i) => {
+                const alloc = c.lang ? extraAllocated(c.lang, c.grade) : 0
+                const diff = alloc - c.hours
                 const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
                 return (
                   <tr key={i}>
-                    <td className="font-medium">{c.name || <span className="text-zinc-400">（未命名）</span>}</td>
-                    <td className="text-zinc-600">{c.lang || '—'}</td>
-                    <td className="text-center">{c.totalHours}</td>
+                    <td className="font-medium">{c.lang || <span className="text-zinc-400">（未選語別）</span>}</td>
+                    <td className="text-center text-zinc-600">{GRADE_LABEL[c.grade]}</td>
+                    <td className="text-center">{c.hours}</td>
                     <td className="text-center">{alloc}</td>
                     <td className={`text-center font-medium ${cls}`}>
                       {diff > 0 ? `+${diff}` : diff}

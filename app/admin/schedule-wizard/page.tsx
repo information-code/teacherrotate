@@ -37,9 +37,9 @@ export default async function ScheduleWizardPage() {
     if (bd && Object.values(bd).some(v => Number(v) > 0)) homeroomHours[ck] = bd
   }
 
-  // 本土語語別課（其他課程）：老師配課節數（tid → 課程 → 年級 → 節數），供場次自動推導
+  // 本土語額外授課（語別×年級）：老師配課節數（tid → 語別 → 年級 → 節數），供場次自動推導
   const extraCourses = allocConfig.extraCourses
-  const extraNames = new Set(extraCourses.map(c => c.name).filter(Boolean))
+  const extraNames = new Set(extraCourses.map(c => c.lang).filter(Boolean))
   const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
   for (const a of allocs ?? []) {
     const sgh = allocMap[a.teacher_id]?.subjectGradeHours ?? {}
