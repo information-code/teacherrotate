@@ -292,7 +292,7 @@ export default function ScheduleWizardClient(props: Props) {
               : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
             <span className="text-xs text-zinc-400">
               共 {input.lessons.length} 堂科任課待排。引擎會持續優化，連續 8 秒沒有進步就自動完成。
-              發布門檻：未排與必排未覆蓋須為 0（所有需求配課都要排入）。
+              發布門檻：未排、必排未覆蓋與必須級違反皆須為 0（所有需求配課與標記都要達成）。
             </span>
           </>
         )}

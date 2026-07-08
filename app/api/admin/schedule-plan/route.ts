@@ -44,9 +44,14 @@ export async function PATCH(request: NextRequest) {
   if (action === 'publish') {
     const unplaced = Array.isArray(plan.unplaced) ? plan.unplaced.length : 0
     const uncovered = Array.isArray(plan.uncoveredMustFill) ? plan.uncoveredMustFill.length : 0
-    if (unplaced > 0 || uncovered > 0) {
+    // 必須級違反（如排課標記時段未排課）一律擋發布——設定即絕對要求
+    const mustViolations = Array.isArray(plan.penalties)
+      ? (plan.penalties as { label?: string; count?: number; points?: number }[]).filter(p => Number(p.points) >= 1e6)
+      : []
+    if (unplaced > 0 || uncovered > 0 || mustViolations.length > 0) {
+      const extra = mustViolations.length ? `、必須級違反：${mustViolations.map(p => `${p.label ?? '?'}×${p.count ?? '?'}`).join('、')}` : ''
       return NextResponse.json({
-        error: `無法發布：仍有 ${unplaced} 堂未排、${uncovered} 格導師不排課時段未覆蓋。所有需求配課都必須排入（調整配班或手動處理後重排）。`,
+        error: `無法發布：仍有 ${unplaced} 堂未排、${uncovered} 格導師不排課時段未覆蓋${extra}。所有需求配課與標記都必須達成（調整配班／標記或手動處理後重排）。`,
       }, { status: 400 })
     }
     plan.status = 'published'
