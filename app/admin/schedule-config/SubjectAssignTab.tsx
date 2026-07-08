@@ -13,10 +13,11 @@ interface Props {
   subjectTeachers: SubjectTeacher[]
   homerooms: HomeroomTeacher[]
   avoidMap: Record<string, number[]>   // 排課需求—避開子女就讀年段：teacherId → 年級
+  allNames: Record<string, string>     // 全教師名單（含已不具身分者）：顯示殘留指派用
 }
 
 /** 分頁三：科任配班。從配課結果（科目×年級×節數）帶入可授課教師，指派各班；可手動改派任何科任／行政。 */
-export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, avoidMap }: Props) {
+export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, avoidMap, allNames }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [showAll, setShowAll] = useState(false)
@@ -148,6 +149,8 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         const val = config.subjectClassTeacher[k] ?? ''
                         const homeroomName = nameOf(config.classTeacher[classKey(grade, i)] ?? '')
                         const warned = Boolean(val && val !== HOMEROOM_SELF && avoidMap[val]?.includes(grade))
+                        // 殘留指派：存的值已不在科任／行政名單（如異動、離職）→ 如實顯示並標紅
+                        const stale = Boolean(val && val !== HOMEROOM_SELF && !subjectTeachers.some(t => t.id === val))
                         const warnOf = (tid: string) => avoidMap[tid]?.includes(grade)
                         // 選滿即隱藏：有配課者以容量計（已派 ≥ 容量），手動名單選過一次即消失；當前選中者仍顯示
                         const capOf = (t: SubjectTeacher) => Math.max(1, Math.floor(hoursOf(t, s.name, grade) / s.perClass))
@@ -157,9 +160,10 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                           <label key={i} className="flex items-center gap-2 text-sm">
                             <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}</span>
                             <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)}
-                              className={`input py-1 text-sm flex-1 min-w-0 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
+                              className={`input py-1 text-sm flex-1 min-w-0 ${stale ? 'border-red-400 text-red-700 bg-red-50' : warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                               <option value="">未指定</option>
                               <option value={HOMEROOM_SELF}>導師自上{homeroomName !== '？' ? `（${homeroomName}）` : ''}</option>
+                              {stale && <option value={val}>⚠ {allNames[val] ?? '未知帳號'}（已不具科任／行政身分，請改選）</option>}
                               {eligibleVisible.length > 0 && (
                                 <optgroup label="有配課">
                                   {eligibleVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}

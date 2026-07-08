@@ -150,6 +150,7 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       subjectTeachers={subjectTeachers}
       offTeachers={offTeachers}
       needsRefs={needsRefs}
+      allNames={nameMap}
     />
   )
 }

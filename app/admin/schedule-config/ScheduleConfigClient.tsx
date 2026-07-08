@@ -24,6 +24,7 @@ interface Props {
   subjectTeachers: SubjectTeacher[]
   offTeachers: OffTeacher[]
   needsRefs: NeedsRef[]
+  allNames: Record<string, string>   // 全教師名單（含已不具身分者）：顯示殘留指派用
 }
 
 type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight'
@@ -37,7 +38,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'weight', label: '7 權重設定' },
 ]
 
-export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
+export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs, allNames }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
   const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -182,6 +183,8 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
                     : Array.from({ length: count }, (_, i) => {
                       const val = config.classTeacher[classKey(g, i)] ?? ''
                       const warned = Boolean(val && avoidMap[val]?.includes(g))
+                      // 殘留指派：存的值已不在此年段導師名單（如異動為育嬰留停）→ 如實顯示並標紅，避免看起來像未指定
+                      const stale = Boolean(val && !list.some(h => h.id === val))
                       // 已被其他班選走的導師不再出現在下拉
                       const usedElsewhere = new Set(
                         Array.from({ length: count }, (_, j) => j)
@@ -193,8 +196,9 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
                         <label key={i} className="flex items-center gap-2 text-sm">
                           <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(g, i)}</span>
                           <select value={val} onChange={e => setClassTeacher(g, i, e.target.value)}
-                            className={`input py-1 text-sm flex-1 ${warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
+                            className={`input py-1 text-sm flex-1 ${stale ? 'border-red-400 text-red-700 bg-red-50' : warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                             <option value="">未指定</option>
+                            {stale && <option value={val}>⚠ {allNames[val] ?? '未知帳號'}（已不具此年段導師身分，請改選）</option>}
                             {list.filter(h => h.id === val || !usedElsewhere.has(h.id)).map(h => {
                               const warn = avoidMap[h.id]?.includes(g)
                               return <option key={h.id} value={h.id} style={warn ? { color: '#b45309' } : undefined}>{h.name}{warn ? '（⚠ 子女在此年段）' : ''}</option>
@@ -217,7 +221,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
           config={config} setConfig={setConfig}
           classCounts={classCounts} gradeSubjects={gradeSubjects}
           subjectTeachers={subjectTeachers} homerooms={homerooms}
-          avoidMap={avoidMap}
+          avoidMap={avoidMap} allNames={allNames}
         />
       )}
 
