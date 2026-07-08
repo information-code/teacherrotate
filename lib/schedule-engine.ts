@@ -10,6 +10,7 @@ import {
   bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule,
 } from './scheduling'
+import { GRADE_LABEL } from './allocation'
 
 export type Parity = 'weekly' | 'odd' | 'even'
 
@@ -131,6 +132,15 @@ export interface AssembleArgs {
 export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; preflight: PreflightIssue[] } {
   const { config, classCounts, gradeSubjects } = a
   const preflight: PreflightIssue[] = []
+  // 檢查結果先彙總、最後統整輸出（一類一行，避免逐班洗版）
+  const agg = {
+    overCap: [] as string[],        // 科任課超過可排格數
+    mustOver: [] as string[],       // 導師不排課時段 > 科任課數
+    noHomeroom: [] as string[],     // 尚未指定導師
+    leftoverLow: [] as string[],    // 留白 < 導師基本授課
+    artBiweekly: [] as string[],    // 視藝單雙週但每班節數 ≠ 1
+    unassigned: new Map<string, number>(),   // `${grade}|${subject}` → 未指派班數
+  }
   const classes: EngineInput['classes'] = []
   const classSlots: Record<string, string[]> = {}
   const classMustFill: Record<string, string[]> = {}
@@ -205,7 +215,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         const isArtBiweekly = art.enabled && s.name === '視覺藝術' && art.grades.includes(g)
         if (isArtBiweekly) {
           // 隔週連堂：占固定兩格（整週，另一週保留給導師），教師只占自己週型
-          if (s.perClass !== 1) preflight.push({ level: 'warn', text: `${classLabel(g, i)} 視覺藝術每班 ${s.perClass} 節：單雙週連堂假設每週均攤 1 節，請確認配課設定。` })
+          if (s.perClass !== 1) agg.artBiweekly.push(`${classLabel(g, i)}（${s.perClass} 節）`)
           lessons.push({
             id: `${key}|${s.name}|bi`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 2,
@@ -238,20 +248,22 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         }
       }
 
-      // 前置檢核：留白是否夠導師自排
+      // 前置檢核：留白是否夠導師自排（彙總）
       const lessonPeriods = lessons.filter(l => l.classKey === key).reduce((s2, l) => s2 + l.size, 0)
       const leftover = slots.length - lessonPeriods
       const base = a.gradeHomeroomBase[g] ?? 0
-      if (leftover < 0) preflight.push({ level: 'error', text: `${classLabel(g, i)} 科任課共 ${lessonPeriods} 節，超過可排格數 ${slots.length}。` })
-      else if (base > 0 && leftover < base) preflight.push({ level: 'warn', text: `${classLabel(g, i)} 留白 ${leftover} 格，少於導師基本授課 ${base} 節。` })
-      if (mustSet.size > lessonPeriods) preflight.push({ level: 'error', text: `${classLabel(g, i)} 導師不排課時段 ${mustSet.size} 格，但科任課只有 ${lessonPeriods} 節，無法全部覆蓋。` })
-      if (!homeroomId) preflight.push({ level: 'warn', text: `${classLabel(g, i)} 尚未指定導師。` })
+      if (leftover < 0) agg.overCap.push(`${classLabel(g, i)}（${lessonPeriods}/${slots.length}）`)
+      else if (base > 0 && leftover < base) agg.leftoverLow.push(`${classLabel(g, i)}（${leftover}/${base}）`)
+      if (mustSet.size > lessonPeriods) agg.mustOver.push(`${classLabel(g, i)}（${mustSet.size} 格/${lessonPeriods} 節）`)
+      if (!homeroomId) agg.noHomeroom.push(classLabel(g, i))
 
-      const unassigned = subjects.filter(s => {
+      for (const s of subjects) {
         const v = config.subjectClassTeacher[subjectClassKey(g, i, s.name)] ?? ''
-        return !v && !s.homeroom
-      })
-      if (unassigned.length) preflight.push({ level: 'warn', text: `${classLabel(g, i)} 未指派科任：${unassigned.map(s => s.name).join('、')}（將視為導師自排）。` })
+        if (!v && !s.homeroom) {
+          const k2 = `${g}|${s.name}`
+          agg.unassigned.set(k2, (agg.unassigned.get(k2) ?? 0) + 1)
+        }
+      }
     }
   }
 
@@ -286,7 +298,24 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   })
   for (const c of classes) if (!(c.classKey in classRoom)) classRoom[c.classKey] = null
 
-  if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班（分頁 3）。' })
+  // ── 統整輸出（一類一行）──
+  const joinCap = (arr: string[], cap = 15) =>
+    arr.length > cap ? `${arr.slice(0, cap).join('、')}…等 ${arr.length} 項` : arr.join('、')
+  if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班（排課設定分頁 3）。' })
+  if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}` })
+  if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}` })
+  if (agg.noHomeroom.length) preflight.push({ level: 'warn', text: `尚未指定導師：${joinCap(agg.noHomeroom)}` })
+  if (agg.unassigned.size) {
+    const parts = Array.from(agg.unassigned.entries()).map(([k2, n]) => {
+      const [g, subj] = k2.split('|')
+      return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
+    })
+    preflight.push({ level: 'warn', text: `尚未配滿需求節數（未指派科任，暫視為導師自排）：${joinCap(parts)}` })
+  }
+  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}` })
+  if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `視藝單雙週假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}` })
+  const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
+  if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}` })
 
   return {
     input: {
