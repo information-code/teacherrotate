@@ -100,21 +100,18 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
                 <input value={t.label} onChange={e => updateType(t.id, { label: e.target.value })}
                   placeholder="名目（管理者辨識用）" className="input py-1 text-sm flex-1 min-w-32" />
                 <input value={t.subject} onChange={e => updateType(t.id, { subject: e.target.value, isNative: e.target.value === '本土語' })}
-                  placeholder="科目（課表顯示）" list="lock-subject-options" className="input py-1 text-sm w-36" />
-                {t.isNative && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0"
-                    title="科目為「本土語」即自動視為本土語鎖課：作為語別場次的時段來源、班級格顯示閩南語老師">
-                    本土語鎖課
-                  </span>
-                )}
+                  placeholder="科目（課表顯示）" list={`lock-subject-options-${t.id}`} className="input py-1 text-sm w-36" />
+                {/* 本土語只該有一個鎖課名目：已被其他名目用走時，本列下拉不再出現 */}
+                <datalist id={`lock-subject-options-${t.id}`}>
+                  {subjectOptions
+                    .filter(s => s !== '本土語' || !config.lockTypes.some(x => x.id !== t.id && x.subject === '本土語'))
+                    .map(s => <option key={s} value={s} />)}
+                </datalist>
                 <button onClick={() => removeType(t)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
               </div>
             )
           })}
         </div>
-        <datalist id="lock-subject-options">
-          {subjectOptions.map(s => <option key={s} value={s} />)}
-        </datalist>
       </div>
 
       {/* 各班課表標記 */}
