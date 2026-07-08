@@ -6,6 +6,14 @@ import { isVirtualEmail } from '@/lib/utils'
 
 const GRADE_LABELS = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級']
 
+// 聘任別：正式（全功能）、代理（配課選填＋設備借用）、鐘點（僅設備借用）
+type EmploymentType = 'formal' | 'substitute' | 'hourly'
+const EMPLOYMENT_LABELS: Record<string, string> = {
+  formal: '正式',
+  substitute: '代理',
+  hourly: '鐘點',
+}
+
 interface TeacherEntry {
   id: string
   name: string | null
@@ -28,7 +36,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   // 新增
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [employmentType, setEmploymentType] = useState<'formal' | 'substitute'>('formal')
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('formal')
   const [virtualMode, setVirtualMode] = useState(false)          // 待聘（虛擬）帳號
   const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom'>('subject')
   const [virtualGrade, setVirtualGrade] = useState(1)
@@ -82,9 +90,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     router.refresh()
   }
 
-  async function handleToggleEmployment(entry: TeacherEntry) {
-    const next = entry.employment_type === 'substitute' ? 'formal' : 'substitute'
-    if (!confirm(`將「${entry.name ?? entry.email}」改為${next === 'substitute' ? '代理' : '正式'}教師？`)) return
+  async function handleChangeEmployment(entry: TeacherEntry, next: string) {
+    if (next === entry.employment_type) return
+    if (!confirm(`將「${entry.name ?? entry.email}」改為${EMPLOYMENT_LABELS[next] ?? next}教師？`)) return
     setEmpTogglingId(entry.id)
     const res = await fetch('/api/admin/whitelist', {
       method: 'PATCH',
@@ -185,6 +193,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
               {entry.employment_type === 'substitute' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>
               )}
+              {entry.employment_type === 'hourly' && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-700 border border-violet-200 rounded-sm">鐘點</span>
+              )}
             </div>
             {isEditing ? (
               <div className="mt-1.5 flex items-center gap-2 flex-wrap">
@@ -229,13 +240,17 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                 </button>
               )}
               {entry.role !== 'admin' && (
-                <button
-                  onClick={() => handleToggleEmployment(entry)}
+                // 值綁 entries state：confirm 取消時 state 未變，select 自動回到原值
+                <select
+                  value={entry.employment_type}
+                  onChange={e => handleChangeEmployment(entry, e.target.value)}
                   disabled={empTogglingId === entry.id}
-                  className="text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-40"
+                  className="text-xs text-zinc-500 border border-zinc-200 rounded-sm px-1 py-0.5 bg-white disabled:opacity-40"
                 >
-                  {entry.employment_type === 'substitute' ? '改正式' : '設為代理'}
-                </button>
+                  <option value="formal">正式</option>
+                  <option value="substitute">代理</option>
+                  <option value="hourly">鐘點</option>
+                </select>
               )}
               <button onClick={() => { setEditingId(entry.id); setEditEmail(virtual ? '' : entry.email); setEditName(virtual ? '' : (entry.name ?? '')); setEditError('') }}
                 className={`text-xs whitespace-nowrap ${virtual ? 'text-amber-600 hover:text-amber-700 font-medium' : 'text-zinc-400 hover:text-zinc-700'}`}>
@@ -283,9 +298,10 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
               </div>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">聘任別</label>
-                <select value={employmentType} onChange={e => setEmploymentType(e.target.value as 'formal' | 'substitute')} className="input">
+                <select value={employmentType} onChange={e => setEmploymentType(e.target.value as EmploymentType)} className="input">
                   <option value="formal">正式</option>
                   <option value="substitute">代理</option>
+                  <option value="hourly">鐘點</option>
                 </select>
               </div>
             </>

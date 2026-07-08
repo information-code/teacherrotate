@@ -18,16 +18,23 @@ const SUBSTITUTE_ITEMS = [
   { href: '/teacher/allocation', label: '配課選填' },
   { href: '/teacher/equipment',  label: '設備借用' },
 ]
+// 鐘點：僅設備借用
+const HOURLY_ITEMS = [
+  { href: '/teacher/equipment',  label: '設備借用' },
+]
 
 export function TeacherSidebar({
-  isSubstitute = false,
+  employmentType = 'formal',
   siteTitle = '教師系統',
 }: {
-  isSubstitute?: boolean
+  employmentType?: string
   siteTitle?: string
 }) {
   const pathname = usePathname()
-  const navItems = isSubstitute ? SUBSTITUTE_ITEMS : FORMAL_ITEMS
+  const navItems =
+    employmentType === 'hourly' ? HOURLY_ITEMS
+    : employmentType === 'substitute' ? SUBSTITUTE_ITEMS
+    : FORMAL_ITEMS
   const { open, setOpen } = useMobileNav()
 
   return (

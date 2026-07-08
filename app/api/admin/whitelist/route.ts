@@ -5,6 +5,9 @@ import { randomUUID } from 'crypto'
 import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
 import { defaultTeacherAllocation } from '@/lib/allocation'
 
+// 聘任別合法值：正式 / 代理 / 鐘點（鐘點僅可用設備借用）
+const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly']
+
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       email: finalEmail,
       role: 'teacher',
-      employment_type: virtual || employmentType === 'substitute' ? 'substitute' : 'formal',
+      employment_type: virtual ? 'substitute' : EMPLOYMENT_TYPES.includes(employmentType) ? employmentType : 'formal',
     })
     .select('id, name, email, employment_type, created_at')
     .single()
@@ -119,9 +122,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // 聘任別異動（正式/代理）
+  // 聘任別異動（正式/代理/鐘點）
   if ('employment_type' in body) {
-    const t = body.employment_type === 'substitute' ? 'substitute' : 'formal'
+    const t = EMPLOYMENT_TYPES.includes(body.employment_type) ? body.employment_type : 'formal'
     const { error } = await admin.from('profiles').update({ employment_type: t }).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })

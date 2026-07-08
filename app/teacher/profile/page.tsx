@@ -39,5 +39,8 @@ export default async function ProfilePage() {
     )
   }
 
+  // 鐘點教師僅可用設備借用
+  if (profile.employment_type === 'hourly') redirect('/teacher/equipment')
+
   return <ProfileForm profile={profile} />
 }

@@ -36,13 +36,12 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   // profile 不存在 → email 不在白名單，拒絕進入
   if (!profile) redirect('/unauthorized')
 
-  const isSubstitute = profile.employment_type === 'substitute'
   const siteTitle = await getSiteTitle()
 
   return (
     <MobileNavProvider>
       <div className="flex h-screen bg-zinc-50 overflow-hidden">
-        <TeacherSidebar isSubstitute={isSubstitute} siteTitle={siteTitle} />
+        <TeacherSidebar employmentType={profile.employment_type} siteTitle={siteTitle} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopBar
             userName={profile?.name ?? profile?.email ?? user.email ?? ''}
