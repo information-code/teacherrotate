@@ -18,18 +18,27 @@ export async function GET() {
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const today = todayStr()
-  const [{ data: loans, error }, { data: longLoans }, { data: equipment }, { data: profiles }] = await Promise.all([
+  const [{ data: loans, error }, { data: longLoans }, { data: equipment }, { data: groups }, { data: profiles }] = await Promise.all([
     supabaseAdmin.from('equipment_loans')
-      .select('id, equipment_id, teacher_id, loan_date, end_date, periods, status, borrowed_at, returned_at')
+      .select('id, equipment_id, group_id, teacher_id, loan_date, end_date, periods, status, borrowed_at, returned_at')
       .not('borrowed_at', 'is', null),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active').lt('due_date', today),
     supabaseAdmin.from('equipment').select('id, name'),
+    supabaseAdmin.from('equipment_groups').select('id, name'),
     supabaseAdmin.from('profiles').select('id, name, email'),
   ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const groupNameMap = new Map((groups ?? []).map(g => [g.id, g.name]))
   const equipName = (id: string) =>
     (equipment ?? []).find(e => e.id === id)?.name ?? '（已刪除設備）'
+  // 統計鍵：單台用設備 id、整組用「g:群組id」（整組借用算一筆）
+  const targetKey = (l: { equipment_id: string | null; group_id: string | null }) =>
+    l.equipment_id ?? `g:${l.group_id}`
+  const targetName = (l: { equipment_id: string | null; group_id: string | null }) =>
+    l.equipment_id
+      ? equipName(l.equipment_id)
+      : `${groupNameMap.get(l.group_id ?? '') ?? '（已刪除群組）'}（整組）`
   const profileMap = new Map((profiles ?? []).map(p => [p.id, p.name ?? p.email]))
   const teacherName = (id: string) => profileMap.get(id) ?? '（未知）'
 
@@ -57,7 +66,7 @@ export async function GET() {
       ? overdueDays(due, null, today)
       : overdueDays(due, l.returned_at, today)
     bump(byTeacher, l.teacher_id, days)
-    bump(byEquipment, l.equipment_id, days)
+    bump(byEquipment, targetKey(l), days)
 
     const month = l.loan_date.slice(0, 7)
     const m = byMonth.get(month) ?? { loans: 0, overdue: 0 }
@@ -82,7 +91,9 @@ export async function GET() {
   const equipmentStats = Array.from(byEquipment.entries())
     .map(([id, a]) => ({
       equipment_id: id,
-      name: equipName(id),
+      name: id.startsWith('g:')
+        ? `${groupNameMap.get(id.slice(2)) ?? '（已刪除群組）'}（整組）`
+        : equipName(id),
       total: a.total,
       overdue: a.overdue,
       rate: a.total > 0 ? Math.round((a.overdue / a.total) * 1000) / 10 : 0,
@@ -96,7 +107,7 @@ export async function GET() {
 
   const longOverdue = (longLoans ?? []).map(l => ({
     id: l.id,
-    equipment_name: equipName(l.equipment_id),
+    equipment_name: targetName(l),
     teacher_id: l.teacher_id,
     teacher_name: l.teacher_id ? teacherName(l.teacher_id) : `${l.external_name}（系統外）`,
     due_date: l.due_date,

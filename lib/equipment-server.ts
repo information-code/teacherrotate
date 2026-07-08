@@ -34,26 +34,35 @@ export async function signPhotoUrls(paths: string[]): Promise<Record<string, str
  */
 export async function logLoanEvent(opts: {
   loanId: string
-  equipmentId: string
+  equipmentId?: string | null
+  groupId?: string | null
   teacherId: string
   action: 'reserved' | 'borrowed' | 'returned' | 'cancelled' | 'released' | 'closed'
   detail: string
   actorId?: string
 }): Promise<void> {
   try {
-    const [equipRes, teacherRes, actorRes] = await Promise.all([
-      supabaseAdmin.from('equipment').select('name, asset_number').eq('id', opts.equipmentId).maybeSingle(),
+    const [equipRes, groupRes, teacherRes, actorRes] = await Promise.all([
+      opts.equipmentId
+        ? supabaseAdmin.from('equipment').select('name, asset_number').eq('id', opts.equipmentId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      opts.groupId
+        ? supabaseAdmin.from('equipment_groups').select('name').eq('id', opts.groupId).maybeSingle()
+        : Promise.resolve({ data: null }),
       supabaseAdmin.from('profiles').select('name, email').eq('id', opts.teacherId).maybeSingle(),
       opts.actorId && opts.actorId !== opts.teacherId
         ? supabaseAdmin.from('profiles').select('name, email').eq('id', opts.actorId).maybeSingle()
         : Promise.resolve({ data: null }),
     ])
     const teacherName = teacherRes.data?.name ?? teacherRes.data?.email ?? ''
+    const equipmentName = opts.groupId
+      ? `${groupRes.data?.name ?? '（已刪除群組）'}（整組）`
+      : (equipRes.data as { name?: string } | null)?.name ?? '（已刪除設備）'
     await supabaseAdmin.from('equipment_loan_events').insert({
       loan_id: opts.loanId,
-      equipment_id: opts.equipmentId,
-      equipment_name: equipRes.data?.name ?? '（已刪除設備）',
-      asset_number: equipRes.data?.asset_number ?? '',
+      equipment_id: opts.equipmentId ?? null,
+      equipment_name: equipmentName,
+      asset_number: (equipRes.data as { asset_number?: string } | null)?.asset_number ?? '',
       teacher_id: opts.teacherId,
       teacher_name: teacherName,
       action: opts.action,

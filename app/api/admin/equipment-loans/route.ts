@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
 
   const rows = (loans ?? []).map(l => ({
     ...l,
-    equipment_name: equipMap.get(l.equipment_id)?.name ?? '（已刪除設備）',
-    equipment_asset_number: equipMap.get(l.equipment_id)?.asset_number ?? '',
+    equipment_name: equipMap.get(l.equipment_id ?? '')?.name ?? '（已刪除設備）',
+    equipment_asset_number: equipMap.get(l.equipment_id ?? '')?.asset_number ?? '',
     teacher_name: profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）',
   }))
 
@@ -95,7 +95,7 @@ export async function PATCH(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
     await logLoanEvent({
-      loanId: id, equipmentId: loan.equipment_id, teacherId: loan.teacher_id,
+      loanId: id, equipmentId: loan.equipment_id, groupId: loan.group_id, teacherId: loan.teacher_id,
       action: 'released', detail: loanTimeText(loan), actorId: auth.user.id,
     })
     return NextResponse.json({ ok: true })
@@ -114,7 +114,7 @@ export async function PATCH(request: NextRequest) {
 
   await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
   await logLoanEvent({
-    loanId: id, equipmentId: loan.equipment_id, teacherId: loan.teacher_id,
+    loanId: id, equipmentId: loan.equipment_id, groupId: loan.group_id, teacherId: loan.teacher_id,
     action: 'closed', detail: loanTimeText(loan), actorId: auth.user.id,
   })
   return NextResponse.json({ ok: true })

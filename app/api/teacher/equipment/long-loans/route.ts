@@ -21,23 +21,35 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const ids = (loans ?? []).map(l => l.id)
-  const equipIds = Array.from(new Set((loans ?? []).map(l => l.equipment_id)))
-  const [{ data: renewals }, { data: equipment }] = await Promise.all([
+  const equipIds = Array.from(new Set(
+    (loans ?? []).map(l => l.equipment_id).filter((id): id is string => Boolean(id))
+  ))
+  const groupIds = Array.from(new Set(
+    (loans ?? []).map(l => l.group_id).filter((id): id is string => Boolean(id))
+  ))
+  const [{ data: renewals }, { data: equipment }, { data: groups }] = await Promise.all([
     ids.length > 0
       ? supabaseAdmin.from('equipment_renewals').select('*').in('long_loan_id', ids).order('agreed_at', { ascending: false })
       : Promise.resolve({ data: [] as never[] }),
     equipIds.length > 0
       ? supabaseAdmin.from('equipment').select('id, name, location, peripherals').in('id', equipIds)
       : Promise.resolve({ data: [] as never[] }),
+    groupIds.length > 0
+      ? supabaseAdmin.from('equipment_groups').select('id, name').in('id', groupIds)
+      : Promise.resolve({ data: [] as never[] }),
   ])
 
   const equipMap = new Map((equipment ?? []).map(e => [e.id, e]))
+  const groupMap = new Map((groups ?? []).map(g => [g.id, g]))
   const rows = (loans ?? []).map(l => {
-    const equip = equipMap.get(l.equipment_id)
+    const equip = l.equipment_id ? equipMap.get(l.equipment_id) : undefined
+    const group = l.group_id ? groupMap.get(l.group_id) : undefined
     const renewable = l.status === 'active' && today >= addDays(l.due_date, -config.renewalNoticeDays)
     return {
       ...l,
-      equipment_name: equip?.name ?? '（已刪除設備）',
+      equipment_name: l.group_id
+        ? `${group?.name ?? '（已刪除群組）'}（整組）`
+        : equip?.name ?? '（已刪除設備）',
       equipment_location: equip?.location ?? '',
       peripherals: equip?.peripherals ?? [],
       renewals: (renewals ?? []).filter(r => r.long_loan_id === l.id),

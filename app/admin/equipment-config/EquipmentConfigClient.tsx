@@ -23,6 +23,31 @@ interface EquipmentRow {
   sort_order: number
 }
 
+interface GroupRow {
+  id: string
+  name: string
+  borrow_checklist: ChecklistItem[]
+  return_checklist: ChecklistItem[]
+  status: string
+  notes: string
+  member_ids: string[]
+}
+
+const EMPTY_GROUP: GroupRow = {
+  id: '',
+  name: '',
+  borrow_checklist: [
+    { label: '整組數量清點無誤', requiresPhoto: true },
+    { label: '充電車/收納箱外觀無損壞', requiresPhoto: false },
+  ],
+  return_checklist: [
+    { label: '整組數量清點無誤並歸回原位', requiresPhoto: true },
+  ],
+  status: 'available',
+  notes: '',
+  member_ids: [],
+}
+
 type EditorState =
   | { mode: 'closed' }
   | { mode: 'create'; row: EquipmentRow }
@@ -43,14 +68,18 @@ const EMPTY_ROW: EquipmentRow = {
 
 export default function EquipmentConfigClient({
   initialEquipment,
+  initialGroups,
   initialConfig,
 }: {
   initialEquipment: EquipmentRow[]
+  initialGroups: GroupRow[]
   initialConfig: EquipmentConfig
 }) {
   const [equipment, setEquipment] = useState<EquipmentRow[]>(initialEquipment)
+  const [groups, setGroups] = useState<GroupRow[]>(initialGroups)
+  const [groupEditor, setGroupEditor] = useState<GroupRow | null>(null)
   const [config, setConfig] = useState<EquipmentConfig>(initialConfig)
-  const [tab, setTab] = useState<'equipment' | 'rules' | 'agreements' | 'overdue'>('equipment')
+  const [tab, setTab] = useState<'equipment' | 'groups' | 'rules' | 'agreements' | 'overdue'>('equipment')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
@@ -113,6 +142,40 @@ export default function EquipmentConfigClient({
     flash('設備已儲存')
   }
 
+  const saveGroup = async (row: GroupRow) => {
+    const isCreate = !row.id
+    const res = await fetch('/api/admin/equipment-groups', {
+      method: isCreate ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isCreate ? { ...row, id: undefined } : row),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      flash(`儲存失敗：${data.error}`)
+      return
+    }
+    setGroups(list =>
+      isCreate
+        ? [...list, { ...row, id: data.id }]
+        : list.map(g => (g.id === row.id ? row : g))
+    )
+    setGroupEditor(null)
+    flash('群組已儲存')
+  }
+
+  const deleteGroup = async (row: GroupRow) => {
+    if (!confirm(`確定刪除群組「${row.name}」？成員設備會脫離群組但不會被刪除。`)) return
+    const res = await fetch(`/api/admin/equipment-groups?id=${row.id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (!res.ok) {
+      flash(`刪除失敗：${data.error}`)
+      return
+    }
+    setGroups(list => list.filter(g => g.id !== row.id))
+    setGroupEditor(null)
+    flash('群組已刪除')
+  }
+
   const deleteEquipment = async (row: EquipmentRow) => {
     if (!confirm(`確定刪除「${row.name}」？相關借用紀錄會一併刪除，若要保留歷史請改為「停用」。`)) return
     const res = await fetch(`/api/admin/equipment?id=${row.id}`, { method: 'DELETE' })
@@ -137,6 +200,7 @@ export default function EquipmentConfigClient({
       <div className="flex border-b border-zinc-200">
         {([
           ['equipment', '設備庫'],
+          ['groups', '群組'],
           ['rules', '節次與規則'],
           ['agreements', '同意書'],
           ['overdue', '逾期通知'],
@@ -241,6 +305,55 @@ export default function EquipmentConfigClient({
         )}
       </div>
 
+      )}
+
+      {/* 群組（整組借用） */}
+      {tab === 'groups' && (
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-medium text-zinc-900">設備群組</h2>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              把多台設備組成一組（如平板充電車 01～30），教師可整組借用；
+              整組借用使用群組自己的檢查清單，與單台借用互斥。
+            </p>
+          </div>
+          <button className="btn-primary" onClick={() => setGroupEditor({ ...EMPTY_GROUP })}>
+            新增群組
+          </button>
+        </div>
+
+        {groups.length === 0 ? (
+          <p className="text-sm text-zinc-500">尚未建立任何群組。</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr><th>群組名稱</th><th>成員數</th><th>檢查項目</th><th>狀態</th><th></th></tr>
+              </thead>
+              <tbody>
+                {groups.map(g => (
+                  <tr key={g.id}>
+                    <td className="font-medium">{g.name}</td>
+                    <td>{g.member_ids.length} 台</td>
+                    <td>借 {(g.borrow_checklist ?? []).length}／還 {(g.return_checklist ?? []).length}</td>
+                    <td>
+                      <span className={g.status === 'available' ? 'badge-success' : 'badge-warn'}>
+                        {g.status === 'available' ? '開放整組借用' : '暫停'}
+                      </span>
+                    </td>
+                    <td className="text-right">
+                      <button className="btn-secondary !px-3 !py-1" onClick={() => setGroupEditor({ ...g })}>
+                        編輯
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
       )}
 
       {/* 開放節次與借用規則 */}
@@ -368,6 +481,16 @@ export default function EquipmentConfigClient({
           onClose={() => setEditor({ mode: 'closed' })}
         />
       )}
+      {groupEditor && (
+        <GroupEditor
+          row={groupEditor}
+          equipment={equipment}
+          groups={groups}
+          onSave={saveGroup}
+          onDelete={groupEditor.id ? () => deleteGroup(groupEditor) : undefined}
+          onClose={() => setGroupEditor(null)}
+        />
+      )}
       {showImport && (
         <ImportModal
           onDone={async summary => {
@@ -486,6 +609,143 @@ function ImportModal({
           <button className="btn-primary" onClick={submit} disabled={rows.length === 0 || importing}>
             {importing ? '匯入中…' : `匯入 ${rows.length} 列`}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 群組編輯 Modal：基本資料＋整組借用/歸還檢查清單＋成員勾選 */
+function GroupEditor({
+  row,
+  equipment,
+  groups,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  row: GroupRow
+  equipment: EquipmentRow[]
+  groups: GroupRow[]
+  onSave: (row: GroupRow) => void
+  onDelete?: () => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<GroupRow>(row)
+  const [saving, setSaving] = useState(false)
+
+  // 設備 id → 目前所屬其他群組名稱（勾選時會移入本群組）
+  const otherGroupOf = (equipmentId: string): string | null => {
+    for (const g of groups) {
+      if (g.id !== row.id && g.member_ids.includes(equipmentId)) return g.name
+    }
+    return null
+  }
+
+  const toggleMember = (equipmentId: string) => {
+    setDraft(d => ({
+      ...d,
+      member_ids: d.member_ids.includes(equipmentId)
+        ? d.member_ids.filter(id => id !== equipmentId)
+        : [...d.member_ids, equipmentId],
+    }))
+  }
+
+  const submit = async () => {
+    if (!draft.name.trim()) {
+      alert('請填寫群組名稱')
+      return
+    }
+    if (draft.member_ids.length === 0) {
+      alert('請至少勾選一台成員設備')
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(draft)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-md shadow-xl w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-semibold text-zinc-900">{row.id ? `編輯群組：${row.name}` : '新增群組'}</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <span className="label">群組名稱 *</span>
+            <input className="input" value={draft.name}
+              onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+              placeholder="例：平板電腦(教師機) 01-30 充電車" />
+          </div>
+          <div>
+            <span className="label">狀態</span>
+            <select className="input" value={draft.status}
+              onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}>
+              <option value="available">開放整組借用</option>
+              <option value="disabled">暫停整組借用</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <span className="label">備註</span>
+          <input className="input" value={draft.notes}
+            onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} />
+        </div>
+
+        <ChecklistEditor
+          title="整組借用檢查項目"
+          items={draft.borrow_checklist ?? []}
+          onChange={items => setDraft(d => ({ ...d, borrow_checklist: items }))}
+        />
+        <ChecklistEditor
+          title="整組歸還檢查項目"
+          items={draft.return_checklist ?? []}
+          onChange={items => setDraft(d => ({ ...d, return_checklist: items }))}
+        />
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="label !mb-0">成員設備（已勾選 {draft.member_ids.length} 台）</span>
+            <span className="text-xs text-zinc-400">一台設備只能屬於一個群組，勾選即移入本群組</span>
+          </div>
+          {equipment.length === 0 ? (
+            <p className="text-sm text-zinc-400">請先到設備庫建立設備。</p>
+          ) : (
+            <div className="border border-zinc-200 rounded max-h-64 overflow-y-auto divide-y divide-zinc-100">
+              {equipment.map(eq => {
+                const other = otherGroupOf(eq.id)
+                return (
+                  <label key={eq.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-50">
+                    <input
+                      type="checkbox"
+                      checked={draft.member_ids.includes(eq.id)}
+                      onChange={() => toggleMember(eq.id)}
+                    />
+                    <span className="flex-1">
+                      {eq.name}
+                      {eq.asset_number && <span className="ml-1 text-xs text-zinc-400">#{eq.asset_number}</span>}
+                    </span>
+                    {other && <span className="text-xs text-amber-600">現屬：{other}</span>}
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <div>
+            {onDelete && <button className="btn-danger" onClick={onDelete}>刪除群組</button>}
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={onClose}>取消</button>
+            <button className="btn-primary" onClick={submit} disabled={saving}>
+              {saving ? '儲存中…' : '儲存'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

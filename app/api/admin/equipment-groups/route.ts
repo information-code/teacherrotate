@@ -1,0 +1,110 @@
+import 'server-only'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { checkAdmin } from '@/lib/equipment-server'
+
+async function requireAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (!(await checkAdmin(user.id))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  return { user }
+}
+
+/** 依 member_ids 重設群組成員（先清空原成員，再指定新成員） */
+async function setMembers(groupId: string, memberIds: string[]) {
+  await supabaseAdmin.from('equipment').update({ group_id: null }).eq('group_id', groupId)
+  if (memberIds.length > 0) {
+    await supabaseAdmin.from('equipment').update({ group_id: groupId }).in('id', memberIds)
+  }
+}
+
+/** 群組列表（含成員 id） */
+export async function GET() {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const [{ data: groups, error }, { data: equipment }] = await Promise.all([
+    supabaseAdmin.from('equipment_groups').select('*').order('name'),
+    supabaseAdmin.from('equipment').select('id, group_id').not('group_id', 'is', null),
+  ])
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const membersByGroup = new Map<string, string[]>()
+  for (const e of equipment ?? []) {
+    const list = membersByGroup.get(e.group_id as string) ?? []
+    list.push(e.id)
+    membersByGroup.set(e.group_id as string, list)
+  }
+  return NextResponse.json((groups ?? []).map(g => ({
+    ...g,
+    member_ids: membersByGroup.get(g.id) ?? [],
+  })))
+}
+
+/** 新增群組。body: { name, borrow_checklist, return_checklist, status, notes, member_ids } */
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const body = await request.json()
+  if (!body?.name?.trim()) return NextResponse.json({ error: '請填寫群組名稱' }, { status: 400 })
+
+  const { data, error } = await supabaseAdmin.from('equipment_groups').insert({
+    name: String(body.name).trim(),
+    borrow_checklist: body.borrow_checklist ?? [],
+    return_checklist: body.return_checklist ?? [],
+    status: body.status ?? 'available',
+    notes: String(body.notes ?? ''),
+  }).select().single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await setMembers(data.id, Array.isArray(body.member_ids) ? body.member_ids : [])
+  return NextResponse.json(data)
+}
+
+/** 更新群組。body: { id, ...欄位, member_ids? } */
+export async function PUT(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const { id, member_ids, ...fields } = await request.json()
+  if (!id) return NextResponse.json({ error: '缺少群組 id' }, { status: 400 })
+  if (fields.name !== undefined && !String(fields.name).trim()) {
+    return NextResponse.json({ error: '群組名稱不可為空' }, { status: 400 })
+  }
+
+  const allowed = ['name', 'borrow_checklist', 'return_checklist', 'status', 'notes'] as const
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  for (const key of allowed) if (fields[key] !== undefined) payload[key] = fields[key]
+
+  const { error } = await supabaseAdmin.from('equipment_groups').update(payload).eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (Array.isArray(member_ids)) await setMembers(id, member_ids)
+  return NextResponse.json({ ok: true })
+}
+
+/** 刪除群組（成員 group_id 由 FK ON DELETE SET NULL 自動清空；有進行中借用時擋下） */
+export async function DELETE(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const id = request.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: '缺少群組 id' }, { status: 400 })
+
+  const [{ data: activeShort }, { data: activeLong }] = await Promise.all([
+    supabaseAdmin.from('equipment_loans').select('id')
+      .eq('group_id', id).in('status', ['reserved', 'borrowed']).limit(1),
+    supabaseAdmin.from('equipment_long_loans').select('id')
+      .eq('group_id', id).eq('status', 'active').limit(1),
+  ])
+  if ((activeShort?.length ?? 0) > 0 || (activeLong?.length ?? 0) > 0) {
+    return NextResponse.json({ error: '此群組尚有進行中的整組借用，請先結案/結束後再刪除。' }, { status: 400 })
+  }
+
+  const { error } = await supabaseAdmin.from('equipment_groups').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

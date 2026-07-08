@@ -13,12 +13,14 @@ import {
   type ChecklistResult,
 } from '@/lib/equipment'
 
-interface EquipmentOption { id: string; name: string; status: string; asset_number: string }
+interface EquipmentOption { id: string; name: string; status: string; asset_number: string; group_id: string | null }
+interface GroupOption { id: string; name: string; status: string; member_count: number }
 interface TeacherOption { id: string; name: string }
 
 interface AdminLongLoanRow {
   id: string
-  equipment_id: string
+  equipment_id: string | null
+  group_id: string | null
   equipment_name: string
   equipment_asset_number: string
   teacher_id: string | null
@@ -40,11 +42,13 @@ interface StatsData {
 
 export default function EquipmentManageClient({
   equipment,
+  groups,
   teachers,
   overdueTemplate,
   renewalWeeks,
 }: {
   equipment: EquipmentOption[]
+  groups: GroupOption[]
   teachers: TeacherOption[]
   overdueTemplate: string
   renewalWeeks: number
@@ -91,6 +95,7 @@ export default function EquipmentManageClient({
       {tab === 'long' && (
         <LongLoansTab
           equipment={equipment}
+          groups={groups}
           teachers={teachers}
           renewalWeeks={renewalWeeks}
           onCopy={copyOverdueMessage}
@@ -114,6 +119,8 @@ interface OverviewShortLoan {
   end_period: string | null
   periods: string[]
   overdue: boolean
+  is_group: boolean
+  group_name: string
 }
 
 interface OverviewRow {
@@ -123,7 +130,15 @@ interface OverviewRow {
   location: string
   status: string
   shortLoans: OverviewShortLoan[]
-  longLoan: { borrower_name: string; is_external: boolean; start_date: string; due_date: string; overdue: boolean } | null
+  longLoan: {
+    borrower_name: string
+    is_external: boolean
+    start_date: string
+    due_date: string
+    overdue: boolean
+    is_group: boolean
+    group_name: string
+  } | null
 }
 
 function OverviewTab({
@@ -241,6 +256,7 @@ function OverviewTab({
                     {r.shortLoans.map(l => (
                       <div key={l.id} className="py-0.5">
                         {l.teacher_name}
+                        {l.is_group && <span className="badge-default ml-1">整組</span>}
                         <span className="text-zinc-500">｜{loanTimeText(l)}</span>
                         {l.status === 'reserved' && <span className="ml-1 text-xs text-zinc-400">（預約，未取用）</span>}
                         {l.overdue && <span className="badge-warn ml-1">逾期 {overdueDays(loanDueDate(l), null, todayStr())} 天</span>}
@@ -250,6 +266,7 @@ function OverviewTab({
                       <div className="py-0.5">
                         {r.longLoan.borrower_name}
                         {r.longLoan.is_external && <span className="badge-warn ml-1.5">系統外</span>}
+                        {r.longLoan.is_group && <span className="badge-default ml-1.5">整組</span>}
                         <span className="text-zinc-500">｜{r.longLoan.start_date} ～ {r.longLoan.due_date}</span>
                       </div>
                     )}
@@ -536,12 +553,14 @@ function ChecklistDetail({
 
 function LongLoansTab({
   equipment,
+  groups,
   teachers,
   renewalWeeks,
   onCopy,
   onFlash,
 }: {
   equipment: EquipmentOption[]
+  groups: GroupOption[]
   teachers: TeacherOption[]
   renewalWeeks: number
   onCopy: (vars: { teacher: string; equipment: string; date: string; periods: string }) => void
@@ -584,14 +603,14 @@ function LongLoansTab({
 
   useEffect(() => { load() }, [load])
 
-  const create = async (equipmentId: string) => {
-    setCreating(equipmentId)
+  const create = async (target: { equipment_id?: string; group_id?: string }) => {
+    setCreating(target.equipment_id ?? target.group_id ?? '')
     try {
       const res = await fetch('/api/admin/equipment-long-loans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          equipment_id: equipmentId,
+          ...target,
           start_date: form.start_date,
           due_date: form.due_date,
           notes: form.notes,
@@ -659,7 +678,10 @@ function LongLoansTab({
               onChange={e => setForm(f => ({ ...f, equipment_name: e.target.value }))}>
               <option value="">請選擇</option>
               {Array.from(new Set(equipment.filter(eq => eq.status !== 'retired').map(eq => eq.name))).map(name => (
-                <option key={name} value={name}>{name}</option>
+                <option key={name} value={`name:${name}`}>{name}</option>
+              ))}
+              {groups.map(g => (
+                <option key={g.id} value={`group:${g.id}`}>{g.name}〔整組 {g.member_count} 台〕</option>
               ))}
             </select>
           </div>
@@ -694,30 +716,64 @@ function LongLoansTab({
         <input className="input" placeholder="備註（選填）" value={form.notes}
           onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
 
-        {/* 選定名稱後羅列該設備所有編號與長借狀態，逐台指派 */}
-        {form.equipment_name && (
+        {/* 選定名稱後羅列該設備所有編號與長借狀態，逐台指派；選整組則單列指派 */}
+        {form.equipment_name.startsWith('group:') && (() => {
+          const g = groups.find(x => x.id === form.equipment_name.slice(6))
+          if (!g) return null
+          const current = loans.find(l => l.status === 'active' && l.group_id === g.id)
+          return (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                <div className="flex-1 min-w-[180px] text-sm">
+                  <span className="font-medium text-zinc-900">{g.name}</span>
+                  <span className="ml-1 text-xs text-zinc-400">整組 {g.member_count} 台</span>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    {current
+                      ? <>整組長期借用中：{current.teacher_name}{current.is_external && '（系統外）'}｜{current.start_date} ～ {current.due_date}</>
+                      : '可指派（借用期間群組內所有設備一併保留）'}
+                  </div>
+                </div>
+                <button
+                  className="btn-primary !px-3 !py-1.5"
+                  disabled={Boolean(current) || !borrowerReady || creating === g.id}
+                  onClick={() => create({ group_id: g.id })}
+                >
+                  {creating === g.id ? '建立中…' : current ? '已借出' : '整組指派'}
+                </button>
+              </div>
+              {!borrowerReady && (
+                <p className="text-xs text-zinc-400">請先選擇借用人（與起訖日期），再按「整組指派」。</p>
+              )}
+            </div>
+          )
+        })()}
+        {form.equipment_name.startsWith('name:') && (
           <div className="space-y-2">
             {equipment
-              .filter(eq => eq.status !== 'retired' && eq.name === form.equipment_name)
+              .filter(eq => eq.status !== 'retired' && eq.name === form.equipment_name.slice(5))
               .map(eq => {
                 const current = loans.find(l => l.status === 'active' && l.equipment_id === eq.id)
+                const groupCurrent = eq.group_id
+                  ? loans.find(l => l.status === 'active' && l.group_id === eq.group_id)
+                  : undefined
+                const occupied = current ?? groupCurrent
                 return (
                   <div key={eq.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
                     <div className="flex-1 min-w-[180px] text-sm">
                       <span className="font-medium text-zinc-900">{eq.name}</span>
                       {eq.asset_number && <span className="ml-1 text-xs text-zinc-400">#{eq.asset_number}</span>}
                       <div className="text-xs text-zinc-500 mt-0.5">
-                        {current
-                          ? <>長期借用中：{current.teacher_name}{current.is_external && '（系統外）'}｜{current.start_date} ～ {current.due_date}</>
+                        {occupied
+                          ? <>{groupCurrent && !current ? '所屬群組整組長借中：' : '長期借用中：'}{occupied.teacher_name}{occupied.is_external && '（系統外）'}｜{occupied.start_date} ～ {occupied.due_date}</>
                           : '可指派'}
                       </div>
                     </div>
                     <button
                       className="btn-primary !px-3 !py-1.5"
-                      disabled={Boolean(current) || !borrowerReady || creating === eq.id}
-                      onClick={() => create(eq.id)}
+                      disabled={Boolean(occupied) || !borrowerReady || creating === eq.id}
+                      onClick={() => create({ equipment_id: eq.id })}
                     >
-                      {creating === eq.id ? '建立中…' : current ? '已借出' : '指派'}
+                      {creating === eq.id ? '建立中…' : occupied ? '已借出' : '指派'}
                     </button>
                   </div>
                 )

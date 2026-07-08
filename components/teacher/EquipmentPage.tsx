@@ -26,9 +26,18 @@ interface EquipmentRow {
   return_checklist: ChecklistItem[]
 }
 
+interface GroupRow {
+  id: string
+  name: string
+  borrow_checklist: ChecklistItem[]
+  return_checklist: ChecklistItem[]
+  member_ids: string[]
+}
+
 interface LoanRow {
   id: string
-  equipment_id: string
+  equipment_id: string | null
+  group_id: string | null
   equipment_name: string
   loan_date: string
   end_date: string | null
@@ -49,6 +58,7 @@ interface ShortData {
   from: string
   to: string
   equipment: EquipmentRow[]
+  groups: GroupRow[]
   /** 日期 → 設備 id → 已占用節次 */
   occupied: Record<string, Record<string, string[]>>
   myLoans: LoanRow[]
@@ -155,11 +165,14 @@ export function EquipmentPage() {
           }}
           onReload={() => loadShort(range.from, range.to)}
           onStartProcedure={(kind, loan) => {
-            const equip = shortData.equipment.find(e => e.id === loan.equipment_id)
+            // 整組借用用群組的檢查清單，單台用設備自己的
+            const source = loan.group_id
+              ? shortData.groups.find(g => g.id === loan.group_id)
+              : shortData.equipment.find(e => e.id === loan.equipment_id)
             setProcedure({
               kind,
               loan,
-              checklist: (kind === 'borrow' ? equip?.borrow_checklist : equip?.return_checklist) ?? [],
+              checklist: (kind === 'borrow' ? source?.borrow_checklist : source?.return_checklist) ?? [],
               agreement: kind === 'borrow' ? shortData.config.agreements.borrow : shortData.config.agreements.return,
             })
           }}
@@ -238,32 +251,48 @@ function ShortTab({
   const periodsValid = startIndex >= 0 && endIndex >= 0 && (!sameDay ? true : endIndex >= startIndex)
 
   const equipmentNames = Array.from(new Set(data.equipment.map(e => e.name)))
+  // 選項值：單台名稱「name:xxx」、整組「group:群組id」
+  const selectedGroup = equipName.startsWith('group:')
+    ? data.groups.find(g => g.id === equipName.slice(6)) ?? null
+    : null
+  const selectedName = equipName.startsWith('name:') ? equipName.slice(5) : ''
   const canQuery = Boolean(from && to && equipName) && periodsValid
   const rangeDates = canQuery ? dateRangeList(from, to) : []
 
-  // 選定名稱的設備中，整段期間（首日起始時段～末日結束時段）全程有空的
-  const availableEquipment = !canQuery ? [] : data.equipment.filter(equip => {
-    if (equip.name !== equipName) return false
-    return rangeDates.every(date => {
+  // 該台設備整段期間（首日起始時段～末日結束時段）是否全程有空
+  const unitFree = (equipmentId: string) =>
+    rangeDates.every(date => {
       const need = daySlotPeriods(data.config.openPeriods, date, from, to, startPeriod, endPeriod)
-      const taken = data.occupied[date]?.[equip.id] ?? []
+      const taken = data.occupied[date]?.[equipmentId] ?? []
       return need.every(period => !taken.includes(period))
     })
-  })
+
+  // 單台：選定名稱下全程有空的設備
+  const availableEquipment = !canQuery || !selectedName
+    ? []
+    : data.equipment.filter(equip => equip.name === selectedName && unitFree(equip.id))
+
+  // 整組：全部成員都有空才可借；列出被占用的編號
+  const groupBlockedUnits = !canQuery || !selectedGroup
+    ? []
+    : selectedGroup.member_ids
+        .filter(id => !unitFree(id))
+        .map(id => data.equipment.find(e => e.id === id))
+        .filter((e): e is EquipmentRow => Boolean(e))
 
   const timeSummary = sameDay
     ? `${from}｜${periodLabel(startPeriod)}${startPeriod !== endPeriod ? `～${periodLabel(endPeriod)}` : ''}`
     : `${from} ${periodLabel(startPeriod)} ～ ${to} ${periodLabel(endPeriod)}`
 
-  const reserve = async (equipmentId: string) => {
+  const reserve = async (target: { equipment_id?: string; group_id?: string }) => {
     if (!canQuery) return
-    setSubmitting(equipmentId)
+    setSubmitting(target.equipment_id ?? target.group_id ?? '')
     try {
       const res = await fetch('/api/teacher/equipment/loans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          equipment_id: equipmentId,
+          ...target,
           start_date: from,
           end_date: to,
           start_period: startPeriod,
@@ -427,7 +456,12 @@ function ShortTab({
               }}
             >
               <option value="">請選擇</option>
-              {equipmentNames.map(name => <option key={name} value={name}>{name}</option>)}
+              {equipmentNames.map(name => <option key={name} value={`name:${name}`}>{name}</option>)}
+              {data.groups.map(g => (
+                <option key={g.id} value={`group:${g.id}`}>
+                  {g.name}〔整組 {g.member_ids.length} 台〕
+                </option>
+              ))}
             </select>
           </div>
           <button className="btn-primary" disabled={!canQuery} onClick={() => setShowResults(true)}>
@@ -440,13 +474,44 @@ function ShortTab({
             請選擇借用的起訖日期與時段、設備後按「確定」，就會列出可借用的設備編號。
             跨日借用時，首日從開始時段起、末日到結束時段止，期間整段保留。
           </p>
+        ) : selectedGroup ? (
+          /* 整組借用：全部成員都有空才可借 */
+          groupBlockedUnits.length > 0 ? (
+            <p className="text-sm text-zinc-500">
+              {timeSummary}｜「{selectedGroup.name}」整組不可借：
+              {groupBlockedUnits.map(e => e.asset_number ? `#${e.asset_number}` : e.name).join('、')}
+              {` 共 ${groupBlockedUnits.length} 台在此時段已被借用/預約，請換其他時段或日期。`}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-zinc-600">{timeSummary}｜整組可借：</p>
+              <div className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                <div className="flex-1 min-w-[180px]">
+                  <div className="text-sm font-medium text-zinc-900">
+                    {selectedGroup.name}
+                    <span className="ml-1 text-xs text-zinc-400 font-normal">整組 {selectedGroup.member_ids.length} 台</span>
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    借用期間群組內所有設備一併保留，歸還時請整組清點。
+                  </div>
+                </div>
+                <button
+                  className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
+                  disabled={submitting === selectedGroup.id}
+                  onClick={() => reserve({ group_id: selectedGroup.id })}
+                >
+                  {submitting === selectedGroup.id ? '預約中…' : '整組預約借用'}
+                </button>
+              </div>
+            </div>
+          )
         ) : (
           <>
             <p className="text-sm text-zinc-600">
-              {timeSummary}｜{equipName}，可借用 {availableEquipment.length} 台：
+              {timeSummary}｜{selectedName}，可借用 {availableEquipment.length} 台：
             </p>
             {availableEquipment.length === 0 ? (
-              <p className="text-sm text-zinc-500">這個時段「{equipName}」已全數借出，請換其他時段或日期。</p>
+              <p className="text-sm text-zinc-500">這個時段「{selectedName}」已全數借出，請換其他時段或日期。</p>
             ) : (
               <div className="space-y-2">
                 {availableEquipment.map(equip => (
@@ -468,7 +533,7 @@ function ShortTab({
                     <button
                       className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
                       disabled={submitting === equip.id}
-                      onClick={() => reserve(equip.id)}
+                      onClick={() => reserve({ equipment_id: equip.id })}
                     >
                       {submitting === equip.id ? '預約中…' : '預約借用'}
                     </button>

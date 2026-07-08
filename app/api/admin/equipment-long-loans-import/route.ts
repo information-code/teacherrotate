@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const [{ data: equipment }, { data: profiles }, { data: activeLoans }, { data: shortSlots }] = await Promise.all([
-    supabaseAdmin.from('equipment').select('id, name, asset_number'),
+    supabaseAdmin.from('equipment').select('id, name, asset_number, group_id'),
     // 借用人比對排除離校教師（離校者姓名會被視為系統外人員並附提醒）
     supabaseAdmin.from('profiles').select('id, name, email').neq('status', 'inactive'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
@@ -71,7 +71,13 @@ export async function POST(request: NextRequest) {
     if (name) teachersByName.set(name, [...(teachersByName.get(name) ?? []), p.id])
     teacherByEmail.set(p.email.toLowerCase(), p.id)
   }
-  const activeByEquipment = new Map((activeLoans ?? []).map(l => [l.equipment_id, l]))
+  // 單台使用中長借（整組長借另計）；被整組長借的群組 id 集合
+  const activeByEquipment = new Map(
+    (activeLoans ?? []).filter(l => l.equipment_id).map(l => [l.equipment_id as string, l])
+  )
+  const groupLongLoanedIds = new Set(
+    (activeLoans ?? []).filter(l => l.group_id).map(l => l.group_id as string)
+  )
 
   /**
    * 解析借用人欄位：
@@ -137,6 +143,10 @@ export async function POST(request: NextRequest) {
       return
     }
     const equipmentId = matched[0].id
+    if (matched[0].group_id && groupLongLoanedIds.has(matched[0].group_id)) {
+      errors.push(`第 ${line} 列：這台設備所屬群組正被整組長期借用，無法單台指派`)
+      return
+    }
 
     // 借用人解析：系統帳號或系統外人員
     const borrower = resolveBorrower(teacherNameRaw)
