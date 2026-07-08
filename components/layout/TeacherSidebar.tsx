@@ -11,7 +11,7 @@ const FORMAL_ITEMS = [
   { href: '/teacher/preferences', label: '選填志願' },
   { href: '/teacher/allocation',  label: '配課選填' },
   { href: '/teacher/schedule-fill', label: '排課選填' },
-  { href: '/teacher/timetable',   label: '課表' },
+  { href: '/teacher/timetable',   label: '我的課表' },
   { href: '/teacher/equipment',   label: '設備借用' },
 ]
 // 代理：不輪動、不選志願，只看基本資料與配課選填
@@ -19,12 +19,12 @@ const SUBSTITUTE_ITEMS = [
   { href: '/teacher/profile',    label: '基本資料' },
   { href: '/teacher/allocation', label: '配課選填' },
   { href: '/teacher/schedule-fill', label: '排課選填' },
-  { href: '/teacher/timetable', label: '課表' },
+  { href: '/teacher/timetable', label: '我的課表' },
   { href: '/teacher/equipment',  label: '設備借用' },
 ]
 // 鐘點：課表與設備借用
 const HOURLY_ITEMS = [
-  { href: '/teacher/timetable', label: '課表' },
+  { href: '/teacher/timetable', label: '我的課表' },
   { href: '/teacher/equipment',  label: '設備借用' },
 ]
 

@@ -95,13 +95,18 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="page-title mb-1">課表
+        <h2 className="page-title mb-1">我的課表
           <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
           {planStatus === 'final'
             ? <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">定案</span>
             : <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 align-middle">初版（導師排課進行中，內容可能異動）</span>}
         </h2>
-        <p className="text-xs text-zinc-400">可查看全校班級、教師與科任教室課表。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週。</p>
+        <p className="text-xs text-zinc-400">
+          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週。
+          {planStatus === 'final'
+            ? '課表已定案，如需調整請洽教務處。'
+            : '初版期間，導師請至「排課選填」調整自己班級的課；其餘調整請洽教務處。'}
+        </p>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
