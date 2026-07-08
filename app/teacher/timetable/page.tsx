@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF } from '@/lib/scheduling'
+import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF, deriveNativeSessions } from '@/lib/scheduling'
+import { normalizeConfig as normalizeAllocConfig, type TeacherAllocation } from '@/lib/allocation'
 import TimetableClient from './TimetableClient'
 
 export interface LockCell { main: string; sub?: string }
@@ -32,11 +33,13 @@ export default async function TimetablePage() {
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)
 
-  const [{ data: schRow }, { data: planRow }, { data: hrRows }, { data: profiles }] = await Promise.all([
+  const [{ data: schRow }, { data: planRow }, { data: hrRows }, { data: profiles }, { data: allocCfgRow }, { data: allocRows }] = await Promise.all([
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_plan').select('plan').eq('year', year).maybeSingle(),
     admin.from('schedule_homeroom').select('class_key, cells').eq('year', year),
     admin.from('profiles').select('id, name').neq('status', 'inactive'),
+    admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
+    admin.from('allocation').select('teacher_id, data').eq('year', year),
   ])
   const nameOf = Object.fromEntries((profiles ?? []).map(p => [p.id, p.name ?? '']))
   const config = normalizeScheduleConfig(schRow?.config)
@@ -81,15 +84,26 @@ export default async function TimetablePage() {
     }
     locks[ck] = out
   }
-  // 本土語開課場次（教室／教師檢視用）
-  const nativeSessions: NativeSessionView[] = Object.entries(config.nativeLang.sessions).map(([key, s]) => {
-    const [slot, roomId] = key.split('|')
-    return {
-      slot, roomId, roomLabel: roomNames[roomId] ?? '本土語言教室',
-      lang: s.lang, mode: s.mode, teacherId: s.teacherId,
-      teacherName: s.mode === 'physical' ? (nameOf[s.teacherId] ?? '') : '',
+  // 本土語開課場次（教室／教師檢視用）：由鎖課時段×配課自動推導，取消／無教室者不顯示
+  const extraCourses = normalizeAllocConfig(allocCfgRow?.config).extraCourses
+  const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
+  const extraNames = new Set(extraCourses.map(c => c.name).filter(Boolean))
+  for (const row of allocRows ?? []) {
+    const sgh = (row.data as TeacherAllocation | null)?.subjectGradeHours ?? {}
+    for (const [subj, byGrade] of Object.entries(sgh)) {
+      if (!extraNames.has(subj)) continue
+      ;(hoursByTeacher[row.teacher_id] ??= {})[subj] = byGrade as Record<string, number>
     }
-  }).filter(s => roomNames[s.roomId])
+  }
+  const derived = deriveNativeSessions({ config, extraCourses, hoursByTeacher })
+  const nativeSessions: NativeSessionView[] = derived.sessions
+    .filter(s => s.state !== 'cancelled' && s.roomId && roomNames[s.roomId])
+    .map(s => ({
+      slot: s.slot, roomId: s.roomId!, roomLabel: roomNames[s.roomId!] ?? '本土語言教室',
+      lang: s.lang, mode: s.state === 'stream' ? 'stream' as const : 'physical' as const,
+      teacherId: s.teacherId,
+      teacherName: s.state === 'stream' ? '' : (nameOf[s.teacherId] ?? ''),
+    }))
 
   const myClassKey = Object.entries(config.classTeacher).find(([, tid]) => tid === user.id)?.[0] ?? null
 

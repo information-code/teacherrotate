@@ -27,6 +27,7 @@ export default async function ScheduleWizardPage() {
   const allocMap = Object.fromEntries((allocs ?? []).map(a => [a.teacher_id, a.data as {
     scenarios?: Record<string, { breakdown?: Record<string, number> }>
     plans?: Record<string, { breakdown?: Record<string, number> }>
+    subjectGradeHours?: Record<string, Record<string, number>>
   }]))
   const homeroomHours: Record<string, Record<string, number>> = {}
   for (const [ck, tid] of Object.entries(scheduleConfig.classTeacher)) {
@@ -34,6 +35,18 @@ export default async function ScheduleWizardPage() {
     const d = allocMap[tid]
     const bd = d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown
     if (bd && Object.values(bd).some(v => Number(v) > 0)) homeroomHours[ck] = bd
+  }
+
+  // 本土語語別課（其他課程）：老師配課節數（tid → 課程 → 年級 → 節數），供場次自動推導
+  const extraCourses = allocConfig.extraCourses
+  const extraNames = new Set(extraCourses.map(c => c.name).filter(Boolean))
+  const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
+  for (const a of allocs ?? []) {
+    const sgh = allocMap[a.teacher_id]?.subjectGradeHours ?? {}
+    for (const [subj, byGrade] of Object.entries(sgh)) {
+      if (!extraNames.has(subj)) continue
+      ;(hoursByTeacher[a.teacher_id] ??= {})[subj] = byGrade
+    }
   }
 
   const classCounts: Record<number, number> = {}
@@ -54,6 +67,8 @@ export default async function ScheduleWizardPage() {
       gradeHomeroomBase={gradeHomeroomBase}
       teacherNames={teacherNames}
       homeroomHours={homeroomHours}
+      extraCourses={extraCourses}
+      hoursByTeacher={hoursByTeacher}
       lastGeneratedAt={planRow?.generated_at ?? null}
       initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
       savedPlan={(planRow?.plan ?? null) as Record<string, unknown> | null}

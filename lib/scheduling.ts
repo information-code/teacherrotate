@@ -75,16 +75,14 @@ export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室'
  *  ＋可排語別（langs，本土語言教室用）：非清單內的語別不可排；空＝任何語別皆可。 */
 export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerId: string; langs: string[] }
 
-// 本土語語別（每位老師一個）
+// 本土語語別（語別課程用；閩南語走班級的本土語科目）
 export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸）', '台灣手語', '原住民族語', '新住民語', '閩東語']
 
-/** 本土語開課表：一場課＝某個本土語鎖課時段 × 某間本土語言教室。
- *  未列入（關閉）＝該教室該時段不開課。實體必填授課老師；共學不具名。 */
-export interface NativeSession { mode: 'physical' | 'stream'; lang: string; teacherId: string }
-
+/** 本土語場次狀態覆寫：場次由 鎖課時段×語別課程配課 自動推導，預設全部實體（維持）。
+ *  課表生成後管理者依實際情況覆寫：stream＝直播共學（不具名）、cancelled＝取消（學生回原班上閩南語）。
+ *  key = `${slotKey}|${課程名}|${grade}` */
 export interface NativeLangConfig {
-  teacherLang: Record<string, string>              // teacherId → 語別
-  sessions: Record<string, NativeSession>          // `${slotKey}|${roomId}` → 場次
+  states: Record<string, 'stream' | 'cancelled'>
 }
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
@@ -269,7 +267,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     personalOff: [],
     roomZones: [],
     weights: defaultScheduleWeights(),
-    nativeLang: { teacherLang: {}, sessions: {} },
+    nativeLang: { states: {} },
   }
 }
 
@@ -341,16 +339,111 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
     weights: normalizeScheduleWeights((raw as Record<string, unknown>).weights),
     nativeLang: (() => {
       const n = (raw as { nativeLang?: Partial<NativeLangConfig> }).nativeLang
-      const teacherLang: Record<string, string> = {}
-      for (const [k, v] of Object.entries(n?.teacherLang ?? {})) if (v) teacherLang[k] = String(v)
-      const sessions: Record<string, NativeSession> = {}
-      for (const [k, v] of Object.entries(n?.sessions ?? {})) {
-        if (!v || (v.mode !== 'physical' && v.mode !== 'stream')) continue
-        sessions[k] = { mode: v.mode, lang: String(v.lang ?? ''), teacherId: String(v.teacherId ?? '') }
+      const states: Record<string, 'stream' | 'cancelled'> = {}
+      for (const [k, v] of Object.entries(n?.states ?? {})) {
+        if (v === 'stream' || v === 'cancelled') states[k] = v
       }
-      return { teacherLang, sessions }
+      return { states }
     })(),
   }
+}
+
+// ── 本土語場次自動推導 ──
+// 前提紀律（前置檢查把關）：某語別課程×年級的配課節數 ＝ 該年級本土語鎖課「相異時段數」。
+// 全部預設實體；states 覆寫為直播/取消。教室自動分配（依可排語別，一室一語別一時段）。
+export interface DerivedNativeSession {
+  slot: string
+  course: string          // 語別課程名（配課設定「其他」）
+  lang: string
+  grade: number
+  teacherId: string       // 配課推導（含虛擬帳號）；'' ＝配課不足
+  roomId: string | null   // 自動分配；null ＝教室不足
+  state: 'physical' | 'stream' | 'cancelled'
+}
+
+export function deriveNativeSessions(opts: {
+  config: ScheduleConfig
+  extraCourses: { name: string; lang: string; totalHours: number }[]
+  hoursByTeacher: Record<string, Record<string, Record<string, number>>>   // tid → 課程 → 年級 → 節數
+}): { sessions: DerivedNativeSession[]; issues: { level: 'error' | 'warn'; text: string; tab?: string }[] } {
+  const { config, extraCourses, hoursByTeacher } = opts
+  const issues: { level: 'error' | 'warn'; text: string; tab?: string }[] = []
+  const nativeTypeIds = new Set(config.lockTypes.filter(t => t.isNative).map(t => t.id))
+
+  // 各年級本土語鎖課相異時段
+  const gradeSlots: Record<number, string[]> = {}
+  for (const [ck2, cells] of Object.entries(config.lockCells)) {
+    const g = Number(ck2.split('-')[0])
+    for (const [slot, tid] of Object.entries(cells)) {
+      if (!nativeTypeIds.has(tid)) continue
+      const arr = (gradeSlots[g] ??= [])
+      if (!arr.includes(slot)) arr.push(slot)
+    }
+  }
+  for (const arr of Object.values(gradeSlots)) {
+    arr.sort((a, b) => { const A = parseSlotKey(a), B = parseSlotKey(b); return A.day - B.day || A.period - B.period })
+  }
+
+  const nativeRooms: { id: string; label: string; langs: string[] }[] = []
+  for (const z of config.roomZones) for (const r of z.rooms) {
+    if (r.kind === 'native') nativeRooms.push({ id: r.id, label: (r.name || '本土語言教室') + r.no, langs: r.langs })
+  }
+
+  const gradeZh = ['', '一', '二', '三', '四', '五', '六']
+  const sessions: DerivedNativeSession[] = []
+  for (const c of extraCourses) {
+    if (!c.name) continue
+    let allocatedTotal = 0
+    for (const g of [1, 2, 3, 4, 5, 6]) {
+      // 該課程×年級的老師（依配課節數展開，節數多者先認領時段）
+      const exp: string[] = []
+      for (const [tid, m] of Object.entries(hoursByTeacher)) {
+        const h = Number(m[c.name]?.[String(g)]) || 0
+        allocatedTotal += h
+        for (let i = 0; i < h; i++) exp.push(tid)
+      }
+      if (exp.length === 0) continue
+      const slots = gradeSlots[g] ?? []
+      if (exp.length !== slots.length) {
+        issues.push({
+          level: 'warn',
+          text: `「${c.name}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖課有 ${slots.length} 個相異時段——需相等才能自動推導場次（請調整配課或鎖課）。`,
+          tab: 'lock',
+        })
+      }
+      for (let i = 0; i < slots.length; i++) {
+        const key = `${slots[i]}|${c.name}|${g}`
+        sessions.push({
+          slot: slots[i], course: c.name, lang: c.lang || c.name, grade: g,
+          teacherId: exp[i] ?? '',
+          roomId: null,
+          state: config.nativeLang.states[key] ?? 'physical',
+        })
+      }
+    }
+    if (c.totalHours > 0 && allocatedTotal !== c.totalHours) {
+      issues.push({
+        level: 'warn',
+        text: `「${c.name}」已配 ${allocatedTotal} 節／需求 ${c.totalHours} 節${allocatedTotal < c.totalHours ? '——差額請於配課統計建立虛擬帳號補足' : '（超配）'}。`,
+      })
+    }
+  }
+
+  // 教室自動分配（取消的場次不占教室）
+  const taken = new Map<string, Set<string>>()
+  for (const s of sessions) {
+    if (s.state === 'cancelled') continue
+    const room = nativeRooms.find(r =>
+      (r.langs.length === 0 || r.langs.includes(s.lang)) && !(taken.get(s.slot)?.has(r.id)))
+    if (room) {
+      s.roomId = room.id
+      ;(taken.get(s.slot) ?? taken.set(s.slot, new Set()).get(s.slot)!).add(room.id)
+    } else {
+      issues.push({ level: 'warn', text: `本土語言教室不足：${s.slot} 的「${s.course}」分不到教室（檢查教室數與可排語別）。`, tab: 'room' })
+    }
+  }
+
+  return { sessions, issues }
 }
 
 /** 取一個年段時段格中所有可排課的 slotKey（依星期、節次排序）。 */

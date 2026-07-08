@@ -106,5 +106,5 @@ export default async function AllocationStatisticsPage() {
     demandByGradeSubject[g] = m
   }
 
-  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} reductions={reductions} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} reductions={reductions} extraCourses={config.extraCourses} />
 }

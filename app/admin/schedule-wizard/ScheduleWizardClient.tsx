@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useState, useEffect } from 'react'
 import Link from 'next/link'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, type ScheduleConfig } from '@/lib/scheduling'
-import { GRADES, GRADE_LABEL } from '@/lib/allocation'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, type ScheduleConfig } from '@/lib/scheduling'
+import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
@@ -17,6 +17,8 @@ interface Props {
   gradeHomeroomBase: Record<number, number>
   teacherNames: Record<string, string>
   homeroomHours: Record<string, Record<string, number>>
+  extraCourses: ExtraCourse[]
+  hoursByTeacher: Record<string, Record<string, Record<string, number>>>
   lastGeneratedAt: string | null
   initialPlanStatus: string | null
   savedPlan: Record<string, unknown> | null
@@ -27,7 +29,7 @@ type Progress = { iter: number; best: number; softBest: number; elapsed: number;
 type ViewKey = 'class' | 'teacher' | 'room'
 
 export default function ScheduleWizardClient(props: Props) {
-  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours } = props
+  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [result, setResult] = useState<EngineResult | null>(null)
@@ -48,11 +50,38 @@ export default function ScheduleWizardClient(props: Props) {
   )
 
   const { input, preflight } = useMemo(
-    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours }),
-    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours],
+    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher }),
+    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher],
   )
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')
+
+  // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
+  const [nativeStates, setNativeStates] = useState<Record<string, 'stream' | 'cancelled'>>(scheduleConfig.nativeLang.states)
+  const [nativeSaving, setNativeSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const nativeDerived = useMemo(
+    () => deriveNativeSessions({ config: { ...scheduleConfig, nativeLang: { states: nativeStates } }, extraCourses, hoursByTeacher }),
+    [scheduleConfig, nativeStates, extraCourses, hoursByTeacher],
+  )
+  const nativeRoomNames = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const z of scheduleConfig.roomZones) for (const r of z.rooms) if (r.kind === 'native') m[r.id] = (r.name || '本土語言教室') + r.no
+    return m
+  }, [scheduleConfig])
+  async function setNativeState(key: string, next: 'physical' | 'stream' | 'cancelled') {
+    const states = { ...nativeStates }
+    if (next === 'physical') delete states[key]
+    else states[key] = next
+    setNativeStates(states)
+    setNativeSaving('saving')
+    try {
+      const res = await fetch('/api/admin/schedule-config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, config: { ...scheduleConfig, nativeLang: { states } } }),
+      })
+      setNativeSaving(res.ok ? 'saved' : 'error')
+    } catch { setNativeSaving('error') }
+  }
 
   function run() {
     workerRef.current?.terminate()
@@ -291,6 +320,64 @@ export default function ScheduleWizardClient(props: Props) {
           classCounts={classCounts}
           teacherNames={teacherNames}
         />
+      )}
+
+      {/* 發布後：本土語場次（自動推導；管理者依實際情況切換狀態） */}
+      {(planStatus === 'published' || planStatus === 'final') && nativeDerived.sessions.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm font-semibold text-zinc-700">本土語場次
+              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×配課自動推導，全部預設實體。老師無法到校→改「直播」（共學、不具名）；該時段不開課→「取消」（學生回原班上閩南語）。</span>
+            </div>
+            <span className="text-xs">
+              {nativeSaving === 'saving' && <span className="text-zinc-500">儲存中…</span>}
+              {nativeSaving === 'saved' && <span className="text-green-600">✓ 已儲存</span>}
+              {nativeSaving === 'error' && <span className="text-red-600">⚠ 儲存失敗，請再點一次</span>}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="table-base">
+              <thead><tr><th>時段</th><th>課程</th><th>年級</th><th>教師</th><th>教室</th><th className="text-center">狀態</th></tr></thead>
+              <tbody>
+                {nativeDerived.sessions.map(s => {
+                  const [d, q] = s.slot.split('-').map(Number)
+                  const key = `${s.slot}|${s.course}|${s.grade}`
+                  const stateBtn = (st: 'physical' | 'stream' | 'cancelled', label: string, activeCls: string) => (
+                    <button key={st} disabled={planStatus === 'final'}
+                      onClick={() => setNativeState(key, st)}
+                      className={`text-xs px-2 py-0.5 rounded-sm border ${s.state === st ? activeCls : 'bg-white text-zinc-400 border-zinc-200 hover:border-zinc-400'} ${planStatus === 'final' ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                      {label}
+                    </button>
+                  )
+                  return (
+                    <tr key={key} className={s.state === 'cancelled' ? 'opacity-50' : ''}>
+                      <td className="whitespace-nowrap">{DAY_LABEL[d]}第{q}節</td>
+                      <td className="whitespace-nowrap">{s.course}{s.lang && s.lang !== s.course && <span className="text-xs text-zinc-400 ml-1">（{s.lang}）</span>}</td>
+                      <td className="whitespace-nowrap">{GRADE_LABEL[s.grade]}</td>
+                      <td className="whitespace-nowrap">
+                        {s.state === 'stream'
+                          ? <span className="text-sky-600">直播共學（不具名）</span>
+                          : s.teacherId ? (teacherNames[s.teacherId] ?? '？') : <span className="text-red-500 text-xs">未配課</span>}
+                      </td>
+                      <td className="whitespace-nowrap text-xs">
+                        {s.state === 'cancelled' ? <span className="text-zinc-400">—（回原班上閩南語）</span>
+                          : s.roomId ? (nativeRoomNames[s.roomId] ?? s.roomId) : <span className="text-red-500">教室不足</span>}
+                      </td>
+                      <td className="text-center whitespace-nowrap">
+                        <span className="inline-flex gap-1">
+                          {stateBtn('physical', '維持', 'bg-green-600 text-white border-green-600')}
+                          {stateBtn('stream', '直播', 'bg-sky-600 text-white border-sky-600')}
+                          {stateBtn('cancelled', '取消', 'bg-zinc-500 text-white border-zinc-500')}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {planStatus === 'final' && <p className="text-[11px] text-zinc-400">課表已定案，場次狀態唯讀；如需調整請先解除定案。</p>}
+        </div>
       )}
 
       {result && (

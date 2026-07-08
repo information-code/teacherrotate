@@ -7,10 +7,10 @@
 
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
-  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel,
+  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule,
 } from './scheduling'
-import { GRADE_LABEL } from './allocation'
+import { GRADE_LABEL, type ExtraCourse } from './allocation'
 
 export type Parity = 'weekly' | 'odd' | 'even'
 
@@ -126,6 +126,9 @@ export interface AssembleArgs {
   /** 導師自上節數（同科分擔用）：classKey → 科目 → 節數。
    *  科目有指派科任時，科任只排「每班節數 − 鎖課 − 導師分擔」的剩餘節數（如生活 6＝導師 3＋科任 3）。 */
   homeroomHours?: Record<string, Record<string, number>>
+  /** 其他課程（本土語語別課）＋各師配課節數：供本土語場次推導與語師占用。 */
+  extraCourses?: ExtraCourse[]
+  hoursByTeacher?: Record<string, Record<string, Record<string, number>>>
   seed?: number
 }
 
@@ -161,38 +164,20 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 
   // ── 本土語 ──
   const nativeTypeIds = new Set(config.lockTypes.filter(t => t.isNative).map(t => t.id))
-  const nativeExtraBlocked: Record<string, Set<string>> = {}   // 閩南語師（原班時段）＋實體語師（開課場次）
+  const nativeExtraBlocked: Record<string, Set<string>> = {}   // 閩南語師（原班時段）＋語別課師（推導場次）
   const blockNative = (tid: string, slot: string) => (nativeExtraBlocked[tid] ??= new Set()).add(slot)
   const nativeAgg = {
     streamClasses: [] as string[],       // 未指派閩南語師 → 直播共學（確認用）
     notLocked: [] as string[],           // 本土語鎖課格數 < 每班節數
-    noLang: new Set<string>(),           // 有本土語課但未設語別的老師
-    sessionIssues: [] as string[],       // 開課表問題（缺老師/缺語別/語別與教室不符）
   }
-  // 開課場次 → 實體語師占用＋檢核
-  {
-    const roomById: Record<string, { label: string; langs: string[] }> = {}
-    for (const z of config.roomZones) for (const r of z.rooms) {
-      if (r.kind === 'native') roomById[r.id] = { label: (r.name || '本土語言教室') + r.no, langs: r.langs }
-    }
-    const teacherSlotSeen = new Map<string, string>()
-    for (const [key, s] of Object.entries(config.nativeLang.sessions)) {
-      const [slot, roomId] = key.split('|')
-      const room = roomById[roomId]
-      if (!room) continue
-      if (!s.lang) nativeAgg.sessionIssues.push(`${room.label} ${slot} 未選語別`)
-      else if (room.langs.length && !room.langs.includes(s.lang)) nativeAgg.sessionIssues.push(`${room.label} 不可排「${s.lang}」`)
-      if (s.mode === 'physical') {
-        if (!s.teacherId) nativeAgg.sessionIssues.push(`${room.label} ${slot} 實體未選老師`)
-        else {
-          const dup = teacherSlotSeen.get(`${s.teacherId}|${slot}`)
-          if (dup) nativeAgg.sessionIssues.push(`${a.teacherNames[s.teacherId] ?? '？'} 同時段被排在兩間教室`)
-          teacherSlotSeen.set(`${s.teacherId}|${slot}`, roomId)
-          blockNative(s.teacherId, slot)
-          if (!config.nativeLang.teacherLang[s.teacherId]) nativeAgg.noLang.add(s.teacherId)
-        }
-      }
-    }
+  // 語別場次自動推導 → 語師占用（取消的場次不占）＋一致性檢核
+  const derived = deriveNativeSessions({
+    config,
+    extraCourses: a.extraCourses ?? [],
+    hoursByTeacher: a.hoursByTeacher ?? {},
+  })
+  for (const s of derived.sessions) {
+    if (s.state !== 'cancelled' && s.teacherId) blockNative(s.teacherId, s.slot)
   }
 
   for (const g of [1, 2, 3, 4, 5, 6]) {
@@ -249,7 +234,6 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         const minnanTeacher = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
         if (minnanTeacher && minnanTeacher !== HOMEROOM_SELF) {
           for (const slot of nativeSlotsOfClass) blockNative(minnanTeacher, slot)
-          if (!config.nativeLang.teacherLang[minnanTeacher]) nativeAgg.noLang.add(minnanTeacher)
         } else if (!minnanTeacher) {
           nativeAgg.streamClasses.push(classLabel(g, i))
         }
@@ -373,10 +357,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}`, tab: 'room' })
   // 本土語檢核
   if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
-  if (nativeAgg.noLang.size) {
-    preflight.push({ level: 'warn', text: `有本土語課但尚未設定語別：${joinCap(Array.from(nativeAgg.noLang).map(id => a.teacherNames[id] ?? '？'))}`, tab: 'native' })
-  }
-  if (nativeAgg.sessionIssues.length) preflight.push({ level: 'warn', text: `本土語開課表待補：${joinCap(nativeAgg.sessionIssues)}`, tab: 'native' })
+  for (const issue of derived.issues) preflight.push(issue)
   if (nativeAgg.streamClasses.length) preflight.push({ level: 'warn', text: `本土語未指派閩南語老師、將以直播共學處理（請確認非漏填）：${joinCap(nativeAgg.streamClasses)}`, tab: 'subject' })
 
   return {

@@ -83,11 +83,16 @@ export interface AdminBase {
   chief: number       // 組長
 }
 
+/** 其他課程（非年級科目）：本土語語別課（客語、手語、原民語…）等，
+ *  需求以「總節數」計（不綁班級數）；配課仍按年級填於 subjectGradeHours。 */
+export interface ExtraCourse { name: string; lang: string; totalHours: number }
+
 /** 整年度配課設定 */
 export interface AllocationConfig {
   grades: Record<number, GradeConfig>   // 1..6
   subjectBase: number                   // 科任基本授課節數
   adminBase: AdminBase                  // 行政基本授課節數（校長/主任/組長）
+  extraCourses: ExtraCourse[]           // 其他課程（語別課等）
 }
 
 // 各年級必修課（前端預設）。低年級(1-2) 有「生活」、無社會/自然/英語；
@@ -121,7 +126,7 @@ export function defaultGradeConfig(grade: number): GradeConfig {
 export function defaultAllocationConfig(): AllocationConfig {
   const grades: Record<number, GradeConfig> = {}
   for (const g of GRADES) grades[g] = defaultGradeConfig(g)
-  return { grades, subjectBase: 0, adminBase: { principal: 0, director: 0, chief: 0 } }
+  return { grades, subjectBase: 0, adminBase: { principal: 0, director: 0, chief: 0 }, extraCourses: [] }
 }
 
 /** 合併資料庫讀回的（可能不完整的）config 與預設值，確保結構完整。 */
@@ -137,6 +142,9 @@ export function normalizeConfig(raw: unknown): AllocationConfig {
     subjectBase: Number(r.subjectBase ?? 0),
     adminBase,
     grades: {},
+    extraCourses: Array.isArray(r.extraCourses)
+      ? r.extraCourses.map(c => ({ name: String(c.name ?? ''), lang: String(c.lang ?? ''), totalHours: Number(c.totalHours ?? 0) }))
+      : [],
   }
   for (const g of GRADES) {
     const rg = r.grades?.[g]
