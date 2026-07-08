@@ -47,10 +47,27 @@ const textareaFields: { key: keyof FormValues; label: string }[] = [
   { key: 'other',                   label: '其他' },
 ]
 
+// 分頁
+type TabKey = 'basic' | 'education' | 'specialty' | 'growth' | 'experience'
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'basic',      label: '基本資料' },
+  { key: 'education',  label: '學歷資料' },
+  { key: 'specialty',  label: '專長資格' },
+  { key: 'growth',     label: '專業成長' },
+  { key: 'experience', label: '服務經歷' },
+]
+
+const employmentLabels: Record<string, string> = {
+  formal: '正式',
+  substitute: '代理',
+  hourly: '鐘點',
+}
+
 export function ProfileForm({ profile }: ProfileFormProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<TabKey>('basic')
 
   const initialExperience: ExperienceItem[] = Array.isArray(profile.experience)
     ? (profile.experience as unknown[]).map((e) => {
@@ -172,7 +189,8 @@ export function ProfileForm({ profile }: ProfileFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-3xl">
+    // 驗證失敗時（語言級數必填都在專長資格頁）自動切到該分頁，避免錯誤藏在隱藏分頁裡
+    <form onSubmit={handleSubmit(onSubmit, () => setTab('specialty'))} className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between mb-2">
         <h2 className="page-title mb-0">基本資料</h2>
         <div className="flex items-center gap-3">
@@ -184,17 +202,42 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         </div>
       </div>
 
+      {/* 分頁列 */}
+      <div className="border-b border-zinc-200 overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${
+                tab === t.key
+                  ? 'border-zinc-700 text-zinc-800 font-semibold'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-600'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 基本資料 ──
+          各分頁用 CSS 隱藏而非條件卸載：保住 react-hook-form 的欄位註冊、
+          dirty 狀態與驗證，切換分頁不會遺失未儲存的輸入 */}
+      <div className={tab === 'basic' ? 'space-y-6' : 'hidden'}>
+
       {/* 不可修改資訊 */}
       <div className="card">
-        <p className="text-xs text-zinc-400 mb-3">以下資訊由 Google 帳號同步，無法修改</p>
+        <p className="text-xs text-zinc-400 mb-3">以下資訊由系統管理，無法修改</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">電子信箱</label>
             <input value={profile.email} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
           </div>
           <div>
-            <label className="label">身份</label>
-            <input value={profile.role === 'superadmin' ? '超級管理員' : profile.role === 'admin' ? '管理員' : '教師'} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
+            <label className="label">身分</label>
+            <input value={employmentLabels[profile.employment_type] ?? profile.employment_type} disabled className="input bg-zinc-50 text-zinc-500" readOnly />
           </div>
         </div>
       </div>
@@ -218,6 +261,11 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         </div>
       </div>
 
+      </div>
+
+      {/* ── 學歷資料 ── */}
+      <div className={tab === 'education' ? 'space-y-6' : 'hidden'}>
+
       {/* 學歷 */}
       <div className="card">
         <h3 className="text-sm font-semibold text-zinc-700 mb-4">學歷</h3>
@@ -240,6 +288,11 @@ export function ProfileForm({ profile }: ProfileFormProps) {
           </div>
         </div>
       </div>
+
+      </div>
+
+      {/* ── 專長資格 ── */}
+      <div className={tab === 'specialty' ? 'space-y-6' : 'hidden'}>
 
       {/* 語言專長 */}
       <div className="card">
@@ -297,6 +350,11 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         </div>
       </div>
 
+      </div>
+
+      {/* ── 專業成長 ── */}
+      <div className={tab === 'growth' ? 'space-y-6' : 'hidden'}>
+
       {/* 經歷敘述 */}
       <div className="card">
         <h3 className="text-sm font-semibold text-zinc-700 mb-4">自我描述</h3>
@@ -313,6 +371,11 @@ export function ProfileForm({ profile }: ProfileFormProps) {
           ))}
         </div>
       </div>
+
+      </div>
+
+      {/* ── 服務經歷 ── */}
+      <div className={tab === 'experience' ? 'space-y-6' : 'hidden'}>
 
       {/* 服務經歷 */}
       <div className="card">
@@ -352,6 +415,8 @@ export function ProfileForm({ profile }: ProfileFormProps) {
             </div>
           ))}
         </div>
+      </div>
+
       </div>
 
       <div className="flex justify-end pb-6">
