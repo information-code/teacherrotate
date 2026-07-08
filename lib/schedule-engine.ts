@@ -208,18 +208,11 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         }
       }
     }
-    // 每班該科科任要上的節數 ＝ 每班節數 − 鎖課格 − 導師自上
-    // （本土語鎖課格不扣：那格正是配班的閩南語師要上的課）
-    const remainderOf = (g: number, i: number, s: { name: string; perClass: number }) => {
-      const key = ck(g, i)
-      let lockCount = 0
-      for (const tid of Object.values(config.lockCells[key] ?? {})) {
-        const t = lockTypeMap[tid]
-        if (t?.isNative) continue
-        if ((t?.subject || t?.label || '鎖課') === s.name) lockCount++
-      }
-      return s.perClass - lockCount - (a.homeroomHours?.[key]?.[s.name] ?? 0)
-    }
+    // 每班該科科任要上的節數 ＝ 每班節數 − 導師自上。
+    // 鎖課不扣：鎖課只是把該班該科的某節固定在那格（最高硬規則），
+    // 上課的人照配課帳算（導師自上或配班科任），節數不因鎖課而改變。
+    const remainderOf = (g: number, i: number, s: { name: string; perClass: number }) =>
+      s.perClass - (a.homeroomHours?.[ck(g, i)]?.[s.name] ?? 0)
     for (const pass of ['manual', 'auto'] as const) {
       for (const g of [1, 2, 3, 4, 5, 6]) {
         for (let i = 0; i < (classCounts[g] ?? 0); i++) {
