@@ -30,7 +30,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
     const usedColors = new Set(config.lockTypes.map(t => t.color))
     const color = LOCK_COLOR_KEYS.find(k => !usedColors.has(k)) ?? LOCK_COLOR_KEYS[config.lockTypes.length % LOCK_COLOR_KEYS.length]
     const id = crypto.randomUUID()
-    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color }] }))
+    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color, isNative: false }] }))
     setActive(id)
   }
   function removeType(t: LockType) {
@@ -101,6 +101,10 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
                   placeholder="名目（管理者辨識用）" className="input py-1 text-sm flex-1 min-w-32" />
                 <input value={t.subject} onChange={e => updateType(t.id, { subject: e.target.value })}
                   placeholder="科目（課表顯示）" list="lock-subject-options" className="input py-1 text-sm w-36" />
+                <label className="flex items-center gap-1 text-xs text-zinc-500 flex-shrink-0" title="勾選＝本土語鎖課：作為本土語開課表的時段來源、班級格顯示閩南語老師">
+                  <input type="checkbox" checked={t.isNative} onChange={e => updateType(t.id, { isNative: e.target.checked })} />
+                  本土語鎖課
+                </label>
                 <button onClick={() => removeType(t)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
               </div>
             )

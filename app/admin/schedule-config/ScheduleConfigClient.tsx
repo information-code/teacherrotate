@@ -10,6 +10,7 @@ import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import SubjectAssignTab from './SubjectAssignTab'
 import RoomTab from './RoomTab'
 import LockTab from './LockTab'
+import NativeTab from './NativeTab'
 import OffTab from './OffTab'
 import WeightTab from './WeightTab'
 import type { GradeSubject, HomeroomTeacher, NeedsRef, OffTeacher, SubjectTeacher } from './page'
@@ -26,15 +27,16 @@ interface Props {
   needsRefs: NeedsRef[]
 }
 
-type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight'
+type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'native' | 'off' | 'weight'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'time', label: '1 年段可排課時間' },
   { key: 'homeroom', label: '2 導師配班' },
   { key: 'subject', label: '3 科任配班' },
   { key: 'room', label: '4 教室設定' },
   { key: 'lock', label: '5 鎖課設定' },
-  { key: 'off', label: '6 不排課標記' },
-  { key: 'weight', label: '7 權重設定' },
+  { key: 'native', label: '6 本土語設定' },
+  { key: 'off', label: '7 不排課標記' },
+  { key: 'weight', label: '8 權重設定' },
 ]
 
 export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, subjectTeachers, offTeachers, needsRefs }: Props) {
@@ -231,12 +233,17 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
         <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
       )}
 
-      {/* ── 六、不排課標記 ── */}
+      {/* ── 六、本土語設定 ── */}
+      {tab === 'native' && (
+        <NativeTab config={config} setConfig={setConfig} subjectTeachers={subjectTeachers} offTeachers={offTeachers} />
+      )}
+
+      {/* ── 七、不排課標記 ── */}
       {tab === 'off' && (
         <OffTab config={config} setConfig={setConfig} offTeachers={offTeachers} needsRefs={needsRefs} />
       )}
 
-      {/* ── 七、權重設定 ── */}
+      {/* ── 八、權重設定 ── */}
       {tab === 'weight' && (
         <WeightTab config={config} setConfig={setConfig} gradeSubjects={gradeSubjects} />
       )}

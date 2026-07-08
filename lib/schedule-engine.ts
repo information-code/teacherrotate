@@ -58,7 +58,7 @@ export interface EngineResult {
   elapsedMs: number
 }
 
-export interface PreflightIssue { level: 'error' | 'warn'; text: string }
+export interface PreflightIssue { level: 'error' | 'warn'; text: string; tab?: string }   // tab＝排課設定分頁 key（引導按鈕用）
 
 // ── 亂數（可重現） ──
 function mulberry32(seed: number) {
@@ -159,6 +159,42 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     offByTeacher[p.teacherId] = [...(offByTeacher[p.teacherId] ?? []), ...p.slots]
   }
 
+  // ── 本土語 ──
+  const nativeTypeIds = new Set(config.lockTypes.filter(t => t.isNative).map(t => t.id))
+  const nativeExtraBlocked: Record<string, Set<string>> = {}   // 閩南語師（原班時段）＋實體語師（開課場次）
+  const blockNative = (tid: string, slot: string) => (nativeExtraBlocked[tid] ??= new Set()).add(slot)
+  const nativeAgg = {
+    streamClasses: [] as string[],       // 未指派閩南語師 → 直播共學（確認用）
+    notLocked: [] as string[],           // 本土語鎖課格數 < 每班節數
+    noLang: new Set<string>(),           // 有本土語課但未設語別的老師
+    sessionIssues: [] as string[],       // 開課表問題（缺老師/缺語別/語別與教室不符）
+  }
+  // 開課場次 → 實體語師占用＋檢核
+  {
+    const roomById: Record<string, { label: string; langs: string[] }> = {}
+    for (const z of config.roomZones) for (const r of z.rooms) {
+      if (r.kind === 'native') roomById[r.id] = { label: (r.name || '本土語言教室') + r.no, langs: r.langs }
+    }
+    const teacherSlotSeen = new Map<string, string>()
+    for (const [key, s] of Object.entries(config.nativeLang.sessions)) {
+      const [slot, roomId] = key.split('|')
+      const room = roomById[roomId]
+      if (!room) continue
+      if (!s.lang) nativeAgg.sessionIssues.push(`${room.label} ${slot} 未選語別`)
+      else if (room.langs.length && !room.langs.includes(s.lang)) nativeAgg.sessionIssues.push(`${room.label} 不可排「${s.lang}」`)
+      if (s.mode === 'physical') {
+        if (!s.teacherId) nativeAgg.sessionIssues.push(`${room.label} ${slot} 實體未選老師`)
+        else {
+          const dup = teacherSlotSeen.get(`${s.teacherId}|${slot}`)
+          if (dup) nativeAgg.sessionIssues.push(`${a.teacherNames[s.teacherId] ?? '？'} 同時段被排在兩間教室`)
+          teacherSlotSeen.set(`${s.teacherId}|${slot}`, roomId)
+          blockNative(s.teacherId, slot)
+          if (!config.nativeLang.teacherLang[s.teacherId]) nativeAgg.noLang.add(s.teacherId)
+        }
+      }
+    }
+  }
+
   for (const g of [1, 2, 3, 4, 5, 6]) {
     const count = classCounts[g] ?? 0
     if (count === 0) continue
@@ -202,6 +238,22 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       // 鎖課占用後扣科目需求
       const lockCountBySubject: Record<string, number> = {}
       for (const txt of Object.values(lockDisplay)) lockCountBySubject[txt] = (lockCountBySubject[txt] ?? 0) + 1
+
+      // ── 本土語：閩南語師（科任配班有指派）於該班本土語鎖課時段在原班授課 → 占用；未指派＝直播共學 ──
+      const nativeSlotsOfClass = Object.entries(locks).filter(([, tid]) => nativeTypeIds.has(tid)).map(([slot]) => slot)
+      const nativePerClass = subjects.find(s2 => s2.name === '本土語')?.perClass ?? 0
+      if (nativePerClass > 0 && nativeSlotsOfClass.length < nativePerClass) {
+        nativeAgg.notLocked.push(`${classLabel(g, i)}（鎖 ${nativeSlotsOfClass.length}/${nativePerClass}）`)
+      }
+      if (nativeSlotsOfClass.length > 0) {
+        const minnanTeacher = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
+        if (minnanTeacher && minnanTeacher !== HOMEROOM_SELF) {
+          for (const slot of nativeSlotsOfClass) blockNative(minnanTeacher, slot)
+          if (!config.nativeLang.teacherLang[minnanTeacher]) nativeAgg.noLang.add(minnanTeacher)
+        } else if (!minnanTeacher) {
+          nativeAgg.streamClasses.push(classLabel(g, i))
+        }
+      }
 
       // 展開科任課（支援同科分擔：科任只排扣除導師自上節數後的剩餘）
       for (const s of subjects) {
@@ -259,7 +311,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 
       for (const s of subjects) {
         const v = config.subjectClassTeacher[subjectClassKey(g, i, s.name)] ?? ''
-        if (!v && !s.homeroom) {
+        // 本土語未指派＝直播共學（另行確認），不列入未配滿警告
+        if (!v && !s.homeroom && s.name !== '本土語') {
           const k2 = `${g}|${s.name}`
           agg.unassigned.set(k2, (agg.unassigned.get(k2) ?? 0) + 1)
         }
@@ -267,10 +320,12 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     }
   }
 
-  // 科任教師封鎖（只需引擎會用到的老師）
+  // 科任教師封鎖（只需引擎會用到的老師）＝個人不排課 ∪ 本土語占用（原班閩南語／實體開課）
   const teacherIds = new Set(lessons.map(l => l.teacherId))
   const teacherBlocked: Record<string, string[]> = {}
-  for (const id of Array.from(teacherIds)) teacherBlocked[id] = offByTeacher[id] ?? []
+  for (const id of Array.from(teacherIds)) {
+    teacherBlocked[id] = Array.from(new Set([...(offByTeacher[id] ?? []), ...Array.from(nativeExtraBlocked[id] ?? [])]))
+  }
 
   // 前置檢核：教師配課節數 vs 其授課班級可排時段（扣除自身不排課）——超過即必然有課排不進
   const loadByTeacher: Record<string, number> = {}
@@ -301,21 +356,28 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   // ── 統整輸出（一類一行）──
   const joinCap = (arr: string[], cap = 15) =>
     arr.length > cap ? `${arr.slice(0, cap).join('、')}…等 ${arr.length} 項` : arr.join('、')
-  if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班（排課設定分頁 3）。' })
-  if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}` })
-  if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}` })
-  if (agg.noHomeroom.length) preflight.push({ level: 'warn', text: `尚未指定導師：${joinCap(agg.noHomeroom)}` })
+  if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班。', tab: 'subject' })
+  if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}`, tab: 'subject' })
+  if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}`, tab: 'subject' })
+  if (agg.noHomeroom.length) preflight.push({ level: 'warn', text: `尚未指定導師：${joinCap(agg.noHomeroom)}`, tab: 'homeroom' })
   if (agg.unassigned.size) {
     const parts = Array.from(agg.unassigned.entries()).map(([k2, n]) => {
       const [g, subj] = k2.split('|')
       return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
     })
-    preflight.push({ level: 'warn', text: `尚未配滿需求節數（未指派科任，暫視為導師自排）：${joinCap(parts)}` })
+    preflight.push({ level: 'warn', text: `尚未配滿需求節數（未指派科任，暫視為導師自排）：${joinCap(parts)}`, tab: 'subject' })
   }
-  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}` })
-  if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `視藝單雙週假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}` })
+  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
+  if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `視藝單雙週假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
   const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
-  if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}` })
+  if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}`, tab: 'room' })
+  // 本土語檢核
+  if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
+  if (nativeAgg.noLang.size) {
+    preflight.push({ level: 'warn', text: `有本土語課但尚未設定語別：${joinCap(Array.from(nativeAgg.noLang).map(id => a.teacherNames[id] ?? '？'))}`, tab: 'native' })
+  }
+  if (nativeAgg.sessionIssues.length) preflight.push({ level: 'warn', text: `本土語開課表待補：${joinCap(nativeAgg.sessionIssues)}`, tab: 'native' })
+  if (nativeAgg.streamClasses.length) preflight.push({ level: 'warn', text: `本土語未指派閩南語老師、將以直播共學處理（請確認非漏填）：${joinCap(nativeAgg.streamClasses)}`, tab: 'subject' })
 
   return {
     input: {

@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import {
-  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, classLabel, roomLabel,
+  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, NATIVE_LANGS, classLabel, roomLabel,
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
 } from '@/lib/scheduling'
 import { GRADES, orderSubjectNames } from '@/lib/allocation'
@@ -17,7 +17,7 @@ interface Props {
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerId: '' }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerId: '', langs: [] }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
@@ -186,12 +186,26 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
                       </select>
                     )}
                     {r.kind === 'native' && (
-                      <div className="flex gap-1">
-                        <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
-                          placeholder="名稱（空＝本土語言教室）" className="input py-0.5 text-xs flex-1 min-w-0" />
-                        <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
-                          placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
-                      </div>
+                      <>
+                        <div className="flex gap-1">
+                          <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
+                            placeholder="名稱（空＝本土語言教室）" className="input py-0.5 text-xs flex-1 min-w-0" />
+                          <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
+                            placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
+                        </div>
+                        <div className="flex gap-0.5 flex-wrap" title="可排語別：非清單內的語別不可排；都不勾＝任何語別皆可">
+                          {NATIVE_LANGS.map(lang => {
+                            const on = r.langs.includes(lang)
+                            return (
+                              <button key={lang} type="button"
+                                onClick={() => updateRoom(z.id, r.id, { langs: on ? r.langs.filter(x => x !== lang) : [...r.langs, lang] })}
+                                className={`text-[9px] px-1 py-0 rounded-sm border ${on ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-zinc-400 border-zinc-200'}`}>
+                                {lang.replace('（', '').replace('）', '')}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </>
                     )}
                     {r.kind === 'subject' && (
                       <>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type BandGrid, type Band } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
-import type { TTPlaced } from './page'
+import type { TTPlaced, LockCell, NativeSessionView } from './page'
 
 interface Props {
   year: number
@@ -13,15 +13,17 @@ interface Props {
   homeroomCells: Record<string, Record<string, string>>   // classKey → slot → 科目（導師課）
   classTeacher: Record<string, string>
   bands: Record<Band, BandGrid>
-  locks: Record<string, Record<string, string>>
+  locks: Record<string, Record<string, LockCell>>
   roomNames: Record<string, string>
+  nativeSessions: NativeSessionView[]
+  nativeClassCells: { classKey: string; slot: string; teacherId: string }[]
   planStatus: string
 }
 
 type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
-export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, planStatus }: Props) {
+export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus }: Props) {
   const iTeach = useMemo(() => placed.some(p => p.teacherId === userId), [placed, userId])
   const [view, setView] = useState<View>(myClassKey ? 'class' : 'teacher')
   const [classSel, setClassSel] = useState<string>(myClassKey ?? '')
@@ -40,8 +42,10 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
     for (const p of placed) m.set(p.teacherId, p.teacherName)
     return Array.from(m.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   }, [placed])
-  const roomIds = useMemo(() => Array.from(new Set(placed.filter(p => p.roomId).map(p => p.roomId as string)))
-    .sort((a, b) => (roomNames[a] ?? '').localeCompare(roomNames[b] ?? '', 'zh-Hant')), [placed, roomNames])
+  const roomIds = useMemo(() => Array.from(new Set([
+    ...placed.filter(p => p.roomId).map(p => p.roomId as string),
+    ...nativeSessions.map(s => s.roomId),
+  ])).sort((a, b) => (roomNames[a] ?? '').localeCompare(roomNames[b] ?? '', 'zh-Hant')), [placed, nativeSessions, roomNames])
 
   const labelOf = (ck: string) => { const [g, i] = ck.split('-').map(Number); return classLabel(g, i) }
 
@@ -60,9 +64,9 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         const [d, q] = s.split('-').map(Number)
         put(d, q, { main: subj, kind: 'hr' })
       }
-      for (const [s, txt] of Object.entries(locks[classSel] ?? {})) {
+      for (const [s, lc] of Object.entries(locks[classSel] ?? {})) {
         const [d, q] = s.split('-').map(Number)
-        put(d, q, { main: txt, kind: 'lock' })
+        put(d, q, { main: lc.main, sub: lc.sub, kind: 'lock' })
       }
     } else if (view === 'teacher' && teacherSel) {
       for (const p of placed.filter(p => p.teacherId === teacherSel)) {
@@ -70,6 +74,16 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         const v = { main: `${p.classLabel} ${p.subject}`, sub: p.roomId ? roomNames[p.roomId] : '原班', kind: 'subject' as const, bi }
         put(p.day, p.period, v)
         if (p.size === 2) put(p.day, p.period + 1, v)
+      }
+      // 閩南語師：原班本土語場次
+      for (const c of nativeClassCells.filter(c => c.teacherId === teacherSel)) {
+        const [d, q] = c.slot.split('-').map(Number)
+        put(d, q, { main: `${labelOf(c.classKey)} 本土語`, sub: '原班（閩南語）', kind: 'lock' })
+      }
+      // 實體語師：本土語言教室場次
+      for (const s of nativeSessions.filter(s => s.mode === 'physical' && s.teacherId === teacherSel)) {
+        const [d, q] = s.slot.split('-').map(Number)
+        put(d, q, { main: `本土語（${s.lang}）`, sub: s.roomLabel, kind: 'lock' })
       }
       // 導師自己的課（若此老師是導師）
       const ck = Object.entries(classTeacher).find(([, tid]) => tid === teacherSel)?.[0]
@@ -84,9 +98,18 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         put(p.day, p.period, v)
         if (p.size === 2) put(p.day, p.period + 1, v)
       }
+      // 本土語言教室：開課場次（實體含師名、共學不具名）
+      for (const s of nativeSessions.filter(s => s.roomId === roomSel)) {
+        const [d, q] = s.slot.split('-').map(Number)
+        put(d, q, {
+          main: `本土語（${s.lang}）`,
+          sub: s.mode === 'physical' ? s.teacherName : '直播共學',
+          kind: 'lock',
+        })
+      }
     }
     return m
-  }, [view, classSel, teacherSel, roomSel, placed, homeroomCells, locks, roomNames, classTeacher])
+  }, [view, classSel, teacherSel, roomSel, placed, homeroomCells, locks, roomNames, classTeacher, nativeSessions, nativeClassCells])
 
   // 班級檢視用該年段的可排格；教師/教室檢視用全 7 節
   const grid = view === 'class' && classSel ? bands[bandOf(Number(classSel.split('-')[0]))] : null

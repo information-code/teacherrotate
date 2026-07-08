@@ -30,8 +30,9 @@ export interface BandGrid {
   teachable: Record<string, boolean>    // key = `${day}-${period}` → 是否可排課節
 }
 
-/** 鎖課名目：名目（label）給管理者辨識、科目（subject）顯示在課表格子上。 */
-export interface LockType { id: string; label: string; subject: string; color: string }
+/** 鎖課名目：名目（label）給管理者辨識、科目（subject）顯示在課表格子上。
+ *  isNative＝本土語鎖課（本土語開課表的時段來源、班級格顯示閩南語師，與名目取名無關）。 */
+export interface LockType { id: string; label: string; subject: string; color: string; isNative: boolean }
 
 // 鎖課名目可選的低彩度色票（key 存進設定，顯示時查表）
 export const LOCK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -70,8 +71,21 @@ export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室'
 
 /** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）
  *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）
- *  ＋管理教師（managerId，選填）：排課時該教室優先給管理教師的課使用。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerId: string }
+ *  ＋管理教師（managerId，選填）：排課時該教室優先給管理教師的課使用
+ *  ＋可排語別（langs，本土語言教室用）：非清單內的語別不可排；空＝任何語別皆可。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerId: string; langs: string[] }
+
+// 本土語語別（每位老師一個）
+export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸）', '台灣手語', '原住民族語', '新住民語', '閩東語']
+
+/** 本土語開課表：一場課＝某個本土語鎖課時段 × 某間本土語言教室。
+ *  未列入（關閉）＝該教室該時段不開課。實體必填授課老師；共學不具名。 */
+export interface NativeSession { mode: 'physical' | 'stream'; lang: string; teacherId: string }
+
+export interface NativeLangConfig {
+  teacherLang: Record<string, string>              // teacherId → 語別
+  sessions: Record<string, NativeSession>          // `${slotKey}|${roomId}` → 場次
+}
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
 export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
@@ -224,6 +238,7 @@ export interface ScheduleConfig {
   personalOff: PersonalOff[]                      // 個人不排課
   roomZones: RoomZone[]                           // 教室設定：樓層×區域×相鄰教室
   weights: ScheduleWeights                        // 權重設定：內建規則＋模板規則實例
+  nativeLang: NativeLangConfig                    // 本土語設定：老師語別＋開課表
 }
 
 /** 產生一張時段格：halfDays 中的星期只開 1~4 節（半天），其餘整天 7 節。 */
@@ -254,6 +269,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     personalOff: [],
     roomZones: [],
     weights: defaultScheduleWeights(),
+    nativeLang: { teacherLang: {}, sessions: {} },
   }
 }
 
@@ -294,6 +310,8 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       ? r.lockTypes.map(t => ({
           id: String(t.id ?? ''), label: String(t.label ?? ''), subject: String(t.subject ?? ''),
           color: LOCK_COLORS[String(t.color ?? '')] ? String(t.color) : LOCK_COLOR_KEYS[0],
+          // 舊資料自動遷移：科目為「本土語」者視為本土語鎖課
+          isNative: t.isNative === true || String(t.subject ?? '') === '本土語',
         }))
       : [],
     lockCells,
@@ -315,11 +333,23 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                 kind: (['class', 'subject', 'native', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
                 classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
                 subject: String(rm.subject ?? ''), managerId: String(rm.managerId ?? ''),
+                langs: Array.isArray(rm.langs) ? rm.langs.map(String) : [],
               }))
             : [],
         }))
       : [],
     weights: normalizeScheduleWeights((raw as Record<string, unknown>).weights),
+    nativeLang: (() => {
+      const n = (raw as { nativeLang?: Partial<NativeLangConfig> }).nativeLang
+      const teacherLang: Record<string, string> = {}
+      for (const [k, v] of Object.entries(n?.teacherLang ?? {})) if (v) teacherLang[k] = String(v)
+      const sessions: Record<string, NativeSession> = {}
+      for (const [k, v] of Object.entries(n?.sessions ?? {})) {
+        if (!v || (v.mode !== 'physical' && v.mode !== 'stream')) continue
+        sessions[k] = { mode: v.mode, lang: String(v.lang ?? ''), teacherId: String(v.teacherId ?? '') }
+      }
+      return { teacherLang, sessions }
+    })(),
   }
 }
 

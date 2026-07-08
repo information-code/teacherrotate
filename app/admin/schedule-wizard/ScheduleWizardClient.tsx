@@ -229,12 +229,23 @@ export default function ScheduleWizardClient(props: Props) {
         </span>
       </div>
 
-      {/* 前置檢查 */}
+      {/* 前置檢查（附前往設定引導按鈕） */}
       {(errors.length > 0 || warns.length > 0) && (
-        <div className="card p-3 space-y-1">
+        <div className="card p-3 space-y-1.5">
           <div className="text-sm font-semibold text-zinc-700">前置檢查</div>
-          {errors.map((p, i) => <p key={`e${i}`} className="text-xs text-red-600">✕ {p.text}</p>)}
-          {warns.map((p, i) => <p key={`w${i}`} className="text-xs text-amber-600">⚠ {p.text}</p>)}
+          {[...errors, ...warns].map((p, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                {p.level === 'error' ? '✕' : '⚠'} {p.text}
+              </p>
+              {p.tab && (
+                <Link href={`/admin/schedule-config?tab=${p.tab}`}
+                  className="text-[11px] px-1.5 py-0.5 rounded-sm border border-zinc-300 text-zinc-500 hover:text-zinc-800 hover:border-zinc-500 whitespace-nowrap flex-shrink-0">
+                  前往設定 →
+                </Link>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
