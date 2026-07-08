@@ -158,6 +158,12 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['schedule_plan']['Insert']>
         Relationships: []
       }
+      schedule_homeroom: {
+        Row: { year: number; class_key: string; teacher_id: string; cells: Json; confirmed_at: string | null; updated_at: string }
+        Insert: { year: number; class_key: string; teacher_id: string; cells?: Json; confirmed_at?: string | null; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['schedule_homeroom']['Insert']>
+        Relationships: []
+      }
       equipment: {
         Row: {
           id: string; name: string; location: string; asset_number: string

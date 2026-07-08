@@ -15,7 +15,7 @@ export default async function ScheduleWizardPage() {
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     admin.from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin'),
-    admin.from('schedule_plan').select('generated_at').eq('year', year).maybeSingle(),
+    admin.from('schedule_plan').select('generated_at, plan').eq('year', year).maybeSingle(),
     admin.from('allocation').select('teacher_id, data').eq('year', year),
   ])
   const allocConfig = normalizeConfig(cfgRow?.config)
@@ -54,6 +54,7 @@ export default async function ScheduleWizardPage() {
       teacherNames={teacherNames}
       homeroomHours={homeroomHours}
       lastGeneratedAt={planRow?.generated_at ?? null}
+      initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
     />
   )
 }

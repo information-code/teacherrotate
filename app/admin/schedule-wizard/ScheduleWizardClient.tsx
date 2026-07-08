@@ -17,6 +17,7 @@ interface Props {
   teacherNames: Record<string, string>
   homeroomHours: Record<string, Record<string, number>>
   lastGeneratedAt: string | null
+  initialPlanStatus: string | null
 }
 
 type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number }
@@ -32,6 +33,8 @@ export default function ScheduleWizardClient(props: Props) {
   const [teacherSel, setTeacherSel] = useState('')
   const [roomSel, setRoomSel] = useState('')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [planStatus, setPlanStatus] = useState<string | null>(props.initialPlanStatus)
+  const [phaseBusy, setPhaseBusy] = useState(false)
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
@@ -76,6 +79,7 @@ export default function ScheduleWizardClient(props: Props) {
         body: JSON.stringify({
           year,
           plan: {
+            status: 'draft',   // 重新儲存＝回到草稿，需重新發布
             totalPenalty: result.totalPenalty,
             placed: result.placed,
             unplaced: result.unplaced,
@@ -85,7 +89,27 @@ export default function ScheduleWizardClient(props: Props) {
         }),
       })
       setSaveStatus(res.ok ? 'saved' : 'error')
+      if (res.ok) setPlanStatus('draft')
     } catch { setSaveStatus('error') }
+  }
+
+  /** 發布導師排課／撤回發布（伺服器端把關：未排與必排未覆蓋須為 0）。 */
+  async function setPhase(action: 'publish' | 'unpublish') {
+    if (action === 'publish' && result && saveStatus !== 'saved') {
+      alert('請先按「儲存課表」再發布（發布的是已儲存的結果）。')
+      return
+    }
+    if (action === 'unpublish' && !confirm('撤回發布後可重新排課，但導師已填的排課選填可能與新課表不符。確定撤回？')) return
+    setPhaseBusy(true)
+    try {
+      const res = await fetch('/api/admin/schedule-plan', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, action }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? '操作失敗'); return }
+      setPlanStatus(data.status)
+    } finally { setPhaseBusy(false) }
   }
 
   // ── 檢視資料索引 ──
@@ -180,10 +204,26 @@ export default function ScheduleWizardClient(props: Props) {
     <div className="space-y-4 max-w-6xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="page-title mb-1">排課精靈 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span></h2>
+          <h2 className="page-title mb-1">排課精靈
+            <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
+            {planStatus === 'published' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">已發布導師排課</span>}
+            {planStatus === 'final' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-zinc-800 text-white rounded-sm align-middle">已定案</span>}
+            {planStatus === 'draft' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-500 border border-zinc-200 align-middle">草稿</span>}
+          </h2>
           <p className="text-xs text-zinc-400">一鍵排出科任教師與科任教室課表；班級課表留白＝導師自排空間。{props.lastGeneratedAt && `上次儲存：${new Date(props.lastGeneratedAt).toLocaleString('zh-TW')}`}</p>
         </div>
-        <Link href="/admin/schedule-config?tab=weight" className="btn btn-secondary text-sm py-1">⚙ 調整權重設定</Link>
+        <span className="flex gap-2 flex-shrink-0">
+          {planStatus !== 'published' && planStatus !== 'final' && (props.lastGeneratedAt || saveStatus === 'saved') && (
+            <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
+              title="發布後開放導師於教師端填入自己的配課；科任課凍結">
+              📢 發布導師排課
+            </button>
+          )}
+          {planStatus === 'published' && (
+            <button onClick={() => setPhase('unpublish')} disabled={phaseBusy} className="btn btn-danger text-sm py-1">撤回發布</button>
+          )}
+          <Link href="/admin/schedule-config?tab=weight" className="btn btn-secondary text-sm py-1">⚙ 調整權重設定</Link>
+        </span>
       </div>
 
       {/* 前置檢查 */}
@@ -197,12 +237,21 @@ export default function ScheduleWizardClient(props: Props) {
 
       {/* 執行 */}
       <div className="card p-3 flex items-center gap-3 flex-wrap">
-        {!running
-          ? <button onClick={run} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
-          : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
-        <span className="text-xs text-zinc-400">
-          共 {input.lessons.length} 堂科任課待排。引擎會持續優化，連續 8 秒沒有進步就自動完成。
-        </span>
+        {planStatus === 'published' || planStatus === 'final' ? (
+          <span className="text-xs text-amber-600">
+            已發布導師排課，科任課已凍結——導師正在教師端填報。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
+          </span>
+        ) : (
+          <>
+            {!running
+              ? <button onClick={run} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
+              : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
+            <span className="text-xs text-zinc-400">
+              共 {input.lessons.length} 堂科任課待排。引擎會持續優化，連續 8 秒沒有進步就自動完成。
+              發布門檻：未排與必排未覆蓋須為 0（所有需求配課都要排入）。
+            </span>
+          </>
+        )}
         {running && progress && (
           <span className="text-xs text-zinc-500 ml-auto flex items-center gap-2">
             <span>已排 {progress.placed}/{input.lessons.length}｜軟規則罰分 {Math.round(progress.softBest)}｜迭代 {progress.iter.toLocaleString()}</span>

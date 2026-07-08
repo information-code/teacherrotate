@@ -357,3 +357,11 @@ export interface TeacherAllocation {
 export function defaultTeacherAllocation(role: AllocRole, work: string, grade: number | null): TeacherAllocation {
   return { role, work, grade, projectReduction: 0, extraHours: 0, scenarios: {}, locked: false, submittedAt: null }
 }
+
+/** 導師自排用的配課節數（科目→節數）：無減課鏡射優先，退而求其次取第一個方案。 */
+export function homeroomBreakdown(d: TeacherAllocation | null | undefined): Record<string, number> {
+  const bd = d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown ?? null
+  const out: Record<string, number> = {}
+  if (bd) for (const [k, v] of Object.entries(bd)) if (Number(v) > 0) out[k] = Number(v)
+  return out
+}
