@@ -21,8 +21,11 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: equipment } = await supabaseAdmin
-    .from('equipment').select('*').order('name').order('asset_number')
+  const [{ data: equipment }, { data: groups }] = await Promise.all([
+    supabaseAdmin.from('equipment').select('*').order('name').order('asset_number'),
+    supabaseAdmin.from('equipment_groups').select('id, name'),
+  ])
+  const groupName = new Map((groups ?? []).map(g => [g.id, g.name]))
 
   const rows = (equipment ?? []).map(e => ({
     id: e.id,
@@ -34,6 +37,7 @@ export async function GET() {
     借用檢查項目: checklistText(e.borrow_checklist),
     歸還檢查項目: checklistText(e.return_checklist),
     備註: e.notes,
+    所屬群組: e.group_id ? (groupName.get(e.group_id) ?? '') : '',
   }))
 
   // 資料庫還沒有設備時附一列範例（匯入時自動略過）
@@ -48,6 +52,7 @@ export async function GET() {
       借用檢查項目: '設備外觀無損壞、設備財產標籤*',
       歸還檢查項目: '設備已歸回原位*、配件齊全',
       備註: 'SONY-CX-450',
+      所屬群組: '',
     })
   }
 
@@ -55,7 +60,7 @@ export async function GET() {
   const ws = XLSX.utils.json_to_sheet(rows)
   ws['!cols'] = [
     { wch: 38 }, { wch: 24 }, { wch: 18 }, { wch: 12 }, { wch: 10 },
-    { wch: 30 }, { wch: 36 }, { wch: 36 }, { wch: 20 },
+    { wch: 30 }, { wch: 36 }, { wch: 36 }, { wch: 20 }, { wch: 20 },
   ]
   // 狀態欄下拉驗證（E 欄）
   ;(ws as Record<string, unknown>)['!validations'] = [
@@ -84,6 +89,7 @@ export async function GET() {
     ['借用檢查項目', '多項以「、」或「,」分隔；項目結尾加「*」代表該項需拍照。'],
     ['歸還檢查項目', '同上。'],
     ['備註', '選填。'],
+    ['所屬群組', '僅供參考，匯入時不會變更群組；群組成員請到「設備設定→群組」維護。'],
     [''],
     ['注意：刪除檔案中的列「不會」刪除系統中的設備，刪除請在系統設備庫操作。'],
     ['名稱以「（範例）」開頭的列匯入時會自動略過。'],

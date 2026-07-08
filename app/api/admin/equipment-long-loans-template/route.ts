@@ -16,14 +16,22 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const [{ data: equipment }, { data: loans }, { data: profiles }] = await Promise.all([
-    supabaseAdmin.from('equipment').select('id, name, asset_number, status')
+  const [{ data: equipment }, { data: loans }, { data: groups }, { data: profiles }] = await Promise.all([
+    supabaseAdmin.from('equipment').select('id, name, asset_number, status, group_id')
       .neq('status', 'retired').order('name').order('asset_number'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
+    supabaseAdmin.from('equipment_groups').select('id, name'),
     supabaseAdmin.from('profiles').select('id, name, email').neq('status', 'inactive').order('name'),
   ])
 
-  const activeByEquipment = new Map((loans ?? []).map(l => [l.equipment_id, l]))
+  const activeByEquipment = new Map(
+    (loans ?? []).filter(l => l.equipment_id).map(l => [l.equipment_id as string, l])
+  )
+  // 整組長借中的群組 → 成員在指派表標示，避免誤填（匯入端也會擋）
+  const groupLongLoaned = new Map(
+    (loans ?? []).filter(l => l.group_id).map(l => [l.group_id as string, l])
+  )
+  const groupName = new Map((groups ?? []).map(g => [g.id, g.name]))
 
   // 同名老師以「姓名（email）」區分；姓名唯一者直接用姓名
   const nameCount = new Map<string, number>()
@@ -39,6 +47,7 @@ export async function GET() {
 
   const rows = (equipment ?? []).map(e => {
     const loan = activeByEquipment.get(e.id)
+    const groupLoan = e.group_id ? groupLongLoaned.get(e.group_id) : undefined
     // 系統外人員標示「（系統外）」，匯回時同格式即可
     const borrower = !loan ? ''
       : loan.teacher_id ? (teacherDisplay.get(loan.teacher_id) ?? '')
@@ -50,13 +59,16 @@ export async function GET() {
       起始日: loan?.start_date ?? '',
       到期日: loan?.due_date ?? '',
       備註: loan?.notes ?? '',
+      目前狀態: groupLoan
+        ? `整組長借中（${groupName.get(e.group_id as string) ?? '群組'}，至 ${groupLoan.due_date}），請勿在此指派`
+        : '',
     }
   })
 
   if (rows.length === 0) {
     rows.push({
       設備名稱: '（尚無設備，請先到設備設定建立）',
-      設備編號: '', 老師姓名: '', 起始日: '', 到期日: '', 備註: '',
+      設備編號: '', 老師姓名: '', 起始日: '', 到期日: '', 備註: '', 目前狀態: '',
     })
   }
 
@@ -67,7 +79,7 @@ export async function GET() {
   const wb = XLSX.utils.book_new()
   const ws = XLSX.utils.json_to_sheet(rows)
   ws['!cols'] = [
-    { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 },
+    { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 40 },
   ]
   // 老師姓名下拉（C 欄），引用隱藏的老師清單
   if (NAME_LIST.length > 0) {
@@ -96,6 +108,7 @@ export async function GET() {
     ['起始日', '格式 2026-08-01（或用 Excel 日期格式）。'],
     ['到期日', '不可早於起始日；到期前老師需拍照回傳續借。'],
     ['備註', '選填。'],
+    ['目前狀態', '僅供參考。「整組長借中」的設備請勿在此指派（填了匯入時會擋下）；整組指派請在系統長期借用頁操作。'],
     [''],
     ['已借出的設備列會預填現況：改老師＝換人借用（原借用自動結束）、改日期＝調整期限。'],
     ['結束借用請在系統「借用管理→長期借用」操作，把老師欄清空不會結束借用。'],
