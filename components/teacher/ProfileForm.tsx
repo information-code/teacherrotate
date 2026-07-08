@@ -191,16 +191,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
   return (
     // 驗證失敗時（語言級數必填都在專長資格頁）自動切到該分頁，避免錯誤藏在隱藏分頁裡
     <form onSubmit={handleSubmit(onSubmit, () => setTab('specialty'))} className="space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="page-title mb-0">基本資料</h2>
-        <div className="flex items-center gap-3">
-          {saved && <span className="text-sm text-green-600">已儲存</span>}
-          {error && <span className="text-sm text-red-600">{error}</span>}
-          <button type="submit" disabled={saving} className="btn-primary">
-            {saving ? '儲存中...' : '儲存'}
-          </button>
-        </div>
-      </div>
+      <h2 className="page-title">基本資料</h2>
 
       {/* 分頁列 */}
       <div className="border-b border-zinc-200 overflow-x-auto">
@@ -419,9 +410,12 @@ export function ProfileForm({ profile }: ProfileFormProps) {
 
       </div>
 
-      <div className="flex justify-end pb-6">
+      {/* 每個分頁右下角共用的儲存鈕（一次儲存全部分頁的變更） */}
+      <div className="flex items-center justify-end gap-3 pb-6">
+        {saved && <span className="text-sm text-green-600">已儲存</span>}
+        {error && <span className="text-sm text-red-600">{error}</span>}
         <button type="submit" disabled={saving} className="btn-primary">
-          {saving ? '儲存中...' : '儲存所有變更'}
+          {saving ? '儲存中...' : '儲存變更'}
         </button>
       </div>
     </form>
