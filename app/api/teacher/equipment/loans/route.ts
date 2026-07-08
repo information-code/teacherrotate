@@ -46,8 +46,11 @@ export async function POST(request: NextRequest) {
 
   if (group_id) {
     // ---- 整組借用 ----
-    const { data: group } = await supabaseAdmin
+    const { data: group, error: groupError } = await supabaseAdmin
       .from('equipment_groups').select('id, status').eq('id', group_id).maybeSingle()
+    if (groupError) {
+      return NextResponse.json({ error: `系統查詢失敗，請聯絡管理員：${groupError.message}` }, { status: 500 })
+    }
     if (!group || group.status !== 'available') {
       return NextResponse.json({ error: '此群組目前無法整組借用' }, { status: 400 })
     }
@@ -99,8 +102,12 @@ export async function POST(request: NextRequest) {
   }
 
   // ---- 單台借用 ----
-  const { data: equip } = await supabaseAdmin
+  const { data: equip, error: equipError } = await supabaseAdmin
     .from('equipment').select('id, status, group_id').eq('id', equipment_id).maybeSingle()
+  // 查詢失敗（如 migration 未執行造成欄位不存在）要如實回報，不可誤報為設備不可借
+  if (equipError) {
+    return NextResponse.json({ error: `系統查詢失敗，請聯絡管理員：${equipError.message}` }, { status: 500 })
+  }
   if (!equip || equip.status !== 'available') {
     return NextResponse.json({ error: '此設備目前無法借用' }, { status: 400 })
   }
