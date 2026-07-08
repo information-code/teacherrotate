@@ -106,7 +106,7 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
         {nativeRooms.length > 0 && (
           <span className="px-2 py-1 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200">
             本土語言教室 <b>{nativeRooms.length}</b> 間
-            <span className="text-zinc-400">：{nativeRooms.map(r => `本土語言教室${r.no}`).join('、')}</span>
+            <span className="text-zinc-400">：{nativeRooms.map(r => `${r.name || '本土語言教室'}${r.no}`).join('、')}</span>
           </span>
         )}
         {allClasses.length > 0 && (
@@ -183,8 +183,12 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
                       </select>
                     )}
                     {r.kind === 'native' && (
-                      <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
-                        placeholder="編號（選填，如 一）" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-full" />
+                      <div className="flex gap-1">
+                        <input value={r.name} onChange={e => updateRoom(z.id, r.id, { name: e.target.value })}
+                          placeholder="名稱（空＝本土語言教室）" className="input py-0.5 text-xs flex-1 min-w-0" />
+                        <input value={r.no} onChange={e => updateRoom(z.id, r.id, { no: e.target.value })}
+                          placeholder="編號" title="同名多間時填編號（如 一、二）" className="input py-0.5 text-xs w-10 px-1 text-center" />
+                      </div>
                     )}
                     {r.kind === 'subject' && (
                       <>
