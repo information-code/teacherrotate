@@ -267,8 +267,8 @@ export default function ScheduleWizardClient(props: Props) {
               <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
                 {p.level === 'error' ? '✕' : '⚠'} {p.text}
               </p>
-              {p.tab && (
-                <Link href={`/admin/schedule-config?tab=${p.tab}`}
+              {(p.href || p.tab) && (
+                <Link href={p.href ?? `/admin/schedule-config?tab=${p.tab}`}
                   className="text-[11px] px-1.5 py-0.5 rounded-sm border border-zinc-300 text-zinc-500 hover:text-zinc-800 hover:border-zinc-500 whitespace-nowrap flex-shrink-0">
                   前往設定 →
                 </Link>

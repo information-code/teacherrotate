@@ -365,9 +365,9 @@ export function deriveNativeSessions(opts: {
   config: ScheduleConfig
   extraCourses: { lang: string; grade: number; hours: number }[]   // 年級×語別×需求總節數
   hoursByTeacher: Record<string, Record<string, Record<string, number>>>   // tid → 語別 → 年級 → 節數
-}): { sessions: DerivedNativeSession[]; issues: { level: 'error' | 'warn'; text: string; tab?: string }[] } {
+}): { sessions: DerivedNativeSession[]; issues: { level: 'error' | 'warn'; text: string; tab?: string; href?: string }[] } {
   const { config, extraCourses, hoursByTeacher } = opts
-  const issues: { level: 'error' | 'warn'; text: string; tab?: string }[] = []
+  const issues: { level: 'error' | 'warn'; text: string; tab?: string; href?: string }[] = []
   const nativeTypeIds = new Set(config.lockTypes.filter(t => t.isNative).map(t => t.id))
 
   // 各年級本土語鎖課相異時段
@@ -404,6 +404,7 @@ export function deriveNativeSessions(opts: {
       issues.push({
         level: 'warn',
         text: `「${c.lang}」${gradeZh[g]}年級已配 ${exp.length} 節／需求 ${c.hours} 節${exp.length < c.hours ? '——差額請於配課統計建立虛擬帳號補足' : '（超配）'}。`,
+        href: '/admin/allocation-statistics',
       })
     }
     if (exp.length === 0 && c.hours === 0) continue

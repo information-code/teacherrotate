@@ -58,7 +58,7 @@ export interface EngineResult {
   elapsedMs: number
 }
 
-export interface PreflightIssue { level: 'error' | 'warn'; text: string; tab?: string }   // tab＝排課設定分頁 key（引導按鈕用）
+export interface PreflightIssue { level: 'error' | 'warn'; text: string; tab?: string; href?: string }   // tab＝排課設定分頁 key、href＝其他頁面完整路徑（引導按鈕用，href 優先）
 
 // ── 亂數（可重現） ──
 function mulberry32(seed: number) {
