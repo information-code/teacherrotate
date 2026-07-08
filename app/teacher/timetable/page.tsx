@@ -37,11 +37,12 @@ export default async function TimetablePage() {
   const config = normalizeScheduleConfig(schRow?.config)
   const plan = (planRow?.plan ?? null) as { status?: string; placed?: TTPlaced[] } | null
 
-  if (!plan || plan.status !== 'final') {
+  // 初版發布（published）與定案（final）皆對全校公開；初版＝導師課仍在填報、內容可能異動
+  if (!plan || (plan.status !== 'published' && plan.status !== 'final')) {
     return (
       <div className="max-w-2xl">
         <h2 className="page-title mb-2">課表</h2>
-        <div className="card text-sm text-zinc-500 py-8 text-center">{year} 學年度課表尚未發布，請等候教務處定案。</div>
+        <div className="card text-sm text-zinc-500 py-8 text-center">{year} 學年度課表尚未發布，請等候教務處公告。</div>
       </div>
     )
   }
@@ -71,6 +72,7 @@ export default async function TimetablePage() {
       bands={config.bands}
       locks={locks}
       roomNames={roomNames}
+      planStatus={plan.status}
     />
   )
 }

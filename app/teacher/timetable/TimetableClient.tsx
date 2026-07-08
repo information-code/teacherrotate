@@ -15,12 +15,13 @@ interface Props {
   bands: Record<Band, BandGrid>
   locks: Record<string, Record<string, string>>
   roomNames: Record<string, string>
+  planStatus: string
 }
 
 type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
-export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames }: Props) {
+export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, planStatus }: Props) {
   const iTeach = useMemo(() => placed.some(p => p.teacherId === userId), [placed, userId])
   const [view, setView] = useState<View>(myClassKey ? 'class' : 'teacher')
   const [classSel, setClassSel] = useState<string>(myClassKey ?? '')
@@ -94,7 +95,12 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="page-title mb-1">課表 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span></h2>
+        <h2 className="page-title mb-1">課表
+          <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
+          {planStatus === 'final'
+            ? <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">定案</span>
+            : <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 align-middle">初版（導師排課進行中，內容可能異動）</span>}
+        </h2>
         <p className="text-xs text-zinc-400">可查看全校班級、教師與科任教室課表。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週。</p>
       </div>
 

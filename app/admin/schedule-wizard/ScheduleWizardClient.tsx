@@ -209,7 +209,7 @@ export default function ScheduleWizardClient(props: Props) {
         <div>
           <h2 className="page-title mb-1">排課精靈
             <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
-            {planStatus === 'published' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">已發布導師排課</span>}
+            {planStatus === 'published' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">初版課表已發布</span>}
             {planStatus === 'final' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-zinc-800 text-white rounded-sm align-middle">已定案</span>}
             {planStatus === 'draft' && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-500 border border-zinc-200 align-middle">草稿</span>}
           </h2>
@@ -218,8 +218,8 @@ export default function ScheduleWizardClient(props: Props) {
         <span className="flex gap-2 flex-shrink-0">
           {planStatus !== 'published' && planStatus !== 'final' && (props.lastGeneratedAt || saveStatus === 'saved') && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
-              title="發布後開放導師於教師端填入自己的配課；科任課凍結">
-              📢 發布導師排課
+              title="發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結">
+              📢 初版課表發布
             </button>
           )}
           {planStatus === 'published' && (
@@ -242,7 +242,7 @@ export default function ScheduleWizardClient(props: Props) {
       <div className="card p-3 flex items-center gap-3 flex-wrap">
         {planStatus === 'published' || planStatus === 'final' ? (
           <span className="text-xs text-amber-600">
-            已發布導師排課，科任課已凍結——導師正在教師端填報。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
+            初版課表已發布（全校可見），科任課已凍結——導師正在教師端填報。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
           </span>
         ) : (
           <>
