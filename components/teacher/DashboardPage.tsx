@@ -467,9 +467,11 @@ function DayDetail({
     onChanged()
   }
 
+  // 這天沒有任何項目就整段不顯示，月曆本身已足夠直觀
+  if (holidays.length === 0 && events.length === 0 && personals.length === 0) return null
+
   return (
     <div className="mt-3 border-t border-zinc-100 pt-3">
-      <h4 className="mb-2 text-sm font-semibold text-zinc-700">{fmtDateLabel(date)}</h4>
       <ul className="space-y-1.5">
         {holidays.map(h => (
           <li key={h.date + h.name} className="flex items-center gap-2 text-sm">
