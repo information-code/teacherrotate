@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { hasPerms } from '@/lib/staff-server'
 
 async function getDefaultYear(): Promise<number> {
   const { data } = await supabaseAdmin
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['statistics','confirmations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(request.url)
   const work = url.searchParams.get('work')

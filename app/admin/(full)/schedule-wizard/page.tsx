@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleWizardClient from './ScheduleWizardClient'
 import { normalizeConfig, GRADES } from '@/lib/allocation'
@@ -7,6 +8,7 @@ import type { GradeSubject } from '../schedule-config/page'
 export const dynamic = 'force-dynamic'
 
 export default async function ScheduleWizardPage() {
+  await guardPage(['schedule-wizard'])
   const admin = getAdminClient()
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)

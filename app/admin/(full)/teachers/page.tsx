@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import TeachersClient from './TeachersClient'
 
@@ -6,6 +7,7 @@ export const dynamic = 'force-dynamic'
 const SKIP_WORKS = ['留職停薪', '育嬰留停', '借調', '延長病假']
 
 export default async function TeachersPage() {
+  await guardPage(['teachers'])
   const admin = getAdminClient()
   const [{ data: profiles }, { data: rotations }] = await Promise.all([
     admin.from('profiles').select('*').neq('role', 'superadmin').order('name'),

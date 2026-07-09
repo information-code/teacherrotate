@@ -2,8 +2,8 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
 import * as XLSX from 'xlsx'
+import { hasPerms } from '@/lib/staff-server'
 
 /**
  * 下載長期借用指派表 Excel：
@@ -14,7 +14,7 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['equipment']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const [{ data: equipment }, { data: loans }, { data: groups }, { data: profiles }] = await Promise.all([
     supabaseAdmin.from('equipment').select('id, name, asset_number, status, group_id')

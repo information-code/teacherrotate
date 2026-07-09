@@ -1,9 +1,11 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScoremapClient from './ScoremapClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ScoremapPage() {
+  await guardPage(['scoremap'])
   const admin = getAdminClient()
   const [{ data: scoremap }, { data: settings }] = await Promise.all([
     admin.from('scoremap').select('*').order('sort_order'),

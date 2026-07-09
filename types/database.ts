@@ -331,11 +331,11 @@ export type Database = {
       staff_roster: {
         Row: {
           duty: string; office: string; teacher_id: string | null
-          enabled: boolean; updated_at: string
+          perms: Json; updated_at: string
         }
         Insert: {
           duty: string; office: string; teacher_id?: string | null
-          enabled?: boolean; updated_at?: string
+          perms?: Json; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['staff_roster']['Insert']>
         Relationships: []

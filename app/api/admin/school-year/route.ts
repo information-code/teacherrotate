@@ -8,7 +8,7 @@ import { ADMIN_DUTIES, DUTY_OFFICE_MAP } from '@/lib/staff'
  * 開始新學年度（僅最高管理者）。body: { year }
  * 1. 設定 current_school_year＝year
  * 2. 從該年 rotations 把各行政職務的人帶入 staff_roster
- *    （enabled 開關保留原設定；之後可在權限頁改人，最終以權限頁為準）
+ *    （perms 權限勾選保留原設定；之後可在權限頁改人，最終以權限頁為準）
  * 允許 year＝目前年度（重新帶入名單用）。
  */
 export async function POST(request: NextRequest) {
@@ -53,16 +53,16 @@ export async function POST(request: NextRequest) {
   const holder = new Map<string, string>()
   for (const r of rots) if (!holder.has(r.work)) holder.set(r.work, r.teacher_id)
 
-  // enabled 開關保留既有設定
-  const { data: existing } = await supabaseAdmin.from('staff_roster').select('duty, enabled')
-  const enabledMap = new Map((existing ?? []).map(r => [r.duty, r.enabled]))
+  // 權限勾選（perms 矩陣）跨年保留，僅人員重新帶入
+  const { data: existing } = await supabaseAdmin.from('staff_roster').select('duty, perms')
+  const permsMap = new Map((existing ?? []).map(r => [r.duty, r.perms]))
 
   const now = new Date().toISOString()
   const rows = ADMIN_DUTIES.map(duty => ({
     duty,
     office: DUTY_OFFICE_MAP[duty],
     teacher_id: holder.get(duty) ?? null,
-    enabled: enabledMap.get(duty) ?? false,
+    perms: permsMap.get(duty) ?? [],
     updated_at: now,
   }))
   const { error: rosterError } = await supabaseAdmin

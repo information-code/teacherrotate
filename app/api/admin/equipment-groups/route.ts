@@ -2,13 +2,13 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
+import { hasPerms } from '@/lib/staff-server'
 
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!(await checkAdmin(user.id))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  if (!(await hasPerms(user.id, ['equipment-config']))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { user }
 }
 

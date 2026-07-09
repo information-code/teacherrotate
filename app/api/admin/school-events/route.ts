@@ -1,8 +1,8 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requirePublisher, canEditContent } from '@/lib/staff-server'
-import { ADMIN_TITLE, SUPERADMIN_OFFICE, SUPERADMIN_TITLE } from '@/lib/staff'
+import { requirePerms, canEditContent } from '@/lib/staff-server'
+import { SUPERADMIN_OFFICE, SUPERADMIN_TITLE } from '@/lib/staff'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -12,9 +12,10 @@ function validateRange(start: unknown, end: unknown): string | null {
   return null
 }
 
-/** 活動列表。query（選填）: start, end 篩選範圍。附 can_edit 與呼叫者資訊 */
+/** 活動列表。query（選填）: start, end 篩選範圍。附 can_edit 與呼叫者資訊
+ *  （僅假日維護權限者也能檢視行事曆，故 GET 放寬） */
 export async function GET(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['calendar', 'holidays'])
   if ('error' in auth) return auth.error
 
   const start = request.nextUrl.searchParams.get('start')
@@ -26,18 +27,22 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({
-    events: (data ?? []).map(ev => ({ ...ev, can_edit: canEditContent(auth.access, ev) })),
+    events: (data ?? []).map(ev => ({
+      ...ev,
+      can_edit: auth.access.perms.has('calendar') && canEditContent(auth.access, ev),
+    })),
     viewer: {
       role: auth.access.role,
       duty: auth.access.duty,
       office: auth.access.office,
+      perms: Array.from(auth.access.perms),
     },
   })
 }
 
 /** 新增活動。行政人員：處室依職務自動帶入 */
 export async function POST(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['calendar'])
   if ('error' in auth) return auth.error
   const { access } = auth
 
@@ -47,12 +52,9 @@ export async function POST(request: NextRequest) {
   const rangeError = validateRange(body?.start_date, body?.end_date)
   if (rangeError) return NextResponse.json({ error: rangeError }, { status: 400 })
 
-  // 有行政職務者（含兼任的管理員）一律依職務標記；無兼任的管理者才用管理者標籤
-  const office = access.duty ? access.office ?? ''
-    : access.role === 'superadmin' ? SUPERADMIN_OFFICE
-    : String(body?.office ?? '')
-  const publisherTitle = access.duty
-    ?? (access.role === 'superadmin' ? SUPERADMIN_TITLE : ADMIN_TITLE)
+  // 有行政職務者（含兼任的 superadmin）依職務標記；無兼任的 superadmin 用最高管理者
+  const office = access.duty ? access.office ?? '' : SUPERADMIN_OFFICE
+  const publisherTitle = access.duty ?? SUPERADMIN_TITLE
 
   const { data, error } = await supabaseAdmin.from('school_events').insert({
     title,
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
 
 /** 更新活動。body: { id, ...欄位 }。主任可編本處室全部；組長僅能編自己發布的 */
 export async function PUT(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['calendar'])
   if ('error' in auth) return auth.error
   const { access } = auth
 
@@ -109,7 +111,7 @@ export async function PUT(request: NextRequest) {
 
 /** 刪除活動（編輯權同上）。query: id */
 export async function DELETE(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['calendar'])
   if ('error' in auth) return auth.error
 
   const id = request.nextUrl.searchParams.get('id')

@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { hasPerms } from '@/lib/staff-server'
 
 const BOOL_FIELDS = new Set([
   'local_language', 'four_language', 'sea_language', 'sign_language',
@@ -71,7 +72,7 @@ async function requireAdmin() {
   if (!user) return null
   const admin = getAdminClient()
   const { data } = await admin.from('profiles').select('role').eq('id', user.id).single()
-  return (data?.role === 'admin' || data?.role === 'superadmin') ? user : null
+  return (await hasPerms(user.id, ['whitelist'])) ? user : null
 }
 
 export async function POST(request: Request) {

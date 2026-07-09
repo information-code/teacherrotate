@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { normalizeConfig } from '@/lib/allocation'
 import AllocationConfigClient from './AllocationConfigClient'
@@ -5,6 +6,7 @@ import AllocationConfigClient from './AllocationConfigClient'
 export const dynamic = 'force-dynamic'
 
 export default async function AllocationConfigPage() {
+  await guardPage(['allocation-config'])
   const admin = getAdminClient()
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)

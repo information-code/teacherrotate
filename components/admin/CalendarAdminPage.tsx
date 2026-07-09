@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MonthCalendar, type CalendarCellItem } from '@/components/ui/MonthCalendar'
 import { PageLoading } from '@/components/ui/PageLoading'
 import {
-  dashboardTodayStr, dateInRange, fmtDateLabel, monthGridDates, OFFICES,
+  dashboardTodayStr, dateInRange, fmtDateLabel, monthGridDates,
   type Holiday, type PublisherViewer, type SchoolEvent,
 } from '@/lib/dashboard'
 
@@ -199,8 +199,10 @@ export function CalendarAdminPage() {
 
   const dayEvents = events.filter(ev => dateInRange(selectedDate, ev.start_date, ev.end_date))
   const dayHolidays = holidays.filter(h => h.date === selectedDate)
-  // 假日維護：系統管理員＋教務處註冊組長
-  const canMaintainHolidays = !viewer || viewer.role !== 'staff' || viewer.duty === '註冊組長'
+  // 假日維護：權限矩陣勾了「假日維護」者（superadmin 恆有）
+  const canMaintainHolidays = !viewer || viewer.role === 'superadmin' || Boolean(viewer.perms?.includes('holidays'))
+  // 活動編輯：需有「行事曆管理」權限（僅假日維護者只能動假日）
+  const canEditEvents = !viewer || viewer.role === 'superadmin' || Boolean(viewer.perms?.includes('calendar'))
 
   if (loading && events.length === 0 && holidays.length === 0 && !error) {
     return <div className="relative min-h-[50vh]"><PageLoading /></div>
@@ -252,15 +254,17 @@ export function CalendarAdminPage() {
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-zinc-700">{fmtDateLabel(selectedDate)}</h4>
             <div className="flex gap-2">
-              <button
-                className="btn-secondary !px-2.5 !py-1 text-xs"
-                onClick={() => setEventForm({
-                  id: null, title: '', description: '',
-                  start_date: selectedDate, end_date: selectedDate, office: '',
-                })}
-              >
-                新增活動
-              </button>
+              {canEditEvents && (
+                <button
+                  className="btn-secondary !px-2.5 !py-1 text-xs"
+                  onClick={() => setEventForm({
+                    id: null, title: '', description: '',
+                    start_date: selectedDate, end_date: selectedDate, office: '',
+                  })}
+                >
+                  新增活動
+                </button>
+              )}
               {canMaintainHolidays && (
                 <button
                   className="btn-secondary !px-2.5 !py-1 text-xs"
@@ -362,16 +366,11 @@ export function CalendarAdminPage() {
                     {viewer.office}
                     <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>
                   </p>
-                ) : viewer?.role === 'superadmin' && !eventForm.id ? (
-                  <p className="py-1 text-sm text-zinc-700">
-                    教務處 <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布固定歸教務處</span>
-                  </p>
                 ) : (
-                  <select className="input" value={eventForm.office}
-                    onChange={e => setEventForm({ ...eventForm, office: e.target.value })}>
-                    <option value="">（不指定）</option>
-                    {OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
+                  <p className="py-1 text-sm text-zinc-700">
+                    {(eventForm.id && eventForm.office) || '教務處'}
+                    <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布歸教務處</span>
+                  </p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">

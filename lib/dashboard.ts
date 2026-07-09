@@ -13,9 +13,10 @@ export interface SchoolEvent {
 
 /** 管理端 API 回傳的呼叫者身分（顯示用） */
 export interface PublisherViewer {
-  role: 'superadmin' | 'admin' | 'staff'
+  role: 'superadmin' | 'staff'
   duty: string | null
   office: string | null
+  perms?: string[]
 }
 
 export interface Holiday {

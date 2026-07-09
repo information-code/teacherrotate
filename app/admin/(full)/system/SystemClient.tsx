@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { OFFICE_ORDER, type StaffRosterRow } from '@/lib/staff'
+import { OFFICE_ORDER, PERM_GROUPS, type StaffRosterRow } from '@/lib/staff'
 
 interface TeacherOption { id: string; name: string | null; email: string }
 
@@ -12,8 +12,6 @@ interface RosterData {
   currentSchoolYear: number | null
   preferenceYear: number | null
 }
-
-interface AdminUser { id: string; name: string | null; email: string }
 
 export default function SystemClient({
   initialSchoolName,
@@ -74,10 +72,7 @@ export default function SystemClient({
           <SchoolYearCard data={data} isSuperAdmin={isSuperAdmin} onChanged={load} />
         </div>
       ) : (
-        <div className="space-y-4">
-          <RosterCard data={data} onChanged={load} />
-          <AdminsCard isSuperAdmin={isSuperAdmin} />
-        </div>
+        <RosterCard data={data} onChanged={load} />
       )}
     </div>
   )
@@ -251,7 +246,7 @@ function SchoolYearCard({
   )
 }
 
-// ── 行政人員權限名冊 ──────────────────────────────────────
+// ── 行政人員權限矩陣（職務 × 管理頁面） ────────────────────
 function RosterCard({
   data,
   onChanged,
@@ -261,7 +256,7 @@ function RosterCard({
 }) {
   const [busyDuty, setBusyDuty] = useState('')
 
-  async function update(duty: string, fields: { teacher_id?: string | null; enabled?: boolean }) {
+  async function update(duty: string, fields: { teacher_id?: string | null; perms?: string[] }) {
     setBusyDuty(duty)
     try {
       const res = await fetch('/api/admin/staff-roster', {
@@ -280,13 +275,6 @@ function RosterCard({
     }
   }
 
-  async function toggleOffice(office: string, enabled: boolean) {
-    const duties = (data?.roster ?? []).filter(r => r.office === office)
-    for (const r of duties) {
-      if (r.enabled !== enabled) await update(r.duty, { enabled })
-    }
-  }
-
   if (!data) return <div className="card"><p className="text-sm text-zinc-400">載入中…</p></div>
 
   const roster = data.roster
@@ -301,156 +289,128 @@ function RosterCard({
     )
   }
 
-  return (
-    <div className="card !p-4">
-      <h3 className="mb-1 text-sm font-semibold text-zinc-700">行政人員權限</h3>
-      <p className="mb-3 text-xs text-zinc-500">
-        開啟的職務可進入管理端使用「公告管理」與「行事曆管理」（假日維護僅註冊組長）。
-        中途換人直接在這裡改，<strong>最終權限以此名冊為準</strong>。
-      </p>
-      <div className="space-y-4">
-        {OFFICE_ORDER.map(office => {
-          const duties = roster.filter(r => r.office === office)
-          if (duties.length === 0) return null
-          const allOn = duties.every(d => d.enabled)
-          const anyOn = duties.some(d => d.enabled)
-          return (
-            <div key={office}>
-              <div className="mb-1 flex items-center justify-between border-b border-zinc-100 pb-1">
-                <span className="text-sm font-medium text-zinc-800">
-                  {office}
-                  {anyOn && <span className="badge-success ml-2">{duties.filter(d => d.enabled).length} 職務啟用</span>}
-                </span>
-                <button
-                  className="text-xs text-zinc-500 underline-offset-2 hover:underline"
-                  onClick={() => toggleOffice(office, !allOn)}
-                >
-                  {allOn ? '整處室關閉' : '整處室開啟'}
-                </button>
-              </div>
-              <ul>
-                {duties.map(r => (
-                  <li key={r.duty} className="flex items-center gap-2 py-1.5">
-                    <label className="flex w-24 flex-shrink-0 items-center gap-2 text-sm text-zinc-800">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-zinc-700"
-                        checked={r.enabled}
-                        disabled={busyDuty === r.duty}
-                        onChange={e => update(r.duty, { enabled: e.target.checked })}
-                      />
-                      {r.duty}
-                    </label>
-                    <select
-                      className="input flex-1 !py-1.5"
-                      value={r.teacher_id ?? ''}
-                      disabled={busyDuty === r.duty}
-                      onChange={e => update(r.duty, { teacher_id: e.target.value || null })}
-                    >
-                      <option value="">（未指定）</option>
-                      {data.teachers.map(t => (
-                        <option key={t.id} value={t.id}>{t.name ?? t.email}</option>
-                      ))}
-                    </select>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+  const allKeys = PERM_GROUPS.flatMap(g => g.perms.map(p => p.key))
+  const permsOf = (r: StaffRosterRow): string[] => Array.isArray(r.perms) ? r.perms : []
 
-// ── 管理員設定（自原「Admin 管理」頁搬入） ─────────────────
-function AdminsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
-  const [admins, setAdmins] = useState<AdminUser[]>([])
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  function togglePerm(r: StaffRosterRow, key: string) {
+    const cur = new Set(permsOf(r))
+    if (cur.has(key)) cur.delete(key)
+    else cur.add(key)
+    update(r.duty, { perms: Array.from(cur) })
+  }
 
-  const loadAdmins = useCallback(async () => {
-    const res = await fetch('/api/admin/add-admin')
-    if (res.ok) setAdmins(await res.json())
-  }, [])
-
-  useEffect(() => { loadAdmins() }, [loadAdmins])
-
-  async function handleAdd() {
-    if (!email.trim()) return
-    setLoading(true)
-    setMessage(null)
-    try {
-      const res = await fetch('/api/admin/add-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setMessage({ type: 'success', text: `已成功授予 ${data.name || email} 管理員權限` })
-      setEmail('')
-      loadAdmins()
-    } catch (e) {
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : '操作失敗' })
-    } finally {
-      setLoading(false)
+  async function setOfficeAll(office: string, grant: boolean) {
+    const duties = roster.filter(r => r.office === office)
+    if (!confirm(grant
+      ? `將${office}全部職務勾選「全部頁面」權限？`
+      : `清除${office}全部職務的所有權限？`)) return
+    for (const r of duties) {
+      await update(r.duty, { perms: grant ? allKeys : [] })
     }
   }
 
   return (
-    <div className="card">
-      <h3 className="mb-1 text-sm font-semibold text-zinc-700">管理員設定</h3>
+    <div className="card !p-4">
+      <h3 className="mb-1 text-sm font-semibold text-zinc-700">行政人員權限</h3>
       <p className="mb-3 text-xs text-zinc-500">
-        管理員擁有全部管理功能。輸入教師的學校 Google 信箱即可授予；該教師必須已登入過本系統。
+        勾選＝該職務可使用該管理頁面；有任一勾選即可進入管理端。
+        中途換人直接改「人員」欄，<strong>最終權限以此表為準</strong>。
+        公告與行事曆的內容編輯範圍另依規則：主任可編本處室全部、組長僅能編自己發布的。
       </p>
-      {isSuperAdmin ? (
-        <>
-          {message && (
-            <div className={cn(
-              'mb-3 border px-4 py-2 text-sm',
-              message.type === 'success'
-                ? 'border-green-200 bg-green-50 text-green-700'
-                : 'border-red-200 bg-red-50 text-red-700'
-            )}>
-              {message.text}
-            </div>
-          )}
-          <div className="mb-4 flex gap-3">
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="teacher@school.edu.tw"
-              className="input flex-1"
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            />
-            <button onClick={handleAdd} disabled={loading || !email.trim()} className="btn-primary">
-              {loading ? '處理中…' : '授予權限'}
-            </button>
-          </div>
-        </>
-      ) : (
-        <p className="mb-3 text-sm text-zinc-400">僅最高管理者可新增或移除管理員。</p>
-      )}
-      {admins.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="table-base">
-            <thead>
-              <tr><th>姓名</th><th>電子信箱</th></tr>
-            </thead>
-            <tbody>
-              {admins.map(a => (
-                <tr key={a.id}>
-                  <td>{a.name ?? '—'}</td>
-                  <td className="text-zinc-500">{a.email}</td>
-                </tr>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm" style={{ minWidth: '56rem' }}>
+          <thead>
+            <tr>
+              <th rowSpan={2} className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left font-medium text-zinc-600">
+                職務
+              </th>
+              <th rowSpan={2} className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left font-medium text-zinc-600">
+                人員
+              </th>
+              {PERM_GROUPS.map(g => (
+                <th key={g.group} colSpan={g.perms.length}
+                  className="border-b border-r border-zinc-200 bg-zinc-50 px-1 py-1.5 text-center text-[11px] font-semibold text-zinc-500">
+                  {g.group}
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </tr>
+            <tr>
+              {PERM_GROUPS.flatMap(g => g.perms).map(p => (
+                <th key={p.key}
+                  className="border-b border-r border-zinc-100 bg-zinc-50 px-1 py-1.5 text-center text-[11px] font-medium text-zinc-500">
+                  {p.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {OFFICE_ORDER.map(office => {
+              const duties = roster.filter(r => r.office === office)
+              if (duties.length === 0) return null
+              return [
+                <tr key={office}>
+                  <td colSpan={2 + allKeys.length}
+                    className="sticky left-0 border-b border-zinc-200 bg-zinc-100/80 px-2 py-1.5">
+                    <span className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-700">{office}</span>
+                      <span className="flex gap-3">
+                        <button className="text-[11px] text-zinc-500 underline-offset-2 hover:underline"
+                          onClick={() => setOfficeAll(office, true)}>整處室全開</button>
+                        <button className="text-[11px] text-zinc-500 underline-offset-2 hover:underline"
+                          onClick={() => setOfficeAll(office, false)}>整處室清除</button>
+                      </span>
+                    </span>
+                  </td>
+                </tr>,
+                ...duties.map(r => {
+                  const perms = new Set(permsOf(r))
+                  return (
+                    <tr key={r.duty} className={cn(busyDuty === r.duty && 'opacity-50')}>
+                      <td className="sticky left-0 z-10 border-b border-r border-zinc-100 bg-white px-2 py-1.5 whitespace-nowrap">
+                        <span className="text-zinc-800">{r.duty}</span>
+                        <span className="ml-2 inline-flex gap-2">
+                          <button className="text-[11px] text-zinc-400 underline-offset-2 hover:underline"
+                            disabled={busyDuty === r.duty}
+                            onClick={() => update(r.duty, { perms: allKeys })}>全選</button>
+                          <button className="text-[11px] text-zinc-400 underline-offset-2 hover:underline"
+                            disabled={busyDuty === r.duty}
+                            onClick={() => update(r.duty, { perms: [] })}>清除</button>
+                        </span>
+                      </td>
+                      <td className="border-b border-r border-zinc-100 px-1 py-1">
+                        <select
+                          className="input !w-32 !py-1 !text-xs"
+                          value={r.teacher_id ?? ''}
+                          disabled={busyDuty === r.duty}
+                          onChange={e => update(r.duty, { teacher_id: e.target.value || null })}
+                        >
+                          <option value="">（未指定）</option>
+                          {data.teachers.map(t => (
+                            <option key={t.id} value={t.id}>{t.name ?? t.email}</option>
+                          ))}
+                        </select>
+                      </td>
+                      {allKeys.map(key => (
+                        <td key={key} className="border-b border-r border-zinc-100 px-1 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-zinc-700"
+                            checked={perms.has(key)}
+                            disabled={busyDuty === r.duty}
+                            onChange={() => togglePerm(r, key)}
+                            aria-label={`${r.duty}：${key}`}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                }),
+              ]
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

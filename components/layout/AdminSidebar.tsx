@@ -61,14 +61,28 @@ const navSections = [
 
 export function AdminSidebar({
   siteTitle = '教師系統',
-  staffOnly = false,
+  perms = [],
+  isSuper = false,
 }: {
   siteTitle?: string
-  staffOnly?: boolean  // 行政人員：僅顯示校務公告群組
+  perms?: string[]   // 權限矩陣勾選的頁面 key（superadmin 為全部）
+  isSuper?: boolean  // 系統偏好僅最高管理者
 }) {
   const pathname = usePathname()
   const { open, setOpen } = useMobileNav()
-  const sections = staffOnly ? navSections.filter(s => s.title === '校務公告') : navSections
+  const permSet = new Set(perms)
+  const sections = navSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        const key = item.href.replace('/admin/', '')
+        if (key === 'system') return isSuper
+        // 行事曆頁：有行事曆或假日維護任一權限即可見
+        if (key === 'calendar') return permSet.has('calendar') || permSet.has('holidays')
+        return permSet.has(key)
+      }),
+    }))
+    .filter(section => section.items.length > 0)
 
   return (
     <>

@@ -4,6 +4,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'crypto'
 import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
 import { defaultTeacherAllocation } from '@/lib/allocation'
+import { hasPerms } from '@/lib/staff-server'
 
 // 聘任別合法值：正式 / 代理 / 鐘點（鐘點僅可用設備借用）
 const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly']
@@ -18,8 +19,8 @@ async function requireAdmin() {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) return null
-  return { user, role: profile.role as string }
+  if (!(await hasPerms(user.id, ['whitelist']))) return null
+  return { user, role: (profile?.role ?? 'teacher') as string }
 }
 
 // GET: 列出所有 teacher / admin role 的 profile，並標示是否已完成 Google 登入

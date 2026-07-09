@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { normalizeEquipmentConfig } from '@/lib/equipment'
 import EquipmentManageClient from './EquipmentManageClient'
@@ -5,6 +6,7 @@ import EquipmentManageClient from './EquipmentManageClient'
 export const dynamic = 'force-dynamic'
 
 export default async function EquipmentManagePage() {
+  await guardPage(['equipment'])
   const admin = getAdminClient()
   const [{ data: equipment }, { data: groups }, { data: profiles }, { data: configRow }] = await Promise.all([
     admin.from('equipment').select('id, name, status, asset_number, group_id').order('name').order('asset_number'),

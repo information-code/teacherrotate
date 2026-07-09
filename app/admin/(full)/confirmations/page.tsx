@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getRotationTarget } from '@/lib/rotation-target'
 import ConfirmationsClient from './ConfirmationsClient'
@@ -5,6 +6,7 @@ import ConfirmationsClient from './ConfirmationsClient'
 export const dynamic = 'force-dynamic'
 
 export default async function ConfirmationsPage() {
+  await guardPage(['confirmations'])
   const admin = getAdminClient()
   const [{ data: profiles }, { data: rotations }, { data: settingsRows }] = await Promise.all([
     admin

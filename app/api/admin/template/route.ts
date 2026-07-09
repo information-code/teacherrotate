@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import * as XLSX from 'xlsx'
+import { hasPerms } from '@/lib/staff-server'
 
 export async function GET() {
   const supabase = await createClient()
@@ -11,7 +12,7 @@ export async function GET() {
 
   const { data: caller } = await supabaseAdmin
     .from('profiles').select('role').eq('id', user.id).single()
-  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations','teachers','whitelist']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // 取得所有在職使用者（排除 inactive 離校教師）
   const [{ data: teachers }, { data: scoremapRows }] = await Promise.all([

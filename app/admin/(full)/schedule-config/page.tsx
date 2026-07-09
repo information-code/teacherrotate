@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleConfigClient from './ScheduleConfigClient'
 import {
@@ -40,6 +41,7 @@ export interface NeedsRef {
 export interface GradeSubject { name: string; perClass: number; homeroom: boolean }
 
 export default async function ScheduleConfigPage({ searchParams }: { searchParams?: { tab?: string } }) {
+  await guardPage(['schedule-config'])
   const admin = getAdminClient()
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { recalcTeacherScores } from '@/lib/recalc-scores'
+import { hasPerms } from '@/lib/staff-server'
 
 export const maxDuration = 60
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(request.url)
   const teacherId = url.searchParams.get('teacher_id')
@@ -46,7 +47,7 @@ export async function PUT(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id, work, semester } = await request.json()
   if (!id || !work) return NextResponse.json({ error: '缺少必要欄位' }, { status: 400 })
@@ -71,7 +72,7 @@ export async function DELETE(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await request.json()
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { rows } = await request.json() as {
     rows: { teacher_id?: string; teacherMail?: string; year: number; work: string; semester?: string }[]

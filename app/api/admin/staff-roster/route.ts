@@ -2,14 +2,14 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
-import { ADMIN_DUTIES, DUTY_OFFICE_MAP } from '@/lib/staff'
+import { ADMIN_DUTIES, ALL_PERM_KEYS, DUTY_OFFICE_MAP } from '@/lib/staff'
+import { hasPerms } from '@/lib/staff-server'
 
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!(await checkAdmin(user.id))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  if (!(await hasPerms(user.id, []))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { user }
 }
 
@@ -46,14 +46,18 @@ export async function GET() {
   })
 }
 
-/** 改人或開關。body: { duty, teacher_id?, enabled? } */
+/** 改人或改權限。body: { duty, teacher_id?, perms? } */
 export async function PUT(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
-  const { duty, teacher_id, enabled } = await request.json()
+  const { duty, teacher_id, perms } = await request.json()
   if (!duty || !DUTY_OFFICE_MAP[duty]) {
     return NextResponse.json({ error: '職務無效' }, { status: 400 })
+  }
+  if (perms !== undefined
+      && (!Array.isArray(perms) || perms.some(p => !ALL_PERM_KEYS.includes(String(p))))) {
+    return NextResponse.json({ error: '權限項目無效' }, { status: 400 })
   }
 
   const payload: Record<string, unknown> = {
@@ -62,7 +66,7 @@ export async function PUT(request: NextRequest) {
     updated_at: new Date().toISOString(),
   }
   if (teacher_id !== undefined) payload.teacher_id = teacher_id || null
-  if (enabled !== undefined) payload.enabled = Boolean(enabled)
+  if (perms !== undefined) payload.perms = perms
 
   const { data, error } = await supabaseAdmin.from('staff_roster')
     .upsert(payload as never, { onConflict: 'duty' }).select().single()

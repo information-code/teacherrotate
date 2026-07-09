@@ -2,9 +2,9 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
 import { EQUIPMENT_STATUS_LABEL, type ChecklistItem } from '@/lib/equipment'
 import * as XLSX from 'xlsx'
+import { hasPerms } from '@/lib/staff-server'
 
 /** 檢查清單 → 「項目、項目*」文字（*＝需拍照），與匯入解析互為反向 */
 function checklistText(raw: unknown): string {
@@ -19,7 +19,7 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['equipment-config']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const [{ data: equipment }, { data: groups }] = await Promise.all([
     supabaseAdmin.from('equipment').select('*').order('name').order('asset_number'),

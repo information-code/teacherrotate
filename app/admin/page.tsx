@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getAdminClient } from '@/lib/supabase/admin'
+import { getAdminAccess } from '@/lib/staff-server'
+import { ALL_PERM_KEYS } from '@/lib/staff'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,9 +10,10 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const admin = getAdminClient()
-  const { data: profile } = await admin
-    .from('profiles').select('role').eq('id', user.id).single()
-  const isFullAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
-  redirect(isFullAdmin ? '/admin/whitelist' : '/admin/announcements')
+  const access = await getAdminAccess(user.id)
+  if (!access) redirect('/teacher')
+
+  // 導向第一個有權限的頁面（假日維護在行事曆頁內）
+  const first = ALL_PERM_KEYS.find(key => access.perms.has(key)) ?? 'announcements'
+  redirect(`/admin/${first === 'holidays' ? 'calendar' : first}`)
 }

@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
+import { hasPerms } from '@/lib/staff-server'
 
 const MAX_ROWS = 1000
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['equipment']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { rows } = await request.json()
   if (!Array.isArray(rows) || rows.length === 0) {

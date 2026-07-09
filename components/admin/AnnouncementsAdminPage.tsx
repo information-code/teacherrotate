@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PageLoading } from '@/components/ui/PageLoading'
-import { OFFICES, type Announcement, type PublisherViewer } from '@/lib/dashboard'
+import { type Announcement, type PublisherViewer } from '@/lib/dashboard'
 
 interface FormState {
   id: string | null
@@ -232,16 +232,11 @@ export function AnnouncementsAdminPage() {
                       {viewer.office}
                       <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>
                     </p>
-                  ) : viewer?.role === 'superadmin' && !form.id ? (
-                    <p className="py-2 text-sm text-zinc-700">
-                      教務處 <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布固定歸教務處</span>
-                    </p>
                   ) : (
-                    <select className="input" value={form.office}
-                      onChange={e => setForm({ ...form, office: e.target.value })}>
-                      <option value="">（不指定）</option>
-                      {OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <p className="py-2 text-sm text-zinc-700">
+                      {(form.id && form.office) || '教務處'}
+                      <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布歸教務處</span>
+                    </p>
                   )}
                 </div>
                 <div className="flex items-end gap-4 pb-2">

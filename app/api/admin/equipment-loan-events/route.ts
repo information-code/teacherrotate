@@ -2,7 +2,8 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin, collectChecklistPhotos, signPhotoUrls } from '@/lib/equipment-server'
+import { collectChecklistPhotos, signPhotoUrls } from '@/lib/equipment-server'
+import { hasPerms } from '@/lib/staff-server'
 
 /**
  * 短期借用操作日誌（唯讀）。
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['equipment']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const params = request.nextUrl.searchParams
   let query = supabaseAdmin.from('equipment_loan_events').select('*')

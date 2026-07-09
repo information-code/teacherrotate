@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getWorkSortOrder, buildTimeline, type TimelineSegment } from '@/lib/work-sort'
 import { getRotationTarget, type RotationTarget } from '@/lib/rotation-target'
@@ -48,6 +49,7 @@ function getMidLowConsecutiveYears(
 }
 
 export default async function StatisticsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
+  await guardPage(['statistics'])
   const admin = getAdminClient()
   const params = await searchParams
 

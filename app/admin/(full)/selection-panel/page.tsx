@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getRotationTarget, type RotationTarget } from '@/lib/rotation-target'
 import { buildTimeline, type TimelineSegment } from '@/lib/work-sort'
@@ -43,6 +44,7 @@ function midLowConsecutive(
 }
 
 export default async function SelectionPanelPage() {
+  await guardPage(['selection-panel'])
   const admin = getAdminClient()
 
   const [{ data: activeProfiles }, { data: settingsRows }, { data: scoremapRows }] = await Promise.all([

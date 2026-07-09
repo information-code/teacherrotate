@@ -1,8 +1,8 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requirePublisher, canEditContent } from '@/lib/staff-server'
-import { ADMIN_TITLE, SUPERADMIN_OFFICE, SUPERADMIN_TITLE } from '@/lib/staff'
+import { requirePerms, canEditContent } from '@/lib/staff-server'
+import { SUPERADMIN_OFFICE, SUPERADMIN_TITLE } from '@/lib/staff'
 import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
 
 /**
@@ -10,7 +10,7 @@ import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
  * 另回傳呼叫者權限資訊，前端據此顯示可編輯範圍。
  */
 export async function GET() {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['announcements'])
   if ('error' in auth) return auth.error
 
   const [announcements, reads, teachers] = await Promise.all([
@@ -45,7 +45,7 @@ export async function GET() {
 
 /** 新增公告。行政人員：處室依職務自動帶入；superadmin：最高管理者／教務處 */
 export async function POST(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['announcements'])
   if ('error' in auth) return auth.error
   const { access } = auth
 
@@ -53,12 +53,9 @@ export async function POST(request: NextRequest) {
   const title = String(body?.title ?? '').trim()
   if (!title) return NextResponse.json({ error: '請填寫公告標題' }, { status: 400 })
 
-  // 有行政職務者（含兼任的管理員）一律依職務標記；無兼任的管理者才用管理者標籤
-  const office = access.duty ? access.office ?? ''
-    : access.role === 'superadmin' ? SUPERADMIN_OFFICE
-    : String(body?.office ?? '')
-  const publisherTitle = access.duty
-    ?? (access.role === 'superadmin' ? SUPERADMIN_TITLE : ADMIN_TITLE)
+  // 有行政職務者（含兼任的 superadmin）依職務標記；無兼任的 superadmin 用最高管理者
+  const office = access.duty ? access.office ?? '' : SUPERADMIN_OFFICE
+  const publisherTitle = access.duty ?? SUPERADMIN_TITLE
 
   const { data, error } = await supabaseAdmin.from('announcements').insert({
     title,
@@ -78,7 +75,7 @@ export async function POST(request: NextRequest) {
 
 /** 更新公告。body: { id, ...欄位 }。主任可編本處室全部；組長僅能編自己發布的 */
 export async function PUT(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['announcements'])
   if ('error' in auth) return auth.error
   const { access } = auth
 
@@ -114,7 +111,7 @@ export async function PUT(request: NextRequest) {
 
 /** 刪除公告（編輯權同上；連帶已讀紀錄，已加入代辦的僅解除連結） */
 export async function DELETE(request: NextRequest) {
-  const auth = await requirePublisher()
+  const auth = await requirePerms(['announcements'])
   if ('error' in auth) return auth.error
 
   const id = request.nextUrl.searchParams.get('id')

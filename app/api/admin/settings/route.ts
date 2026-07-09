@@ -2,10 +2,10 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { hasPerms } from '@/lib/staff-server'
 
 async function checkAdmin(userId: string) {
-  const { data } = await supabaseAdmin.from('profiles').select('role').eq('id', userId).single()
-  return data?.role === 'admin' || data?.role === 'superadmin'
+  return hasPerms(userId, [])
 }
 
 export async function GET() {
@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, []))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const updates: Record<string, string> = await request.json()
   const rows = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }))

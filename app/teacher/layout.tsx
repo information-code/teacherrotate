@@ -5,6 +5,7 @@ import { TeacherSidebar } from '@/components/layout/TeacherSidebar'
 import { getSiteTitle } from '@/lib/site'
 import { TopBar } from '@/components/layout/TopBar'
 import { MobileNavProvider } from '@/components/layout/MobileNav'
+import { getAdminAccess } from '@/lib/staff-server'
 
 export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -36,15 +37,8 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   // profile 不存在 → email 不在白名單，拒絕進入
   if (!profile) redirect('/unauthorized')
 
-  // 行政人員（權限名冊啟用者）也能切換到管理端（僅校務公告）
-  let canEnterAdmin = profile.role === 'admin' || profile.role === 'superadmin'
-  if (!canEnterAdmin) {
-    const { data: roster } = await admin
-      .from('staff_roster').select('duty')
-      .eq('teacher_id', user.id).eq('enabled', true)
-      .limit(1).maybeSingle()
-    canEnterAdmin = Boolean(roster)
-  }
+  // superadmin 或權限矩陣有任一勾選者，可切換到管理端
+  const canEnterAdmin = Boolean(await getAdminAccess(user.id))
 
   const siteTitle = await getSiteTitle()
 

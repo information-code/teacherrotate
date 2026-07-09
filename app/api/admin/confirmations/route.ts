@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getRotationTarget } from '@/lib/rotation-target'
+import { hasPerms } from '@/lib/staff-server'
 
 async function checkAdmin(userId: string) {
   const { data } = await supabaseAdmin
@@ -15,7 +16,7 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['confirmations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const [{ data: profiles, error }, { data: rotations }, { data: settingsRows }] = await Promise.all([
     supabaseAdmin
@@ -66,7 +67,7 @@ export async function PATCH(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['confirmations']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const reset = { score_confirmed: false, score_confirmed_at: null }

@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { hasPerms } from '@/lib/staff-server'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -15,7 +16,7 @@ async function requireAdmin() {
     .eq('id', user.id)
     .single()
 
-  if (caller?.role !== 'admin' && caller?.role !== 'superadmin') return null
+  if (!(await hasPerms(user.id, ['teachers','whitelist']))) return null
   return user
 }
 

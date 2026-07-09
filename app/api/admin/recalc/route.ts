@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { recalcAllScores } from '@/lib/recalc-scores'
+import { hasPerms } from '@/lib/staff-server'
 
 export const maxDuration = 60
 
@@ -13,7 +14,7 @@ export async function POST() {
 
   const { data } = await supabaseAdmin
     .from('profiles').select('role').eq('id', user.id).single()
-  if (data?.role !== 'admin' && data?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['rotations','scoremap']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const recalculated = await recalcAllScores()
   return NextResponse.json({ success: true, recalculated })

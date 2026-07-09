@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import WhitelistClient from './WhitelistClient'
@@ -5,6 +6,7 @@ import WhitelistClient from './WhitelistClient'
 export const dynamic = 'force-dynamic'
 
 export default async function WhitelistPage() {
+  await guardPage(['whitelist'])
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 

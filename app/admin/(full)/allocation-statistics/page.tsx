@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import AllocationStatisticsClient from './AllocationStatisticsClient'
 import {
@@ -25,6 +26,7 @@ export interface GradeMeta {
 }
 
 export default async function AllocationStatisticsPage() {
+  await guardPage(['allocation-statistics'])
   const admin = getAdminClient()
   const { data: settingsRows } = await admin.from('settings').select('key, value').in('key', ['preference_year', 'allocation_phase'])
   const sMap = Object.fromEntries((settingsRows ?? []).map(r => [r.key, r.value]))

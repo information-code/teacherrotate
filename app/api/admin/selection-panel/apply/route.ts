@@ -5,12 +5,12 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { recalcTeacherScores } from '@/lib/recalc-scores'
 import { slotToRotation } from '@/lib/selection-slots'
 import { getRotationTarget } from '@/lib/rotation-target'
+import { hasPerms } from '@/lib/staff-server'
 
 export const maxDuration = 60
 
 async function checkAdmin(userId: string) {
-  const { data } = await supabaseAdmin.from('profiles').select('role').eq('id', userId).single()
-  return data?.role === 'admin' || data?.role === 'superadmin'
+  return hasPerms(userId, ['selection-panel'])
 }
 
 type Rot = { teacher_id: string; year: number; work: string; grade: number | null }
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await checkAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await hasPerms(user.id, ['selection-panel']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { year } = await request.json()
   const yr = Number(year)
