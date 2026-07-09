@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { OFFICE_ORDER, PERM_GROUPS, type StaffRosterRow } from '@/lib/staff'
 
@@ -254,11 +254,17 @@ function RosterCard({
   data: RosterData | null
   onChanged: () => void
 }) {
-  const [busyDuty, setBusyDuty] = useState('')
+  // 樂觀更新：畫面立即反映，背景送出；同一職務的請求依序排隊避免亂序覆蓋
+  const [rows, setRows] = useState<StaffRosterRow[]>([])
+  const queues = useRef(new Map<string, Promise<void>>())
 
-  async function update(duty: string, fields: { teacher_id?: string | null; perms?: string[] }) {
-    setBusyDuty(duty)
-    try {
+  useEffect(() => {
+    if (data) setRows(data.roster.map(r => ({ ...r, perms: Array.isArray(r.perms) ? r.perms : [] })))
+  }, [data])
+
+  function enqueue(duty: string, fields: { teacher_id?: string | null; perms?: string[] }) {
+    const prev = queues.current.get(duty) ?? Promise.resolve()
+    const next = prev.then(async () => {
       const res = await fetch('/api/admin/staff-roster', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -266,19 +272,22 @@ function RosterCard({
       })
       if (!res.ok) {
         const json = await res.json().catch(() => null)
-        alert(json?.error ?? '更新失敗，請再試一次。')
-        return
+        alert(json?.error ?? '儲存失敗，畫面已還原為伺服器狀態。')
+        onChanged()  // 失敗時以伺服器狀態重新同步
       }
-      onChanged()
-    } finally {
-      setBusyDuty('')
-    }
+    }).catch(() => { onChanged() })
+    queues.current.set(duty, next)
+  }
+
+  /** 更新本地列並回傳新值送出 */
+  function patchRow(duty: string, fields: { teacher_id?: string | null; perms?: string[] }) {
+    setRows(cur => cur.map(r => r.duty === duty ? { ...r, ...fields } : r))
+    enqueue(duty, fields)
   }
 
   if (!data) return <div className="card"><p className="text-sm text-zinc-400">載入中…</p></div>
 
-  const roster = data.roster
-  if (roster.length === 0) {
+  if (rows.length === 0) {
     return (
       <div className="card">
         <h3 className="mb-2 text-sm font-semibold text-zinc-700">行政人員權限</h3>
@@ -289,23 +298,22 @@ function RosterCard({
     )
   }
 
+  const roster = rows
   const allKeys = PERM_GROUPS.flatMap(g => g.perms.map(p => p.key))
-  const permsOf = (r: StaffRosterRow): string[] => Array.isArray(r.perms) ? r.perms : []
 
   function togglePerm(r: StaffRosterRow, key: string) {
-    const cur = new Set(permsOf(r))
+    const cur = new Set(r.perms)
     if (cur.has(key)) cur.delete(key)
     else cur.add(key)
-    update(r.duty, { perms: Array.from(cur) })
+    patchRow(r.duty, { perms: Array.from(cur) })
   }
 
-  async function setOfficeAll(office: string, grant: boolean) {
-    const duties = roster.filter(r => r.office === office)
+  function setOfficeAll(office: string, grant: boolean) {
     if (!confirm(grant
       ? `將${office}全部職務勾選「全部頁面」權限？`
       : `清除${office}全部職務的所有權限？`)) return
-    for (const r of duties) {
-      await update(r.duty, { perms: grant ? allKeys : [] })
+    for (const r of rows.filter(x => x.office === office)) {
+      patchRow(r.duty, { perms: grant ? allKeys : [] })
     }
   }
 
@@ -364,26 +372,23 @@ function RosterCard({
                   </td>
                 </tr>,
                 ...duties.map(r => {
-                  const perms = new Set(permsOf(r))
+                  const perms = new Set(r.perms)
                   return (
-                    <tr key={r.duty} className={cn(busyDuty === r.duty && 'opacity-50')}>
+                    <tr key={r.duty}>
                       <td className="sticky left-0 z-10 border-b border-r border-zinc-100 bg-white px-2 py-1.5 whitespace-nowrap">
                         <span className="text-zinc-800">{r.duty}</span>
                         <span className="ml-2 inline-flex gap-2">
                           <button className="text-[11px] text-zinc-400 underline-offset-2 hover:underline"
-                            disabled={busyDuty === r.duty}
-                            onClick={() => update(r.duty, { perms: allKeys })}>全選</button>
+                            onClick={() => patchRow(r.duty, { perms: allKeys })}>全選</button>
                           <button className="text-[11px] text-zinc-400 underline-offset-2 hover:underline"
-                            disabled={busyDuty === r.duty}
-                            onClick={() => update(r.duty, { perms: [] })}>清除</button>
+                            onClick={() => patchRow(r.duty, { perms: [] })}>清除</button>
                         </span>
                       </td>
                       <td className="border-b border-r border-zinc-100 px-1 py-1">
                         <select
                           className="input !w-32 !py-1 !text-xs"
                           value={r.teacher_id ?? ''}
-                          disabled={busyDuty === r.duty}
-                          onChange={e => update(r.duty, { teacher_id: e.target.value || null })}
+                          onChange={e => patchRow(r.duty, { teacher_id: e.target.value || null })}
                         >
                           <option value="">（未指定）</option>
                           {data.teachers.map(t => (
@@ -397,7 +402,6 @@ function RosterCard({
                             type="checkbox"
                             className="h-4 w-4 accent-zinc-700"
                             checked={perms.has(key)}
-                            disabled={busyDuty === r.duty}
                             onChange={() => togglePerm(r, key)}
                             aria-label={`${r.duty}：${key}`}
                           />
