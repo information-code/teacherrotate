@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation'
+import { DashboardPage } from '@/components/teacher/DashboardPage'
 
-export default function TeacherPage() {
-  redirect('/teacher/profile')
+export const dynamic = 'force-dynamic'
+
+export default function TeacherHomePage() {
+  return <DashboardPage />
 }

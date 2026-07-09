@@ -7,6 +7,13 @@ import { useMobileNav } from '@/components/layout/MobileNav'
 
 const navSections = [
   {
+    title: '校務公告',
+    items: [
+      { href: '/admin/announcements', label: '公告管理' },
+      { href: '/admin/calendar',      label: '行事曆管理' },
+    ],
+  },
+  {
     title: '教師管理',
     items: [
       { href: '/admin/whitelist', label: '帳號資料' },

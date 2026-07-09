@@ -11,6 +11,7 @@ const FORMAL_GROUPS: NavGroup[] = [
   {
     title: '常用功能',
     items: [
+      { href: '/teacher',           label: '工作首頁' },
       { href: '/teacher/profile',   label: '基本資料' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
@@ -31,6 +32,7 @@ const SUBSTITUTE_GROUPS: NavGroup[] = [
   {
     title: '常用功能',
     items: [
+      { href: '/teacher',           label: '工作首頁' },
       { href: '/teacher/profile',   label: '基本資料' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
@@ -49,6 +51,7 @@ const HOURLY_GROUPS: NavGroup[] = [
   {
     title: '常用功能',
     items: [
+      { href: '/teacher',           label: '工作首頁' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
     ],

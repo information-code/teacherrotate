@@ -270,6 +270,76 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['equipment_renewals']['Insert']>
         Relationships: []
       }
+      school_events: {
+        Row: {
+          id: string; title: string; description: string
+          start_date: string; end_date: string
+          created_by: string | null; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; title: string; description?: string
+          start_date: string; end_date: string
+          created_by?: string | null; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['school_events']['Insert']>
+        Relationships: []
+      }
+      holidays: {
+        Row: { date: string; name: string; is_holiday: boolean; source: string; updated_at: string }
+        Insert: { date: string; name?: string; is_holiday?: boolean; source?: string; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['holidays']['Insert']>
+        Relationships: []
+      }
+      personal_events: {
+        Row: {
+          id: string; user_id: string; date: string; title: string; note: string
+          created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; user_id: string; date: string; title: string; note?: string
+          created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['personal_events']['Insert']>
+        Relationships: []
+      }
+      announcements: {
+        Row: {
+          id: string; title: string; content: string; office: string
+          pinned: boolean; requires_action: boolean; link_url: string
+          publish_at: string; expire_at: string | null
+          created_by: string | null; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; title: string; content?: string; office?: string
+          pinned?: boolean; requires_action?: boolean; link_url?: string
+          publish_at?: string; expire_at?: string | null
+          created_by?: string | null; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['announcements']['Insert']>
+        Relationships: []
+      }
+      announcement_reads: {
+        Row: { announcement_id: string; user_id: string; read_at: string }
+        Insert: { announcement_id: string; user_id: string; read_at?: string }
+        Update: Partial<Database['public']['Tables']['announcement_reads']['Insert']>
+        Relationships: []
+      }
+      todos: {
+        Row: {
+          id: string; user_id: string; title: string; note: string
+          due_date: string | null; status: string; source: string
+          announcement_id: string | null; completed_at: string | null
+          created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; user_id: string; title: string; note?: string
+          due_date?: string | null; status?: string; source?: string
+          announcement_id?: string | null; completed_at?: string | null
+          created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['todos']['Insert']>
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
