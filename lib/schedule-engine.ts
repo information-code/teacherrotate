@@ -358,12 +358,15 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         }
       }
 
-      // 前置檢核：留白是否夠導師自排（彙總）
-      const lessonPeriods = lessons.filter(l => l.classKey === key).reduce((s2, l) => s2 + l.size, 0)
+      // 前置檢核：留白是否夠導師自排（彙總）。
+      // 單雙週配對區塊的兩格實體被占，但雙週（或單週）整塊還給導師填課（扣兩節籤）→ 留白帳補回 2 格/區塊
+      const classLessons = lessons.filter(l => l.classKey === key)
+      const lessonPeriods = classLessons.reduce((s2, l) => s2 + l.size, 0)
+      const biBlocks = classLessons.filter(l => l.parity !== 'weekly').length
       const leftover = slots.length - lessonPeriods
       const base = a.gradeHomeroomBase[g] ?? 0
       if (leftover < 0) agg.overCap.push(`${classLabel(g, i)}（${lessonPeriods}/${slots.length}）`)
-      else if (base > 0 && leftover < base) agg.leftoverLow.push(`${classLabel(g, i)}（${leftover}/${base}）`)
+      else if (base > 0 && leftover + biBlocks * 2 < base) agg.leftoverLow.push(`${classLabel(g, i)}（${leftover + biBlocks * 2}/${base}）`)
       if (mustSet.size > lessonPeriods) agg.mustOver.push(`${classLabel(g, i)}（${mustSet.size} 格/${lessonPeriods} 節）`)
       if (!homeroomId) agg.noHomeroom.push(classLabel(g, i))
 
@@ -500,9 +503,9 @@ class State {
     const tOcc = this.teacherOcc.get(l.teacherId)!
     const blocked = this.input.teacherBlocked[l.teacherId] ?? []
     const mustLeave = this.input.classMustLeave?.[l.classKey] ?? []
-    // 視藝單雙週起始節次
-    if (l.parity === 'odd' && ![1, 3, 5].includes(p.period)) return false
-    if (l.parity === 'even' && ![2, 4, 6].includes(p.period)) return false
+    // 視藝單雙週：實體區塊一律對齊 (1-2)(3-4)(5-6)——單雙週兩班共用同一區塊；
+    // 顯示時單週畫在起始節（1/3/5）、雙週畫在次節（2/4/6），此為顯示層職責
+    if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) return false
     for (const s of slots) {
       if (!avail.includes(s)) return false
       if (cOcc.has(s)) return false
@@ -1173,8 +1176,7 @@ export class EngineRun {
       const tries: Placement[] = l.size === 2 ? [{ day, period }, { day, period: period - 1 }] : [{ day, period }]
       for (const p of tries) {
         if (p.period < 1 || (l.size === 2 && p.period + 1 > 7)) continue
-        if (l.parity === 'odd' && ![1, 3, 5].includes(p.period)) continue
-        if (l.parity === 'even' && ![2, 4, 6].includes(p.period)) continue
+        if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) continue
         const slots = l.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
         if (oldP) this.st.remove(l)
         const cOcc = this.st.classOcc.get(classKey2)!
@@ -1306,8 +1308,7 @@ export class EngineRun {
     for (let k = 0; k < avail.length; k++) {
       const p = parseSlotKey(avail[(start + k) % avail.length])
       if (l.size === 2 && p.period >= 7) continue
-      if (l.parity === 'odd' && ![1, 3, 5].includes(p.period)) continue
-      if (l.parity === 'even' && ![2, 4, 6].includes(p.period)) continue
+      if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) continue
       const slots = this.st.slotsOf(l, p)
       if (!slots.every(x => avail.includes(x) && !cOcc.has(x) && !blockedT.includes(x))) continue
       if (this.st.canPlace(l, p)) {

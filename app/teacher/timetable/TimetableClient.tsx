@@ -53,17 +53,25 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
   const cells = useMemo(() => {
     const m = new Map<string, { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string }>()
     const put = (day: number, period: number, v: { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string }) => m.set(`${day}-${period}`, v)
+    // 單雙週課只顯示一格：單週畫在起始節、雙週畫在次節（區塊另一格＝導師填課，同科兩節）
+    const putPlaced = (p: TTPlaced, v: { main: string; sub?: string; kind: 'subject'; bi?: string }) => {
+      if (p.parity !== 'weekly') { put(p.day, p.parity === 'odd' ? p.period : p.period + 1, v); return }
+      put(p.day, p.period, v)
+      if (p.size === 2) put(p.day, p.period + 1, v)
+    }
     if (view === 'class' && classSel) {
+      // 單雙週配對格 → 導師課的週型標記（與視藝互補、整塊兩節）
+      const pairTag: Record<string, string> = {}
+      for (const p of placed.filter(p => p.classKey === classSel && p.parity !== 'weekly')) {
+        pairTag[`${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`] = p.parity === 'odd' ? '雙週・兩節' : '單週・兩節'
+      }
       for (const p of placed.filter(p => p.classKey === classSel)) {
-        // 單雙週課：這兩格只有一半的週次上此課，另一週還給導師——標示清楚避免看成每週兩節
-        const bi = p.parity === 'odd' ? '單週・雙週導師' : p.parity === 'even' ? '雙週・單週導師' : undefined
-        const v = { main: p.subject, sub: p.teacherName + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi }
-        put(p.day, p.period, v)
-        if (p.size === 2) put(p.day, p.period + 1, v)
+        const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
+        putPlaced(p, { main: p.subject, sub: p.teacherName + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi })
       }
       for (const [s, subj] of Object.entries(homeroomCells[classSel] ?? {})) {
         const [d, q] = s.split('-').map(Number)
-        put(d, q, { main: subj, kind: 'hr' })
+        put(d, q, { main: subj, kind: 'hr', bi: pairTag[s] })
       }
       for (const [s, lc] of Object.entries(locks[classSel] ?? {})) {
         const [d, q] = s.split('-').map(Number)
@@ -72,9 +80,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
     } else if (view === 'teacher' && teacherSel) {
       for (const p of placed.filter(p => p.teacherId === teacherSel)) {
         const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
-        const v = { main: `${p.classLabel} ${p.subject}`, sub: p.roomId ? roomNames[p.roomId] : '原班', kind: 'subject' as const, bi }
-        put(p.day, p.period, v)
-        if (p.size === 2) put(p.day, p.period + 1, v)
+        putPlaced(p, { main: `${p.classLabel} ${p.subject}`, sub: p.roomId ? roomNames[p.roomId] : '原班', kind: 'subject' as const, bi })
       }
       // 閩南語師：原班本土語場次
       for (const c of nativeClassCells.filter(c => c.teacherId === teacherSel)) {
@@ -95,9 +101,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
     } else if (view === 'room' && roomSel) {
       for (const p of placed.filter(p => p.roomId === roomSel)) {
         const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
-        const v = { main: p.classLabel, sub: `${p.subject}・${p.teacherName}`, kind: 'subject' as const, bi }
-        put(p.day, p.period, v)
-        if (p.size === 2) put(p.day, p.period + 1, v)
+        putPlaced(p, { main: p.classLabel, sub: `${p.subject}・${p.teacherName}`, kind: 'subject' as const, bi })
       }
       // 本土語言教室：開課場次（實體含師名、共學不具名）
       for (const s of nativeSessions.filter(s => s.roomId === roomSel)) {
@@ -126,7 +130,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
             : <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 align-middle">初版（導師排課進行中，內容可能異動）</span>}
         </h2>
         <p className="text-xs text-zinc-400">
-          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（僅單週或雙週上課，另一週為導師的課）。
+          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
           {planStatus === 'final'
             ? '課表已定案，如需調整請洽教務處。'
             : '初版期間，導師請至「排課選填」調整自己班級的課；其餘調整請洽教務處。'}

@@ -139,8 +139,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     const slots = l.size === 2
       ? [targetSlot, `${targetSlot.split('-')[0]}-${Number(targetSlot.split('-')[1]) + 1}`]
       : [targetSlot]
-    if (l.parity === 'odd' && ![1, 3, 5].includes(Number(targetSlot.split('-')[1]))) return { ok: false, why: '單週連堂起始限 1/3/5 節' }
-    if (l.parity === 'even' && ![2, 4, 6].includes(Number(targetSlot.split('-')[1]))) return { ok: false, why: '雙週連堂起始限 2/4/6 節' }
+    // 單雙週實體區塊一律對齊 (1-2)(3-4)(5-6)；顯示層才分單週起始節/雙週次節
+    if (l.parity !== 'weekly' && ![1, 3, 5].includes(Number(targetSlot.split('-')[1]))) return { ok: false, why: '單雙週連堂區塊起始限 1/3/5 節' }
     const cm = cellsByClass.get(l.classKey)
     const hrCells = hr[l.classKey]?.cells ?? {}
     for (const s of slots) {
@@ -175,6 +175,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (sel.type === 'lesson') {
       const l = lessonById.get(sel.id)
       if (!l || l.classKey !== classKey) return { ok: false, why: '僅限同班調整' }
+      // 單雙週課：配對格已有導師填課時不可移動（先請導師退回/管理者清除，否則導師課會懸空）
+      if (l.parity !== 'weekly') {
+        const pairSlot = `${l.day}-${l.parity === 'odd' ? l.period + 1 : l.period}`
+        if (hr[l.classKey]?.cells?.[pairSlot]) return { ok: false, why: '配對格已有導師課，請先退回導師填課再調整' }
+      }
       const selfSlots = new Set([sel.id])
       const occ = cellsByClass.get(classKey)?.get(slot)
       const hrSubject = hr[classKey]?.cells?.[slot]
@@ -374,7 +379,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const allClassKeys = GRADES.flatMap(g => Array.from({ length: classCounts[g] ?? 0 }, (_, i) => `${g}-${i}`))
   const gradeClasses = allClassKeys.filter(ck => Number(ck.split('-')[0]) === gradeSel)
   const confirmedCount = allClassKeys.filter(ck => hr[ck]?.confirmed_at).length
-  const filledOf = (ck: string) => Object.keys(hr[ck]?.cells ?? {}).length
+  // 已填節數：單雙週配對格填一格＝整塊兩節
+  const filledOf = (ck: string) => {
+    const pairSlots = new Set(placed.filter(p => p.classKey === ck && p.parity !== 'weekly')
+      .map(p => `${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`))
+    return Object.keys(hr[ck]?.cells ?? {}).reduce((n, s) => n + (pairSlots.has(s) ? 2 : 1), 0)
+  }
 
   const selLesson = sel?.type === 'lesson' ? lessonById.get(sel.id) : null
 
@@ -471,13 +481,28 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const title = st && !st.ok ? st.why : undefined
                         if (occ) {
                           const bi = occ.parity !== 'weekly'
+                          const dispSlot = bi ? `${occ.day}-${occ.parity === 'odd' ? occ.period : occ.period + 1}` : k
+                          if (bi && k !== dispSlot) {
+                            // 單雙週配對格：顯示導師的配對課（整塊兩節）；不參與調整互動（由排課選填處理）
+                            const pairSubj = hrRow?.cells?.[k]
+                            const tag = occ.parity === 'odd' ? '雙週・兩節' : '單週・兩節'
+                            return (
+                              <td key={d} className="p-0.5">
+                                <div title="單雙週配對格：導師課由排課選填填入（同科整塊兩節）"
+                                  className={`w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${pairSubj ? 'bg-emerald-50 border-violet-300 text-emerald-800' : 'border-dashed border-violet-300 text-violet-400'}`}>
+                                  <span className="truncate w-full font-medium">{pairSubj ?? '導師'}</span>
+                                  <span className="text-[8px] opacity-70">{tag}</span>
+                                </div>
+                              </td>
+                            )
+                          }
                           return (
                             <td key={d} className="p-0.5">
                               <button onClick={() => clickCell(ck, k)} title={title}
                                 className={`w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
                                 <span className="truncate w-full font-medium">{occ.subject}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}</span>
-                                {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週・雙週導師' : '雙週・單週導師'}</span>}
+                                {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週' : '雙週'}</span>}
                               </button>
                             </td>
                           )

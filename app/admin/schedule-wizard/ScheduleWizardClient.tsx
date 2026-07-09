@@ -171,6 +171,11 @@ export default function ScheduleWizardClient(props: Props) {
   function cellsOf(list: PlacedResult[]): Map<string, PlacedResult> {
     const m = new Map<string, PlacedResult>()
     for (const p of list) {
+      // 單雙週課只顯示一格：單週畫在起始節、雙週畫在次節（實體仍占整個區塊，另一格為導師填課空間）
+      if (p.parity !== 'weekly') {
+        m.set(`${p.day}-${p.parity === 'odd' ? p.period : p.period + 1}`, p)
+        continue
+      }
       m.set(`${p.day}-${p.period}`, p)
       if (p.size === 2) m.set(`${p.day}-${p.period + 1}`, p)
     }
@@ -205,7 +210,7 @@ export default function ScheduleWizardClient(props: Props) {
                       <div className={`h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center text-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
                         <span className="truncate w-full">{text}</span>
                         {mode === 'class' && <span className="truncate w-full text-[9px] opacity-70">{p.teacherName}</span>}
-                        {bi && <span className="text-[8px] opacity-70">{p.parity === 'odd' ? '單週（雙週導師）' : '雙週（單週導師）'}</span>}
+                        {bi && <span className="text-[8px] opacity-70">{p.parity === 'odd' ? '單週' : '雙週'}</span>}
                       </div>
                     </td>
                   )
@@ -450,7 +455,7 @@ export default function ScheduleWizardClient(props: Props) {
               )}
             </div>
             <p className="text-[11px] text-zinc-400">
-              藍格＝科任課、紫格＝視藝單雙週（另一週為導師）、深灰格＝鎖課、虛線格＝導師自排留白、紅虛線＝導師不排課但未排入科任課。
+              藍格＝科任課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節；區塊的另一格由導師填課、同科兩節）、深灰格＝鎖課、虛線格＝導師自排留白、紅虛線＝導師不排課但未排入科任課。
             </p>
 
             {view === 'class' && (
@@ -458,7 +463,8 @@ export default function ScheduleWizardClient(props: Props) {
                 {input.classes.filter(c => c.grade === gradeSel).map(c => (
                   <div key={c.classKey} className="space-y-1">
                     <div className="text-sm font-semibold text-zinc-700">{c.label}
-                      <span className="text-xs font-normal text-zinc-400 ml-1">留白 {(input.classSlots[c.classKey]?.length ?? 0) - (byClass.get(c.classKey) ?? []).reduce((s, p) => s + p.size, 0)} 格</span>
+                      {/* 留白格＝導師可填的格數：單雙週課只占一格顯示，配對格還給導師 */}
+                      <span className="text-xs font-normal text-zinc-400 ml-1">留白 {(input.classSlots[c.classKey]?.length ?? 0) - (byClass.get(c.classKey) ?? []).reduce((s, p) => s + (p.parity !== 'weekly' ? 1 : p.size), 0)} 格</span>
                     </div>
                     <Grid list={byClass.get(c.classKey) ?? []} mode="class" classKey={c.classKey} />
                   </div>

@@ -12,6 +12,7 @@ interface Props {
   periodsPerDay: number
   teachable: string[]
   fixed: Record<string, FixedCell>
+  pairCells: Record<string, 'odd' | 'even'>   // 單雙週配對格：可填、同科整塊兩節（扣 2 節籤），值＝導師課週型
   breakdown: Record<string, number>       // 科目 → 應排節數
   initialCells: Record<string, string>    // slotKey → 科目
   confirmedAt: string | null
@@ -19,7 +20,7 @@ interface Props {
 }
 
 /** 教師端：導師排課選填。把自己的配課填入班級課表留白格，全部填完後確認送出。 */
-export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, breakdown, initialCells, confirmedAt, finalized }: Props) {
+export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized }: Props) {
   const [cells, setCells] = useState<Record<string, string>>(initialCells)
   const [selected, setSelected] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<boolean>(Boolean(confirmedAt))
@@ -28,7 +29,9 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
   const readOnly = confirmed || finalized
 
   const subjects = orderSubjectNames(Object.keys(breakdown))
-  const placedCount = (s: string) => Object.values(cells).filter(v => v === s).length
+  // 配對格（單雙週區塊）填一格＝整塊兩節，計 2 節
+  const weightOf = (k: string) => (pairCells[k] ? 2 : 1)
+  const placedCount = (s: string) => Object.entries(cells).filter(([, v]) => v === s).reduce((n, [k]) => n + weightOf(k), 0)
   const remaining = (s: string) => (breakdown[s] ?? 0) - placedCount(s)
   const allDone = subjects.every(s => remaining(s) === 0)
   const teachSet = new Set(teachable)
@@ -60,7 +63,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
     setCells(prev => {
       const next = { ...prev }
       if (next[k]) { delete next[k]; return next }          // 點已填的格 → 移除
-      if (selected && remaining(selected) > 0) next[k] = selected
+      if (selected && remaining(selected) >= weightOf(k)) next[k] = selected   // 配對格需剩 2 節
       return next
     })
   }
@@ -89,6 +92,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
           <h2 className="page-title mb-1">排課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度・{classLabel}</span></h2>
           <p className="text-xs text-zinc-400">
             灰色＝科任課與鎖課（不可動）；點選下方科目後，點空白格填入自己的課，再點一次移除。全部填完才能確認送出。
+            紫色虛線格＝視藝單雙週的配對格：您在該週型連上整塊兩節（同一科），填一格扣 2 節。
           </p>
         </div>
         <span className="text-xs flex-shrink-0">
@@ -153,13 +157,17 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
                   }
                   if (!teachSet.has(k)) return <td key={d} className="p-0.5"><div className="h-11 rounded-sm bg-zinc-50" /></td>
                   const mine = cells[k]
+                  const pair = pairCells[k]
+                  const pairTag = pair === 'odd' ? '單週・整塊兩節' : pair === 'even' ? '雙週・整塊兩節' : null
                   return (
                     <td key={d} className="p-0.5">
                       <button type="button" onClick={() => clickCell(k)} disabled={readOnly}
-                        className={`w-full h-11 rounded-sm border text-[11px] leading-tight ${mine
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                        className={`w-full h-11 rounded-sm border text-[11px] leading-tight flex flex-col items-center justify-center ${mine
+                          ? pair ? 'bg-violet-50 border-violet-300 text-violet-800 font-medium' : 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                          : pair ? 'bg-white border-dashed border-violet-300 text-violet-400 hover:border-violet-500'
                           : 'bg-white border-dashed border-zinc-300 text-zinc-300 hover:border-emerald-400'}`}>
-                        {mine ?? (readOnly ? '' : '＋')}
+                        <span className="truncate w-full">{mine ?? (readOnly ? '' : '＋')}</span>
+                        {pairTag && <span className="text-[8px] opacity-70">{pairTag}</span>}
                       </button>
                     </td>
                   )

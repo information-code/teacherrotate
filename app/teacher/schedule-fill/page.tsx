@@ -56,11 +56,21 @@ export default async function ScheduleFillPage() {
     if (grid.teachable[`${d}-${p}`]) teachable.push(`${d}-${p}`)
   }
 
-  // 固定格：科任課＋鎖課
+  // 固定格：科任課＋鎖課。
+  // 單雙週課只固定「顯示格」（單週＝起始節、雙週＝次節）；區塊的另一格＝配對格，
+  // 開放導師填課（同科整塊兩節、扣兩節籤，週型與視藝互補）。
   const fixed: Record<string, FixedCell> = {}
+  const pairCells: Record<string, 'odd' | 'even'> = {}   // slot → 導師課的週型
   for (const p of plan.placed ?? []) {
     if (p.classKey !== classKey) continue
     const bi = p.parity === 'odd' || p.parity === 'even' ? p.parity as 'odd' | 'even' : undefined
+    if (bi && p.size === 2) {
+      const disp = bi === 'odd' ? p.period : p.period + 1
+      const other = bi === 'odd' ? p.period + 1 : p.period
+      fixed[`${p.day}-${disp}`] = { subject: p.subject, teacherName: p.teacherName, kind: 'subject', biweekly: bi }
+      pairCells[`${p.day}-${other}`] = bi === 'odd' ? 'even' : 'odd'
+      continue
+    }
     fixed[`${p.day}-${p.period}`] = { subject: p.subject, teacherName: p.teacherName, kind: 'subject', biweekly: bi }
     if (p.size === 2) fixed[`${p.day}-${p.period + 1}`] = { subject: p.subject, teacherName: p.teacherName, kind: 'subject', biweekly: bi }
   }
@@ -84,6 +94,7 @@ export default async function ScheduleFillPage() {
       periodsPerDay={grid.periodsPerDay}
       teachable={teachable}
       fixed={fixed}
+      pairCells={pairCells}
       breakdown={breakdown}
       initialCells={(hrRow?.cells ?? {}) as Record<string, string>}
       confirmedAt={hrRow?.confirmed_at ?? null}
