@@ -21,6 +21,7 @@ interface HolidayForm {
   name: string
   is_holiday: boolean
   isNew: boolean
+  originalDate: string | null  // 編輯時的原日期；日期是主鍵，改日期需搬移
 }
 
 export function CalendarAdminPage() {
@@ -154,6 +155,7 @@ export function CalendarAdminPage() {
   // ── 假日手動維護 ──────────────────────────────────────
   async function saveHoliday() {
     if (!holidayForm || saving) return
+    if (!holidayForm.date) { alert('請選擇日期。'); return }
     if (!holidayForm.name.trim()) { alert('請填寫名稱。'); return }
     setSaving(true)
     try {
@@ -168,7 +170,12 @@ export function CalendarAdminPage() {
       })
       const json = await res.json()
       if (!res.ok) { alert(json.error ?? '儲存失敗，請再試一次。'); return }
+      // 編輯時改了日期：日期是主鍵，寫入新日期後刪掉原日期那筆
+      if (holidayForm.originalDate && holidayForm.originalDate !== holidayForm.date) {
+        await fetch(`/api/admin/holidays?date=${holidayForm.originalDate}`, { method: 'DELETE' })
+      }
       setHolidayForm(null)
+      setSelectedDate(holidayForm.date)
       load()
     } finally {
       setSaving(false)
@@ -248,7 +255,7 @@ export function CalendarAdminPage() {
               </button>
               <button
                 className="btn-secondary !px-2.5 !py-1 text-xs"
-                onClick={() => setHolidayForm({ date: selectedDate, name: '', is_holiday: true, isNew: true })}
+                onClick={() => setHolidayForm({ date: selectedDate, name: '', is_holiday: true, isNew: true, originalDate: null })}
               >
                 新增假日／補班
               </button>
@@ -266,7 +273,7 @@ export function CalendarAdminPage() {
                 </span>
                 <button
                   className="text-xs text-zinc-500 underline-offset-2 hover:underline"
-                  onClick={() => setHolidayForm({ date: h.date, name: h.name, is_holiday: h.is_holiday, isNew: false })}
+                  onClick={() => setHolidayForm({ date: h.date, name: h.name, is_holiday: h.is_holiday, isNew: false, originalDate: h.date })}
                 >
                   編輯
                 </button>
@@ -357,9 +364,14 @@ export function CalendarAdminPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHolidayForm(null)}>
           <div className="card w-full max-w-md !p-5" onClick={e => e.stopPropagation()}>
             <h3 className="mb-4 text-base font-semibold text-zinc-900">
-              {holidayForm.isNew ? '新增假日／補班' : '編輯假日／補班'}（{fmtDateLabel(holidayForm.date)}）
+              {holidayForm.isNew ? '新增假日／補班' : '編輯假日／補班'}
             </h3>
             <div className="space-y-3">
+              <div>
+                <label className="label">日期 *</label>
+                <input type="date" className="input" value={holidayForm.date}
+                  onChange={e => setHolidayForm({ ...holidayForm, date: e.target.value })} />
+              </div>
               <div>
                 <label className="label">名稱 *</label>
                 <input className="input" placeholder="例：校慶補假、期末校務會議停課" value={holidayForm.name} maxLength={50}
