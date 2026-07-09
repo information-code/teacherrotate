@@ -256,6 +256,9 @@ function RosterCard({
 }) {
   // 樂觀更新：畫面立即反映，背景送出；同一職務的請求依序排隊避免亂序覆蓋
   const [rows, setRows] = useState<StaffRosterRow[]>([])
+  const [pending, setPending] = useState(0)     // 背景儲存中的請求數
+  const [savedAt, setSavedAt] = useState('')    // 最近一次全部送達的時間
+  const pendingRef = useRef(0)
   const queues = useRef(new Map<string, Promise<void>>())
 
   useEffect(() => {
@@ -263,6 +266,8 @@ function RosterCard({
   }, [data])
 
   function enqueue(duty: string, fields: { teacher_id?: string | null; perms?: string[] }) {
+    pendingRef.current += 1
+    setPending(pendingRef.current)
     const prev = queues.current.get(duty) ?? Promise.resolve()
     const next = prev.then(async () => {
       const res = await fetch('/api/admin/staff-roster', {
@@ -275,7 +280,14 @@ function RosterCard({
         alert(json?.error ?? '儲存失敗，畫面已還原為伺服器狀態。')
         onChanged()  // 失敗時以伺服器狀態重新同步
       }
-    }).catch(() => { onChanged() })
+    }).catch(() => { onChanged() }).finally(() => {
+      pendingRef.current -= 1
+      setPending(pendingRef.current)
+      if (pendingRef.current === 0) {
+        const d = new Date()
+        setSavedAt(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+      }
+    })
     queues.current.set(duty, next)
   }
 
@@ -319,7 +331,19 @@ function RosterCard({
 
   return (
     <div className="card !p-4">
-      <h3 className="mb-1 text-sm font-semibold text-zinc-700">行政人員權限</h3>
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-zinc-700">行政人員權限</h3>
+        <span className="text-xs" aria-live="polite">
+          {pending > 0 ? (
+            <span className="text-zinc-500">
+              <span className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-zinc-300 border-t-zinc-600 align-[-2px]" />
+              儲存中…
+            </span>
+          ) : savedAt ? (
+            <span className="text-green-600">✓ 已儲存（{savedAt}）</span>
+          ) : null}
+        </span>
+      </div>
       <p className="mb-3 text-xs text-zinc-500">
         勾選＝該職務可使用該管理頁面；有任一勾選即可進入管理端。
         中途換人直接改「人員」欄，<strong>最終權限以此表為準</strong>。
