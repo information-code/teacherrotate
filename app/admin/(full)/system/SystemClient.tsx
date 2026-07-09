@@ -39,7 +39,7 @@ export default function SystemClient({
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="text-lg font-semibold text-zinc-900">系統偏好</h1>
 
       <div className="flex gap-1 border-b border-zinc-200">
@@ -67,7 +67,7 @@ export default function SystemClient({
       )}
 
       {tab === 'prefs' ? (
-        <div className="space-y-4">
+        <div className="max-w-3xl space-y-4">
           <SchoolNameCard initialSchoolName={initialSchoolName} />
           <SchoolYearCard data={data} isSuperAdmin={isSuperAdmin} onChanged={load} />
         </div>
