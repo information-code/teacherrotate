@@ -357,7 +357,7 @@ export function CalendarAdminPage() {
               </div>
               <div>
                 <label className="label">處室</label>
-                {viewer?.role === 'staff' ? (
+                {viewer?.duty ? (
                   <p className="py-1 text-sm text-zinc-700">
                     {viewer.office}
                     <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>

@@ -227,7 +227,7 @@ export function AnnouncementsAdminPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="label">處室</label>
-                  {viewer?.role === 'staff' ? (
+                  {viewer?.duty ? (
                     <p className="py-2 text-sm text-zinc-700">
                       {viewer.office}
                       <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>

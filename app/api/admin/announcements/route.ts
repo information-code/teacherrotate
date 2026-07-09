@@ -53,12 +53,12 @@ export async function POST(request: NextRequest) {
   const title = String(body?.title ?? '').trim()
   if (!title) return NextResponse.json({ error: '請填寫公告標題' }, { status: 400 })
 
-  const office = access.role === 'staff' ? access.office ?? ''
+  // 有行政職務者（含兼任的管理員）一律依職務標記；無兼任的管理者才用管理者標籤
+  const office = access.duty ? access.office ?? ''
     : access.role === 'superadmin' ? SUPERADMIN_OFFICE
     : String(body?.office ?? '')
-  const publisherTitle = access.role === 'staff' ? access.duty ?? ''
-    : access.role === 'superadmin' ? SUPERADMIN_TITLE
-    : ADMIN_TITLE
+  const publisherTitle = access.duty
+    ?? (access.role === 'superadmin' ? SUPERADMIN_TITLE : ADMIN_TITLE)
 
   const { data, error } = await supabaseAdmin.from('announcements').insert({
     title,
