@@ -36,12 +36,15 @@ export function MonthCalendar({
   itemsByDate,
   selectedDate,
   onSelectDate,
+  onItemClick,
 }: {
   year: number
   month: number
   itemsByDate: Record<string, CalendarCellItem[]>
   selectedDate: string | null
   onSelectDate: (date: string) => void
+  /** 點擊格內事件小籤（未提供則小籤僅隨格子選日期） */
+  onItemClick?: (item: CalendarCellItem) => void
 }) {
   const today = dashboardTodayStr()
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
@@ -96,7 +99,13 @@ export function MonthCalendar({
                 {items.slice(0, MAX_CHIPS).map(item => (
                   <span
                     key={item.key}
-                    className={cn('truncate px-1 py-px text-[11px] leading-4', KIND_CHIP[item.kind], !inMonth && 'opacity-50')}
+                    onClick={onItemClick ? e => { e.stopPropagation(); onSelectDate(date); onItemClick(item) } : undefined}
+                    className={cn(
+                      'truncate px-1 py-px text-[11px] leading-4',
+                      KIND_CHIP[item.kind],
+                      !inMonth && 'opacity-50',
+                      onItemClick && 'cursor-pointer hover:opacity-80'
+                    )}
                   >
                     {item.label}
                   </span>

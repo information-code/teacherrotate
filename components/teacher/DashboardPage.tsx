@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { MonthCalendar, type CalendarCellItem } from '@/components/ui/MonthCalendar'
 import { PageLoading } from '@/components/ui/PageLoading'
 import {
-  dashboardTodayStr, dateInRange, fmtDateLabel, monthGridDates,
+  dashboardTodayStr, dateInRange, fmtDateLabel, fmtTimeRange, monthGridDates,
   type Announcement, type Holiday, type PersonalEvent, type SchoolEvent, type Todo,
 } from '@/lib/dashboard'
 
@@ -17,6 +17,12 @@ interface DashboardData {
   todos: Todo[]
 }
 
+/** 活動 modal 狀態：新增個人事項／檢視編輯個人事項／唯讀學校活動 */
+type EventModalState =
+  | { kind: 'create' }
+  | { kind: 'personal'; event: PersonalEvent }
+  | { kind: 'school'; event: SchoolEvent }
+
 export function DashboardPage() {
   const today = dashboardTodayStr()
   const [year, setYear] = useState(() => new Date().getFullYear())
@@ -26,7 +32,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeAnnouncement, setActiveAnnouncement] = useState<Announcement | null>(null)
-  const [showAddPersonal, setShowAddPersonal] = useState(false)
+  const [eventModal, setEventModal] = useState<EventModalState | null>(null)
 
   const gridDates = useMemo(() => monthGridDates(year, month), [year, month])
 
@@ -65,10 +71,27 @@ export function DashboardPage() {
       }
     }
     for (const p of data.personalEvents) {
-      push(p.date, { key: `p-${p.id}`, label: p.title, kind: 'personal' })
+      push(p.date, {
+        key: `p-${p.id}`,
+        label: p.start_time ? `${p.start_time.slice(0, 5)} ${p.title}` : p.title,
+        kind: 'personal',
+      })
     }
     return map
   }, [data, gridDates])
+
+  /** 月曆小籤點擊 → 依 key 前綴找回原始資料開啟詳情 */
+  function openCalendarItem(item: { key: string }) {
+    if (!data) return
+    if (item.key.startsWith('p-')) {
+      const ev = data.personalEvents.find(p => p.id === item.key.slice(2))
+      if (ev) setEventModal({ kind: 'personal', event: ev })
+    } else if (item.key.startsWith('e-')) {
+      const id = item.key.slice(2, -11)  // 去掉 'e-' 前綴與 '-YYYY-MM-DD' 尾碼
+      const ev = data.events.find(e => e.id === id)
+      if (ev) setEventModal({ kind: 'school', event: ev })
+    }
+  }
 
   function moveMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1)
@@ -162,7 +185,7 @@ export function DashboardPage() {
                   <span className="flex items-center gap-1"><span className="h-2 w-2 bg-zinc-400" />補行上班</span>
                   <span className="flex items-center gap-1"><span className="h-2 w-2 bg-amber-400" />個人</span>
                 </div>
-                <AddIconButton label="新增個人事項" onClick={() => setShowAddPersonal(true)} />
+                <AddIconButton label="新增個人事項" onClick={() => setEventModal({ kind: 'create' })} />
               </div>
             </div>
             <MonthCalendar
@@ -171,11 +194,13 @@ export function DashboardPage() {
               itemsByDate={itemsByDate}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
+              onItemClick={openCalendarItem}
             />
             <DayDetail
               date={selectedDate}
               data={data}
               onChanged={load}
+              onOpen={setEventModal}
             />
           </div>
 
@@ -195,12 +220,13 @@ export function DashboardPage() {
         />
       )}
 
-      {showAddPersonal && (
-        <PersonalEventModal
+      {eventModal && (
+        <EventDetailModal
+          state={eventModal}
           defaultDate={selectedDate}
-          onClose={() => setShowAddPersonal(false)}
+          onClose={() => setEventModal(null)}
           onSaved={date => {
-            setShowAddPersonal(false)
+            setEventModal(null)
             setSelectedDate(date)
             load()
           }}
@@ -227,33 +253,66 @@ function AddIconButton({ label, onClick }: { label: string; onClick: () => void 
   )
 }
 
-// ── 新增個人事項 modal ────────────────────────────────────
-function PersonalEventModal({
+// ── 活動詳情 modal ────────────────────────────────────────
+// 個人事項：唯讀詳情 →「編輯」切換為表單（新增時直接是表單）。
+// 學校活動：僅唯讀詳情。
+function EventDetailModal({
+  state,
   defaultDate,
   onClose,
   onSaved,
 }: {
+  state: EventModalState
   defaultDate: string
   onClose: () => void
   onSaved: (date: string) => void
 }) {
-  const [date, setDate] = useState(defaultDate)
-  const [title, setTitle] = useState('')
-  const [note, setNote] = useState('')
+  const personal = state.kind === 'personal' ? state.event : null
+  const school = state.kind === 'school' ? state.event : null
+  const [editing, setEditing] = useState(state.kind === 'create')
+  const [date, setDate] = useState(personal?.date ?? defaultDate)
+  const [allDay, setAllDay] = useState(!personal?.start_time)
+  const [startTime, setStartTime] = useState(personal?.start_time?.slice(0, 5) ?? '')
+  const [endTime, setEndTime] = useState(personal?.end_time?.slice(0, 5) ?? '')
+  const [title, setTitle] = useState(personal?.title ?? '')
+  const [note, setNote] = useState(personal?.note ?? '')
   const [saving, setSaving] = useState(false)
 
+  const canSave = Boolean(title.trim() && date && (allDay || (startTime && endTime)))
+
+  function resetToOriginal() {
+    setDate(personal?.date ?? defaultDate)
+    setAllDay(!personal?.start_time)
+    setStartTime(personal?.start_time?.slice(0, 5) ?? '')
+    setEndTime(personal?.end_time?.slice(0, 5) ?? '')
+    setTitle(personal?.title ?? '')
+    setNote(personal?.note ?? '')
+  }
+
   async function save() {
-    if (!title.trim() || !date || saving) return
+    if (!canSave || saving) return
+    if (!allDay && endTime <= startTime) {
+      alert('結束時間須晚於開始時間。')
+      return
+    }
     setSaving(true)
     try {
+      const payload = {
+        id: personal?.id,
+        date,
+        title,
+        note,
+        start_time: allDay ? '' : startTime,
+        end_time: allDay ? '' : endTime,
+      }
       const res = await fetch('/api/teacher/personal-events', {
-        method: 'POST',
+        method: personal ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, title, note }),
+        body: JSON.stringify(payload),
       })
       const json = await res.json()
       if (!res.ok) {
-        alert(json.error ?? '新增失敗，請再試一次。')
+        alert(json.error ?? '儲存失敗，請再試一次。')
         return
       }
       onSaved(date)
@@ -262,51 +321,136 @@ function PersonalEventModal({
     }
   }
 
+  const heading = state.kind === 'create' ? '新增個人事項'
+    : editing ? '編輯個人事項'
+    : school ? '學校活動' : '個人事項'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="card w-full max-w-md !p-5" onClick={e => e.stopPropagation()}>
-        <h3 className="mb-4 text-base font-semibold text-zinc-900">新增個人事項</h3>
-        <div className="space-y-3">
-          <div>
-            <label className="label">日期</label>
-            <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">事項名稱 *</label>
-            <input
-              className="input"
-              value={title}
-              maxLength={100}
-              autoFocus
-              onChange={e => setTitle(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') save() }}
-            />
-          </div>
-          <div>
-            <label className="label">備註（選填）</label>
-            <textarea className="input min-h-[4rem]" value={note} onChange={e => setNote(e.target.value)} />
-          </div>
+        <div className="mb-4 flex items-center gap-2">
+          <span className={cn('h-2.5 w-2.5', school ? 'bg-sky-400' : 'bg-amber-400')} />
+          <h3 className="text-base font-semibold text-zinc-900">{heading}</h3>
         </div>
+
+        {!editing ? (
+          /* 唯讀詳情（學校活動／個人事項） */
+          <dl className="space-y-3 text-sm">
+            <div>
+              <dt className="text-xs font-medium text-zinc-400">日期</dt>
+              <dd className="text-zinc-800">
+                {school
+                  ? school.start_date === school.end_date
+                    ? fmtDateLabel(school.start_date)
+                    : `${fmtDateLabel(school.start_date)} ～ ${fmtDateLabel(school.end_date)}`
+                  : fmtDateLabel(date)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-zinc-400">時間</dt>
+              <dd className="text-zinc-800">
+                {school || allDay ? '整天' : fmtTimeRange(`${startTime}:00`, `${endTime}:00`)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-zinc-400">活動名稱</dt>
+              <dd className="text-zinc-800">{school ? school.title : title}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-zinc-400">活動備註</dt>
+              <dd className="whitespace-pre-wrap text-zinc-800">
+                {(school ? school.description : note) || '—'}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          /* 表單（新增／編輯個人事項） */
+          <div className="space-y-3">
+            <div>
+              <label className="label">日期</label>
+              <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">時間</label>
+              <div className="flex items-center gap-2">
+                <select
+                  className="input !w-auto"
+                  value={allDay ? 'allday' : 'timed'}
+                  onChange={e => setAllDay(e.target.value === 'allday')}
+                >
+                  <option value="allday">整天</option>
+                  <option value="timed">指定時間</option>
+                </select>
+                {!allDay && (
+                  <>
+                    <input type="time" className="input flex-1" value={startTime}
+                      onChange={e => setStartTime(e.target.value)} aria-label="開始時間" />
+                    <span className="text-zinc-400">–</span>
+                    <input type="time" className="input flex-1" value={endTime}
+                      onChange={e => setEndTime(e.target.value)} aria-label="結束時間" />
+                  </>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="label">活動名稱 *</label>
+              <input
+                className="input"
+                value={title}
+                maxLength={100}
+                autoFocus={state.kind === 'create'}
+                onChange={e => setTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') save() }}
+              />
+            </div>
+            <div>
+              <label className="label">活動備註（選填）</label>
+              <textarea className="input min-h-[4rem]" value={note} onChange={e => setNote(e.target.value)} />
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>取消</button>
-          <button className="btn-primary" disabled={!title.trim() || !date || saving} onClick={save}>
-            {saving ? '儲存中…' : '新增'}
-          </button>
+          {!editing ? (
+            <>
+              <button className="btn-secondary" onClick={onClose}>關閉</button>
+              {personal && (
+                <button className="btn-primary" onClick={() => setEditing(true)}>編輯</button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  if (state.kind === 'create') onClose()
+                  else { resetToOriginal(); setEditing(false) }
+                }}
+              >
+                取消
+              </button>
+              <button className="btn-primary" disabled={!canSave || saving} onClick={save}>
+                {saving ? '儲存中…' : state.kind === 'create' ? '新增' : '儲存'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-// ── 選定日期詳情＋新增個人事項 ─────────────────────────────
+// ── 選定日期詳情 ─────────────────────────────────────────
 function DayDetail({
   date,
   data,
   onChanged,
+  onOpen,
 }: {
   date: string
   data: DashboardData | null
   onChanged: () => void
+  onOpen: (state: EventModalState) => void
 }) {
   const holidays = (data?.holidays ?? []).filter(h => h.date === date)
   const events = (data?.events ?? []).filter(ev => dateInRange(date, ev.start_date, ev.end_date))
@@ -336,24 +480,33 @@ function DayDetail({
         {events.map(ev => (
           <li key={ev.id} className="flex items-start gap-2 text-sm">
             <span className="mt-1.5 h-2 w-2 flex-shrink-0 bg-sky-400" />
-            <span className="text-zinc-800">
+            <button
+              type="button"
+              className="flex-1 text-left text-zinc-800 hover:underline underline-offset-2"
+              onClick={() => onOpen({ kind: 'school', event: ev })}
+            >
               {ev.title}
               {ev.start_date !== ev.end_date && (
                 <span className="ml-1 text-xs text-zinc-400">
                   {ev.start_date.slice(5).replace('-', '/')}～{ev.end_date.slice(5).replace('-', '/')}
                 </span>
               )}
-              {ev.description && <span className="block text-xs text-zinc-500">{ev.description}</span>}
-            </span>
+            </button>
           </li>
         ))}
         {personals.map(p => (
           <li key={p.id} className="group flex items-start gap-2 text-sm">
             <span className="mt-1.5 h-2 w-2 flex-shrink-0 bg-amber-400" />
-            <span className="flex-1 text-zinc-800">
+            <button
+              type="button"
+              className="flex-1 text-left text-zinc-800 hover:underline underline-offset-2"
+              onClick={() => onOpen({ kind: 'personal', event: p })}
+            >
+              {p.start_time && (
+                <span className="mr-1 text-xs text-zinc-500">{fmtTimeRange(p.start_time, p.end_time)}</span>
+              )}
               {p.title}
-              {p.note && <span className="block text-xs text-zinc-500">{p.note}</span>}
-            </span>
+            </button>
             <button
               className="text-xs text-zinc-400 hover:text-red-600"
               onClick={() => removePersonal(p.id)}
@@ -362,9 +515,6 @@ function DayDetail({
             </button>
           </li>
         ))}
-        {holidays.length === 0 && events.length === 0 && personals.length === 0 && (
-          <li className="text-sm text-zinc-400">這天沒有活動。</li>
-        )}
       </ul>
     </div>
   )

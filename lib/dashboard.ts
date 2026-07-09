@@ -20,6 +20,14 @@ export interface PersonalEvent {
   date: string
   title: string
   note: string
+  start_time: string | null  // 'HH:MM:SS'；null＝整天
+  end_time: string | null
+}
+
+/** TIME 欄位 → 'HH:MM'（顯示用）；整天回傳空字串 */
+export function fmtTimeRange(start: string | null, end: string | null): string {
+  if (!start || !end) return ''
+  return `${start.slice(0, 5)}–${end.slice(0, 5)}`
 }
 
 export interface Announcement {

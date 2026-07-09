@@ -293,10 +293,12 @@ export type Database = {
       personal_events: {
         Row: {
           id: string; user_id: string; date: string; title: string; note: string
+          start_time: string | null; end_time: string | null
           created_at: string; updated_at: string
         }
         Insert: {
           id?: string; user_id: string; date: string; title: string; note?: string
+          start_time?: string | null; end_time?: string | null
           created_at?: string; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['personal_events']['Insert']>
