@@ -1,5 +1,5 @@
 // 排課引擎 Web Worker：分段執行局部搜尋，收斂即自動完成；可中途停止並採用目前最佳解。
-import { EngineRun, type EngineInput } from '../../../lib/schedule-engine'
+import { EngineRun, type EngineInput } from '../../../../lib/schedule-engine'
 
 const CONVERGE_MS = 8000    // 連續無進步達此時間 → 視為收斂，自動完成
 const CAP_MS = 90000        // 絕對上限（防呆）

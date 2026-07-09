@@ -6,6 +6,16 @@ export interface SchoolEvent {
   description: string
   start_date: string
   end_date: string
+  office: string
+  publisher_title: string
+  can_edit?: boolean  // 管理端：呼叫者是否可編輯這筆
+}
+
+/** 管理端 API 回傳的呼叫者身分（顯示用） */
+export interface PublisherViewer {
+  role: 'superadmin' | 'admin' | 'staff'
+  duty: string | null
+  office: string | null
 }
 
 export interface Holiday {
@@ -40,8 +50,10 @@ export interface Announcement {
   link_url: string
   publish_at: string
   expire_at: string | null
+  publisher_title: string
   read?: boolean       // 教師端：本人是否已讀
   read_count?: number  // 管理端：已讀人數
+  can_edit?: boolean   // 管理端：呼叫者是否可編輯這筆
 }
 
 export interface Todo {

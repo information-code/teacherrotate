@@ -36,6 +36,16 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   // profile 不存在 → email 不在白名單，拒絕進入
   if (!profile) redirect('/unauthorized')
 
+  // 行政人員（權限名冊啟用者）也能切換到管理端（僅校務公告）
+  let canEnterAdmin = profile.role === 'admin' || profile.role === 'superadmin'
+  if (!canEnterAdmin) {
+    const { data: roster } = await admin
+      .from('staff_roster').select('duty')
+      .eq('teacher_id', user.id).eq('enabled', true)
+      .limit(1).maybeSingle()
+    canEnterAdmin = Boolean(roster)
+  }
+
   const siteTitle = await getSiteTitle()
 
   return (
@@ -46,7 +56,7 @@ export default async function TeacherLayout({ children }: { children: React.Reac
           <TopBar
             userName={profile?.name ?? profile?.email ?? user.email ?? ''}
             role="teacher"
-            isAdmin={profile?.role === 'admin' || profile?.role === 'superadmin'}
+            isAdmin={canEnterAdmin}
           />
           <main className="relative flex-1 overflow-y-auto p-3 md:p-6">
             {children}

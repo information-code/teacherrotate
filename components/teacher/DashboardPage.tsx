@@ -368,6 +368,14 @@ function EventDetailModal({
                 {(school ? school.description : note) || '—'}
               </dd>
             </div>
+            {school && (school.office || school.publisher_title) && (
+              <div>
+                <dt className="text-xs font-medium text-zinc-400">發布單位</dt>
+                <dd className="text-zinc-800">
+                  {[school.office, school.publisher_title].filter(Boolean).join('・')}
+                </dd>
+              </div>
+            )}
           </dl>
         ) : (
           /* 表單（新增／編輯個人事項） */
@@ -552,6 +560,8 @@ function DayDetail({
 }
 
 // ── 公告面板 ─────────────────────────────────────────────
+const OFFICE_FILTERS = ['全部', '教務處', '學務處', '總務處', '輔導室'] as const
+
 function AnnouncementPanel({
   announcements,
   onOpen,
@@ -559,14 +569,38 @@ function AnnouncementPanel({
   announcements: Announcement[]
   onOpen: (a: Announcement) => void
 }) {
+  const [filter, setFilter] = useState<string>('全部')
+  const shown = filter === '全部' ? announcements : announcements.filter(a => a.office === filter)
+
   return (
     <div className="card !p-4">
-      <h3 className="mb-3 text-sm font-semibold text-zinc-700">重要公告</h3>
-      {announcements.length === 0 ? (
-        <p className="text-sm text-zinc-400">目前沒有公告。</p>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-zinc-700">重要公告</h3>
+        <div className="flex flex-wrap gap-1">
+          {OFFICE_FILTERS.map(o => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => setFilter(o)}
+              className={cn(
+                'border px-2 py-0.5 text-xs',
+                filter === o
+                  ? 'border-zinc-800 bg-zinc-800 text-white'
+                  : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
+              )}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-sm text-zinc-400">
+          {filter === '全部' ? '目前沒有公告。' : `目前沒有${filter}的公告。`}
+        </p>
       ) : (
         <ul className="divide-y divide-zinc-100">
-          {announcements.map(a => (
+          {shown.map(a => (
             <li key={a.id}>
               <button
                 type="button"
@@ -618,6 +652,7 @@ function AnnouncementModal({
         </div>
         <h3 className="text-base font-semibold text-zinc-900">{announcement.title}</h3>
         <p className="mt-0.5 text-xs text-zinc-400">
+          {announcement.publisher_title && `${announcement.publisher_title}・`}
           發布於 {announcement.publish_at.slice(0, 10)}
         </p>
         <div className="divider" />

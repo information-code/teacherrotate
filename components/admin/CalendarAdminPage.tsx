@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MonthCalendar, type CalendarCellItem } from '@/components/ui/MonthCalendar'
 import { PageLoading } from '@/components/ui/PageLoading'
 import {
-  dashboardTodayStr, dateInRange, fmtDateLabel, monthGridDates,
-  type Holiday, type SchoolEvent,
+  dashboardTodayStr, dateInRange, fmtDateLabel, monthGridDates, OFFICES,
+  type Holiday, type PublisherViewer, type SchoolEvent,
 } from '@/lib/dashboard'
 
 interface EventForm {
@@ -14,6 +14,7 @@ interface EventForm {
   description: string
   start_date: string
   end_date: string
+  office: string
 }
 
 interface HolidayForm {
@@ -31,6 +32,7 @@ export function CalendarAdminPage() {
   const [selectedDate, setSelectedDate] = useState(today)
   const [events, setEvents] = useState<SchoolEvent[]>([])
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [viewer, setViewer] = useState<PublisherViewer | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [eventForm, setEventForm] = useState<EventForm | null>(null)
@@ -58,7 +60,8 @@ export function CalendarAdminPage() {
         if (!res.ok) throw new Error(json.error ?? '載入失敗')
         holidayLists.push(json)
       }
-      setEvents(eventsJson)
+      setEvents(eventsJson.events ?? [])
+      setViewer(eventsJson.viewer ?? null)
       setHolidays(holidayLists.flat())
     } catch (e) {
       setError(e instanceof Error ? e.message : '載入失敗，請重新整理頁面。')
@@ -130,6 +133,7 @@ export function CalendarAdminPage() {
           description: eventForm.description,
           start_date: eventForm.start_date,
           end_date: eventForm.end_date,
+          office: eventForm.office,
         }),
       })
       const json = await res.json()
@@ -195,6 +199,8 @@ export function CalendarAdminPage() {
 
   const dayEvents = events.filter(ev => dateInRange(selectedDate, ev.start_date, ev.end_date))
   const dayHolidays = holidays.filter(h => h.date === selectedDate)
+  // 假日維護：系統管理員＋教務處註冊組長
+  const canMaintainHolidays = !viewer || viewer.role !== 'staff' || viewer.duty === '註冊組長'
 
   if (loading && events.length === 0 && holidays.length === 0 && !error) {
     return <div className="relative min-h-[50vh]"><PageLoading /></div>
@@ -204,9 +210,11 @@ export function CalendarAdminPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="page-title !mb-0">行事曆管理</h2>
-        <button className="btn-secondary" disabled={syncing} onClick={syncHolidays}>
-          {syncing ? '同步中…' : `同步 ${year} 年假日`}
-        </button>
+        {canMaintainHolidays && (
+          <button className="btn-secondary" disabled={syncing} onClick={syncHolidays}>
+            {syncing ? '同步中…' : `同步 ${year} 年假日`}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -248,17 +256,19 @@ export function CalendarAdminPage() {
                 className="btn-secondary !px-2.5 !py-1 text-xs"
                 onClick={() => setEventForm({
                   id: null, title: '', description: '',
-                  start_date: selectedDate, end_date: selectedDate,
+                  start_date: selectedDate, end_date: selectedDate, office: '',
                 })}
               >
                 新增活動
               </button>
-              <button
-                className="btn-secondary !px-2.5 !py-1 text-xs"
-                onClick={() => setHolidayForm({ date: selectedDate, name: '', is_holiday: true, isNew: true, originalDate: null })}
-              >
-                新增假日／補班
-              </button>
+              {canMaintainHolidays && (
+                <button
+                  className="btn-secondary !px-2.5 !py-1 text-xs"
+                  onClick={() => setHolidayForm({ date: selectedDate, name: '', is_holiday: true, isNew: true, originalDate: null })}
+                >
+                  新增假日／補班
+                </button>
+              )}
             </div>
           </div>
           <ul className="space-y-1.5">
@@ -271,15 +281,19 @@ export function CalendarAdminPage() {
                     {h.is_holiday ? '放假' : '補行上班'}・{h.source === 'sync' ? '同步' : '手動'}
                   </span>
                 </span>
-                <button
-                  className="text-xs text-zinc-500 underline-offset-2 hover:underline"
-                  onClick={() => setHolidayForm({ date: h.date, name: h.name, is_holiday: h.is_holiday, isNew: false, originalDate: h.date })}
-                >
-                  編輯
-                </button>
-                <button className="text-xs text-red-600 underline-offset-2 hover:underline" onClick={() => removeHoliday(h)}>
-                  移除
-                </button>
+                {canMaintainHolidays && (
+                  <>
+                    <button
+                      className="text-xs text-zinc-500 underline-offset-2 hover:underline"
+                      onClick={() => setHolidayForm({ date: h.date, name: h.name, is_holiday: h.is_holiday, isNew: false, originalDate: h.date })}
+                    >
+                      編輯
+                    </button>
+                    <button className="text-xs text-red-600 underline-offset-2 hover:underline" onClick={() => removeHoliday(h)}>
+                      移除
+                    </button>
+                  </>
+                )}
               </li>
             ))}
             {dayEvents.map(ev => (
@@ -294,18 +308,22 @@ export function CalendarAdminPage() {
                   )}
                   {ev.description && <span className="block text-xs text-zinc-500">{ev.description}</span>}
                 </span>
-                <button
-                  className="text-xs text-zinc-500 underline-offset-2 hover:underline"
-                  onClick={() => setEventForm({
-                    id: ev.id, title: ev.title, description: ev.description,
-                    start_date: ev.start_date, end_date: ev.end_date,
-                  })}
-                >
-                  編輯
-                </button>
-                <button className="text-xs text-red-600 underline-offset-2 hover:underline" onClick={() => removeEvent(ev)}>
-                  刪除
-                </button>
+                {ev.can_edit !== false && (
+                  <>
+                    <button
+                      className="text-xs text-zinc-500 underline-offset-2 hover:underline"
+                      onClick={() => setEventForm({
+                        id: ev.id, title: ev.title, description: ev.description,
+                        start_date: ev.start_date, end_date: ev.end_date, office: ev.office ?? '',
+                      })}
+                    >
+                      編輯
+                    </button>
+                    <button className="text-xs text-red-600 underline-offset-2 hover:underline" onClick={() => removeEvent(ev)}>
+                      刪除
+                    </button>
+                  </>
+                )}
               </li>
             ))}
             {dayHolidays.length === 0 && dayEvents.length === 0 && (
@@ -336,6 +354,25 @@ export function CalendarAdminPage() {
                 <label className="label">說明（選填）</label>
                 <textarea className="input min-h-[4rem]" value={eventForm.description}
                   onChange={e => setEventForm({ ...eventForm, description: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">處室</label>
+                {viewer?.role === 'staff' ? (
+                  <p className="py-1 text-sm text-zinc-700">
+                    {viewer.office}
+                    <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>
+                  </p>
+                ) : viewer?.role === 'superadmin' && !eventForm.id ? (
+                  <p className="py-1 text-sm text-zinc-700">
+                    教務處 <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布固定歸教務處</span>
+                  </p>
+                ) : (
+                  <select className="input" value={eventForm.office}
+                    onChange={e => setEventForm({ ...eventForm, office: e.target.value })}>
+                    <option value="">（不指定）</option>
+                    {OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

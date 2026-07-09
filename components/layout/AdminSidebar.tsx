@@ -59,9 +59,16 @@ const navSections = [
   },
 ]
 
-export function AdminSidebar({ siteTitle = '教師系統' }: { siteTitle?: string }) {
+export function AdminSidebar({
+  siteTitle = '教師系統',
+  staffOnly = false,
+}: {
+  siteTitle?: string
+  staffOnly?: boolean  // 行政人員：僅顯示校務公告群組
+}) {
   const pathname = usePathname()
   const { open, setOpen } = useMobileNav()
+  const sections = staffOnly ? navSections.filter(s => s.title === '校務公告') : navSections
 
   return (
     <>
@@ -85,7 +92,7 @@ export function AdminSidebar({ siteTitle = '教師系統' }: { siteTitle?: strin
 
         {/* 導覽 */}
         <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
-          {navSections.map(section => (
+          {sections.map(section => (
             <div key={section.title} className="space-y-1">
               <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                 {section.title}

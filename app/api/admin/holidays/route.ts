@@ -1,10 +1,14 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { checkAdmin } from '@/lib/equipment-server'
+import { requirePublisher, type PublisherAccess } from '@/lib/staff-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** 假日維護權限：系統管理員＋教務處註冊組長 */
+function canMaintainHolidays(access: PublisherAccess): boolean {
+  return access.role !== 'staff' || access.duty === '註冊組長'
+}
 
 // 政府行政機關辦公日曆表（人事行政總處資料的社群整理版，逐年 JSON）
 const HOLIDAY_SOURCES = [
@@ -14,17 +18,9 @@ const HOLIDAY_SOURCES = [
 
 interface CalendarEntry { date: string; week: string; isHoliday: boolean; description: string }
 
-async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (!(await checkAdmin(user.id))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
-  return { user }
-}
-
-/** 假日列表。query: year */
+/** 假日列表。query: year（所有可發布者皆可讀，行事曆頁需要） */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requirePublisher()
   if ('error' in auth) return auth.error
 
   const year = Number(request.nextUrl.searchParams.get('year'))
@@ -44,8 +40,11 @@ export async function GET(request: NextRequest) {
  * 覆蓋既有 source='sync' 資料；手動新增（source='manual'）不受影響。
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requirePublisher()
   if ('error' in auth) return auth.error
+  if (!canMaintainHolidays(auth.access)) {
+    return NextResponse.json({ error: '假日維護僅限系統管理員與註冊組長' }, { status: 403 })
+  }
 
   const { year } = await request.json()
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
@@ -98,8 +97,11 @@ export async function POST(request: NextRequest) {
 
 /** 手動新增／修改單日。body: { date, name, is_holiday } */
 export async function PUT(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requirePublisher()
   if ('error' in auth) return auth.error
+  if (!canMaintainHolidays(auth.access)) {
+    return NextResponse.json({ error: '假日維護僅限系統管理員與註冊組長' }, { status: 403 })
+  }
 
   const body = await request.json()
   const date = String(body?.date ?? '')
@@ -120,8 +122,11 @@ export async function PUT(request: NextRequest) {
 
 /** 刪除單日。query: date */
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requirePublisher()
   if ('error' in auth) return auth.error
+  if (!canMaintainHolidays(auth.access)) {
+    return NextResponse.json({ error: '假日維護僅限系統管理員與註冊組長' }, { status: 403 })
+  }
 
   const date = request.nextUrl.searchParams.get('date') ?? ''
   if (!DATE_RE.test(date)) return NextResponse.json({ error: '日期格式無效' }, { status: 400 })

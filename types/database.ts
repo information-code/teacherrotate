@@ -274,11 +274,13 @@ export type Database = {
         Row: {
           id: string; title: string; description: string
           start_date: string; end_date: string
+          office: string; publisher_title: string
           created_by: string | null; created_at: string; updated_at: string
         }
         Insert: {
           id?: string; title: string; description?: string
           start_date: string; end_date: string
+          office?: string; publisher_title?: string
           created_by?: string | null; created_at?: string; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['school_events']['Insert']>
@@ -308,13 +310,13 @@ export type Database = {
         Row: {
           id: string; title: string; content: string; office: string
           pinned: boolean; requires_action: boolean; link_url: string
-          publish_at: string; expire_at: string | null
+          publish_at: string; expire_at: string | null; publisher_title: string
           created_by: string | null; created_at: string; updated_at: string
         }
         Insert: {
           id?: string; title: string; content?: string; office?: string
           pinned?: boolean; requires_action?: boolean; link_url?: string
-          publish_at?: string; expire_at?: string | null
+          publish_at?: string; expire_at?: string | null; publisher_title?: string
           created_by?: string | null; created_at?: string; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['announcements']['Insert']>
@@ -324,6 +326,18 @@ export type Database = {
         Row: { announcement_id: string; user_id: string; read_at: string }
         Insert: { announcement_id: string; user_id: string; read_at?: string }
         Update: Partial<Database['public']['Tables']['announcement_reads']['Insert']>
+        Relationships: []
+      }
+      staff_roster: {
+        Row: {
+          duty: string; office: string; teacher_id: string | null
+          enabled: boolean; updated_at: string
+        }
+        Insert: {
+          duty: string; office: string; teacher_id?: string | null
+          enabled?: boolean; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['staff_roster']['Insert']>
         Relationships: []
       }
       todos: {

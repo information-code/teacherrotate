@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PageLoading } from '@/components/ui/PageLoading'
-import { OFFICES, type Announcement } from '@/lib/dashboard'
+import { OFFICES, type Announcement, type PublisherViewer } from '@/lib/dashboard'
 
 interface FormState {
   id: string | null
@@ -44,6 +44,7 @@ function statusOf(a: Announcement): { label: string; className: string } {
 export function AnnouncementsAdminPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [totalTeachers, setTotalTeachers] = useState(0)
+  const [viewer, setViewer] = useState<PublisherViewer | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [form, setForm] = useState<FormState | null>(null)
@@ -58,6 +59,7 @@ export function AnnouncementsAdminPage() {
       if (!res.ok) throw new Error(json.error ?? '載入失敗')
       setAnnouncements(json.announcements)
       setTotalTeachers(json.totalTeachers)
+      setViewer(json.viewer ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '載入失敗，請重新整理頁面。')
     } finally {
@@ -191,8 +193,14 @@ export function AnnouncementsAdminPage() {
                     {a.publish_at.slice(0, 16).replace('T', ' ')}
                   </td>
                   <td className="whitespace-nowrap">
-                    <button className="text-sm text-zinc-600 underline-offset-2 hover:underline" onClick={() => openEdit(a)}>編輯</button>
-                    <button className="ml-3 text-sm text-red-600 underline-offset-2 hover:underline" onClick={() => remove(a)}>刪除</button>
+                    {a.can_edit !== false ? (
+                      <>
+                        <button className="text-sm text-zinc-600 underline-offset-2 hover:underline" onClick={() => openEdit(a)}>編輯</button>
+                        <button className="ml-3 text-sm text-red-600 underline-offset-2 hover:underline" onClick={() => remove(a)}>刪除</button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-zinc-300">—</span>
+                    )}
                   </td>
                 </tr>
               )
@@ -219,11 +227,22 @@ export function AnnouncementsAdminPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="label">處室</label>
-                  <select className="input" value={form.office}
-                    onChange={e => setForm({ ...form, office: e.target.value })}>
-                    <option value="">（不指定）</option>
-                    {OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
+                  {viewer?.role === 'staff' ? (
+                    <p className="py-2 text-sm text-zinc-700">
+                      {viewer.office}
+                      <span className="ml-1.5 text-xs text-zinc-400">依您的職務（{viewer.duty}）自動帶入</span>
+                    </p>
+                  ) : viewer?.role === 'superadmin' && !form.id ? (
+                    <p className="py-2 text-sm text-zinc-700">
+                      教務處 <span className="ml-1.5 text-xs text-zinc-400">最高管理者發布固定歸教務處</span>
+                    </p>
+                  ) : (
+                    <select className="input" value={form.office}
+                      onChange={e => setForm({ ...form, office: e.target.value })}>
+                      <option value="">（不指定）</option>
+                      {OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div className="flex items-end gap-4 pb-2">
                   <label className="flex items-center gap-1.5 text-sm text-zinc-700">
