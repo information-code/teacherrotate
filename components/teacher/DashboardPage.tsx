@@ -26,6 +26,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeAnnouncement, setActiveAnnouncement] = useState<Announcement | null>(null)
+  const [showAddPersonal, setShowAddPersonal] = useState(false)
 
   const gridDates = useMemo(() => monthGridDates(year, month), [year, month])
 
@@ -154,11 +155,14 @@ export function DashboardPage() {
                 <button className="btn-secondary !px-2.5 !py-1" onClick={() => moveMonth(1)} aria-label="下個月">›</button>
                 <button className="btn-secondary !ml-1 !px-2.5 !py-1" onClick={goToday}>今天</button>
               </div>
-              <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                <span className="flex items-center gap-1"><span className="h-2 w-2 bg-sky-400" />學校活動</span>
-                <span className="flex items-center gap-1"><span className="h-2 w-2 bg-red-400" />假日</span>
-                <span className="flex items-center gap-1"><span className="h-2 w-2 bg-zinc-400" />補行上班</span>
-                <span className="flex items-center gap-1"><span className="h-2 w-2 bg-amber-400" />個人</span>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 bg-sky-400" />學校活動</span>
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 bg-red-400" />假日</span>
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 bg-zinc-400" />補行上班</span>
+                  <span className="flex items-center gap-1"><span className="h-2 w-2 bg-amber-400" />個人</span>
+                </div>
+                <AddIconButton label="新增個人事項" onClick={() => setShowAddPersonal(true)} />
               </div>
             </div>
             <MonthCalendar
@@ -190,6 +194,106 @@ export function DashboardPage() {
           onClose={() => setActiveAnnouncement(null)}
         />
       )}
+
+      {showAddPersonal && (
+        <PersonalEventModal
+          defaultDate={selectedDate}
+          onClose={() => setShowAddPersonal(false)}
+          onSaved={date => {
+            setShowAddPersonal(false)
+            setSelectedDate(date)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** 面板右上角的「＋」新增按鈕 */
+function AddIconButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="btn-secondary !p-1.5"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </button>
+  )
+}
+
+// ── 新增個人事項 modal ────────────────────────────────────
+function PersonalEventModal({
+  defaultDate,
+  onClose,
+  onSaved,
+}: {
+  defaultDate: string
+  onClose: () => void
+  onSaved: (date: string) => void
+}) {
+  const [date, setDate] = useState(defaultDate)
+  const [title, setTitle] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!title.trim() || !date || saving) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/teacher/personal-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, title, note }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? '新增失敗，請再試一次。')
+        return
+      }
+      onSaved(date)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md !p-5" onClick={e => e.stopPropagation()}>
+        <h3 className="mb-4 text-base font-semibold text-zinc-900">新增個人事項</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="label">日期</label>
+            <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">事項名稱 *</label>
+            <input
+              className="input"
+              value={title}
+              maxLength={100}
+              autoFocus
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') save() }}
+            />
+          </div>
+          <div>
+            <label className="label">備註（選填）</label>
+            <textarea className="input min-h-[4rem]" value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}>取消</button>
+          <button className="btn-primary" disabled={!title.trim() || !date || saving} onClick={save}>
+            {saving ? '儲存中…' : '新增'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -204,33 +308,9 @@ function DayDetail({
   data: DashboardData | null
   onChanged: () => void
 }) {
-  const [title, setTitle] = useState('')
-  const [saving, setSaving] = useState(false)
-
   const holidays = (data?.holidays ?? []).filter(h => h.date === date)
   const events = (data?.events ?? []).filter(ev => dateInRange(date, ev.start_date, ev.end_date))
   const personals = (data?.personalEvents ?? []).filter(p => p.date === date)
-
-  async function addPersonal() {
-    if (!title.trim() || saving) return
-    setSaving(true)
-    try {
-      const res = await fetch('/api/teacher/personal-events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, title }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        alert(json.error ?? '新增失敗，請再試一次。')
-        return
-      }
-      setTitle('')
-      onChanged()
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function removePersonal(id: string) {
     if (!confirm('刪除這個個人事項？')) return
@@ -268,9 +348,12 @@ function DayDetail({
           </li>
         ))}
         {personals.map(p => (
-          <li key={p.id} className="group flex items-center gap-2 text-sm">
-            <span className="h-2 w-2 flex-shrink-0 bg-amber-400" />
-            <span className="flex-1 text-zinc-800">{p.title}</span>
+          <li key={p.id} className="group flex items-start gap-2 text-sm">
+            <span className="mt-1.5 h-2 w-2 flex-shrink-0 bg-amber-400" />
+            <span className="flex-1 text-zinc-800">
+              {p.title}
+              {p.note && <span className="block text-xs text-zinc-500">{p.note}</span>}
+            </span>
             <button
               className="text-xs text-zinc-400 hover:text-red-600"
               onClick={() => removePersonal(p.id)}
@@ -283,19 +366,6 @@ function DayDetail({
           <li className="text-sm text-zinc-400">這天沒有活動。</li>
         )}
       </ul>
-      <div className="mt-2 flex gap-2">
-        <input
-          className="input flex-1"
-          placeholder="新增我的事項…"
-          value={title}
-          maxLength={100}
-          onChange={e => setTitle(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') addPersonal() }}
-        />
-        <button className="btn-primary" disabled={!title.trim() || saving} onClick={addPersonal}>
-          新增
-        </button>
-      </div>
     </div>
   )
 }
@@ -404,9 +474,7 @@ function TodoPanel({
   today: string
   onChange: (todos: Todo[]) => void
 }) {
-  const [title, setTitle] = useState('')
-  const [dueDate, setDueDate] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
   const [showDone, setShowDone] = useState(false)
 
   const open = todos.filter(t => t.status === 'todo')
@@ -417,28 +485,6 @@ function TodoPanel({
     .sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'))
   const done = todos.filter(t => t.status === 'done')
     .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
-
-  async function addTodo() {
-    if (!title.trim() || saving) return
-    setSaving(true)
-    try {
-      const res = await fetch('/api/teacher/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, due_date: dueDate || undefined }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        alert(json.error ?? '新增失敗，請再試一次。')
-        return
-      }
-      setTitle('')
-      setDueDate('')
-      onChange([...todos, json])
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function toggle(t: Todo) {
     const nextStatus = t.status === 'done' ? 'todo' : 'done'
@@ -485,29 +531,9 @@ function TodoPanel({
 
   return (
     <div className="card !p-4">
-      <h3 className="mb-3 text-sm font-semibold text-zinc-700">代辦事項</h3>
-
-      <div className="mb-3 space-y-2">
-        <input
-          className="input"
-          placeholder="新增代辦…"
-          value={title}
-          maxLength={200}
-          onChange={e => setTitle(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') addTodo() }}
-        />
-        <div className="flex gap-2">
-          <input
-            type="date"
-            className="input flex-1"
-            value={dueDate}
-            onChange={e => setDueDate(e.target.value)}
-            aria-label="到期日（選填）"
-          />
-          <button className="btn-primary" disabled={!title.trim() || saving} onClick={addTodo}>
-            新增
-          </button>
-        </div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-zinc-700">代辦事項</h3>
+        <AddIconButton label="新增代辦" onClick={() => setShowAdd(true)} />
       </div>
 
       {open.length === 0 && (
@@ -536,6 +562,85 @@ function TodoPanel({
           )}
         </div>
       )}
+
+      {showAdd && (
+        <TodoModal
+          onClose={() => setShowAdd(false)}
+          onSaved={todo => {
+            setShowAdd(false)
+            onChange([...todos, todo])
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── 新增代辦 modal ────────────────────────────────────────
+function TodoModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: (todo: Todo) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!title.trim() || saving) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/teacher/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, note, due_date: dueDate || undefined }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? '新增失敗，請再試一次。')
+        return
+      }
+      onSaved(json)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md !p-5" onClick={e => e.stopPropagation()}>
+        <h3 className="mb-4 text-base font-semibold text-zinc-900">新增代辦</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="label">內容 *</label>
+            <input
+              className="input"
+              value={title}
+              maxLength={200}
+              autoFocus
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') save() }}
+            />
+          </div>
+          <div>
+            <label className="label">到期日（選填）</label>
+            <input type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">備註（選填）</label>
+            <textarea className="input min-h-[4rem]" value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}>取消</button>
+          <button className="btn-primary" disabled={!title.trim() || saving} onClick={save}>
+            {saving ? '儲存中…' : '新增'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -566,6 +671,9 @@ function TodoRow({
         <p className={cn('text-sm', isDone ? 'text-zinc-400 line-through' : 'text-zinc-800')}>
           {todo.title}
         </p>
+        {todo.note && !isDone && (
+          <p className="text-xs text-zinc-500">{todo.note}</p>
+        )}
         <p className="flex items-center gap-1.5 text-xs text-zinc-400">
           {todo.due_date && (
             <span className={cn(isOverdue && 'text-red-500')}>{fmtDateLabel(todo.due_date)}</span>
