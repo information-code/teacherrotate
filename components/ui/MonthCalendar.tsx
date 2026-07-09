@@ -24,7 +24,6 @@ const KIND_DOT: Record<CalendarCellItem['kind'], string> = {
 }
 
 const WEEKDAY_HEADERS = ['日', '一', '二', '三', '四', '五', '六']
-const MAX_CHIPS = 3
 
 /**
  * 月視圖行事曆（純顯示＋點選日期）。month 為 1–12。
@@ -94,9 +93,9 @@ export function MonthCalendar({
               >
                 {dayNum}
               </span>
-              {/* 桌機：事件小籤；手機：彩色圓點 */}
+              {/* 桌機：事件小籤（全部顯示，格子自動長高）；手機：彩色圓點 */}
               <span className="hidden flex-col gap-0.5 sm:flex">
-                {items.slice(0, MAX_CHIPS).map(item => (
+                {items.map(item => (
                   <span
                     key={item.key}
                     onClick={onItemClick ? e => { e.stopPropagation(); onSelectDate(date); onItemClick(item) } : undefined}
@@ -110,9 +109,6 @@ export function MonthCalendar({
                     {item.label}
                   </span>
                 ))}
-                {items.length > MAX_CHIPS && (
-                  <span className="px-1 text-[11px] text-zinc-400">還有 {items.length - MAX_CHIPS} 項</span>
-                )}
               </span>
               <span className="flex flex-wrap gap-0.5 sm:hidden">
                 {items.slice(0, 4).map(item => (

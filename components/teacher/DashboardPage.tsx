@@ -53,31 +53,37 @@ export function DashboardPage() {
 
   useEffect(() => { load() }, [load])
 
-  // 行事曆格子內容：學校活動（跨日逐日展開）→ 假日/補班 → 個人事項
+  // 行事曆格子內容，排序：國定假日/補班最上 → 學校活動 → 整天個人事項 → 有時間的個人事項依時間序
   const itemsByDate = useMemo(() => {
-    const map: Record<string, CalendarCellItem[]> = {}
-    if (!data) return map
-    const push = (date: string, item: CalendarCellItem) => {
-      (map[date] ??= []).push(item)
+    const map: Record<string, { item: CalendarCellItem; sortKey: string }[]> = {}
+    if (!data) return {}
+    const push = (date: string, sortKey: string, item: CalendarCellItem) => {
+      (map[date] ??= []).push({ item, sortKey })
     }
     for (const h of data.holidays) {
-      push(h.date, { key: `h-${h.date}`, label: h.name, kind: h.is_holiday ? 'holiday' : 'workday' })
+      push(h.date, '0', { key: `h-${h.date}`, label: h.name, kind: h.is_holiday ? 'holiday' : 'workday' })
     }
     for (const ev of data.events) {
       for (const date of gridDates) {
         if (dateInRange(date, ev.start_date, ev.end_date)) {
-          push(date, { key: `e-${ev.id}-${date}`, label: ev.title, kind: 'event' })
+          push(date, `1-${ev.start_date}`, { key: `e-${ev.id}-${date}`, label: ev.title, kind: 'event' })
         }
       }
     }
     for (const p of data.personalEvents) {
-      push(p.date, {
+      push(p.date, p.start_time ? `3-${p.start_time}` : '2', {
         key: `p-${p.id}`,
         label: p.start_time ? `${p.start_time.slice(0, 5)} ${p.title}` : p.title,
         kind: 'personal',
       })
     }
-    return map
+    const sorted: Record<string, CalendarCellItem[]> = {}
+    for (const [date, entries] of Object.entries(map)) {
+      sorted[date] = entries
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+        .map(e => e.item)
+    }
+    return sorted
   }, [data, gridDates])
 
   /** 月曆小籤點擊 → 依 key 前綴找回原始資料開啟詳情 */
@@ -410,7 +416,28 @@ function EventDetailModal({
           </div>
         )}
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex items-center gap-2">
+          {!editing && personal && (
+            <button
+              className="btn-danger mr-auto"
+              disabled={saving}
+              onClick={async () => {
+                if (!confirm(`刪除「${personal.title}」？`)) return
+                setSaving(true)
+                const res = await fetch(`/api/teacher/personal-events?id=${personal.id}`, { method: 'DELETE' })
+                setSaving(false)
+                if (!res.ok) {
+                  const json = await res.json().catch(() => null)
+                  alert(json?.error ?? '刪除失敗，請再試一次。')
+                  return
+                }
+                onSaved(date)
+              }}
+            >
+              刪除
+            </button>
+          )}
+          <span className="ml-auto flex gap-2">
           {!editing ? (
             <>
               <button className="btn-secondary" onClick={onClose}>關閉</button>
@@ -434,6 +461,7 @@ function EventDetailModal({
               </button>
             </>
           )}
+          </span>
         </div>
       </div>
     </div>
@@ -467,11 +495,12 @@ function DayDetail({
     onChanged()
   }
 
-  // 這天沒有任何項目就整段不顯示，月曆本身已足夠直觀
+  // 這天沒有任何項目就整段不顯示；桌機一律隱藏（直接在月曆格子上操作），
+  // 手機格子太窄只有圓點，保留點日期展開清單
   if (holidays.length === 0 && events.length === 0 && personals.length === 0) return null
 
   return (
-    <div className="mt-3 border-t border-zinc-100 pt-3">
+    <div className="mt-3 border-t border-zinc-100 pt-3 sm:hidden">
       <ul className="space-y-1.5">
         {holidays.map(h => (
           <li key={h.date + h.name} className="flex items-center gap-2 text-sm">
