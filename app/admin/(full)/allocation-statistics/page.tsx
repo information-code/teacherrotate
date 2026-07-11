@@ -16,6 +16,7 @@ export interface TeacherStat {
   roleLabel: string
   work: string
   grade: number | null
+  gradeGuessed?: boolean   // 工作紀錄年級未填、以職稱推斷（低→2、中→4、高→6），請補年級
   base: number | null
   data: TeacherAllocation
   isHourly?: boolean   // 鐘點教師：無減課/超鐘/鎖定，配課由課務組直接填
@@ -82,9 +83,10 @@ export default async function AllocationStatisticsPage() {
     const role = allocRole(work)
     if (role === 'none') continue
     const grade = role === 'homeroom' ? homeroomGrade(work, rot.grade ?? null) : null
+    const gradeGuessed = role === 'homeroom' && grade !== null && !(rot.grade && rot.grade >= 1 && rot.grade <= 6)
     const roleLabel = role === 'homeroom' ? '導師' : role === 'subject' ? '科任' : `行政（${ADMIN_KIND_LABEL[adminKind(work)]}）`
     teachers.push({
-      id, name: nameMap[id] ?? id, role, roleLabel, work, grade,
+      id, name: nameMap[id] ?? id, role, roleLabel, work, grade, gradeGuessed,
       base: baseForTeacher(config, work, grade),
       data: allocMap[id] ?? defaultTeacherAllocation(role, work, grade),
     })

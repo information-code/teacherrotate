@@ -331,6 +331,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`sticky left-0 z-10 ${mismatch ? 'bg-red-50' : 'bg-white'}`}>
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
+                            {t.gradeGuessed && <span className="ml-1 text-[10px] px-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-sm" title="工作紀錄年級未填，依職稱暫列此年段（低→二、中→四、高→六）——請至工作紀錄補年級">⚠ 年級未填</span>}
                             {reasonIcon(t)}{restoreIcon(t)}
                           </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>

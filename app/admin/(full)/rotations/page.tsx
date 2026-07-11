@@ -8,7 +8,7 @@ export default async function RotationsPage() {
   await guardPage(['rotations'])
   const admin = getAdminClient()
   const [rotationsResult, scoresResult, profilesResult, activeTeachersResult, scoremapResult] = await Promise.all([
-    admin.from('rotations').select('id, teacher_id, year, work, semester').order('year', { ascending: false }),
+    admin.from('rotations').select('id, teacher_id, year, work, semester, grade').order('year', { ascending: false }),
     admin.from('scores').select('teacher_id, year, score, recent_four_year_total'),
     admin.from('profiles').select('id, name, email').neq('role', 'superadmin'),
     admin.from('profiles').select('id, name, email').neq('status', 'inactive').neq('role', 'superadmin'),

@@ -178,6 +178,9 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
                   {avoided.length > 0 && (
                     <p className="text-[11px] text-amber-600">⚠ 排課需求—子女就讀此年段：{avoided.map(h => h.name).join('、')}（選擇時請留意，仍可指派）</p>
                   )}
+                  {list.some(h => h.gradeGuessed) && (
+                    <p className="text-[11px] text-amber-600">⚠ 年級未填、依職稱暫列此年段：{list.filter(h => h.gradeGuessed).map(h => h.name).join('、')}（請至工作紀錄補年級）</p>
+                  )}
                   {count === 0
                     ? <p className="text-xs text-zinc-400">尚未於配課設定設定班級數。</p>
                     : Array.from({ length: count }, (_, i) => {
@@ -201,7 +204,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
                             {stale && <option value={val}>⚠ {allNames[val] ?? '未知帳號'}（已不具此年段導師身分，請改選）</option>}
                             {list.filter(h => h.id === val || !usedElsewhere.has(h.id)).map(h => {
                               const warn = avoidMap[h.id]?.includes(g)
-                              return <option key={h.id} value={h.id} style={warn ? { color: '#b45309' } : undefined}>{h.name}{warn ? '（⚠ 子女在此年段）' : ''}</option>
+                              return <option key={h.id} value={h.id} style={warn || h.gradeGuessed ? { color: '#b45309' } : undefined}>{h.name}{warn ? '（⚠ 子女在此年段）' : ''}{h.gradeGuessed ? '（⚠ 年級未填）' : ''}</option>
                             })}
                           </select>
                         </label>

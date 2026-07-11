@@ -9,7 +9,7 @@ import { normalizeScheduleConfig } from '@/lib/scheduling'
 
 export const dynamic = 'force-dynamic'
 
-export interface HomeroomTeacher { id: string; name: string; grade: number }
+export interface HomeroomTeacher { id: string; name: string; grade: number; gradeGuessed?: boolean }   // gradeGuessed＝工作紀錄年級未填、依職稱暫列
 
 /** 科任配班用：可授課教師（科任／行政）與其配課節數（科目 → 年級 → 節數）。 */
 export interface SubjectTeacher {
@@ -78,6 +78,7 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
     let role: AllocRole = 'none'
     let work = ''
     let grade: number | null = null
+    let gradeGuessed = false   // 工作紀錄年級未填、以職稱推斷（低→2、中→4、高→6）
     if (empMap[id] === 'hourly') {
       role = 'subject'
       work = '鐘點教師'
@@ -89,12 +90,15 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       const rot = rotMap[id]
       work = rot?.work ?? ''
       role = allocRole(work)
-      if (role === 'homeroom') grade = homeroomGrade(work, rot?.grade ?? null)
+      if (role === 'homeroom') {
+        grade = homeroomGrade(work, rot?.grade ?? null)
+        gradeGuessed = grade !== null && !(rot?.grade && rot.grade >= 1 && rot.grade <= 6)
+      }
     }
     if (role === 'none') continue
 
     offTeachers.push({ id, name, work, role })
-    if (role === 'homeroom' && grade) homerooms.push({ id, name, grade })
+    if (role === 'homeroom' && grade) homerooms.push({ id, name, grade, gradeGuessed })
 
     if (role === 'subject' || role === 'admin') {
       // 配課節數：優先 subjectGradeHours（科目×年級，統計頁可編輯）；

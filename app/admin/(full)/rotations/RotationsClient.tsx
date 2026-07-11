@@ -31,8 +31,13 @@ interface RotationRow {
   year: number
   work: string
   semester: string
+  grade?: number | null   // 導師類職務的年級（1~6）；未填時顯示端以職稱推斷並警示
   profiles?: { name: string | null; email: string } | null
 }
+
+/** 導師類職務需要年級（低/中/高年級導師與接棒班）。 */
+const isHomeroomWork = (w: string) => w.includes('導師') || w.includes('接棒班')
+const GRADE_ZH = ['', '一', '二', '三', '四', '五', '六']
 
 interface ScoreRow {
   teacher_id: string
@@ -47,6 +52,7 @@ interface ImportPreviewRow {
   year: number
   work: string
   semester?: string
+  grade?: number | null
 }
 
 interface TeacherBasic {
@@ -75,6 +81,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editWork, setEditWork] = useState('')
   const [editSemester, setEditSemester] = useState('全學年')
+  const [editGrade, setEditGrade] = useState('')   // ''＝未填
   const [saving, setSaving] = useState(false)
   const [filterTeacher, setFilterTeacher] = useState('')
   const [filterYear, setFilterYear] = useState('')
@@ -92,6 +99,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
   const [addYear, setAddYear] = useState('')
   const [addWork, setAddWork] = useState('')
   const [addSemester, setAddSemester] = useState('全學年')
+  const [addGrade, setAddGrade] = useState('')
   const [addError, setAddError] = useState('')
   const [adding, setAdding] = useState(false)
 
@@ -165,7 +173,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
     const res = await fetch('/api/admin/rotations', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, work: editWork, semester: editSemester }),
+      body: JSON.stringify({ id, work: editWork, semester: editSemester, grade: isHomeroomWork(editWork) && editGrade ? Number(editGrade) : null }),
     })
     setSaving(false)
     if (res.ok) { setEditingId(null); load() }
@@ -208,16 +216,21 @@ export default function RotationsClient({ initialRotations, initialScores, activ
             const work = String(row['work'] ?? '').trim()
             const semesterRaw = String(row['semester'] ?? '').trim()
             const semester = VALID_SEMESTERS.includes(semesterRaw) ? semesterRaw : '全學年'
+            // 年級（導師類職務用）：空白＝未填；1~6 以外報錯
+            const gradeRaw = String(row['grade'] ?? '').trim()
+            const grade = gradeRaw === '' ? null : Number(gradeRaw)
             if (!teacher_id && !teacherMail) {
               errs.push(`第 ${i + 2} 行：需填 teacher_id 或 teacherMail`)
             } else if (!work || work === '無') {
               // 跳過
             } else if (isNaN(year) || year < 100) {
               errs.push(`第 ${i + 2} 行：year 格式錯誤（應為民國年）`)
+            } else if (grade !== null && (!Number.isInteger(grade) || grade < 1 || grade > 6)) {
+              errs.push(`第 ${i + 2} 行：grade 應為 1~6 或留空`)
             } else if (teacher_id) {
-              valid.push({ teacher_id, year, work, semester })
+              valid.push({ teacher_id, year, work, semester, grade })
             } else {
-              valid.push({ teacherMail, year, work, semester })
+              valid.push({ teacherMail, year, work, semester, grade })
             }
           })
         }
@@ -245,7 +258,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
       const res = await fetch('/api/admin/rotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [{ teacher_id: addTeacherId, year: Number(addYear), work: addWork.trim(), semester: addSemester }] }),
+        body: JSON.stringify({ rows: [{ teacher_id: addTeacherId, year: Number(addYear), work: addWork.trim(), semester: addSemester, grade: isHomeroomWork(addWork) && addGrade ? Number(addGrade) : null }] }),
       })
       const data = await res.json()
       if (!res.ok) { setAddError(data.error ?? '新增失敗'); return }
@@ -437,21 +450,36 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                     <td>{row.year} 學年度</td>
                     <td>
                       {editingId === row.id ? (
-                        <select
-                          value={editWork}
-                          onChange={e => setEditWork(e.target.value)}
-                          className="input py-1 w-44"
-                          autoFocus
-                        >
-                          {workOptions.map(group => (
-                            <optgroup key={group.label} label={group.label}>
-                              {group.works.map(item => (
-                                <option key={item} value={item}>{item}</option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                      ) : row.work}
+                        <span className="flex items-center gap-1 flex-wrap">
+                          <select
+                            value={editWork}
+                            onChange={e => setEditWork(e.target.value)}
+                            className="input py-1 w-44"
+                            autoFocus
+                          >
+                            {workOptions.map(group => (
+                              <optgroup key={group.label} label={group.label}>
+                                {group.works.map(item => (
+                                  <option key={item} value={item}>{item}</option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                          {isHomeroomWork(editWork) && (
+                            <select value={editGrade} onChange={e => setEditGrade(e.target.value)} className="input py-1 w-24">
+                              <option value="">年級未填</option>
+                              {[1, 2, 3, 4, 5, 6].map(g => <option key={g} value={g}>{GRADE_ZH[g]}年級</option>)}
+                            </select>
+                          )}
+                        </span>
+                      ) : (
+                        <span>
+                          {row.work}
+                          {isHomeroomWork(row.work) && (row.grade
+                            ? <span className="text-xs text-zinc-400 ml-1">（{GRADE_ZH[row.grade]}年級）</span>
+                            : <span className="text-[10px] px-1 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 ml-1" title="導師職務未填年級：系統會以職稱推斷（低→二、中→四、高→六），可能與實際不符，請編輯補上">⚠ 年級未填</span>)}
+                        </span>
+                      )}
                     </td>
                     <td>
                       {editingId === row.id ? (
@@ -479,7 +507,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                       ) : (
                         <div className="flex gap-1">
                           <button
-                            onClick={() => { setEditingId(row.id); setEditWork(row.work); setEditSemester(row.semester ?? '全學年') }}
+                            onClick={() => { setEditingId(row.id); setEditWork(row.work); setEditSemester(row.semester ?? '全學年'); setEditGrade(row.grade ? String(row.grade) : '') }}
                             className="btn-secondary py-1 px-2 text-xs"
                           >編輯</button>
                           <button
@@ -611,6 +639,15 @@ export default function RotationsClient({ initialRotations, initialScores, activ
                   ))}
                 </select>
               </div>
+              {isHomeroomWork(addWork) && (
+                <div className="w-28">
+                  <label className="block text-xs text-zinc-500 mb-1">年級</label>
+                  <select value={addGrade} onChange={e => setAddGrade(e.target.value)} className="input">
+                    <option value="">未填</option>
+                    {[1, 2, 3, 4, 5, 6].map(g => <option key={g} value={g}>{GRADE_ZH[g]}年級</option>)}
+                  </select>
+                </div>
+              )}
               <div className="w-28">
                 <label className="block text-xs text-zinc-500 mb-1">工作學期</label>
                 <select value={addSemester} onChange={e => setAddSemester(e.target.value)} className="input">
@@ -647,7 +684,7 @@ export default function RotationsClient({ initialRotations, initialScores, activ
               <p className="text-xs text-zinc-400">下載模板後填入資料再上傳</p>
             </div>
             <p className="text-xs text-zinc-400">
-              填入 <code>year</code>（民國年）和 <code>work</code>（職務）後上傳。<br />
+              填入 <code>year</code>（民國年）和 <code>work</code>（職務）後上傳；導師類職務請一併填 <code>grade</code>（年級 1~6，排課／配課會用到）。<br />
               <strong>注意：請勿修改 <code>teacher_id</code> 欄位。</strong>
               同一位教師有多個年度時，請複製該列並修改 <code>year</code> 和 <code>work</code>。
               <code>work</code> 留空或填「無」會自動略過。匯入後自動重算分數。
