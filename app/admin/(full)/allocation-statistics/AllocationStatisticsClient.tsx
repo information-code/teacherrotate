@@ -570,7 +570,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     </>
                   })()}
                   <span className="text-xs text-zinc-500">減</span>
-                  <NumberInput min={0} max={6} value={p.hours} onChange={n => setProjs(projs.map((x, idx) => idx === i ? { ...x, hours: Math.min(6, Math.max(0, n)) } : x))} className="input w-14 text-center py-0.5" />
+                  <NumberInput min={0} value={p.hours} onChange={n => setProjs(projs.map((x, idx) => idx === i ? { ...x, hours: Math.max(0, n) } : x))} className="input w-14 text-center py-0.5" />
                   <span className="text-xs text-zinc-500">節</span>
                   <button onClick={() => setProjs(projs.filter((_, idx) => idx !== i))} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>
                 </div>

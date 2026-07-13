@@ -550,7 +550,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                     </>
                   })()}
                   <span className="text-xs text-zinc-500">減</span>
-                  <NumberInput min={0} max={6} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.min(6, Math.max(0, n)) })} className="input w-14 text-center py-0.5" />
+                  <NumberInput min={0} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.max(0, n) })} className="input w-14 text-center py-0.5" />
                   <span className="text-xs text-zinc-500">節</span>
                   {!readOnly && <button onClick={() => removeProject(i)} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>}
                 </div>
@@ -629,7 +629,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
                   </>
                 })()}
                 <span className="text-xs text-zinc-500">減</span>
-                <NumberInput min={0} max={6} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.min(6, Math.max(0, n)) })} className="input w-14 text-center py-0.5" />
+                <NumberInput min={0} value={p.hours} disabled={readOnly} onChange={n => setProject(i, { hours: Math.max(0, n) })} className="input w-14 text-center py-0.5" />
                 <span className="text-xs text-zinc-500">節</span>
                 {!readOnly && <button onClick={() => removeProject(i)} className="text-zinc-400 hover:text-red-500 text-xs">刪除</button>}
               </div>
