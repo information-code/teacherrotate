@@ -20,6 +20,7 @@ export interface TeacherStat {
   base: number | null
   data: TeacherAllocation
   isHourly?: boolean   // 鐘點教師：無減課/超鐘/鎖定，配課由課務組直接填
+  isSubstitute?: boolean   // 代理教師：身分/年級存於配課資料（自選），管理者可於統計頁修正
 }
 export interface GradeMeta {
   subjects: string[]      // 導師可配課科目（表格欄位）
@@ -74,6 +75,7 @@ export default async function AllocationStatisticsPage() {
         roleLabel: d.role === 'homeroom' ? '代理導師' : '代理科任',
         work: d.work || (d.role === 'homeroom' ? '代理導師' : '代理科任'),
         grade, base, data: d,
+        isSubstitute: true,
       })
       continue
     }

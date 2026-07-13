@@ -29,6 +29,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
+  const [subEdit, setSubEdit] = useState<string | null>(null)    // 代理教師身分/年級調整 modal（teacher id）
+  const [subRole, setSubRole] = useState<'homeroom' | 'subject'>('homeroom')
+  const [subGrade, setSubGrade] = useState<number>(1)
   const [subjSel, setSubjSel] = useState<string | null>(null)        // 科任檢視：下拉選定的教師
   const [adminSel, setAdminSel] = useState<string | null>(null)      // 行政檢視：下拉選定的教師
   const [hourlySel, setHourlySel] = useState<string | null>(null)    // 鐘點檢視：下拉選定的教師
@@ -127,6 +130,13 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     if (!(t.data.principleReason || t.data.specialtyReason)) return null
     return <button onClick={() => setReasonView(t.id)} title="查看配課理由" className="ml-1 text-amber-600 hover:text-amber-700">💬</button>
   }
+  /** 代理教師身分/年級調整鈕（身分存於配課資料，選錯由管理者在此修正）。 */
+  function subEditIcon(t: TeacherStat) {
+    if (!t.isSubstitute) return null
+    return <button title="調整代理身分／年級"
+      onClick={() => { setSubRole(t.role === 'subject' ? 'subject' : 'homeroom'); setSubGrade(t.grade ?? 1); setSubEdit(t.id) }}
+      className="ml-1 text-zinc-400 hover:text-sky-600">✎</button>
+  }
   // 還原：把管理者編輯過的配課，復原成老師送出的原始版本
   function restoreIcon(t: TeacherStat) {
     const orig = t.data.scenariosOriginal
@@ -170,6 +180,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
             <select value={cur} onChange={e => setSel(e.target.value)} className="input py-1 text-sm w-48 sm:w-56 max-w-full">
               {list.map(at => <option key={at.id} value={at.id}>{at.name}（{at.roleLabel}）</option>)}
             </select>
+            {subEditIcon(t)}
             {!hourly && <>
               {reasonIcon(t)}
               {t.data.locked && <span className="text-[10px]">🔒</span>}
@@ -332,7 +343,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
                             {t.gradeGuessed && <span className="ml-1 text-[10px] px-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-sm" title="工作紀錄年級未填，依職稱暫列此年段（低→二、中→四、高→六）——請至工作紀錄補年級">⚠ 年級未填</span>}
-                            {reasonIcon(t)}{restoreIcon(t)}
+                            {subEditIcon(t)}{reasonIcon(t)}{restoreIcon(t)}
                           </div>
                           <div className={`text-[10px] ${tag === '自選' ? 'text-amber-600' : tag === '未填' ? 'text-zinc-400' : 'text-zinc-500'}`}>{tag}</div>
                         </td>
@@ -532,6 +543,62 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 </div>
               </div>
               <div className="flex justify-end pt-1"><button onClick={() => setReasonView(null)} className="btn-primary text-sm">關閉</button></div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── 代理教師身分/年級調整 modal（身分存於配課資料，選錯由管理者修正）── */}
+      {subEdit && (() => {
+        const t = teachers.find(x => x.id === subEdit)
+        if (!t) return null
+        async function save() {
+          if (!t) return
+          const data = {
+            ...t.data,
+            role: subRole,
+            grade: subRole === 'homeroom' ? subGrade : null,
+            work: subRole === 'homeroom' ? '代理導師' : '代理科任',
+          }
+          setTeachers(ts => ts.map(x => (x.id === t.id ? { ...x, data } : x)))
+          setSubEdit(null)
+          setSavingId(t.id)
+          try {
+            await fetch('/api/admin/allocation', {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teacher_id: t.id, data }),
+            })
+          } finally { setSavingId(null) }
+          router.refresh()   // 身分/年級/基本節數由伺服器 props 重算，刷新後移到正確分頁
+        }
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setSubEdit(null)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">{t.name} · 代理身分調整</h3>
+                  <p className="text-xs text-zinc-500">代理教師的身分／年級由其配課選填自選，選錯時由管理者在此修正。</p>
+                </div>
+                <button onClick={() => setSubEdit(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-sm">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={subRole === 'homeroom'} onChange={() => setSubRole('homeroom')} />代理導師
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={subRole === 'subject'} onChange={() => setSubRole('subject')} />代理科任
+                </label>
+                {subRole === 'homeroom' && (
+                  <select value={subGrade} onChange={e => setSubGrade(Number(e.target.value))} className="input py-1 text-sm w-28">
+                    {GRADES.map(g => <option key={g} value={g}>{GRADE_LABEL[g]}</option>)}
+                  </select>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400">已填的配課節數（各方案／年級×領域）會保留；儲存後名單移至對應分頁、基本節數依新身分重算。</p>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setSubEdit(null)} className="btn-secondary text-sm">取消</button>
+                <button onClick={save} className="btn-primary text-sm">儲存</button>
+              </div>
             </div>
           </div>
         )
