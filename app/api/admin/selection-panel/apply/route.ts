@@ -15,6 +15,18 @@ async function checkAdmin(userId: string) {
 
 type Rot = { teacher_id: string; year: number; work: string; grade: number | null }
 
+// 連任導師的年級推定：沒進撕榜＝帶原班升上去，必落在偶數年級。
+// 去年 1/3/5 → +1；去年年級也未填 → 依年段推偶數年級（低→2、中→4、高→6）；
+// 異常（去年已是偶數年級，理應輪動）→ 保留原值不硬猜，由前端「⚠ 年級未填」警示接手。
+const HOMEROOM_EVEN: Record<string, number> = { '低年級導師': 2, '中年級導師': 4, '高年級導師': 6 }
+function continuedGrade(work: string, prevGrade: number | null): number | null {
+  const even = HOMEROOM_EVEN[work]
+  if (!even) return prevGrade
+  if (prevGrade === 1 || prevGrade === 3 || prevGrade === 5) return prevGrade + 1
+  if (prevGrade == null) return even
+  return prevGrade
+}
+
 /**
  * 套用撕榜結果到工作紀錄，一鍵讓全校在校老師都有當年度工作：
  *   1. 已分配（撕榜）老師：寫入其槽位對應的 work/grade（改/加都覆蓋）。
@@ -51,9 +63,14 @@ export async function POST(request: NextRequest) {
   // 每位老師「該年度之前」的 rotation（判定目標與最新職位用），與是否已有當年度紀錄
   const priorRots: Record<string, Rot[]> = {}
   const has115 = new Set<string>()
+  const curRots: Record<string, Rot> = {}   // 當年度既有紀錄（年級回填用）
   for (const r of (rotData ?? []) as Rot[]) {
-    if (r.year === yr) { has115.add(r.teacher_id); continue }
+    if (r.year === yr) { has115.add(r.teacher_id); curRots[r.teacher_id] = r; continue }
     if (r.year < yr) (priorRots[r.teacher_id] ??= []).push(r)
+  }
+  const latestPriorGrade = (id: string) => {
+    const latest = [...(priorRots[id] ?? [])].sort((a, b) => b.year - a.year)[0]
+    return latest?.grade ?? null
   }
 
   // 1. 已分配（撕榜）→ upsert
@@ -74,11 +91,11 @@ export async function POST(request: NextRequest) {
       // 2. 名單內、這次沒被分配、且有殘留當年度紀錄 → 清除
       if (!placedSet.has(id) && has115.has(id)) toDelete.push(id)
     } else {
-      // 3. 非目標（連任）→ 若無當年度紀錄，複製最近一年原職
+      // 3. 非目標（連任）→ 若無當年度紀錄，複製最近一年原職；導師連任＝帶原班升年級（1/3/5→2/4/6）
       if (has115.has(id)) continue
       const latest = [...(priorRots[id] ?? [])].sort((a, b) => b.year - a.year)[0]
       if (!latest) continue
-      upserts.push({ teacher_id: id, year: yr, work: latest.work, grade: latest.grade, semester: '全學年' })
+      upserts.push({ teacher_id: id, year: yr, work: latest.work, grade: continuedGrade(latest.work, latest.grade), semester: '全學年' })
       filled.push(id)
     }
   }
@@ -92,9 +109,20 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin.from('scores').delete().eq('year', yr).in('teacher_id', toDelete)
   }
 
+  // 4. 既有當年度紀錄但年級空白的導師（手動補建/匯入所留）：未進撕榜＝連任，回填年級
+  const backfilled: string[] = []
+  for (const [id, cur] of Object.entries(curRots)) {
+    if (placedSet.has(id)) continue                       // 撕榜者已由步驟 1 覆蓋
+    if (cur.grade != null || !HOMEROOM_EVEN[cur.work]) continue
+    const g = continuedGrade(cur.work, latestPriorGrade(id))
+    if (g == null) continue
+    const { error } = await supabaseAdmin.from('rotations').update({ grade: g }).eq('teacher_id', id).eq('year', yr)
+    if (!error) backfilled.push(id)
+  }
+
   const affected = Array.from(new Set([...upserts.map(u => u.teacher_id), ...toDelete]))
   if (affected.length) await recalcTeacherScores(affected)
 
   const appliedPlaced = upserts.length - filled.length
-  return NextResponse.json({ ok: true, applied: appliedPlaced, filled: filled.length, removed: toDelete.length, skipped })
+  return NextResponse.json({ ok: true, applied: appliedPlaced, filled: filled.length, removed: toDelete.length, backfilled: backfilled.length, skipped })
 }

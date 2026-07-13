@@ -91,7 +91,8 @@ export default function SelectionPanelClient({ teachers, midLowWorks, preference
         `已套用至 ${preferenceYear} 學年度工作紀錄，分數已重算：\n` +
         `· 撕榜寫入 ${data.applied} 位\n` +
         `· 連任補齊 ${data.filled} 位\n` +
-        `· 清除殘留 ${data.removed} 位`
+        `· 清除殘留 ${data.removed} 位\n` +
+        `· 年級回填 ${data.backfilled ?? 0} 位（連任導師＝去年+1 或年段偶數年級）`
       )
     } finally {
       setApplying(false)
