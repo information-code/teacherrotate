@@ -26,7 +26,7 @@ interface Props {
   homeroomRows: HomeroomRow[]
 }
 
-type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number }
+type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number; phase?: 1 | 2; label?: string }
 type ViewKey = 'class' | 'teacher' | 'room'
 
 export default function ScheduleWizardClient(props: Props) {
@@ -41,6 +41,7 @@ export default function ScheduleWizardClient(props: Props) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [planStatus, setPlanStatus] = useState<string | null>(props.initialPlanStatus)
   const [phaseBusy, setPhaseBusy] = useState(false)
+  const [phase1Failed, setPhase1Failed] = useState(false)   // 階段一（純硬可行性）跑完仍找不到完整解
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
@@ -86,13 +87,14 @@ export default function ScheduleWizardClient(props: Props) {
 
   function run() {
     workerRef.current?.terminate()
-    setResult(null); setProgress(null); setRunning(true); setSaveStatus('idle')
+    setResult(null); setProgress(null); setRunning(true); setSaveStatus('idle'); setPhase1Failed(false)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'progress') setProgress(e.data as Progress)
       else if (e.data.type === 'done') {
         setResult(e.data.result as EngineResult)
+        setPhase1Failed(Boolean(e.data.phase1Failed))
         setRunning(false)
         w.terminate()
       }
@@ -296,14 +298,20 @@ export default function ScheduleWizardClient(props: Props) {
               ? <button onClick={run} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
               : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
             <span className="text-xs text-zinc-400">
-              共 {input.lessons.length} 堂科任課待排。引擎會持續優化，連續 8 秒沒有進步就自動完成。
-              發布門檻：未排、必排未覆蓋與必須級違反皆須為 0（所有需求配課與標記都要達成）。
+              共 {input.lessons.length} 堂科任課待排。<b>兩階段</b>：階段一（需要）純硬規則多種子求「全部排入」的可行解，
+              找不到即停止並回報；階段二（想要）加上權重與自訂規則精緻化（熱啟動＋冷啟動取較佳）。
+              發布門檻：未排、必排未覆蓋與必須級違反皆須為 0。
             </span>
           </>
         )}
         {running && progress && (
           <span className="text-xs text-zinc-500 ml-auto flex items-center gap-2">
-            <span>已排 {progress.placed}/{input.lessons.length}｜軟規則罰分 {Math.round(progress.softBest)}｜迭代 {progress.iter.toLocaleString()}</span>
+            {progress.phase && (
+              <span className={`px-1.5 py-0.5 rounded-sm border text-[11px] font-medium ${progress.phase === 1 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {progress.phase === 1 ? '階段一・可行性' : '階段二・精緻化'}{progress.label ? `（${progress.label}）` : ''}
+              </span>
+            )}
+            <span>已排 {progress.placed}/{input.lessons.length}{progress.phase === 2 && `｜軟規則罰分 ${Math.round(progress.softBest)}`}｜迭代 {progress.iter.toLocaleString()}</span>
             <span className="text-zinc-400">
               {progress.sinceImproveMs < 1500 ? '持續進步中…' : `${Math.floor(progress.sinceImproveMs / 1000)} 秒無進步`}
             </span>
@@ -388,6 +396,17 @@ export default function ScheduleWizardClient(props: Props) {
 
       {result && (
         <>
+          {/* 階段一失敗：結構性卡死，調權重無效，導向設定調整 */}
+          {phase1Failed && (
+            <div className="card border-red-200 bg-red-50 p-3 space-y-1">
+              <div className="text-sm font-semibold text-red-700">✕ 階段一（純硬規則）找不到完整解——未進入精緻化</div>
+              <p className="text-xs text-red-600">
+                已輪流嘗試多個種子，仍無法把所有課排入（下方為最佳嘗試與未排清單）。這通常是結構性卡死，調整權重無效——
+                請調整配課、科任配班、鎖課或排課/不排課標記後重排。常見原因：某班導師不排課格數逼近該班科任課節數（零餘裕）、
+                連堂科目配給不排課申報多的老師、同一位鐘點課太滿。
+              </p>
+            </div>
+          )}
           {/* 摘要 */}
           <div className="flex gap-2 flex-wrap text-xs">
             <span className="px-2 py-1 rounded-sm bg-green-50 text-green-700 border border-green-200">已排 {result.placed.length} 堂</span>

@@ -1014,10 +1014,21 @@ export class EngineRun {
   private mustSetByClass = new Map<string, Set<string>>()
   private lessonsByClass = new Map<string, EngineLesson[]>()
 
-  constructor(input: EngineInput) {
+  /** @param initial 熱啟動落點（兩階段的第二階段用）：以既有解為搜尋起點，不合法的落點靜默略過，
+   *  其餘課照常走建構流程補齊。 */
+  constructor(input: EngineInput, initial?: { id: string; day: number; period: number }[]) {
     this.input = input
     this.rnd = mulberry32(input.seed)
     this.st = new State(input)
+
+    if (initial?.length) {
+      for (const w of initial) {
+        const l = this.st.lessonById.get(w.id)
+        if (!l || this.st.pos.has(w.id)) continue
+        const p = { day: w.day, period: w.period }
+        if (this.st.canPlace(l, p)) this.st.place(l, p)
+      }
+    }
 
     // 必排格索引
     for (const [key2, slots] of Object.entries(input.classMustFill)) {
