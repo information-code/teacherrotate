@@ -25,11 +25,13 @@ export default async function WhitelistPage() {
     .order('name')
 
   const { data: { users } } = await admin.auth.admin.listUsers({ perPage: 1000 })
-  const authEmailSet = new Set(users.map(u => u.email))
+  // 以 id 判斷是否登入過：已註冊者 profile.id＝auth.users.id。
+  // 不能用 email 比對——管理者改過資料信箱（如統一為學校網域）後會與實際登入信箱不同，造成誤判「沒登入過」。
+  const authIdSet = new Set(users.map(u => u.id))
 
   const entries = (profiles ?? []).map(p => ({
     ...p,
-    logged_in: authEmailSet.has(p.email),
+    logged_in: authIdSet.has(p.id),
   }))
 
   return <WhitelistClient entries={entries} isSuperAdmin={isSuperAdmin} />
