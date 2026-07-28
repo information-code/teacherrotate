@@ -68,7 +68,8 @@ export async function GET(request: NextRequest) {
         // trigger 以 email 連結 profile，id 永遠一致（避免先登入後建檔造成的 id 錯位）。
         if (!profile) {
           if (!lookupFailed) await admin.auth.admin.deleteUser(user.id)  // 查詢異常時不誤刪
-          return NextResponse.redirect(`${origin}/unauthorized`)
+          // 帶上被拒的登入信箱：讓老師當場看到自己選錯了哪個 Google 帳號（否則刪帳號後查無痕跡、難以診斷）
+          return NextResponse.redirect(`${origin}/unauthorized?email=${encodeURIComponent(user.email ?? '')}`)
         }
 
         const r = profile.role

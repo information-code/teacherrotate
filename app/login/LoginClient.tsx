@@ -1,12 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage({ siteTitle = '教師系統' }: { siteTitle?: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
+
+  // callback 失敗被彈回時（?error=auth_failed）如實顯示，而不是默默回到登入鈕
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get('error')
+    if (err === 'auth_failed') {
+      setError('登入驗證未完成。若您是從 LINE 或其他 App 內開啟本頁，請改用一般瀏覽器（Chrome／Safari）開啟後再登入。')
+    }
+  }, [])
 
   async function handleGoogleLogin() {
     setLoading(true)
