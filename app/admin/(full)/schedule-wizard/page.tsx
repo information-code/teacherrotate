@@ -1,7 +1,7 @@
 import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleWizardClient from './ScheduleWizardClient'
-import { normalizeConfig, GRADES } from '@/lib/allocation'
+import { normalizeConfig, GRADES, adoptedReduction } from '@/lib/allocation'
 import { normalizeScheduleConfig } from '@/lib/scheduling'
 import type { GradeSubject } from '../schedule-config/page'
 
@@ -25,7 +25,8 @@ export default async function ScheduleWizardPage() {
   const scheduleConfig = normalizeScheduleConfig(schRow?.config)
   const teacherNames = Object.fromEntries((profiles ?? []).map(p => [p.id, p.name ?? '']))
 
-  // 導師自上節數（同科分擔）：由導師配班對應的配課 breakdown 帶出（無減課鏡射，退而求其次取第一個方案）
+  // 導師自上節數（同科分擔）：由導師配班對應的配課 breakdown 帶出。
+  // 情境依「該班年級的採用情境」（各年級可不同，如一年級減1、二～四減2）；退而求其次情境0、第一個方案。
   const allocMap = Object.fromEntries((allocs ?? []).map(a => [a.teacher_id, a.data as {
     scenarios?: Record<string, { breakdown?: Record<string, number> }>
     plans?: Record<string, { breakdown?: Record<string, number> }>
@@ -35,7 +36,9 @@ export default async function ScheduleWizardPage() {
   for (const [ck, tid] of Object.entries(scheduleConfig.classTeacher)) {
     if (!tid) continue
     const d = allocMap[tid]
-    const bd = d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown
+    const g = Number(ck.split('-')[0])
+    const rk = String(adoptedReduction(allocConfig.grades[g]))
+    const bd = d?.scenarios?.[rk]?.breakdown ?? d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown
     if (bd && Object.values(bd).some(v => Number(v) > 0)) homeroomHours[ck] = bd
   }
 

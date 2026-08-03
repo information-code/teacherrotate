@@ -227,19 +227,45 @@ export default function AllocationConfigClient({ year, initialConfig }: Props) {
 
       {/* ── Setting 3：情境 / 方案 ── */}
       <div className="card p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-700">設定三 — {GRADE_LABEL[grade]} 各情境的行政配課方案</h3>
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-700">設定三 — {GRADE_LABEL[grade]} 各情境的行政配課方案</h3>
+          <p className="text-xs text-zinc-400 mt-1">
+            勾選啟用＝開放老師填該情境的配課；<b>「採用」＝此年級定案的情境</b>（各年級可不同），
+            定案後配課統計、排課精靈、導師排課選填一律以採用情境計算。
+          </p>
+          {g.adopted == null && <p className="text-[11px] text-amber-600 mt-1">⚠ 尚未選定採用情境——統計與排課將暫以「唯一啟用的情境」（多個啟用時以無減課）計。</p>}
+        </div>
         {REDUCTIONS.map(r => {
           const sc = g.scenarios[r]
           const target = g.homeroomBase - r  // 標準情況（專案減課0、超鐘點0）的目標總節數
           return (
-            <div key={r} className="border border-zinc-200 rounded-sm p-3 space-y-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={sc.enabled}
-                  onChange={e => patchScenario(grade, r, s => ({ ...s, enabled: e.target.checked }))}
-                  className="w-4 h-4" />
-                <span className="font-medium text-zinc-700">{REDUCTION_LABEL[r]}</span>
+            <div key={r} className={`border rounded-sm p-3 space-y-3 ${g.adopted === r ? 'border-emerald-300 bg-emerald-50/40' : 'border-zinc-200'}`}>
+              <div className="flex items-center gap-2 text-sm flex-wrap">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={sc.enabled}
+                    onChange={e => {
+                      const on = e.target.checked
+                      // 停用已採用的情境時，一併清除定案
+                      patchGrade(grade, gc => ({
+                        ...gc,
+                        scenarios: { ...gc.scenarios, [r]: { ...gc.scenarios[r], enabled: on } },
+                        adopted: !on && gc.adopted === r ? null : gc.adopted,
+                      }))
+                    }}
+                    className="w-4 h-4" />
+                  <span className="font-medium text-zinc-700">{REDUCTION_LABEL[r]}</span>
+                </label>
+                {sc.enabled && (
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input type="radio" name={`adopt-${grade}`} checked={g.adopted === r}
+                      onChange={() => patchGrade(grade, gc => ({ ...gc, adopted: r }))} />
+                    <span className={g.adopted === r ? 'text-emerald-700 font-semibold' : 'text-zinc-500'}>
+                      {g.adopted === r ? '✓ 採用中（定案）' : '採用'}
+                    </span>
+                  </label>
+                )}
                 {sc.enabled && <span className="text-xs text-zinc-400">目標總節數 {target}（導師基本 {g.homeroomBase} − 減課 {r}）</span>}
-              </label>
+              </div>
 
               {sc.enabled && (
                 <div className="space-y-3 pl-6">

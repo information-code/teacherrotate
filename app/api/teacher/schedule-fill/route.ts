@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { normalizeScheduleConfig, bandOf, SCHEDULE_DAYS } from '@/lib/scheduling'
-import { homeroomBreakdown, type TeacherAllocation } from '@/lib/allocation'
+import { homeroomBreakdown, normalizeConfig, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 
 /** 導師儲存／確認排課選填。body: { year, cells, confirm? }
  *  伺服器端驗證：本人是該班導師、已發布、未確認、格子合法（可排、非鎖課、非科任課）、
@@ -17,10 +17,11 @@ export async function PUT(request: NextRequest) {
   if (!Number.isInteger(Number(year))) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
   if (!cells || typeof cells !== 'object') return NextResponse.json({ error: '格式錯誤' }, { status: 400 })
 
-  const [{ data: schRow }, { data: planRow }, { data: allocRow }] = await Promise.all([
+  const [{ data: schRow }, { data: planRow }, { data: allocRow }, { data: cfgRow }] = await Promise.all([
     supabaseAdmin.from('schedule_config').select('config').eq('year', Number(year)).maybeSingle(),
     supabaseAdmin.from('schedule_plan').select('plan').eq('year', Number(year)).maybeSingle(),
     supabaseAdmin.from('allocation').select('data').eq('teacher_id', user.id).eq('year', Number(year)).maybeSingle(),
+    supabaseAdmin.from('allocation_config').select('config').eq('year', Number(year)).maybeSingle(),
   ])
   const config = normalizeScheduleConfig(schRow?.config)
   const plan = (planRow?.plan ?? null) as { status?: string; placed?: { classKey: string; day: number; period: number; size: number; parity?: string }[] } | null
@@ -61,7 +62,11 @@ export async function PUT(request: NextRequest) {
     if (grid.teachable[`${d}-${p}`]) teachable.add(`${d}-${p}`)
   }
 
-  const breakdown = homeroomBreakdown(allocRow?.data as TeacherAllocation | null)
+  // 配課節數依「本班年級的採用情境」計（各年級可不同）
+  const breakdown = homeroomBreakdown(
+    allocRow?.data as TeacherAllocation | null,
+    adoptedReduction(normalizeConfig(cfgRow?.config).grades[g]),
+  )
   const clean: Record<string, string> = {}
   const counts: Record<string, number> = {}
   for (const [slot, subj] of Object.entries(cells as Record<string, unknown>)) {

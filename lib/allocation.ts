@@ -74,6 +74,17 @@ export interface GradeConfig {
   subjects: { name: string; perClass: number; homeroom: boolean }[]
   homeroomBase: number                        // 該年級導師基本授課節數
   scenarios: Record<Reduction, GradeScenario>
+  // 採用情境（定案）：各年級可不同（如一年級減1、二～四減2）。null＝尚未定案。
+  // 定案後配課統計、排課精靈、導師排課選填一律以此情境計。
+  adopted: Reduction | null
+}
+
+/** 某年級實際採用的情境：已定案用定案值（且需仍為啟用中）；
+ *  未定案時退而求其次——唯一啟用的情境，否則無減課。 */
+export function adoptedReduction(gc: GradeConfig): Reduction {
+  if (gc.adopted != null && gc.scenarios[gc.adopted]?.enabled) return gc.adopted
+  const enabled = REDUCTIONS.filter(r => gc.scenarios[r]?.enabled)
+  return enabled.length === 1 ? enabled[0] : 0
 }
 
 /** 行政基本授課節數（再細分校長/主任/組長） */
@@ -120,6 +131,7 @@ export function defaultGradeConfig(grade: number): GradeConfig {
       1: { enabled: false, plans: [] },
       2: { enabled: false, plans: [] },
     },
+    adopted: null,
   }
 }
 
@@ -163,6 +175,7 @@ export function normalizeConfig(raw: unknown): AllocationConfig {
             1: normScenario(rg.scenarios?.[1]),
             2: normScenario(rg.scenarios?.[2]),
           },
+          adopted: rg.adopted === 0 || rg.adopted === 1 || rg.adopted === 2 ? rg.adopted : null,
         }
       : dg
   }
@@ -369,8 +382,12 @@ export function defaultTeacherAllocation(role: AllocRole, work: string, grade: n
 }
 
 /** 導師自排用的配課節數（科目→節數）：無減課鏡射優先，退而求其次取第一個方案。 */
-export function homeroomBreakdown(d: TeacherAllocation | null | undefined): Record<string, number> {
-  const bd = d?.scenarios?.['0']?.breakdown ?? Object.values(d?.plans ?? {})[0]?.breakdown ?? null
+export function homeroomBreakdown(d: TeacherAllocation | null | undefined, reduction: Reduction = 0): Record<string, number> {
+  // 優先讀該年級「採用情境」的配課；舊資料退回情境 0 或第一個方案
+  const bd = d?.scenarios?.[String(reduction)]?.breakdown
+    ?? d?.scenarios?.['0']?.breakdown
+    ?? Object.values(d?.plans ?? {})[0]?.breakdown
+    ?? null
   const out: Record<string, number> = {}
   if (bd) for (const [k, v] of Object.entries(bd)) if (Number(v) > 0) out[k] = Number(v)
   return out

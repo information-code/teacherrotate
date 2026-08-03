@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { normalizeScheduleConfig, bandOf, classLabel, SCHEDULE_DAYS } from '@/lib/scheduling'
-import { homeroomBreakdown, type TeacherAllocation } from '@/lib/allocation'
+import { homeroomBreakdown, normalizeConfig, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 import ScheduleFillClient from './ScheduleFillClient'
 
 export const dynamic = 'force-dynamic'
@@ -24,10 +24,11 @@ export default async function ScheduleFillPage() {
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
   const year = Number(settingsRows?.[0]?.value ?? 115)
 
-  const [{ data: schRow }, { data: planRow }, { data: allocRow }] = await Promise.all([
+  const [{ data: schRow }, { data: planRow }, { data: allocRow }, { data: cfgRow }] = await Promise.all([
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_plan').select('plan').eq('year', year).maybeSingle(),
     admin.from('allocation').select('data').eq('teacher_id', user.id).eq('year', year).maybeSingle(),
+    admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
   ])
   const config = normalizeScheduleConfig(schRow?.config)
   const plan = (planRow?.plan ?? null) as {
@@ -80,8 +81,9 @@ export default async function ScheduleFillPage() {
     fixed[slot] = { subject: t?.subject || t?.label || '鎖課', kind: 'lock' }
   }
 
-  // 我要填的配課節數
-  const breakdown = homeroomBreakdown(allocRow?.data as TeacherAllocation | null)
+  // 我要填的配課節數（依本班年級的採用情境；各年級可不同）
+  const allocConfig = normalizeConfig(cfgRow?.config)
+  const breakdown = homeroomBreakdown(allocRow?.data as TeacherAllocation | null, adoptedReduction(allocConfig.grades[g]))
 
   const { data: hrRow } = await admin
     .from('schedule_homeroom').select('cells, confirmed_at')

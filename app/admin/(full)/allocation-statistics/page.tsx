@@ -3,7 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import AllocationStatisticsClient from './AllocationStatisticsClient'
 import {
   normalizeConfig, allocRole, homeroomGrade, adminKind, ADMIN_KIND_LABEL,
-  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, GRADES,
+  baseForTeacher, defaultTeacherAllocation, orderSubjectNames, GRADES, adoptedReduction,
   type AllocRole, type TeacherAllocation,
 } from '@/lib/allocation'
 
@@ -94,9 +94,13 @@ export default async function AllocationStatisticsPage() {
     })
   }
 
-  // 情境下拉只列配課設定有啟用者（任一年級啟用即列；全都沒啟用則保留「無減課」）
-  const enabledReductions = ([0, 1, 2] as const).filter(r => GRADES.some(g => config.grades[g].scenarios[r].enabled))
-  const reductions = enabledReductions.length ? enabledReductions : [0]
+  // 各年級採用情境（配課設定定案；未定案為推定值＋標示）——各年級可不同（如一年級減1、二～四減2）
+  const adoptedByGrade: Record<number, ReturnType<typeof adoptedReduction>> = {}
+  const adoptedDecided: Record<number, boolean> = {}
+  for (const g of GRADES) {
+    adoptedByGrade[g] = adoptedReduction(config.grades[g])
+    adoptedDecided[g] = config.grades[g].adopted != null
+  }
 
   const gradesMeta: Record<number, GradeMeta> = {}
   const demandByGradeSubject: Record<number, Record<string, number>> = {}
@@ -112,5 +116,5 @@ export default async function AllocationStatisticsPage() {
     demandByGradeSubject[g] = m
   }
 
-  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} reductions={reductions} extraCourses={config.extraCourses} />
+  return <AllocationStatisticsClient year={year} phase={phase} teachers={teachers} gradesMeta={gradesMeta} demandByGradeSubject={demandByGradeSubject} adoptedByGrade={adoptedByGrade} adoptedDecided={adoptedDecided} extraCourses={config.extraCourses} />
 }

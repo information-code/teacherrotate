@@ -12,17 +12,17 @@ interface Props {
   teachers: TeacherStat[]
   gradesMeta: Record<number, GradeMeta>
   demandByGradeSubject: Record<number, Record<string, number>>
-  reductions: number[]   // 配課設定有啟用的情境（未啟用者不列於下拉）
+  adoptedByGrade: Record<number, Reduction>   // 各年級採用情境（配課設定定案；未定案為推定值）
+  adoptedDecided: Record<number, boolean>     // 各年級是否已在配課設定按下「採用」
   extraCourses: ExtraCourse[]   // 其他課程（本土語語別課）：需求以總節數計
 }
 
-export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandByGradeSubject, reductions, extraCourses }: Props) {
+export default function AllocationStatisticsClient({ year, phase, teachers: initial, gradesMeta, demandByGradeSubject, adoptedByGrade, adoptedDecided, extraCourses }: Props) {
   const router = useRouter()
   const [teachers, setTeachers] = useState<TeacherStat[]>(initial)
   // 「重新整理」按鈕靠 router.refresh() 抓新資料，但 useState(initial) 只在掛載時讀一次，
   // props 更新後必須同步進 state，否則新增的老師（如補建工作紀錄者）不會出現在名單
   useEffect(() => { setTeachers(initial) }, [initial])
-  const [reduction, setReduction] = useState<Reduction>((reductions[0] ?? 0) as Reduction)
   const [view, setView] = useState<string>('1') // '1'..'6' | 'subj:<領域>' | 'admin'
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -77,7 +77,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     } finally { setBusy(false) }
   }
 
-  const rkey = String(reduction)
   const subjectTeachers = teachers.filter(t => t.role === 'subject' && !t.isHourly)
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   const adminTeachers = teachers.filter(t => t.role === 'admin')
@@ -94,10 +93,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   })()
   const unlockedTeachers = scopeInfo.list.filter(t => !t.data.locked)
 
-  // 供給計算（共用）。科任與行政皆以 subjectGradeHours（領域×年級）統計。
+  // 供給計算（共用）。導師供給以「該年級採用情境」的配課計；科任與行政以 subjectGradeHours（領域×年級）統計。
   function homeroomSupply(grade: number, subj: string) {
+    const rk = String(adoptedByGrade[grade] ?? 0)
     return teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
-      .reduce((s, t) => s + (Number(t.data.scenarios?.[rkey]?.breakdown?.[subj]) || 0), 0)
+      .reduce((s, t) => s + (Number(t.data.scenarios?.[rk]?.breakdown?.[subj]) || 0), 0)
   }
   function subjectSupply(grade: number, subj: string) {
     return subjectTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
@@ -146,10 +146,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       className="ml-1 text-zinc-400 hover:text-sky-600">↩</button>
   }
 
-  function editCell(id: string, sub: string, val: number) {
+  function editCell(id: string, sub: string, val: number, rk: string) {
     updateTeacher(id, d => {
-      const cur = d.scenarios?.[rkey] ?? { planName: null, breakdown: {} }
-      return { ...d, scenarios: { ...d.scenarios, [rkey]: { planName: null, breakdown: { ...cur.breakdown, [sub]: val } } } }
+      const cur = d.scenarios?.[rk] ?? { planName: null, breakdown: {} }
+      return { ...d, scenarios: { ...d.scenarios, [rk]: { planName: null, breakdown: { ...cur.breakdown, [sub]: val } } } }
     })
   }
   function editSubjectGradeHours(id: string, subj: string, grade: number, val: number) {
@@ -263,14 +263,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </div>
       </div>
 
-      {/* 情境 + 分頁 */}
+      {/* 分頁（情境依各年級於配課設定的「採用」定案，不再全校連動切換） */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500">情境（影響導師供給）</span>
-          <select value={reduction} onChange={e => setReduction(Number(e.target.value) as Reduction)} className="input py-1 text-sm w-28">
-            {reductions.map(r => <option key={r} value={r}>{REDUCTION_LABEL[r as Reduction]}</option>)}
-          </select>
-        </div>
         <div className="flex gap-1 flex-wrap items-center">
           {GRADES.map(g => <button key={g} onClick={() => setView(String(g))} className={tabCls(view === String(g))}>{GRADE_LABEL[g]}</button>)}
           <span className="mx-1 text-zinc-300">|</span>
@@ -302,6 +296,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         const meta = gradesMeta[grade]
         const subjects = meta?.subjects ?? []
         const homeroomTeachers = teachers.filter(t => t.role === 'homeroom' && t.grade === grade)
+        // 此年級採用的情境（配課設定定案；未定案為推定並警示）
+        const reduction = (adoptedByGrade[grade] ?? 0) as Reduction
+        const rkey = String(reduction)
         // 導師（本班）目標 = 實際節數 + 自願超鐘（老師同意、自動計入；意願超鐘屬另填的核定超鐘，不計入本班目標）
         const actualPeriod = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0)
         // 自願超鐘：優先取老師同意紀錄（鍵＝實際節數）。管理者核實調整專案減課後實際節數會改變、
@@ -318,7 +315,12 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         return (
           <>
             <div className="card p-0 overflow-x-auto">
-              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">{GRADE_LABEL[grade]}導師配課與供需小結 <span className="text-xs font-normal text-zinc-400 ml-1">導師以「{REDUCTION_LABEL[reduction]}」計；下方彙整各科供給與差異</span></div>
+              <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">{GRADE_LABEL[grade]}導師配課與供需小結
+                <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded-sm border align-middle ${adoptedDecided[grade] ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                  {adoptedDecided[grade] ? `採用：${REDUCTION_LABEL[reduction]}` : `⚠ 未定案，暫以${REDUCTION_LABEL[reduction]}計（請至配課設定選定採用情境）`}
+                </span>
+                <span className="text-xs font-normal text-zinc-400 ml-1">下方彙整各科供給與差異</span>
+              </div>
               <table className="table-base mt-2">
                 <thead>
                   <tr>
@@ -349,7 +351,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         </td>
                         {subjects.map(s => (
                           <td key={s} className="text-center">
-                            <NumberInput min={0} value={Number(breakdown(t)[s]) || 0} onChange={n => editCell(t.id, s, n)} className="input w-11 text-center py-0.5 text-xs" />
+                            <NumberInput min={0} value={Number(breakdown(t)[s]) || 0} onChange={n => editCell(t.id, s, n, rkey)} className="input w-11 text-center py-0.5 text-xs" />
                           </td>
                         ))}
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
