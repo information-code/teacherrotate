@@ -33,8 +33,8 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // 未登入 → 導向 /login
-  if (!user && pathname !== '/login' && !pathname.startsWith('/auth')) {
+  // 未登入 → 導向 /login（/demo 為介紹影片截圖用示範頁，僅開發環境存在，頁面本身在正式環境回 404）
+  if (!user && pathname !== '/login' && !pathname.startsWith('/auth') && !pathname.startsWith('/demo')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

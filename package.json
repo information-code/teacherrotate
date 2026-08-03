@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "video:capture": "node remotion/scripts/capture.mjs",
+    "video:audio": "node remotion/scripts/gen-audio.cjs",
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:render": "remotion render remotion/index.ts Main remotion/out/intro.mp4 --codec h264"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -27,11 +31,17 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@remotion/cli": "^4.0.504",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
+    "msedge-tts": "^2.0.7",
+    "music-metadata": "^11.14.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.8",
+    "qrcode": "^1.5.4",
+    "remotion": "^4.0.504",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3"
   }

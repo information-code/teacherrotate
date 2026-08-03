@@ -5,3 +5,5 @@ node_modules/
 out/
 *.log
 supabase/.temp/
+remotion/out/
+remotion/assets/shots/_upload.png
