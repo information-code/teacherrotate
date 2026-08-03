@@ -1,7 +1,7 @@
 import React from 'react'
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
 import {
-  Backdrop, BrowserFrame, Caption, FONT, PhoneFrame, SceneFade, ShotSwap, SidePoints, Spotlight, TapRipple,
+  Backdrop, Caption, FONT, PhoneFrame, SceneFade, ShotSwap, SidePoints, Spotlight, TapRipple,
 } from './components'
 import narration from './narration.json'
 
@@ -19,8 +19,6 @@ import s05bRaw from './assets/shots/s05b-done.png'
 import s06Raw from './assets/shots/s06-group.png'
 import s07aRaw from './assets/shots/s07a-long.png'
 import s07bRaw from './assets/shots/s07b-renewal.png'
-import s08aRaw from './assets/shots/s08a-admin-overview.png'
-import s08bRaw from './assets/shots/s08b-admin-log.png'
 
 // Next.js 的 next-env.d.ts 把 png 匯入視為 StaticImageData，
 // Remotion bundler 實際回傳字串網址——統一轉型
@@ -39,8 +37,6 @@ const s05b = asSrc(s05bRaw)
 const s06 = asSrc(s06Raw)
 const s07a = asSrc(s07aRaw)
 const s07b = asSrc(s07bRaw)
-const s08a = asSrc(s08aRaw)
-const s08b = asSrc(s08bRaw)
 
 const text = (id: string) => narration.find(n => n.id === id)?.text ?? ''
 
@@ -77,6 +73,68 @@ export const Scene1: React.FC = () => {
         </div>
       </AbsoluteFill>
       <Caption text={text('s1')} />
+    </SceneFade>
+  )
+}
+
+// ---------- S1b 安裝教學（QR＋加到主畫面步驟，停留讓觀眾掃描/暫停） ----------
+export const SceneInstall: React.FC<{ frames: number }> = ({ frames }) => {
+  const frame = useCurrentFrame()
+  const { fps } = useVideoConfig()
+  const pop = spring({ frame: frame - 6, fps, config: { damping: 13 } })
+  const hintAt = Math.round(frames * 0.45)
+  const hintOpacity = interpolate(frame, [hintAt, hintAt + 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const pulse = 0.85 + 0.15 * Math.sin(frame / 7)
+
+  const Step: React.FC<{ n: number; text: string; at: number }> = ({ n, text, at }) => {
+    const prog = interpolate(frame, [at, at + 10], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18, opacity: prog, transform: `translateX(${(1 - prog) * 30}px)` }}>
+        <div style={{ width: 40, height: 40, borderRadius: 20, background: '#f59e0b', color: '#fff', fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{n}</div>
+        <div style={{ fontSize: 30, color: '#e4e4e7' }}>{text}</div>
+      </div>
+    )
+  }
+
+  return (
+    <SceneFade>
+      <Backdrop dark />
+      <AbsoluteFill style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 120, fontFamily: FONT, paddingBottom: 90 }}>
+        {/* QR */}
+        <div style={{ textAlign: 'center', transform: `scale(${pop})` }}>
+          <div style={{ background: '#fff', padding: 26, borderRadius: 24, boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}>
+            <Img src={qr} style={{ width: 380, height: 380, display: 'block' }} />
+          </div>
+          <div style={{ fontSize: 32, color: '#fafafa', marginTop: 24, fontWeight: 700 }}>掃描開啟教師系統</div>
+        </div>
+
+        {/* 步驟 */}
+        <div style={{ width: 760 }}>
+          <div style={{ fontSize: 58, fontWeight: 700, color: '#fafafa', marginBottom: 40 }}>先把系統加到手機主畫面</div>
+          <div style={{ display: 'flex', gap: 60 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 34, fontWeight: 700, color: '#f59e0b', marginBottom: 22 }}>iPhone（Safari）</div>
+              <Step n={1} text="點下方「分享」按鈕" at={40} />
+              <Step n={2} text="選「加入主畫面」" at={70} />
+              <Step n={3} text="按「新增」完成" at={100} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 34, fontWeight: 700, color: '#4ade80', marginBottom: 22 }}>安卓（Chrome）</div>
+              <Step n={1} text="點右上「⋮」選單" at={150} />
+              <Step n={2} text="選「安裝應用程式」" at={180} />
+              <Step n={3} text="按「安裝」完成" at={210} />
+            </div>
+          </div>
+          {/* 暫停提示 */}
+          <div style={{ marginTop: 44, opacity: hintOpacity }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 16, background: 'rgba(245,158,11,0.16)', border: '2px solid #f59e0b', borderRadius: 999, padding: '14px 34px', opacity: pulse }}>
+              <span style={{ fontSize: 30 }}>⏸</span>
+              <span style={{ fontSize: 30, color: '#fbbf24', fontWeight: 700 }}>可先按暫停，跟著完成安裝，再繼續播放</span>
+            </div>
+          </div>
+        </div>
+      </AbsoluteFill>
+      <Caption text="第一次使用：掃描 QR code，依步驟把系統加到主畫面；可按暫停跟著操作。" />
     </SceneFade>
   )
 }
@@ -238,26 +296,6 @@ export const Scene7: React.FC<{ frames: number }> = ({ frames }) => {
         />
       }
     />
-  )
-}
-
-// ---------- S8 管理端 ----------
-export const Scene8: React.FC<{ frames: number }> = ({ frames }) => {
-  const frame = useCurrentFrame()
-  const swap1 = Math.round(frames * 0.55)
-  const zoom = interpolate(frame, [0, frames], [1, 1.06])
-  return (
-    <SceneFade>
-      <Backdrop />
-      <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 70 }}>
-        <div style={{ transform: `scale(${zoom})` }}>
-          <BrowserFrame width={1600}>
-            <ShotSwap shots={[s08a, s08b]} swapAt={[swap1]} />
-          </BrowserFrame>
-        </div>
-      </AbsoluteFill>
-      <Caption text={text('s8')} />
-    </SceneFade>
   )
 }
 

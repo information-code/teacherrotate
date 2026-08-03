@@ -185,7 +185,7 @@ export const Caption: React.FC<{ text: string }> = ({ text }) => {
         padding: '16px 42px',
         borderRadius: 16,
         fontFamily: FONT,
-        whiteSpace: 'nowrap',
+        textAlign: 'center',
         opacity,
       }}
     >
