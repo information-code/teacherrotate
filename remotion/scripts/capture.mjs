@@ -106,6 +106,18 @@ await p.locator('.fixed img[alt="上傳照片"]').first().waitFor()
 await p.locator('.fixed input[type="checkbox"]').first().check()
 await shot(p, 's07b-renewal')
 
+// 側欄導覽（含頂欄/抽屜側欄外框）：關閉與展開兩態
+const nav = await phone.newPage()
+await nav.addInitScript(() => localStorage.setItem('a2hs_guide_dismissed', '1'))
+await nav.goto(`${BASE}/demo/nav`)
+await nav.getByText('預約借用', { exact: true }).first().waitFor()
+await shot(nav, 's02a-nav-closed')
+
+await nav.getByRole('button', { name: '開啟選單' }).click()
+await nav.getByRole('link', { name: '設備借用' }).waitFor()
+await nav.waitForTimeout(400) // 等抽屜滑入完成
+await shot(nav, 's02b-nav-open')
+
 await phone.close()
 
 // ---------- 管理端（桌機 1440×900 @2x） ----------

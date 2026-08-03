@@ -47,7 +47,7 @@ const SceneComponent: React.FC<{ id: SceneId; frames: number }> = ({ id, frames 
   switch (id) {
     case 's1': return <Scene1 />
     case 'sInstall': return <SceneInstall frames={frames} />
-    case 's2': return <Scene2 />
+    case 's2': return <Scene2 frames={frames} />
     case 's3': return <Scene3 frames={frames} />
     case 's4': return <Scene4 frames={frames} />
     case 's5': return <Scene5 frames={frames} />

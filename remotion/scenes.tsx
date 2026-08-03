@@ -6,7 +6,8 @@ import {
 
 import logoRaw from '../public/icons/icon-512.png'
 import qrRaw from './assets/qr.png'
-import s02Raw from './assets/shots/s02-teacher-home.png'
+import s02aRaw from './assets/shots/s02a-nav-closed.png'
+import s02bRaw from './assets/shots/s02b-nav-open.png'
 import s03aRaw from './assets/shots/s03a-selected.png'
 import s03bRaw from './assets/shots/s03b-results.png'
 import s03cRaw from './assets/shots/s03c-reserved.png'
@@ -24,7 +25,8 @@ import s07bRaw from './assets/shots/s07b-renewal.png'
 const asSrc = (m: unknown): string => m as string
 const logo = asSrc(logoRaw)
 const qr = asSrc(qrRaw)
-const s02 = asSrc(s02Raw)
+const s02a = asSrc(s02aRaw)
+const s02b = asSrc(s02bRaw)
 const s03a = asSrc(s03aRaw)
 const s03b = asSrc(s03bRaw)
 const s03c = asSrc(s03cRaw)
@@ -133,26 +135,58 @@ export const SceneInstall: React.FC<{ frames: number }> = ({ frames }) => {
   )
 }
 
-// ---------- S2 進入設備借用 ----------
-export const Scene2: React.FC = () => {
+// ---------- S2 進入設備借用（漢堡選單 → 側欄滑出 → 點「設備借用」 → 側欄收合） ----------
+const SIDEBAR_W = 224 / 390 // 側欄佔手機視窗寬度比例（w-56）
+
+export const Scene2: React.FC<{ frames: number }> = ({ frames }) => {
   const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const slide = spring({ frame, fps, config: { damping: 16 }, durationInFrames: 30 })
+  const menuTap = Math.round(frames * 0.14)
+  const openStart = menuTap + 8
+  const openEnd = openStart + 13
+  const itemTap = Math.round(frames * 0.55)
+  const closeStart = itemTap + 14
+  const closeEnd = closeStart + 12
+
+  // 抽屜開合進度：點選單後滑入、點「設備借用」後滑出
+  const drawer =
+    interpolate(frame, [openStart, openEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) *
+    interpolate(frame, [closeStart, closeEnd], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+
   return (
     <PhoneLayout
       phone={
-        <div style={{ transform: `translateY(${(1 - slide) * 120}px)` }}>
-          <PhoneFrame>
-            <Img src={s02} style={{ width: '100%' }} />
-          </PhoneFrame>
-        </div>
+        <PhoneFrame>
+          {/* 底層：關閉狀態（設備借用頁＋頂欄） */}
+          <Img src={s02a} style={{ position: 'absolute', top: 0, left: 0, width: '100%' }} />
+          {/* 手機遮罩層 */}
+          <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0.4 * drawer }} />
+          {/* 側欄：以展開截圖的左側區域裁切，向右滑入 */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${SIDEBAR_W * 100}%`,
+              height: '100%',
+              overflow: 'hidden',
+              transform: `translateX(${(drawer - 1) * 100}%)`,
+              boxShadow: drawer > 0.02 ? '8px 0 30px rgba(0,0,0,0.35)' : 'none',
+            }}
+          >
+            <Img src={s02b} style={{ position: 'absolute', top: 0, left: 0, width: `${(1 / SIDEBAR_W) * 100}%` }} />
+          </div>
+          {/* 點擊：漢堡選單 → 設備借用 */}
+          <TapRipple cx={0.067} cy={0.031} at={menuTap} />
+          <TapRipple cx={0.16} cy={0.278} at={itemTap} />
+        </PhoneFrame>
       }
       side={
         <SidePoints
           title="打開就能借"
           points={[
-            { text: '教師系統側欄「設備借用」', at: 20 },
-            { text: '短期借用・長期借用', at: 46 },
+            { text: '點左上角選單', at: menuTap - 4 },
+            { text: '選「設備借用」', at: itemTap - 6 },
+            { text: '進入借用頁面', at: closeEnd },
           ]}
         />
       }
