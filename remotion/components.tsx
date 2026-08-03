@@ -166,31 +166,49 @@ export const Spotlight: React.FC<{
   )
 }
 
-/** 底部字幕列 */
-export const Caption: React.FC<{ text: string }> = ({ text }) => {
+/** 底部字幕列（樣式殼，透明度由外部控制） */
+const CaptionBar: React.FC<{ text: string; opacity: number }> = ({ text, opacity }) => (
+  <div
+    style={{
+      position: 'absolute',
+      bottom: 44,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      maxWidth: 1560,
+      background: 'rgba(24,24,27,0.86)',
+      color: '#fafafa',
+      fontSize: 38,
+      lineHeight: 1.45,
+      padding: '16px 42px',
+      borderRadius: 16,
+      fontFamily: FONT,
+      textAlign: 'center',
+      whiteSpace: 'nowrap',
+      opacity,
+    }}
+  >
+    {text}
+  </div>
+)
+
+/** 逐句字幕：每句在其語音時間窗內顯示，與旁白同步 */
+export const TimedCaptions: React.FC<{
+  phrases: string[]
+  windows: { from: number; frames: number }[]
+}> = ({ phrases, windows }) => {
   const frame = useCurrentFrame()
-  const opacity = interpolate(frame, [6, 16], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   return (
-    <div
-      style={{
-        position: 'absolute',
-        bottom: 44,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        maxWidth: 1560,
-        background: 'rgba(24,24,27,0.86)',
-        color: '#fafafa',
-        fontSize: 38,
-        lineHeight: 1.45,
-        padding: '16px 42px',
-        borderRadius: 16,
-        fontFamily: FONT,
-        textAlign: 'center',
-        opacity,
-      }}
-    >
-      {text}
-    </div>
+    <>
+      {phrases.map((phrase, i) => {
+        const w = windows[i]
+        const hold = i === phrases.length - 1 ? 20 : 6 // 最後一句多留一下
+        const opacity =
+          interpolate(frame, [w.from - 4, w.from + 3], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) *
+          interpolate(frame, [w.from + w.frames + hold, w.from + w.frames + hold + 6], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+        if (opacity <= 0) return null
+        return <CaptionBar key={i} text={phrase} opacity={opacity} />
+      })}
+    </>
   )
 }
 

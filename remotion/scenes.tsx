@@ -1,9 +1,8 @@
 import React from 'react'
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
 import {
-  Backdrop, Caption, FONT, PhoneFrame, SceneFade, ShotSwap, SidePoints, Spotlight, TapRipple,
+  Backdrop, FONT, PhoneFrame, SceneFade, ShotSwap, SidePoints, Spotlight, TapRipple,
 } from './components'
-import narration from './narration.json'
 
 import logoRaw from '../public/icons/icon-512.png'
 import qrRaw from './assets/qr.png'
@@ -38,17 +37,14 @@ const s06 = asSrc(s06Raw)
 const s07a = asSrc(s07aRaw)
 const s07b = asSrc(s07bRaw)
 
-const text = (id: string) => narration.find(n => n.id === id)?.text ?? ''
-
 /** 手機置左、右側重點欄的標準版面 */
-const PhoneLayout: React.FC<{ phone: React.ReactNode; side: React.ReactNode; caption: string }> = ({ phone, side, caption }) => (
+const PhoneLayout: React.FC<{ phone: React.ReactNode; side: React.ReactNode }> = ({ phone, side }) => (
   <SceneFade>
     <Backdrop />
     <AbsoluteFill style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 110, paddingBottom: 60 }}>
       <div>{phone}</div>
       {side}
     </AbsoluteFill>
-    <Caption text={caption} />
   </SceneFade>
 )
 
@@ -72,7 +68,6 @@ export const Scene1: React.FC = () => {
           借用・歸還・管理，一支手機完成
         </div>
       </AbsoluteFill>
-      <Caption text={text('s1')} />
     </SceneFade>
   )
 }
@@ -134,7 +129,6 @@ export const SceneInstall: React.FC<{ frames: number }> = ({ frames }) => {
           </div>
         </div>
       </AbsoluteFill>
-      <Caption text="第一次使用：掃描 QR code，依步驟把系統加到主畫面；可按暫停跟著操作。" />
     </SceneFade>
   )
 }
@@ -146,7 +140,6 @@ export const Scene2: React.FC = () => {
   const slide = spring({ frame, fps, config: { damping: 16 }, durationInFrames: 30 })
   return (
     <PhoneLayout
-      caption={text('s2')}
       phone={
         <div style={{ transform: `translateY(${(1 - slide) * 120}px)` }}>
           <PhoneFrame>
@@ -173,7 +166,6 @@ export const Scene3: React.FC<{ frames: number }> = ({ frames }) => {
   const swap2 = Math.round(frames * 0.74)
   return (
     <PhoneLayout
-      caption={text('s3')}
       phone={
         <PhoneFrame>
           <ShotSwap shots={[s03a, s03b, s03c]} swapAt={[swap1, swap2]} />
@@ -204,7 +196,6 @@ export const Scene4: React.FC<{ frames: number }> = ({ frames }) => {
   const swap2 = Math.round(frames * 0.76)
   return (
     <PhoneLayout
-      caption={text('s4')}
       phone={
         <PhoneFrame>
           <ShotSwap shots={[s04a, s04b, s04c]} swapAt={[swap1, swap2]} />
@@ -231,7 +222,6 @@ export const Scene5: React.FC<{ frames: number }> = ({ frames }) => {
   const swap1 = Math.round(frames * 0.55)
   return (
     <PhoneLayout
-      caption={text('s5')}
       phone={
         <PhoneFrame>
           <ShotSwap shots={[s05a, s05b]} swapAt={[swap1]} />
@@ -255,7 +245,6 @@ export const Scene5: React.FC<{ frames: number }> = ({ frames }) => {
 export const Scene6: React.FC<{ frames: number }> = ({ frames }) => {
   return (
     <PhoneLayout
-      caption={text('s6')}
       phone={
         <PhoneFrame>
           <Img src={s06} style={{ width: '100%' }} />
@@ -280,7 +269,6 @@ export const Scene7: React.FC<{ frames: number }> = ({ frames }) => {
   const swap1 = Math.round(frames * 0.5)
   return (
     <PhoneLayout
-      caption={text('s7')}
       phone={
         <PhoneFrame>
           <ShotSwap shots={[s07a, s07b]} swapAt={[swap1]} />
@@ -329,7 +317,6 @@ export const Scene9: React.FC = () => {
           <div style={{ fontSize: 30, color: '#a1a1aa', marginTop: 26, letterSpacing: 2 }}>掃描開啟教師系統</div>
         </div>
       </AbsoluteFill>
-      <Caption text={text('s9')} />
     </SceneFade>
   )
 }
