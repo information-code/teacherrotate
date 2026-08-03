@@ -13,6 +13,7 @@ import aI_2 from './assets/audio/sInstall_2.mp3'
 import aI_3 from './assets/audio/sInstall_3.mp3'
 import aI_4 from './assets/audio/sInstall_4.mp3'
 import a2_0 from './assets/audio/s2_0.mp3'
+import a2_1 from './assets/audio/s2_1.mp3'
 import a3_0 from './assets/audio/s3_0.mp3'
 import a3_1 from './assets/audio/s3_1.mp3'
 import a3_2 from './assets/audio/s3_2.mp3'
@@ -30,7 +31,7 @@ import a9_0 from './assets/audio/s9_0.mp3'
 const AUDIO: Record<SceneId, string[]> = {
   s1: [a1_0, a1_1],
   sInstall: [aI_0, aI_1, aI_2, aI_3, aI_4],
-  s2: [a2_0],
+  s2: [a2_0, a2_1],
   s3: [a3_0, a3_1, a3_2],
   s4: [a4_0, a4_1, a4_2],
   s5: [a5_0, a5_1],
