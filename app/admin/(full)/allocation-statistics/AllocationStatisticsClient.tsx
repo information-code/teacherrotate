@@ -347,7 +347,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded-sm border align-middle ${adoptedDecided[grade] ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
                   {adoptedDecided[grade] ? `採用：${REDUCTION_LABEL[reduction]}` : `⚠ 未定案，暫以${REDUCTION_LABEL[reduction]}計（請至配課設定選定採用情境）`}
                 </span>
-                <span className="text-xs font-normal text-zinc-400 ml-1">下方彙整各科供給與差異</span>
+                <span className="text-xs font-normal text-zinc-400 ml-1">各科供給與缺口請看「📊 供需總覽」</span>
               </div>
               <table className="table-base no-hover mt-2">
                 <thead>
@@ -408,43 +408,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     )
                   })}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-zinc-200">
-                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">科任供給</td>
-                    {subjects.map(s => <td key={s} className="text-center font-medium">{subjectSupply(grade, s)}</td>)}
-                    <td colSpan={4} className="border-l border-zinc-200"></td>
-                  </tr>
-                  <tr>
-                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">行政供給</td>
-                    {subjects.map(s => <td key={s} className="text-center font-medium">{adminSupply(grade, s)}</td>)}
-                    <td colSpan={4} className="border-l border-zinc-200"></td>
-                  </tr>
-                  <tr>
-                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">鐘點供給</td>
-                    {subjects.map(s => <td key={s} className="text-center font-medium">{hourlySupply(grade, s)}</td>)}
-                    <td colSpan={4} className="border-l border-zinc-200"></td>
-                  </tr>
-                  <tr>
-                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
-                    {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
-                    <td colSpan={4} className="border-l border-zinc-200"></td>
-                  </tr>
-                  <tr>
-                    <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
-                    {subjects.map(s => {
-                      const diff = homeroomSupply(grade, s) + subjectSupply(grade, s) + adminSupply(grade, s) + hourlySupply(grade, s) - (demandByGradeSubject[grade]?.[s] ?? 0)
-                      const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                      return (
-                        <td key={s} className={`text-center font-medium ${cls}`}>
-                          {diff < 0
-                            ? <button onClick={() => setFillGap({ grade, subj: s })} title="點開超鐘推薦名單補缺" className="underline cursor-pointer">{diff}</button>
-                            : (diff > 0 ? `+${diff}` : diff)}
-                        </td>
-                      )
-                    })}
-                    <td colSpan={4} className="border-l border-zinc-200"></td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
           </>
