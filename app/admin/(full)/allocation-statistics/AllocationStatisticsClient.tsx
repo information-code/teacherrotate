@@ -423,37 +423,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {/* ── 鐘點檢視（無減課/超鐘/鎖定，課務組直接填）── */}
       {view === 'hourly' && gradeSubjectGrid(hourlyTeachers, hourlySel, setHourlySel, '鐘點', true)}
 
-      {/* ── 本土語額外授課供需（語別×年級；於配課設定各年級「設定二」定義需求）── */}
-      {(view === 'subject' || view === 'admin' || view === 'hourly') && extraCourses.length > 0 && (
-        <div className="card p-4 space-y-2">
-          <div>
-            <h4 className="text-sm font-semibold text-zinc-700">本土語額外授課供需（閩南語以外語別）</h4>
-            <p className="text-xs text-zinc-400 mt-0.5">需求於配課設定各年級「設定二」設定總節數；已配＝所有教師（含鐘點、虛擬帳號）於雙向表填入該語別該年級的節數合計。不足者請於帳號資料建立虛擬帳號並補配課。</p>
-          </div>
-          <table className="table-base">
-            <thead><tr><th>本土語別</th><th className="text-center">年級</th><th className="text-center">需求總節數</th><th className="text-center">已配</th><th className="text-center">差額</th></tr></thead>
-            <tbody>
-              {[...extraCourses].sort((a, b) => a.grade - b.grade || a.lang.localeCompare(b.lang, 'zh-Hant')).map((c, i) => {
-                const alloc = c.lang ? extraAllocated(c.lang, c.grade) : 0
-                const diff = alloc - c.hours
-                const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                return (
-                  <tr key={i}>
-                    <td className="font-medium">{c.lang || <span className="text-zinc-400">（未選語別）</span>}</td>
-                    <td className="text-center text-zinc-600">{GRADE_LABEL[c.grade]}</td>
-                    <td className="text-center">{c.hours}</td>
-                    <td className="text-center">{alloc}</td>
-                    <td className={`text-center font-medium ${cls}`}>
-                      {diff > 0 ? `+${diff}` : diff}
-                      {diff < 0 && <span className="ml-1 text-[10px] text-red-500 font-normal">（差額請建虛擬帳號補足）</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* 本土語語別課供需已併入「📊 供需總覽」矩陣（青色列），此處不再重複 */}
 
       {/* ── 供需總覽 modal：科目×年級差異矩陣，所有計算收攏一畫面；點缺口格疊開補缺推薦 ── */}
       {overviewOpen && (
