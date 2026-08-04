@@ -27,6 +27,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [fillGap, setFillGap] = useState<{ grade: number; subj: string } | null>(null)  // 差異缺口→超鐘推薦 modal
+  const [overviewOpen, setOverviewOpen] = useState(false)   // 全校供需總覽 modal（科目×年級差異矩陣）
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subEdit, setSubEdit] = useState<string | null>(null)    // 代理教師身分/年級調整 modal（teacher id）
@@ -217,7 +218,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               {reasonIcon(t)}
               {t.data.locked && <span className="text-[10px]">🔒</span>}
               <span className="flex items-center gap-1 text-xs text-zinc-600">減課 <span className="font-medium text-zinc-800">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="text-zinc-400 hover:text-sky-600">✎</button></span>
-              <span className="text-xs text-zinc-500">意願超鐘 {willingOf(t)} 節（意願訊號，超鐘直接加科目節數）</span>
               <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
             </>}
             {hourly && <span className="text-xs text-zinc-400 ml-1">鐘點教師無減課、超鐘與鎖定，由課務組直接填寫節數。</span>}
@@ -307,6 +307,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           <button onClick={() => setView('subject')} className={tabCls(view === 'subject')}>科任</button>
           <button onClick={() => setView('admin')} className={tabCls(view === 'admin')}>行政</button>
           <button onClick={() => setView('hourly')} className={tabCls(view === 'hourly')}>鐘點</button>
+          <button onClick={() => setOverviewOpen(true)} className="ml-auto btn-secondary text-sm py-1">📊 供需總覽</button>
         </div>
       </div>
 
@@ -351,11 +352,12 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               <table className="table-base no-hover mt-2">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
-                    {subjects.map(s => <th key={s} className="text-center whitespace-nowrap">{s}</th>)}
-                    <th className="text-center">合計</th><th className="text-center">目標</th>
-                    <th className="text-center">減課</th>
-                    <th className="text-center">自願超鐘<br /><span className="font-normal text-[10px] text-zinc-400">本班・計入目標<br />可代填</span></th>
+                    <th className="sticky left-0 bg-white z-10 min-w-[11rem]">{GRADE_LABEL[grade]}導師</th>
+                    {subjects.map(s => <th key={s} className="text-center min-w-[3.5rem]">{s}</th>)}
+                    <th className="text-center border-l border-zinc-200">專案減課</th>
+                    <th className="text-center">自願超鐘</th>
+                    <th className="text-center">合計節數</th>
+                    <th className="text-center">目標節數</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -386,12 +388,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                             <NumberInput min={0} value={Number(breakdown(t)[s]) || 0} onChange={n => editCell(t.id, s, n, rkey)} className="input w-11 text-center py-0.5 text-xs" />
                           </td>
                         ))}
-                        <td className={`text-center font-medium whitespace-nowrap ${deficit ? 'text-red-600' : over > 0 ? 'text-sky-700' : 'text-zinc-800'}`}>
-                          {sum}
-                          {over > 0 && <span className="ml-1 text-[10px]">+{over}{beyond > 0 && <span className="text-amber-600">（超出意願 {beyond}）</span>}</span>}
-                        </td>
-                        <td className="text-center text-zinc-500">{tgt}</td>
-                        <td className="text-center whitespace-nowrap"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
+                        <td className="text-center whitespace-nowrap border-l border-zinc-200"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
                         {/* 自願超鐘可由管理者代填：寫入「目前實際節數」鍵——老師鎖定後因核實/情境異動
                             造成實際節數改變、對不到原同意紀錄時，由管理者確認後在此補登 */}
                         <td className="text-center">
@@ -402,6 +399,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                             }))}
                             className="input w-11 text-center py-0.5 text-xs text-sky-700" />
                         </td>
+                        <td className={`text-center font-medium whitespace-nowrap ${deficit ? 'text-red-600' : over > 0 ? 'text-sky-700' : 'text-zinc-800'}`}>
+                          {sum}
+                          {over > 0 && <span className="ml-1 text-[10px]">+{over}{beyond > 0 && <span className="text-amber-600">（超出意願 {beyond}）</span>}</span>}
+                        </td>
+                        <td className="text-center text-zinc-500">{tgt}</td>
                       </tr>
                     )
                   })}
@@ -410,22 +412,22 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <tr className="border-t-2 border-zinc-200">
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">科任供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{subjectSupply(grade, s)}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={4} className="border-l border-zinc-200"></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">行政供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{adminSupply(grade, s)}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={4} className="border-l border-zinc-200"></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">鐘點供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{hourlySupply(grade, s)}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={4} className="border-l border-zinc-200"></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
                     {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
-                    <td colSpan={4}></td>
+                    <td colSpan={4} className="border-l border-zinc-200"></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
@@ -440,7 +442,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         </td>
                       )
                     })}
-                    <td colSpan={4}></td>
+                    <td colSpan={4} className="border-l border-zinc-200"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -487,6 +489,50 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── 供需總覽 modal：科目×年級差異矩陣，所有計算收攏一畫面；點缺口格疊開補缺推薦 ── */}
+      {overviewOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={() => setOverviewOpen(false)}>
+          <div className="bg-white rounded-md shadow-xl w-full max-w-3xl p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-zinc-900">全校供需總覽</h3>
+                <p className="text-xs text-zinc-500">格內＝差異（供給−需求）；滑過看明細（導師＋科任＋行政＋鐘點／需求）。<b className="text-red-600">紅色缺口可點</b>，直接開該科補缺推薦。</p>
+              </div>
+              <button onClick={() => setOverviewOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="table-base no-hover">
+                <thead>
+                  <tr><th className="min-w-[8rem]">科目 / 領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {allSubjectsList.map(subj => (
+                    <tr key={subj}>
+                      <td className="font-medium">{subj}</td>
+                      {GRADES.map(g => {
+                        const demand = demandByGradeSubject[g]?.[subj]
+                        if (demand === undefined) return <td key={g} className="text-center text-zinc-300">—</td>
+                        const hs = homeroomSupply(g, subj), ss = subjectSupply(g, subj), as = adminSupply(g, subj), hh = hourlySupply(g, subj)
+                        const diff = hs + ss + as + hh - demand
+                        const detail = `導師 ${hs}＋科任 ${ss}＋行政 ${as}＋鐘點 ${hh}＝${hs + ss + as + hh}／需求 ${demand}`
+                        const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                        return (
+                          <td key={g} className="text-center" title={detail}>
+                            {diff < 0
+                              ? <button onClick={() => setFillGap({ grade: g, subj })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
+                              : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
