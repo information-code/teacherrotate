@@ -492,6 +492,26 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                       })}
                     </tr>
                   ))}
+                  {/* 本土語額外語別課（配課設定「設定二」）：需求以總節數計、只出現在有設定的年級 */}
+                  {extraNames.map(lang => (
+                    <tr key={lang} className="bg-teal-50/50">
+                      <td className="font-medium">{lang}<span className="ml-1 text-[10px] px-1 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">其他</span></td>
+                      {GRADES.map(g => {
+                        const entry = extraCourses.find(c => c.lang === lang && c.grade === g)
+                        if (!entry) return <td key={g} className="text-center text-zinc-300">—</td>
+                        const got = extraAllocated(lang, g)
+                        const diff = got - entry.hours
+                        const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                        return (
+                          <td key={g} className="text-center" title={`已配 ${got}／需求 ${entry.hours}`}>
+                            {diff < 0
+                              ? <button onClick={() => setFillGap({ grade: g, subj: lang })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
+                              : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -502,13 +522,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {/* ── 差異缺口 → 超鐘推薦 modal：依支援順序＋剩餘意願排序，一鍵 +1 ── */}
       {fillGap && (() => {
         const { grade, subj } = fillGap
-        const gap = (demandByGradeSubject[grade]?.[subj] ?? 0)
-          - homeroomSupply(grade, subj) - subjectSupply(grade, subj) - adminSupply(grade, subj) - hourlySupply(grade, subj)
+        const extraEntry = isExtra(subj) ? extraCourses.find(c => c.lang === subj && c.grade === grade) : undefined
+        const gap = extraEntry
+          ? extraEntry.hours - extraAllocated(subj, grade)
+          : (demandByGradeSubject[grade]?.[subj] ?? 0)
+            - homeroomSupply(grade, subj) - subjectSupply(grade, subj) - adminSupply(grade, subj) - hourlySupply(grade, subj)
         const rk = String(adoptedByGrade[grade] ?? 0)
-        // 候選：意願科目含此科；導師限同年級（學校無跨年級導師支援）
+        // 候選：意願科目含此科（語別課另認「本土語」意願）；導師限同年級（學校無跨年級導師支援）、語別課不列導師（本班配課放不下）
+        const wishHit = (t: TeacherStat) => wishesOf(t).includes(subj) || (isExtra(subj) && wishesOf(t).includes('本土語'))
+        const wishRank = (t: TeacherStat) => { const i = wishesOf(t).indexOf(subj); return i >= 0 ? i : wishesOf(t).indexOf('本土語') }
         const cands = teachers
-          .filter(t => wishesOf(t).includes(subj) && (t.role !== 'homeroom' || t.grade === grade))
-          .map(t => ({ t, rank: wishesOf(t).indexOf(subj), remaining: remainingOf(t) }))
+          .filter(t => wishHit(t) && (t.role !== 'homeroom' || (t.grade === grade && !isExtra(subj))))
+          .map(t => ({ t, rank: wishRank(t), remaining: remainingOf(t) }))
         const ready = cands.filter(c => c.remaining > 0).sort((a, b) => a.rank - b.rank || b.remaining - a.remaining)
         const spent = cands.filter(c => c.remaining <= 0).sort((a, b) => a.rank - b.rank)
         const addOne = (t: TeacherStat) => {
