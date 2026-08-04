@@ -327,7 +327,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
                     {subjects.map(s => <th key={s} className="text-center whitespace-nowrap">{s}</th>)}
                     <th className="text-center">合計</th><th className="text-center">目標</th>
-                    <th className="text-center">減課</th><th className="text-center">自願超鐘</th><th className="text-center">意願超鐘</th>
+                    <th className="text-center">減課</th>
+                    <th className="text-center">自願超鐘<br /><span className="font-normal text-[10px] text-zinc-400">本班・計入目標<br />可代填</span></th>
+                    <th className="text-center">意願超鐘</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -357,7 +359,16 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                         <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
                         <td className="text-center text-zinc-500">{tgt}</td>
                         <td className="text-center whitespace-nowrap"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
-                        <td className="text-center font-medium text-sky-700">{auto}</td>
+                        {/* 自願超鐘可由管理者代填：寫入「目前實際節數」鍵——老師鎖定後因核實/情境異動
+                            造成實際節數改變、對不到原同意紀錄時，由管理者確認後在此補登 */}
+                        <td className="text-center">
+                          <NumberInput min={0} max={6} value={auto}
+                            onChange={n => updateTeacher(t.id, d => ({
+                              ...d,
+                              autonomousOvertime: { ...(d.autonomousOvertime ?? {}), [String(actualPeriod(t))]: Math.min(6, Math.max(0, n)) },
+                            }))}
+                            className="input w-11 text-center py-0.5 text-xs text-sky-700" />
+                        </td>
                         {(() => { const cap = Math.max(0, 6 - auto); return (
                           <td className="text-center"><NumberInput min={0} max={cap} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(cap, Math.max(0, n)) }))} className="input w-11 text-center py-0.5 text-xs" /></td>
                         ) })()}
