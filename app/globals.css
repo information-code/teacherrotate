@@ -89,6 +89,10 @@
   .table-base tr:hover td {
     @apply bg-zinc-50;
   }
+  /* no-hover：滑過不變色（配課統計等以列底色表達狀態的表格，hover 變色會誤導） */
+  .table-base.no-hover tr:hover td {
+    @apply bg-transparent;
+  }
 
   /* Badge */
   .badge {

@@ -26,7 +26,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [view, setView] = useState<string>('1') // '1'..'6' | 'subj:<領域>' | 'admin'
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [otSubj, setOtSubj] = useState<string | null>(null)  // 不足→展開願意超鐘點的老師
+  const [fillGap, setFillGap] = useState<{ grade: number; subj: string } | null>(null)  // 差異缺口→超鐘推薦 modal
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subEdit, setSubEdit] = useState<string | null>(null)    // 代理教師身分/年級調整 modal（teacher id）
@@ -102,8 +102,8 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   function subjectSupply(grade: number, subj: string) {
     return subjectTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
   }
-  // 配課實際授課節數 = 基本 − 核定專案減課 + 核定超鐘
-  function actualOf(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) + (t.data.overtimeApproved || 0) }
+  // 配課實際授課節數 = 基本 − 核定專案減課（意願超鐘不入帳：超鐘直接反映在科目節數，合計>實際＝超鐘中）
+  function actualOf(t: TeacherStat) { return (t.base ?? 0) - (t.data.projectReduction || 0) }
   // 行政供給：行政教師於各領域×年級填入的節數（與代理科任同樣存於 subjectGradeHours）
   function adminSupply(grade: number, subj: string) {
     return adminTeachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0), 0)
@@ -123,8 +123,37 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   function extraAllocated(lang: string, g: number) {
     return teachers.reduce((s, t) => s + (Number(t.data.subjectGradeHours?.[lang]?.[String(g)]) || 0), 0)
   }
-  // 意願超鐘：老師在意願調查填的（willingOvertime + willingSubjects），供某科不足時參考
-  function willingFor(subj: string) { return teachers.filter(t => (t.data.willingOvertime ?? t.data.overtimeHours ?? 0) > 0 && (t.data.willingSubjects ?? t.data.overtimeOrder ?? []).includes(subj)) }
+  // ── 意願超鐘（純意願訊號，不核定、不入帳）：供差異缺口 modal 排推薦名單 ──
+  const wishesOf = (t: TeacherStat) => (t.data.willingSubjects ?? t.data.overtimeOrder ?? []).filter(Boolean)
+  const willingOf = (t: TeacherStat) => Number(t.data.willingOvertime ?? t.data.overtimeHours ?? 0) || 0
+  // 導師的本班帳（依其年級採用情境）：合計 / 目標（= 實際 + 自願超鐘）
+  function hrActualOf(t: TeacherStat) {
+    return (t.base ?? 0) - ((adoptedByGrade[t.grade ?? 0] ?? 0) as number) - (t.data.projectReduction || 0)
+  }
+  function hrAutoOf(t: TeacherStat, sum: number) {
+    const rec = t.data.autonomousOvertime ?? {}
+    const exact = rec[String(hrActualOf(t))]
+    if (exact !== undefined) return Number(exact) || 0
+    const maxAgreed = Math.max(0, ...Object.values(rec).map(n => Number(n) || 0))
+    return Math.min(Math.max(0, sum - hrActualOf(t)), maxAgreed)
+  }
+  function hrSumOf(t: TeacherStat) {
+    const rk = String(adoptedByGrade[t.grade ?? 0] ?? 0)
+    const subj = gradesMeta[t.grade ?? 0]?.subjects ?? []
+    const bd = t.data.scenarios?.[rk]?.breakdown ?? {}
+    return subj.reduce((s, sub) => s + (Number(bd[sub]) || 0), 0)
+  }
+  /** 目前已超鐘節數（合計超過目標的部分）。 */
+  function overOf(t: TeacherStat): number {
+    if (t.role === 'homeroom') {
+      const sum = hrSumOf(t)
+      return Math.max(0, sum - (hrActualOf(t) + hrAutoOf(t, sum)))
+    }
+    const total = gridSubjects.reduce((s, subj) => s + GRADES.reduce((a, g) => a + (Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0), 0), 0)
+    return t.isHourly ? 0 : Math.max(0, total - actualOf(t))
+  }
+  /** 剩餘意願 = 申報意願 − 已超鐘（不動老師原始申報，改回節數即自動回復）。 */
+  const remainingOf = (t: TeacherStat) => willingOf(t) - overOf(t)
 
   function reasonIcon(t: TeacherStat) {
     if (!(t.data.principleReason || t.data.specialtyReason)) return null
@@ -171,7 +200,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     const cell = (subj: string, g: number) => Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0
     const offered = (subj: string, g: number) => demandByGradeSubject[g]?.[subj] !== undefined || extraOffered(subj, g)
     const total = gridSubjects.reduce((s, subj) => s + GRADES.reduce((a, g) => a + cell(subj, g), 0), 0)
-    const mismatch = !hourly && total !== act
+    // 合計<實際＝不足（紅）；合計>實際＝超鐘中（藍，超出申報意願另標）；相等＝正常
+    const deficit = !hourly && total < act
+    const over = hourly ? 0 : Math.max(0, total - act)
+    const beyond = Math.max(0, over - willingOf(t))
     return (
       <div className="space-y-4">
         <div className="card p-4 space-y-2">
@@ -185,7 +217,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               {reasonIcon(t)}
               {t.data.locked && <span className="text-[10px]">🔒</span>}
               <span className="flex items-center gap-1 text-xs text-zinc-600">減課 <span className="font-medium text-zinc-800">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="text-zinc-400 hover:text-sky-600">✎</button></span>
-              <label className="flex items-center gap-1 text-xs text-zinc-600">意願超鐘<NumberInput min={0} max={6} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(6, Math.max(0, n)) }))} className="input w-12 text-center py-0.5" /></label>
+              <span className="text-xs text-zinc-500">意願超鐘 {willingOf(t)} 節（意願訊號，超鐘直接加科目節數）</span>
               <span className="text-xs text-zinc-400 ml-1">可跨領域×年級填寫（含混科目）。</span>
             </>}
             {hourly && <span className="text-xs text-zinc-400 ml-1">鐘點教師無減課、超鐘與鎖定，由課務組直接填寫節數。</span>}
@@ -200,13 +232,17 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         <div className="card p-0 overflow-x-auto">
           <div className="px-4 pt-3 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-semibold text-zinc-700">{t.name} · 各領域×年級配課
-              {!hourly && <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　+超鐘 {t.data.overtimeApproved || 0}　= 實際 {act}</span>}
+              {!hourly && <span className="text-xs font-normal text-zinc-400 ml-2">基本 {t.base ?? '—'}　−減課 {t.data.projectReduction || 0}　= 實際 {act}</span>}
             </div>
             {hourly
               ? <div className="text-sm font-semibold text-zinc-700">合計 {total} 節</div>
-              : <div className={`text-sm font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>合計 {total} / 實際 {act}{mismatch && `（${total < act ? '不足' : '超過'} ${Math.abs(total - act)}）`}</div>}
+              : <div className={`text-sm font-semibold ${deficit ? 'text-red-600' : over > 0 ? 'text-sky-700' : 'text-zinc-700'}`}>
+                  合計 {total} / 實際 {act}
+                  {deficit && `（不足 ${act - total}）`}
+                  {over > 0 && <span className="ml-1">超鐘 +{over}{beyond > 0 && <span className="text-amber-600">（超出意願 {beyond}）</span>}</span>}
+                </div>}
           </div>
-          <table className="table-base mt-2">
+          <table className="table-base no-hover mt-2">
             <thead><tr><th>領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}<th className="text-center">小計</th></tr></thead>
             <tbody>
               {gridSubjects.map(subj => {
@@ -227,10 +263,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               })}
             </tbody>
             <tfoot>
-              <tr className={`border-t-2 border-zinc-200 ${mismatch ? 'bg-red-50' : ''}`}>
+              <tr className={`border-t-2 border-zinc-200 ${deficit ? 'bg-red-50' : over > 0 ? 'bg-sky-50' : ''}`}>
                 <td className="text-xs font-semibold text-zinc-600">合計</td>
                 {GRADES.map(g => <td key={g} className="text-center font-medium">{gridSubjects.reduce((a, subj) => a + cell(subj, g), 0)}</td>)}
-                <td className={`text-center font-semibold ${mismatch ? 'text-amber-600' : 'text-green-700'}`}>{total}</td>
+                <td className={`text-center font-semibold ${deficit ? 'text-red-600' : over > 0 ? 'text-sky-700' : 'text-zinc-800'}`}>{total}</td>
               </tr>
             </tfoot>
           </table>
@@ -299,18 +335,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         // 此年級採用的情境（配課設定定案；未定案為推定並警示）
         const reduction = (adoptedByGrade[grade] ?? 0) as Reduction
         const rkey = String(reduction)
-        // 導師（本班）目標 = 實際節數 + 自願超鐘（老師同意、自動計入；意願超鐘屬另填的核定超鐘，不計入本班目標）
-        const actualPeriod = (t: TeacherStat) => (t.base ?? 0) - reduction - (t.data.projectReduction || 0)
-        // 自願超鐘：優先取老師同意紀錄（鍵＝實際節數）。管理者核實調整專案減課後實際節數會改變、
-        // 對不到老師同意時的鍵 → 以「合計−實際」推得，但以老師曾同意的最大自願超鐘為上限
-        //（從未同意者維持 0，超配仍會被合計≠目標標紅）。
-        const autonomousOf = (t: TeacherStat, sum: number) => {
-          const rec = t.data.autonomousOvertime ?? {}
-          const exact = rec[String(actualPeriod(t))]
-          if (exact !== undefined) return Number(exact) || 0
-          const maxAgreed = Math.max(0, ...Object.values(rec).map(n => Number(n) || 0))
-          return Math.min(Math.max(0, sum - actualPeriod(t)), maxAgreed)
-        }
+        // 導師（本班）目標 = 實際節數 + 自願超鐘（本班多上、計入目標）；意願超鐘為純意願訊號、不入帳
+        const actualPeriod = hrActualOf
+        const autonomousOf = hrAutoOf
         const breakdown = (t: TeacherStat) => t.data.scenarios?.[rkey]?.breakdown ?? {}
         return (
           <>
@@ -321,7 +348,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 </span>
                 <span className="text-xs font-normal text-zinc-400 ml-1">下方彙整各科供給與差異</span>
               </div>
-              <table className="table-base mt-2">
+              <table className="table-base no-hover mt-2">
                 <thead>
                   <tr>
                     <th className="sticky left-0 bg-white z-10 min-w-[7rem]">{GRADE_LABEL[grade]}導師</th>
@@ -329,21 +356,24 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     <th className="text-center">合計</th><th className="text-center">目標</th>
                     <th className="text-center">減課</th>
                     <th className="text-center">自願超鐘<br /><span className="font-normal text-[10px] text-zinc-400">本班・計入目標<br />可代填</span></th>
-                    <th className="text-center">意願超鐘</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {homeroomTeachers.length === 0 && <tr><td colSpan={subjects.length + 6} className="text-sm text-zinc-400 text-center py-3">此年級無導師資料（請先在撕榜套用工作紀錄）</td></tr>}
+                  {homeroomTeachers.length === 0 && <tr><td colSpan={subjects.length + 5} className="text-sm text-zinc-400 text-center py-3">此年級無導師資料（請先在撕榜套用工作紀錄）</td></tr>}
                   {homeroomTeachers.map(t => {
                     const sum = subjects.reduce((s, sub) => s + (Number(breakdown(t)[sub]) || 0), 0)
                     const auto = autonomousOf(t, sum)
                     const tgt = actualPeriod(t) + auto
                     const ch = t.data.scenarios?.[rkey]
                     const tag = ch?.planName ? `方案：${ch.planName}` : (ch && Object.keys(ch.breakdown).length ? '自選' : '未填')
-                    const mismatch = sum !== tgt
+                    // 合計<目標＝不足（紅）；合計>目標＝超鐘中（藍，超出申報意願另標）；相等＝正常
+                    const deficit = sum < tgt
+                    const over = Math.max(0, sum - tgt)
+                    const beyond = Math.max(0, over - willingOf(t))
+                    const rowBg = deficit ? 'bg-red-50' : over > 0 ? 'bg-sky-50' : ''
                     return (
-                      <tr key={t.id} className={mismatch ? 'bg-red-50' : ''}>
-                        <td className={`sticky left-0 z-10 ${mismatch ? 'bg-red-50' : 'bg-white'}`}>
+                      <tr key={t.id} className={rowBg}>
+                        <td className={`sticky left-0 z-10 ${rowBg || 'bg-white'}`}>
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
                             {t.gradeGuessed && <span className="ml-1 text-[10px] px-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-sm" title="工作紀錄年級未填，依職稱暫列此年段（低→二、中→四、高→六）——請至工作紀錄補年級">⚠ 年級未填</span>}
@@ -356,7 +386,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                             <NumberInput min={0} value={Number(breakdown(t)[s]) || 0} onChange={n => editCell(t.id, s, n, rkey)} className="input w-11 text-center py-0.5 text-xs" />
                           </td>
                         ))}
-                        <td className={`text-center font-medium ${sum === tgt ? 'text-green-700' : 'text-amber-600'}`}>{sum}</td>
+                        <td className={`text-center font-medium whitespace-nowrap ${deficit ? 'text-red-600' : over > 0 ? 'text-sky-700' : 'text-zinc-800'}`}>
+                          {sum}
+                          {over > 0 && <span className="ml-1 text-[10px]">+{over}{beyond > 0 && <span className="text-amber-600">（超出意願 {beyond}）</span>}</span>}
+                        </td>
                         <td className="text-center text-zinc-500">{tgt}</td>
                         <td className="text-center whitespace-nowrap"><span className="text-zinc-700">{t.data.projectReduction || 0}</span><button onClick={() => setProjEdit(t.id)} title="檢視／核實專案減課" className="ml-1 text-zinc-400 hover:text-sky-600">✎</button></td>
                         {/* 自願超鐘可由管理者代填：寫入「目前實際節數」鍵——老師鎖定後因核實/情境異動
@@ -369,9 +402,6 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                             }))}
                             className="input w-11 text-center py-0.5 text-xs text-sky-700" />
                         </td>
-                        {(() => { const cap = Math.max(0, 6 - auto); return (
-                          <td className="text-center"><NumberInput min={0} max={cap} value={t.data.overtimeApproved || 0} onChange={n => updateTeacher(t.id, d => ({ ...d, overtimeApproved: Math.min(cap, Math.max(0, n)) }))} className="input w-11 text-center py-0.5 text-xs" /></td>
-                        ) })()}
                       </tr>
                     )
                   })}
@@ -380,22 +410,22 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <tr className="border-t-2 border-zinc-200">
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">科任供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{subjectSupply(grade, s)}</td>)}
-                    <td colSpan={5}></td>
+                    <td colSpan={4}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">行政供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{adminSupply(grade, s)}</td>)}
-                    <td colSpan={5}></td>
+                    <td colSpan={4}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">鐘點供給</td>
                     {subjects.map(s => <td key={s} className="text-center font-medium">{hourlySupply(grade, s)}</td>)}
-                    <td colSpan={5}></td>
+                    <td colSpan={4}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">該領域需求</td>
                     {subjects.map(s => <td key={s} className="text-center text-zinc-500">{demandByGradeSubject[grade]?.[s] ?? 0}</td>)}
-                    <td colSpan={5}></td>
+                    <td colSpan={4}></td>
                   </tr>
                   <tr>
                     <td className="sticky left-0 bg-white z-10 text-xs font-semibold text-zinc-600">差異</td>
@@ -405,12 +435,12 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                       return (
                         <td key={s} className={`text-center font-medium ${cls}`}>
                           {diff < 0
-                            ? <button onClick={() => setOtSubj(otSubj === s ? null : s)} className="underline cursor-pointer">{diff}</button>
+                            ? <button onClick={() => setFillGap({ grade, subj: s })} title="點開超鐘推薦名單補缺" className="underline cursor-pointer">{diff}</button>
                             : (diff > 0 ? `+${diff}` : diff)}
                         </td>
                       )
                     })}
-                    <td colSpan={5}></td>
+                    <td colSpan={4}></td>
                   </tr>
                 </tfoot>
               </table>
@@ -460,31 +490,72 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </div>
       )}
 
-      {/* ── 不足科目：願意超鐘點支援的老師（導師／科任檢視共用）── */}
-      {otSubj && (
-        <div className="card p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-zinc-700">「{otSubj}」願意超鐘點支援的老師</h4>
-            <button onClick={() => setOtSubj(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+      {/* ── 差異缺口 → 超鐘推薦 modal：依支援順序＋剩餘意願排序，一鍵 +1 ── */}
+      {fillGap && (() => {
+        const { grade, subj } = fillGap
+        const gap = (demandByGradeSubject[grade]?.[subj] ?? 0)
+          - homeroomSupply(grade, subj) - subjectSupply(grade, subj) - adminSupply(grade, subj) - hourlySupply(grade, subj)
+        const rk = String(adoptedByGrade[grade] ?? 0)
+        // 候選：意願科目含此科；導師限同年級（學校無跨年級導師支援）
+        const cands = teachers
+          .filter(t => wishesOf(t).includes(subj) && (t.role !== 'homeroom' || t.grade === grade))
+          .map(t => ({ t, rank: wishesOf(t).indexOf(subj), remaining: remainingOf(t) }))
+        const ready = cands.filter(c => c.remaining > 0).sort((a, b) => a.rank - b.rank || b.remaining - a.remaining)
+        const spent = cands.filter(c => c.remaining <= 0).sort((a, b) => a.rank - b.rank)
+        const addOne = (t: TeacherStat) => {
+          if (t.role === 'homeroom') {
+            const bd = t.data.scenarios?.[rk]?.breakdown ?? {}
+            editCell(t.id, subj, (Number(bd[subj]) || 0) + 1, rk)
+          } else {
+            editSubjectGradeHours(t.id, subj, grade, (Number(t.data.subjectGradeHours?.[subj]?.[String(grade)]) || 0) + 1)
+          }
+        }
+        const row = (c: { t: TeacherStat; rank: number; remaining: number }, exhausted: boolean) => (
+          <div key={c.t.id} className={`flex items-center gap-2 flex-wrap border rounded-sm px-3 py-1.5 ${exhausted ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-200'}`}>
+            <button
+              onClick={() => {
+                if (exhausted && !confirm(`「${c.t.name}」的申報意願已用罄。確定已私下取得老師同意再多超 1 節？`)) return
+                addOne(c.t)
+              }}
+              className={`text-sm px-2.5 py-1 rounded-sm border flex-shrink-0 ${exhausted
+                ? 'bg-white text-zinc-500 border-zinc-300 hover:border-amber-400'
+                : 'bg-sky-600 text-white border-sky-600 hover:bg-sky-500'}`}>
+              {c.t.name} +1
+            </button>
+            <span className="text-xs text-zinc-500">{c.t.roleLabel}</span>
+            <span className="text-xs text-zinc-400">支援順位 第{c.rank + 1}</span>
+            <span className={`text-xs ${exhausted ? 'text-amber-600' : 'text-zinc-600'}`}>
+              剩餘意願 {Math.max(0, c.remaining)}／{willingOf(c.t)}
+            </span>
+            {overOf(c.t) > 0 && <span className="text-xs text-sky-600">已超鐘 {overOf(c.t)}</span>}
           </div>
-          {willingFor(otSubj).length === 0
-            ? <p className="text-sm text-zinc-400">目前無老師於送出時表示願意超鐘點支援此科目。</p>
-            : <ul className="text-sm text-zinc-700 space-y-1">
-                {willingFor(otSubj).map(t => {
-                  const order = t.data.willingSubjects ?? t.data.overtimeOrder ?? []
-                  return (
-                    <li key={t.id} className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{t.name}</span>
-                      <span className="text-xs text-zinc-500">{t.roleLabel}</span>
-                      <span className="text-xs text-amber-600">意願超鐘點 {t.data.willingOvertime ?? t.data.overtimeHours ?? 0} 節</span>
-                      {order.length > 0 && <span className="text-xs text-zinc-400">支援順序：{order.join('＞')}</span>}
-                      {(t.data.overtimeApproved || 0) > 0 && <span className="text-xs text-sky-600">已排超鐘 {t.data.overtimeApproved} 節</span>}
-                    </li>
-                  )
-                })}
-              </ul>}
-        </div>
-      )}
+        )
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setFillGap(null)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-md p-5 space-y-3 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">{GRADE_LABEL[grade]}「{subj}」補缺</h3>
+                  <p className="text-xs text-zinc-500">
+                    尚缺 <b className={gap > 0 ? 'text-red-600' : 'text-green-700'}>{Math.max(0, gap)}</b> 節。
+                    按老師名字＋1 即加到其配課（導師加本班該科、科任/行政加該科×{GRADE_LABEL[grade]}），剩餘意願自動遞減；填錯直接到統計表把節數改回即可。
+                  </p>
+                </div>
+                <button onClick={() => setFillGap(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+              {gap <= 0 && <p className="text-sm text-green-700">✓ 此科缺口已補滿。</p>}
+              {ready.length === 0 && spent.length === 0 && <p className="text-sm text-zinc-400">沒有老師的意願超鐘支援科目包含「{subj}」——請直接於統計表調整節數。</p>}
+              {ready.length > 0 && <div className="space-y-1.5">{ready.map(c => row(c, false))}</div>}
+              {spent.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-zinc-400 pt-1">已無剩餘意願（需先私下取得同意）</p>
+                  {spent.map(c => row(c, true))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── LINE 提醒訊息 modal（帶入目前分頁未鎖定老師）── */}
       {remindOpen && (() => {
