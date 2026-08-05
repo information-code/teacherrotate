@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       role: 'teacher',
       employment_type: virtual ? 'substitute' : EMPLOYMENT_TYPES.includes(employmentType) ? employmentType : 'formal',
     })
-    .select('id, name, email, employment_type, created_at')
+    .select('id, name, email, role, employment_type, created_at')
     .single()
 
   if (error) {
