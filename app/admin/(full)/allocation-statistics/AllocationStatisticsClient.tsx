@@ -28,6 +28,10 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [busy, setBusy] = useState(false)
   const [fillGap, setFillGap] = useState<{ grade: number; subj: string } | null>(null)  // 差異缺口→超鐘推薦 modal
   const [overviewOpen, setOverviewOpen] = useState(false)   // 全校供需總覽 modal（科目×年級差異矩陣）
+  const [ovTab, setOvTab] = useState<'matrix' | 'reduction'>('matrix')      // 總覽 modal 分頁：供需矩陣／減課統計
+  const [ovMode, setOvMode] = useState<'diff' | 'staff'>('diff')            // 矩陣顯示模式：差異數字／授課師資
+  const [ovExpanded, setOvExpanded] = useState<Record<string, boolean>>({}) // 師資模式導師群展開（key: 科目|年級）
+  const [highlightId, setHighlightId] = useState<string | null>(null)       // 從總覽跳轉的導師列高亮
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
   const [subEdit, setSubEdit] = useState<string | null>(null)    // 代理教師身分/年級調整 modal（teacher id）
@@ -155,6 +159,45 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   }
   /** 剩餘意願 = 申報意願 − 已超鐘（不動老師原始申報，改回節數即自動回復）。 */
   const remainingOf = (t: TeacherStat) => willingOf(t) - overOf(t)
+
+  // ── 師資模式：各格授課老師明細（與上方供給計算同口徑）──
+  function homeroomContribs(g: number, subj: string) {
+    const rk = String(adoptedByGrade[g] ?? 0)
+    return teachers.filter(t => t.role === 'homeroom' && t.grade === g)
+      .map(t => ({ t, v: Number(t.data.scenarios?.[rk]?.breakdown?.[subj]) || 0 }))
+      .filter(x => x.v > 0)
+  }
+  function nonHomeroomContribs(g: number, subj: string) {
+    return [...subjectTeachers, ...adminTeachers, ...hourlyTeachers]
+      .map(t => ({ t, v: Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0 }))
+      .filter(x => x.v > 0)
+  }
+  function extraContribs(lang: string, g: number) {
+    return teachers
+      .map(t => ({ t, v: Number(t.data.subjectGradeHours?.[lang]?.[String(g)]) || 0 }))
+      .filter(x => x.v > 0)
+  }
+  /** 從供需總覽點老師名 → 關 modal、切到其所屬分頁並定位（導師列捲動高亮）。 */
+  function jumpToTeacher(t: TeacherStat) {
+    setOverviewOpen(false)
+    if (t.role === 'homeroom') { setView(String(t.grade ?? 1)); setHighlightId(t.id) }
+    else if (t.isHourly) { setView('hourly'); setHourlySel(t.id) }
+    else if (t.role === 'admin') { setView('admin'); setAdminSel(t.id) }
+    else { setView('subject'); setSubjSel(t.id) }
+  }
+  useEffect(() => {
+    if (!highlightId) return
+    document.getElementById(`hr-row-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = setTimeout(() => setHighlightId(null), 3000)
+    return () => clearTimeout(timer)
+  }, [highlightId])
+  const staffBadge = (t: TeacherStat, v: number) => (
+    <button key={t.id} onClick={() => jumpToTeacher(t)}
+      title={`${t.name}（${t.roleLabel}）— 點擊前往其配課調整`}
+      className="inline-flex items-baseline gap-0.5 text-[11px] px-1 py-0.5 border border-zinc-200 rounded-sm bg-white text-zinc-700 hover:border-sky-400 hover:text-sky-700 whitespace-nowrap">
+      {t.name}<b>{v}</b>
+    </button>
+  )
 
   function reasonIcon(t: TeacherStat) {
     if (!(t.data.principleReason || t.data.specialtyReason)) return null
@@ -372,9 +415,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                     const deficit = sum < tgt
                     const over = Math.max(0, sum - tgt)
                     const beyond = Math.max(0, over - willingOf(t))
-                    const rowBg = deficit ? 'bg-red-50' : over > 0 ? 'bg-sky-50' : ''
+                    const rowBg = highlightId === t.id ? 'bg-amber-100' : deficit ? 'bg-red-50' : over > 0 ? 'bg-sky-50' : ''
                     return (
-                      <tr key={t.id} className={rowBg}>
+                      <tr key={t.id} id={`hr-row-${t.id}`} className={rowBg}>
                         <td className={`sticky left-0 z-10 ${rowBg || 'bg-white'}`}>
                           <div className="font-medium text-zinc-800">{t.name}{t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                             {t.work === '代理導師' && <span className="ml-1 text-[10px] px-1 bg-sky-100 text-sky-700 border border-sky-200 rounded-sm">代理</span>}
@@ -425,66 +468,173 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
 
       {/* 本土語語別課供需已併入「📊 供需總覽」矩陣（青色列），此處不再重複 */}
 
-      {/* ── 供需總覽 modal：科目×年級差異矩陣，所有計算收攏一畫面；點缺口格疊開補缺推薦 ── */}
+      {/* ── 供需總覽 modal：兩分頁——供需矩陣（差異／師資雙模式）＋減課統計 ── */}
       {overviewOpen && (
         <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={() => setOverviewOpen(false)}>
-          <div className="bg-white rounded-md shadow-xl w-full max-w-3xl p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold text-zinc-900">全校供需總覽</h3>
-                <p className="text-xs text-zinc-500">格內＝差異（供給−需求）；滑過看明細（導師＋科任＋行政＋鐘點／需求）。<b className="text-red-600">紅色缺口可點</b>，直接開該科補缺推薦。</p>
+          <div className="bg-white rounded-md shadow-xl w-full max-w-4xl p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button onClick={() => setOvTab('matrix')} className={tabCls(ovTab === 'matrix')}>供需總覽</button>
+                <button onClick={() => setOvTab('reduction')} className={tabCls(ovTab === 'reduction')}>減課統計</button>
+                {ovTab === 'matrix' && (
+                  <span className="ml-2 inline-flex border border-zinc-200 rounded-sm overflow-hidden text-xs">
+                    <button onClick={() => setOvMode('diff')} className={`px-2.5 py-1 ${ovMode === 'diff' ? 'bg-zinc-700 text-white' : 'bg-white text-zinc-500 hover:text-zinc-700'}`}>差異</button>
+                    <button onClick={() => setOvMode('staff')} className={`px-2.5 py-1 ${ovMode === 'staff' ? 'bg-zinc-700 text-white' : 'bg-white text-zinc-500 hover:text-zinc-700'}`}>師資</button>
+                  </span>
+                )}
               </div>
               <button onClick={() => setOverviewOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="table-base no-hover">
-                <thead>
-                  <tr><th className="min-w-[8rem]">科目 / 領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {allSubjectsList.map(subj => (
-                    <tr key={subj}>
-                      <td className="font-medium">{subj}</td>
-                      {GRADES.map(g => {
-                        const demand = demandByGradeSubject[g]?.[subj]
-                        if (demand === undefined) return <td key={g} className="text-center text-zinc-300">—</td>
-                        const hs = homeroomSupply(g, subj), ss = subjectSupply(g, subj), as = adminSupply(g, subj), hh = hourlySupply(g, subj)
-                        const diff = hs + ss + as + hh - demand
-                        const detail = `導師 ${hs}＋科任 ${ss}＋行政 ${as}＋鐘點 ${hh}＝${hs + ss + as + hh}／需求 ${demand}`
-                        const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                        return (
-                          <td key={g} className="text-center" title={detail}>
-                            {diff < 0
-                              ? <button onClick={() => setFillGap({ grade: g, subj })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
-                              : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                  {/* 本土語額外語別課（配課設定「設定二」）：需求以總節數計、只出現在有設定的年級 */}
-                  {extraNames.map(lang => (
-                    <tr key={lang} className="bg-teal-50/50">
-                      <td className="font-medium">{lang}<span className="ml-1 text-[10px] px-1 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">其他</span></td>
-                      {GRADES.map(g => {
-                        const entry = extraCourses.find(c => c.lang === lang && c.grade === g)
-                        if (!entry) return <td key={g} className="text-center text-zinc-300">—</td>
-                        const got = extraAllocated(lang, g)
-                        const diff = got - entry.hours
-                        const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
-                        return (
-                          <td key={g} className="text-center" title={`已配 ${got}／需求 ${entry.hours}`}>
-                            {diff < 0
-                              ? <button onClick={() => setFillGap({ grade: g, subj: lang })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
-                              : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+
+            {ovTab === 'matrix' && (
+              <>
+                <p className="text-xs text-zinc-500">
+                  {ovMode === 'diff'
+                    ? <>格內＝差異（供給−需求）；滑過看明細（導師＋科任＋行政＋鐘點／需求）。<b className="text-red-600">紅色缺口可點</b>，直接開該科補缺推薦。</>
+                    : <>格內＝該科×年級的授課老師與節數，<b>點老師名</b>直接前往其配課調整。底色：<span className="text-red-600 font-medium">紅＝缺</span>、<span className="text-sky-700 font-medium">藍＝超</span>。</>}
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="table-base no-hover">
+                    <thead>
+                      <tr><th className="min-w-[8rem]">科目 / 領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {allSubjectsList.map(subj => (
+                        <tr key={subj}>
+                          <td className="font-medium">{subj}</td>
+                          {GRADES.map(g => {
+                            const demand = demandByGradeSubject[g]?.[subj]
+                            if (demand === undefined) return <td key={g} className="text-center text-zinc-300">—</td>
+                            const hs = homeroomSupply(g, subj), ss = subjectSupply(g, subj), as = adminSupply(g, subj), hh = hourlySupply(g, subj)
+                            const diff = hs + ss + as + hh - demand
+                            const detail = `導師 ${hs}＋科任 ${ss}＋行政 ${as}＋鐘點 ${hh}＝${hs + ss + as + hh}／需求 ${demand}`
+                            if (ovMode === 'diff') {
+                              const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                              return (
+                                <td key={g} className="text-center" title={detail}>
+                                  {diff < 0
+                                    ? <button onClick={() => setFillGap({ grade: g, subj })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
+                                    : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
+                                </td>
+                              )
+                            }
+                            // 師資模式：導師群摺疊＋個別老師徽章；差異以底色與角標保留
+                            const hrList = homeroomContribs(g, subj)
+                            const others = nonHomeroomContribs(g, subj)
+                            const key = `${subj}|${g}`
+                            const expanded = !!ovExpanded[key]
+                            const bg = diff < 0 ? 'bg-red-50' : diff > 0 ? 'bg-sky-50' : ''
+                            return (
+                              <td key={g} className={`align-top ${bg}`} title={detail}>
+                                <div className="flex flex-wrap gap-1 items-center justify-center py-0.5">
+                                  {hrList.length > 0 && (
+                                    <button onClick={() => setOvExpanded(p => ({ ...p, [key]: !expanded }))}
+                                      title="展開／收合導師名單"
+                                      className="text-[11px] px-1 py-0.5 border border-dashed border-zinc-300 rounded-sm text-zinc-500 hover:border-zinc-500 whitespace-nowrap">
+                                      導師×{hrList.length}·{hrList.reduce((s, x) => s + x.v, 0)}節{expanded ? ' ▴' : ' ▾'}
+                                    </button>
+                                  )}
+                                  {expanded && hrList.map(x => staffBadge(x.t, x.v))}
+                                  {others.map(x => staffBadge(x.t, x.v))}
+                                  {hrList.length === 0 && others.length === 0 && <span className="text-zinc-300 text-xs">—</span>}
+                                  {diff !== 0 && <span className={`text-[10px] font-semibold ${diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diff > 0 ? `+${diff}` : diff}</span>}
+                                </div>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                      {/* 本土語額外語別課（配課設定「設定二」）：需求以總節數計、只出現在有設定的年級 */}
+                      {extraNames.map(lang => (
+                        <tr key={lang} className="bg-teal-50/50">
+                          <td className="font-medium">{lang}<span className="ml-1 text-[10px] px-1 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">其他</span></td>
+                          {GRADES.map(g => {
+                            const entry = extraCourses.find(c => c.lang === lang && c.grade === g)
+                            if (!entry) return <td key={g} className="text-center text-zinc-300">—</td>
+                            const got = extraAllocated(lang, g)
+                            const diff = got - entry.hours
+                            if (ovMode === 'diff') {
+                              const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
+                              return (
+                                <td key={g} className="text-center" title={`已配 ${got}／需求 ${entry.hours}`}>
+                                  {diff < 0
+                                    ? <button onClick={() => setFillGap({ grade: g, subj: lang })} className={`font-medium underline cursor-pointer ${cls}`}>{diff}</button>
+                                    : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
+                                </td>
+                              )
+                            }
+                            const list = extraContribs(lang, g)
+                            const bg = diff < 0 ? 'bg-red-50' : diff > 0 ? 'bg-sky-50' : ''
+                            return (
+                              <td key={g} className={`align-top ${bg}`} title={`已配 ${got}／需求 ${entry.hours}`}>
+                                <div className="flex flex-wrap gap-1 items-center justify-center py-0.5">
+                                  {list.map(x => staffBadge(x.t, x.v))}
+                                  {list.length === 0 && <span className="text-zinc-300 text-xs">—</span>}
+                                  {diff !== 0 && <span className={`text-[10px] font-semibold ${diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diff > 0 ? `+${diff}` : diff}</span>}
+                                </div>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {ovTab === 'reduction' && (() => {
+              // 個別減課/超鐘一覽（情境減課全年級一致、已反映在目標節數，不列）。
+              // 超鐘＝實際授課超過「基本−減課」的節數（導師含自願超鐘；意願加課亦計入）
+              const overtimeOf = (t: TeacherStat) =>
+                t.role === 'homeroom' ? Math.max(0, hrSumOf(t) - hrActualOf(t)) : overOf(t)
+              const rows = teachers.filter(t => !t.isHourly)
+                .map(t => ({ t, red: t.data.projectReduction || 0, over: overtimeOf(t), auto: t.role === 'homeroom' ? hrAutoOf(t, hrSumOf(t)) : 0, willing: willingOf(t) }))
+                .filter(x => x.red > 0 || x.over > 0)
+                .sort((a, b) => b.red - a.red || b.over - a.over || a.t.name.localeCompare(b.t.name, 'zh-Hant'))
+              const totRed = rows.reduce((s, x) => s + x.red, 0)
+              const totOver = rows.reduce((s, x) => s + x.over, 0)
+              return (
+                <>
+                  <p className="text-xs text-zinc-500">全校有專案減課或超鐘的老師一覽，<b>點老師名</b>前往其配課調整。超鐘＝實際授課超過（基本−減課）的節數，導師含自願超鐘；情境減課全年級一致、不在此列。</p>
+                  {rows.length === 0
+                    ? <p className="text-sm text-zinc-400 text-center py-6">目前沒有老師有專案減課或超鐘。</p>
+                    : <table className="table-base no-hover">
+                        <thead>
+                          <tr><th>教師</th><th>身分</th><th className="text-center border-l border-zinc-200">專案減課</th><th className="text-center">超鐘</th><th className="text-center">申報意願</th><th className="text-center">剩餘意願</th></tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(({ t, red, over, auto, willing }) => (
+                            <tr key={t.id}>
+                              <td>
+                                <button onClick={() => jumpToTeacher(t)} className="font-medium text-zinc-800 hover:text-sky-700 hover:underline">{t.name}</button>
+                                {t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
+                              </td>
+                              <td className="text-xs text-zinc-500">{t.roleLabel}{t.role === 'homeroom' && t.grade ? `・${GRADE_LABEL[t.grade]}` : ''}</td>
+                              <td className="text-center border-l border-zinc-200">{red > 0 ? <span className="font-medium text-zinc-800">{red}</span> : <span className="text-zinc-300">—</span>}</td>
+                              <td className="text-center whitespace-nowrap">
+                                {over > 0
+                                  ? <span className="font-medium text-sky-700">+{over}{auto > 0 && <span className="ml-1 text-[10px] font-normal text-zinc-400">（自願 {auto}）</span>}</span>
+                                  : <span className="text-zinc-300">—</span>}
+                              </td>
+                              <td className="text-center text-zinc-500">{willing || '—'}</td>
+                              <td className="text-center text-zinc-500">{willing ? Math.max(0, remainingOf(t)) : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-zinc-200">
+                            <td className="text-xs font-semibold text-zinc-600">合計 {rows.length} 位</td>
+                            <td></td>
+                            <td className="text-center font-semibold text-zinc-800 border-l border-zinc-200">{totRed}</td>
+                            <td className="text-center font-semibold text-sky-700">{totOver > 0 ? `+${totOver}` : '—'}</td>
+                            <td></td><td></td>
+                          </tr>
+                        </tfoot>
+                      </table>}
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
