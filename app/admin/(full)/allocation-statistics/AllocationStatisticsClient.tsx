@@ -27,7 +27,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [savingId, setSavingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [fillGap, setFillGap] = useState<{ grade: number; subj: string } | null>(null)  // 差異缺口→超鐘推薦 modal
-  const [overviewOpen, setOverviewOpen] = useState(false)   // 全校供需總覽 modal（科目×年級差異矩陣）
+  const [overviewOpen, setOverviewOpen] = useState(false)   // 統計資料 modal（供需矩陣＋減課統計）
   const [ovTab, setOvTab] = useState<'matrix' | 'reduction'>('matrix')      // 總覽 modal 分頁：供需矩陣／減課統計
   const [ovMode, setOvMode] = useState<'diff' | 'staff'>('diff')            // 矩陣顯示模式：差異數字／授課師資
   const [ovStaffSubj, setOvStaffSubj] = useState<string | null>(null)       // 師資模式選定的領域（一次一科）
@@ -350,7 +350,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
           <button onClick={() => setView('subject')} className={tabCls(view === 'subject')}>科任</button>
           <button onClick={() => setView('admin')} className={tabCls(view === 'admin')}>行政</button>
           <button onClick={() => setView('hourly')} className={tabCls(view === 'hourly')}>鐘點</button>
-          <button onClick={() => setOverviewOpen(true)} className="ml-auto btn-secondary text-sm py-1">📊 供需總覽</button>
+          <button onClick={() => setOverviewOpen(true)} className="ml-auto btn-secondary text-sm py-1">📊 統計資料</button>
         </div>
       </div>
 
@@ -390,7 +390,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                 <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded-sm border align-middle ${adoptedDecided[grade] ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
                   {adoptedDecided[grade] ? `採用：${REDUCTION_LABEL[reduction]}` : `⚠ 未定案，暫以${REDUCTION_LABEL[reduction]}計（請至配課設定選定採用情境）`}
                 </span>
-                <span className="text-xs font-normal text-zinc-400 ml-1">各科供給與缺口請看「📊 供需總覽」</span>
+                <span className="text-xs font-normal text-zinc-400 ml-1">各科供給與缺口請看「📊 統計資料」</span>
               </div>
               <table className="table-base no-hover mt-2">
                 <thead>
@@ -466,9 +466,9 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {/* ── 鐘點檢視（無減課/超鐘/鎖定，課務組直接填）── */}
       {view === 'hourly' && gradeSubjectGrid(hourlyTeachers, hourlySel, setHourlySel, '鐘點', true)}
 
-      {/* 本土語語別課供需已併入「📊 供需總覽」矩陣（青色列），此處不再重複 */}
+      {/* 本土語語別課供需已併入「📊 統計資料」矩陣（青色列），此處不再重複 */}
 
-      {/* ── 供需總覽 modal：兩分頁——供需矩陣（差異／師資雙模式）＋減課統計 ── */}
+      {/* ── 統計資料 modal：兩分頁——供需總覽（差異／師資雙模式）＋減課統計 ── */}
       {overviewOpen && (
         <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={() => setOverviewOpen(false)}>
           <div className="bg-white rounded-md shadow-xl w-full max-w-4xl p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
