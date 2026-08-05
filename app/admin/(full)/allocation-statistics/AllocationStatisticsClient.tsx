@@ -30,7 +30,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [overviewOpen, setOverviewOpen] = useState(false)   // 全校供需總覽 modal（科目×年級差異矩陣）
   const [ovTab, setOvTab] = useState<'matrix' | 'reduction'>('matrix')      // 總覽 modal 分頁：供需矩陣／減課統計
   const [ovMode, setOvMode] = useState<'diff' | 'staff'>('diff')            // 矩陣顯示模式：差異數字／授課師資
-  const [ovExpanded, setOvExpanded] = useState<Record<string, boolean>>({}) // 師資模式導師群展開（key: 科目|年級）
+  const [ovStaffSubj, setOvStaffSubj] = useState<string | null>(null)       // 師資模式選定的領域（一次一科）
   const [highlightId, setHighlightId] = useState<string | null>(null)       // 從總覽跳轉的導師列高亮
   const [reasonView, setReasonView] = useState<string | null>(null)  // 配課理由 modal（teacher id）
   const [projEdit, setProjEdit] = useState<string | null>(null)  // 專案減課核實 modal（teacher id）
@@ -476,39 +476,50 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button onClick={() => setOvTab('matrix')} className={tabCls(ovTab === 'matrix')}>供需總覽</button>
                 <button onClick={() => setOvTab('reduction')} className={tabCls(ovTab === 'reduction')}>減課統計</button>
-                {ovTab === 'matrix' && (
-                  <span className="ml-2 inline-flex border border-zinc-200 rounded-sm overflow-hidden text-xs">
-                    <button onClick={() => setOvMode('diff')} className={`px-2.5 py-1 ${ovMode === 'diff' ? 'bg-zinc-700 text-white' : 'bg-white text-zinc-500 hover:text-zinc-700'}`}>差異</button>
-                    <button onClick={() => setOvMode('staff')} className={`px-2.5 py-1 ${ovMode === 'staff' ? 'bg-zinc-700 text-white' : 'bg-white text-zinc-500 hover:text-zinc-700'}`}>師資</button>
-                  </span>
-                )}
               </div>
               <button onClick={() => setOverviewOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
             </div>
 
             {ovTab === 'matrix' && (
               <>
-                <p className="text-xs text-zinc-500">
-                  {ovMode === 'diff'
-                    ? <>格內＝差異（供給−需求）；滑過看明細（導師＋科任＋行政＋鐘點／需求）。<b className="text-red-600">紅色缺口可點</b>，直接開該科補缺推薦。</>
-                    : <>格內＝該科×年級的授課老師與節數，<b>點老師名</b>直接前往其配課調整。底色：<span className="text-red-600 font-medium">紅＝缺</span>、<span className="text-sky-700 font-medium">藍＝超</span>。</>}
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="table-base no-hover">
-                    <thead>
-                      <tr><th className="min-w-[8rem]">科目 / 領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}</tr>
-                    </thead>
-                    <tbody>
-                      {allSubjectsList.map(subj => (
-                        <tr key={subj}>
-                          <td className="font-medium">{subj}</td>
-                          {GRADES.map(g => {
-                            const demand = demandByGradeSubject[g]?.[subj]
-                            if (demand === undefined) return <td key={g} className="text-center text-zinc-300">—</td>
-                            const hs = homeroomSupply(g, subj), ss = subjectSupply(g, subj), as = adminSupply(g, subj), hh = hourlySupply(g, subj)
-                            const diff = hs + ss + as + hh - demand
-                            const detail = `導師 ${hs}＋科任 ${ss}＋行政 ${as}＋鐘點 ${hh}＝${hs + ss + as + hh}／需求 ${demand}`
-                            if (ovMode === 'diff') {
+                {/* 顯示模式切換：刻意做小、放表格上方，與上排 tab 樣式區隔 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-zinc-400">顯示</span>
+                  <span className="inline-flex border border-zinc-200 rounded-full overflow-hidden text-[11px]">
+                    <button onClick={() => setOvMode('diff')} className={`px-2.5 py-0.5 ${ovMode === 'diff' ? 'bg-zinc-200 text-zinc-800 font-medium' : 'bg-white text-zinc-400 hover:text-zinc-600'}`}>差異</button>
+                    <button onClick={() => setOvMode('staff')} className={`px-2.5 py-0.5 ${ovMode === 'staff' ? 'bg-zinc-200 text-zinc-800 font-medium' : 'bg-white text-zinc-400 hover:text-zinc-600'}`}>師資</button>
+                  </span>
+                  {ovMode === 'staff' && (
+                    <select
+                      value={ovStaffSubj && gridSubjects.includes(ovStaffSubj) ? ovStaffSubj : gridSubjects[0] ?? ''}
+                      onChange={e => setOvStaffSubj(e.target.value)}
+                      className="input py-0.5 text-xs w-36">
+                      {gridSubjects.map(s => <option key={s} value={s}>{s}{isExtra(s) ? '（其他）' : ''}</option>)}
+                    </select>
+                  )}
+                  <span className="text-xs text-zinc-500">
+                    {ovMode === 'diff'
+                      ? <>格內＝差異（供給−需求）；滑過看明細。<b className="text-red-600">紅色缺口可點</b>，直接開補缺推薦。</>
+                      : <>選領域看各年級授課老師與節數，<b>點老師名</b>直接前往其配課調整。</>}
+                  </span>
+                </div>
+
+                {ovMode === 'diff' && (
+                  <div className="overflow-x-auto">
+                    <table className="table-base no-hover">
+                      <thead>
+                        <tr><th className="min-w-[8rem]">科目 / 領域</th>{GRADES.map(g => <th key={g} className="text-center">{GRADE_LABEL[g]}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {allSubjectsList.map(subj => (
+                          <tr key={subj}>
+                            <td className="font-medium">{subj}</td>
+                            {GRADES.map(g => {
+                              const demand = demandByGradeSubject[g]?.[subj]
+                              if (demand === undefined) return <td key={g} className="text-center text-zinc-300">—</td>
+                              const hs = homeroomSupply(g, subj), ss = subjectSupply(g, subj), as = adminSupply(g, subj), hh = hourlySupply(g, subj)
+                              const diff = hs + ss + as + hh - demand
+                              const detail = `導師 ${hs}＋科任 ${ss}＋行政 ${as}＋鐘點 ${hh}＝${hs + ss + as + hh}／需求 ${demand}`
                               const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
                               return (
                                 <td key={g} className="text-center" title={detail}>
@@ -517,43 +528,18 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                                     : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
                                 </td>
                               )
-                            }
-                            // 師資模式：導師群摺疊＋個別老師徽章；差異以底色與角標保留
-                            const hrList = homeroomContribs(g, subj)
-                            const others = nonHomeroomContribs(g, subj)
-                            const key = `${subj}|${g}`
-                            const expanded = !!ovExpanded[key]
-                            const bg = diff < 0 ? 'bg-red-50' : diff > 0 ? 'bg-sky-50' : ''
-                            return (
-                              <td key={g} className={`align-top ${bg}`} title={detail}>
-                                <div className="flex flex-wrap gap-1 items-center justify-center py-0.5">
-                                  {hrList.length > 0 && (
-                                    <button onClick={() => setOvExpanded(p => ({ ...p, [key]: !expanded }))}
-                                      title="展開／收合導師名單"
-                                      className="text-[11px] px-1 py-0.5 border border-dashed border-zinc-300 rounded-sm text-zinc-500 hover:border-zinc-500 whitespace-nowrap">
-                                      導師×{hrList.length}·{hrList.reduce((s, x) => s + x.v, 0)}節{expanded ? ' ▴' : ' ▾'}
-                                    </button>
-                                  )}
-                                  {expanded && hrList.map(x => staffBadge(x.t, x.v))}
-                                  {others.map(x => staffBadge(x.t, x.v))}
-                                  {hrList.length === 0 && others.length === 0 && <span className="text-zinc-300 text-xs">—</span>}
-                                  {diff !== 0 && <span className={`text-[10px] font-semibold ${diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diff > 0 ? `+${diff}` : diff}</span>}
-                                </div>
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                      {/* 本土語額外語別課（配課設定「設定二」）：需求以總節數計、只出現在有設定的年級 */}
-                      {extraNames.map(lang => (
-                        <tr key={lang} className="bg-teal-50/50">
-                          <td className="font-medium">{lang}<span className="ml-1 text-[10px] px-1 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">其他</span></td>
-                          {GRADES.map(g => {
-                            const entry = extraCourses.find(c => c.lang === lang && c.grade === g)
-                            if (!entry) return <td key={g} className="text-center text-zinc-300">—</td>
-                            const got = extraAllocated(lang, g)
-                            const diff = got - entry.hours
-                            if (ovMode === 'diff') {
+                            })}
+                          </tr>
+                        ))}
+                        {/* 本土語額外語別課（配課設定「設定二」）：需求以總節數計、只出現在有設定的年級 */}
+                        {extraNames.map(lang => (
+                          <tr key={lang} className="bg-teal-50/50">
+                            <td className="font-medium">{lang}<span className="ml-1 text-[10px] px-1 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">其他</span></td>
+                            {GRADES.map(g => {
+                              const entry = extraCourses.find(c => c.lang === lang && c.grade === g)
+                              if (!entry) return <td key={g} className="text-center text-zinc-300">—</td>
+                              const got = extraAllocated(lang, g)
+                              const diff = got - entry.hours
                               const cls = diff === 0 ? 'text-green-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'
                               return (
                                 <td key={g} className="text-center" title={`已配 ${got}／需求 ${entry.hours}`}>
@@ -562,24 +548,47 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                                     : <span className={`font-medium ${cls}`}>{diff > 0 ? `+${diff}` : '✓'}</span>}
                                 </td>
                               )
-                            }
-                            const list = extraContribs(lang, g)
-                            const bg = diff < 0 ? 'bg-red-50' : diff > 0 ? 'bg-sky-50' : ''
-                            return (
-                              <td key={g} className={`align-top ${bg}`} title={`已配 ${got}／需求 ${entry.hours}`}>
-                                <div className="flex flex-wrap gap-1 items-center justify-center py-0.5">
-                                  {list.map(x => staffBadge(x.t, x.v))}
-                                  {list.length === 0 && <span className="text-zinc-300 text-xs">—</span>}
-                                  {diff !== 0 && <span className={`text-[10px] font-semibold ${diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diff > 0 ? `+${diff}` : diff}</span>}
-                                </div>
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {ovMode === 'staff' && (() => {
+                  // 師資檢視：一次一個領域，各年級一列直接列出授課老師（口徑同供給計算，不顯示差異）
+                  const subj = ovStaffSubj && gridSubjects.includes(ovStaffSubj) ? ovStaffSubj : gridSubjects[0]
+                  if (!subj) return <p className="text-sm text-zinc-400 text-center py-6">尚無領域資料。</p>
+                  const rows = GRADES
+                    .filter(g => isExtra(subj) ? extraOffered(subj, g) : demandByGradeSubject[g]?.[subj] !== undefined)
+                    .map(g => ({
+                      g,
+                      list: isExtra(subj)
+                        ? extraContribs(subj, g)
+                        : [...homeroomContribs(g, subj), ...nonHomeroomContribs(g, subj)],
+                    }))
+                  return (
+                    <table className="table-base no-hover">
+                      <thead><tr><th className="w-20">年級</th><th>「{subj}」授課老師（節數）</th></tr></thead>
+                      <tbody>
+                        {rows.length === 0 && <tr><td colSpan={2} className="text-sm text-zinc-400 text-center py-4">此領域無開課年級。</td></tr>}
+                        {rows.map(({ g, list }) => (
+                          <tr key={g}>
+                            <td className="font-medium whitespace-nowrap">{GRADE_LABEL[g]}</td>
+                            <td>
+                              <div className="flex flex-wrap gap-1.5 items-center py-0.5">
+                                {list.length === 0
+                                  ? <span className="text-zinc-300 text-xs">尚無人授課</span>
+                                  : list.map(x => staffBadge(x.t, x.v))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                })()}
               </>
             )}
 
@@ -607,7 +616,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                           {rows.map(({ t, red, over, auto, willing }) => (
                             <tr key={t.id}>
                               <td>
-                                <button onClick={() => jumpToTeacher(t)} className="font-medium text-zinc-800 hover:text-sky-700 hover:underline">{t.name}</button>
+                                <button onClick={() => jumpToTeacher(t)} title="前往此老師的配課統計" className="font-medium text-sky-700 hover:underline">{t.name}</button>
                                 {t.data.locked && <span className="ml-1 text-[10px]">🔒</span>}
                               </td>
                               <td className="text-xs text-zinc-500">{t.roleLabel}{t.role === 'homeroom' && t.grade ? `・${GRADE_LABEL[t.grade]}` : ''}</td>
