@@ -16,7 +16,7 @@ export default async function ScheduleWizardPage() {
   const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }, { data: allocs }, { data: hrRows }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
-    admin.from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin'),
+    admin.from('profiles').select('id, name').neq('status', 'inactive'),
     admin.from('schedule_plan').select('generated_at, plan').eq('year', year).maybeSingle(),
     admin.from('allocation').select('teacher_id, data').eq('year', year),
     admin.from('schedule_homeroom').select('class_key, teacher_id, cells, confirmed_at').eq('year', year),

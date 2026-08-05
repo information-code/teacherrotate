@@ -48,7 +48,8 @@ export default async function SelectionPanelPage() {
   const admin = getAdminClient()
 
   const [{ data: activeProfiles }, { data: settingsRows }, { data: scoremapRows }] = await Promise.all([
-    admin.from('profiles').select('id, name, other_school_years, kanpu_substitute_years').neq('status', 'inactive').neq('role', 'superadmin'),
+    // superadmin 也是真人教師（兼任行政），一併列入選填對象
+    admin.from('profiles').select('id, name, other_school_years, kanpu_substitute_years').neq('status', 'inactive'),
     admin.from('settings').select('value').eq('key', 'preference_year'),
     admin.from('scoremap').select('work, group_name'),
   ])
@@ -75,8 +76,11 @@ export default async function SelectionPanelPage() {
       : Promise.resolve({ data: [] as { teacher_id: string; year: number; work: string; grade: number | null }[] }),
   ])
 
+  // 目標判定只看「選填年度之前」的紀錄：套用撕榜後當年度已寫入 work/grade（含連任回填 2/4/6），
+  // 若納入判定會把連任導師誤判成輪動目標（642 洗版）；排除後套用前後判定結果一致。
   const teacherRotations: Record<string, { year: number; work: string; grade: number | null }[]> = {}
   for (const r of rotationsResult.data ?? []) {
+    if (r.year >= preferenceYear) continue
     if (!teacherRotations[r.teacher_id]) teacherRotations[r.teacher_id] = []
     teacherRotations[r.teacher_id].push({ year: r.year, work: r.work, grade: r.grade ?? null })
   }

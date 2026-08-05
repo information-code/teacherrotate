@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
     .from('profiles')
     .select('id, name')
     .neq('status', 'inactive')
-    .neq('role', 'superadmin')
   const active = activeProfiles ?? []
 
   const { data: rots } = await supabaseAdmin

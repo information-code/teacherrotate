@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
   // 在校老師 + 其所有 rotation
   const { data: activeProfiles } = await supabaseAdmin
-    .from('profiles').select('id').neq('status', 'inactive').neq('role', 'superadmin')
+    .from('profiles').select('id').neq('status', 'inactive')
   const activeIds = (activeProfiles ?? []).map(p => p.id)
   const { data: rotData } = activeIds.length
     ? await supabaseAdmin.from('rotations').select('teacher_id, year, work, grade').in('teacher_id', activeIds)

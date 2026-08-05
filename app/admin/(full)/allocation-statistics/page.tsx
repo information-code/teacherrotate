@@ -38,7 +38,7 @@ export default async function AllocationStatisticsPage() {
   const [{ data: cfgRow }, { data: profiles }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     // 鐘點教師也列入（配課由課務組於「鐘點」分頁直接填寫）
-    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive').neq('role', 'superadmin'),
+    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive'),
   ])
   const config = normalizeConfig(cfgRow?.config)
   const ids = (profiles ?? []).map(p => p.id)

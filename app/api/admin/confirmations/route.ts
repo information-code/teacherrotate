@@ -22,7 +22,6 @@ export async function GET() {
     supabaseAdmin
       .from('profiles')
       .select('id, name, email, score_confirmed, score_confirmed_at')
-      .not('role', 'eq', 'superadmin')
       .neq('status', 'inactive')
       .order('name'),
     supabaseAdmin.from('rotations').select('teacher_id, year, work, grade'),
@@ -42,8 +41,10 @@ export async function GET() {
     (prefs ?? []).map(p => [p.teacher_id, p])
   )
 
+  // 目標判定只看「選填年度之前」的紀錄（套用撕榜後的當年度資料不可入判）
   const rotByTeacher: Record<string, { year: number; work: string; grade: number | null }[]> = {}
   for (const r of rotations ?? []) {
+    if (r.year >= preferenceYear) continue
     if (!rotByTeacher[r.teacher_id]) rotByTeacher[r.teacher_id] = []
     rotByTeacher[r.teacher_id].push({ year: r.year, work: r.work, grade: r.grade ?? null })
   }

@@ -67,9 +67,9 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
   const viewYear = Number(params.year ?? currentYear)
   const isCurrent = viewYear === currentYear
 
-  // 先取在職教師 ID
+  // 先取在職教師 ID（superadmin 也是真人教師，一併列入）
   const { data: activeProfiles } = await admin
-    .from('profiles').select('id, name').neq('status', 'inactive').neq('role', 'superadmin')
+    .from('profiles').select('id, name').neq('status', 'inactive')
   const activeIds = (activeProfiles ?? []).map(p => p.id)
 
   const [prefsResult, scoresResult, rotationsResult, scoremapResult] = await Promise.all([
@@ -99,10 +99,11 @@ export default async function StatisticsPage({ searchParams }: { searchParams: P
     teacherRotations[r.teacher_id].push({ year: r.year, work: r.work, grade: r.grade ?? null })
   }
 
-  // 計算每位教師的目標類別（依最新一筆 rotation 判定）
+  // 計算每位教師的目標類別：只看「檢視年度之前」的紀錄
+  //（套用撕榜後當年度已寫入 work/grade，入判會把連任導師誤判為輪動目標）
   const targetMap: Record<string, RotationTarget | null> = {}
   for (const id of activeIds) {
-    targetMap[id] = getRotationTarget(teacherRotations[id] ?? [])
+    targetMap[id] = getRotationTarget((teacherRotations[id] ?? []).filter(r => r.year < viewYear))
   }
 
   // 只有當前年度才套用「需填志願」過濾與評估面板；歷史年度直接統計該年度所有志願
