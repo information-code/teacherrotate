@@ -140,6 +140,8 @@ export function installDemoFetch() {
         equipment_id: equip?.id ?? null,
         group_id: group?.id ?? null,
         equipment_name: group ? `${group.name}（整組）` : `${equip?.name ?? ''}`,
+        equipment_asset_number: group ? '' : equip?.asset_number ?? '',
+        equipment_location: group ? '資訊組充電車' : equip?.location ?? '',
         loan_date: body.start_date,
         end_date: body.end_date,
         start_period: body.start_period,

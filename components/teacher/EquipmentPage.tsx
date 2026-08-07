@@ -40,6 +40,8 @@ interface LoanRow {
   equipment_id: string | null
   group_id: string | null
   equipment_name: string
+  equipment_asset_number: string
+  equipment_location: string
   loan_date: string
   end_date: string | null
   start_period: string | null
@@ -362,8 +364,18 @@ function ShortTab({
           {activeLoans.map(loan => (
             <div key={loan.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
               <div className="flex-1 min-w-[180px]">
-                <div className="text-sm font-medium text-zinc-900">{loan.equipment_name}</div>
+                <div className="text-sm font-medium text-zinc-900">
+                  {loan.equipment_name}
+                  {loan.equipment_asset_number && (
+                    <span className="ml-1.5 text-xs font-normal text-zinc-500">#{loan.equipment_asset_number}</span>
+                  )}
+                </div>
                 <div className="text-xs text-zinc-500 mt-0.5">{loanTimeText(loan)}</div>
+                {loan.equipment_location && (
+                  <div className="text-xs text-zinc-600 mt-0.5">
+                    取用地點：<span className="font-medium">{loan.equipment_location}</span>
+                  </div>
+                )}
               </div>
               <span className={loan.status === 'borrowed' ? 'badge-warn' : 'badge-default'}>
                 {LOAN_STATUS_LABEL[loan.status]}
@@ -578,7 +590,12 @@ function ShortTab({
               <tbody>
                 {historyLoans.map(loan => (
                   <tr key={loan.id}>
-                    <td>{loan.equipment_name}</td>
+                    <td>
+                      {loan.equipment_name}
+                      {loan.equipment_asset_number && (
+                        <span className="ml-1 text-xs text-zinc-400">#{loan.equipment_asset_number}</span>
+                      )}
+                    </td>
                     <td>{loanTimeText(loan)}</td>
                     <td>
                       <span className={loan.status === 'returned' ? 'badge-success' : 'badge-default'}>
@@ -743,8 +760,14 @@ function ProcedureModal({
         <div>
           <h3 className="font-semibold text-zinc-900">
             {title}（{step}/2）：{loan.equipment_name}
+            {loan.equipment_asset_number && (
+              <span className="ml-1.5 text-sm font-normal text-zinc-500">#{loan.equipment_asset_number}</span>
+            )}
           </h3>
-          <p className="text-xs text-zinc-500 mt-0.5">{loanTimeText(loan)}</p>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            {loanTimeText(loan)}
+            {loan.equipment_location && <>｜取用地點：{loan.equipment_location}</>}
+          </p>
         </div>
 
         {step === 1 ? (

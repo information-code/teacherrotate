@@ -83,15 +83,21 @@ export async function GET(request: NextRequest) {
     ;(day[s.equipment_id] ??= []).push(s.period)
   }
 
-  const equipMap = new Map((allEquipment ?? []).map(e => [e.id, e.name]))
+  // 借用卡片要顯示編號與存放位置，讓老師知道去哪拿哪一台
+  const equipMap = new Map(
+    (allEquipment ?? []).map(e => [e.id, { name: e.name, asset_number: e.asset_number, location: e.location }])
+  )
   const groupMap = new Map((allGroups ?? []).map(g => [g.id, g.name]))
-  // 歷史紀錄的設備/群組可能已停用或刪除，補查名稱
+  // 歷史紀錄的設備/群組可能已停用或刪除，補查資料
   const missingIds = Array.from(new Set(
     (myLoans ?? []).map(l => l.equipment_id).filter((id): id is string => Boolean(id) && !equipMap.has(id as string))
   ))
   if (missingIds.length > 0) {
-    const { data: extra } = await supabaseAdmin.from('equipment').select('id, name').in('id', missingIds)
-    for (const e of extra ?? []) equipMap.set(e.id, e.name)
+    const { data: extra } = await supabaseAdmin
+      .from('equipment').select('id, name, asset_number, location').in('id', missingIds)
+    for (const e of extra ?? []) {
+      equipMap.set(e.id, { name: e.name, asset_number: e.asset_number, location: e.location })
+    }
   }
   const missingGroupIds = Array.from(new Set(
     (myLoans ?? []).map(l => l.group_id).filter((id): id is string => Boolean(id) && !groupMap.has(id as string))
@@ -99,6 +105,11 @@ export async function GET(request: NextRequest) {
   if (missingGroupIds.length > 0) {
     const { data: extra } = await supabaseAdmin.from('equipment_groups').select('id, name').in('id', missingGroupIds)
     for (const g of extra ?? []) groupMap.set(g.id, g.name)
+  }
+  // 整組借用的存放位置取成員設備的位置（同組通常同處）
+  const groupLocation = new Map<string, string>()
+  for (const e of allEquipment ?? []) {
+    if (e.group_id && e.location && !groupLocation.has(e.group_id)) groupLocation.set(e.group_id, e.location)
   }
 
   return NextResponse.json({
@@ -108,11 +119,18 @@ export async function GET(request: NextRequest) {
     equipment,
     groups,
     occupied,
-    myLoans: (myLoans ?? []).map(l => ({
-      ...l,
-      equipment_name: l.group_id
-        ? `${groupMap.get(l.group_id) ?? '（已刪除群組）'}（整組）`
-        : equipMap.get(l.equipment_id ?? '') ?? '（已刪除設備）',
-    })),
+    myLoans: (myLoans ?? []).map(l => {
+      const equip = l.equipment_id ? equipMap.get(l.equipment_id) : undefined
+      return {
+        ...l,
+        equipment_name: l.group_id
+          ? `${groupMap.get(l.group_id) ?? '（已刪除群組）'}（整組）`
+          : equip?.name ?? '（已刪除設備）',
+        equipment_asset_number: equip?.asset_number ?? '',
+        equipment_location: l.group_id
+          ? groupLocation.get(l.group_id) ?? ''
+          : equip?.location ?? '',
+      }
+    }),
   })
 }
