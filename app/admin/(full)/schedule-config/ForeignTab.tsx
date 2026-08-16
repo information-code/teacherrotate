@@ -22,6 +22,7 @@ const PERIODS = [1, 2, 3, 4, 5, 6, 7]
 export default function ForeignTab({ config, setConfig, classCounts, gradeSubjects, foreignProfiles }: Props) {
   const [addSel, setAddSel] = useState('')
   const [excludeOpen, setExcludeOpen] = useState<Record<string, boolean>>({})   // `${tid}|${ruleIdx}` → 展開排除班級
+  const [offOpen, setOffOpen] = useState<Record<string, boolean>>({})           // teacherId → 展開不可到校時段（預設收起，有設定者自動展開）
 
   const nameOf = (id: string) => foreignProfiles.find(p => p.id === id)?.name ?? '（帳號已移除）'
   const configured = new Set(config.foreignTeachers.map(f => f.teacherId))
@@ -81,91 +82,103 @@ export default function ForeignTab({ config, setConfig, classCounts, gradeSubjec
         // 各年級小計（顯示用）
         const byGrade: Record<number, number> = {}
         for (const [k, v] of Object.entries(demand)) { const g = Number(k.split('-')[0]); byGrade[g] = (byGrade[g] ?? 0) + v }
+        const offShown = offOpen[ft.teacherId] ?? ft.offSlots.length > 0
         return (
-          <div key={ft.teacherId} className="card p-4 space-y-4">
-            {/* 標頭 */}
+          <div key={ft.teacherId} className="card p-4 space-y-3">
+            {/* 標頭：姓名｜合計｜備註｜移除 */}
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="text-sm font-semibold text-zinc-800">{nameOf(ft.teacherId)}</div>
-              <span className="text-xs px-2 py-0.5 rounded-sm border bg-emerald-50 text-emerald-700 border-emerald-200">本校合計 {total} 節</span>
-              <span className="text-[11px] text-zinc-400">
-                {GRADES.filter(g => byGrade[g]).map(g => `${GRADE_LABEL[g]} ${byGrade[g]}`).join('・')}
+              <div className="text-base font-semibold text-zinc-800">{nameOf(ft.teacherId)}</div>
+              <span className={`text-xs px-2 py-0.5 rounded-sm border ${total > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-zinc-50 text-zinc-400 border-zinc-200'}`}>
+                本校合計 {total} 節
+                {total > 0 && <span className="ml-1 opacity-70">（{GRADES.filter(g => byGrade[g]).map(g => `${GRADE_LABEL[g]} ${byGrade[g]}`).join('・')}）</span>}
               </span>
               <input value={ft.note} onChange={e => update(ft.teacherId, f => ({ ...f, note: e.target.value }))}
-                placeholder="備註（如：建功國小共聘）" className="input py-0.5 text-xs w-44 ml-auto" />
+                placeholder="備註（如：建功國小共聘）" className="input py-0.5 text-xs w-48 ml-auto" />
               <button onClick={() => removeFt(ft.teacherId)} className="text-xs text-red-400 hover:text-red-600">移除</button>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-              {/* 主授（年級規則） */}
-              <section className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-zinc-600">主授（年級整批）</div>
-                  <button onClick={() => update(ft.teacherId, f => {
-                    const g = GRADES.find(x => (classCounts[x] ?? 0) > 0 && !f.gradeRules.some(r => r.grade === x)) ?? 1
-                    return { ...f, gradeRules: [...f.gradeRules, { grade: g, subject: defaultSubject(g), perClass: 1, excluded: [] }] }
-                  })} className="btn btn-secondary text-xs py-0.5">＋ 年級</button>
-                </div>
-                {ft.gradeRules.length === 0 && <p className="text-xs text-zinc-400">尚未設定主授年級。</p>}
-                {ft.gradeRules.map((r, idx) => {
-                  const key = `${ft.teacherId}|${idx}`
-                  const classes = allClasses.filter(c => c.grade === r.grade)
-                  const open = !!excludeOpen[key]
-                  return (
-                    <div key={idx} className="border border-zinc-200 rounded-sm p-2 space-y-1.5">
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                        <select value={r.grade} onChange={e => {
-                          const g = Number(e.target.value)
-                          update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, grade: g, subject: subjectsOf(g).includes(x.subject) ? x.subject : defaultSubject(g), excluded: [] } : x) }))
-                        }} className="input py-0.5 text-xs w-20">
-                          {GRADES.map(g => <option key={g} value={g}>{GRADE_LABEL[g]}</option>)}
-                        </select>
-                        <select value={r.subject} onChange={e => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, subject: e.target.value } : x) }))}
-                          className="input py-0.5 text-xs w-28">
-                          {!subjectsOf(r.grade).includes(r.subject) && <option value={r.subject}>{r.subject || '（選科目）'}</option>}
-                          {subjectsOf(r.grade).map(n => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                        <span className="text-zinc-500">每班</span>
-                        <NumberInput min={0} max={9} value={r.perClass}
-                          onChange={n => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, perClass: n } : x) }))}
-                          className="input w-11 py-0.5 text-xs text-center" />
-                        <span className="text-zinc-500">節</span>
-                        <span className="text-zinc-400 ml-1">＝{(classes.length - r.excluded.length) * r.perClass} 節（{classes.length - r.excluded.length} 班）</span>
-                        <button onClick={() => setExcludeOpen(p => ({ ...p, [key]: !open }))} className="ml-auto text-zinc-400 hover:text-zinc-700">
-                          {r.excluded.length ? `排除 ${r.excluded.length} 班` : '排除班級'}{open ? ' ▴' : ' ▾'}
-                        </button>
-                        <button onClick={() => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600">✕</button>
-                      </div>
-                      {open && (
-                        <div className="flex flex-wrap gap-1">
-                          {classes.map(c => {
-                            const ex = r.excluded.includes(c.key)
-                            return (
-                              <button key={c.key} onClick={() => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, excluded: ex ? x.excluded.filter(k => k !== c.key) : [...x.excluded, c.key] } : x) }))}
-                                className={`text-[11px] px-1.5 py-0.5 rounded-sm border ${ex ? 'bg-zinc-100 text-zinc-400 border-zinc-200 line-through' : 'bg-white text-zinc-700 border-zinc-300 hover:border-zinc-500'}`}>
-                                {c.label}
-                              </button>
-                            )
-                          })}
-                          <span className="text-[10px] text-zinc-400 self-center ml-1">點班級切換排除</span>
-                        </div>
-                      )}
+            {/* 主授（年級整批）：一列一年級 */}
+            <section className="border border-zinc-200 rounded-sm">
+              <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 border-b border-zinc-200">
+                <div className="text-xs font-semibold text-zinc-700">主授年級</div>
+                <button onClick={() => update(ft.teacherId, f => {
+                  const g = GRADES.find(x => (classCounts[x] ?? 0) > 0 && !f.gradeRules.some(r => r.grade === x)) ?? 1
+                  return { ...f, gradeRules: [...f.gradeRules, { grade: g, subject: defaultSubject(g), perClass: 1, excluded: [] }] }
+                })} className="btn btn-secondary text-xs py-0.5">＋ 新增年級</button>
+              </div>
+              {ft.gradeRules.length === 0 && <p className="text-xs text-zinc-400 px-3 py-3">尚未設定——按「＋ 新增年級」，選年級與科目、每班節數（預設 1）。</p>}
+              {ft.gradeRules.map((r, idx) => {
+                const key = `${ft.teacherId}|${idx}`
+                const classes = allClasses.filter(c => c.grade === r.grade)
+                const open = !!excludeOpen[key]
+                const active = classes.length - r.excluded.length
+                return (
+                  <div key={idx} className="px-3 py-2 border-b border-zinc-100 last:border-0">
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <select value={r.grade} onChange={e => {
+                        const g = Number(e.target.value)
+                        update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, grade: g, subject: subjectsOf(g).includes(x.subject) ? x.subject : defaultSubject(g), excluded: [] } : x) }))
+                      }} className="input py-0.5 text-xs w-20">
+                        {GRADES.map(g => <option key={g} value={g}>{GRADE_LABEL[g]}</option>)}
+                      </select>
+                      <select value={r.subject} onChange={e => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, subject: e.target.value } : x) }))}
+                        className="input py-0.5 text-xs w-32">
+                        {!subjectsOf(r.grade).includes(r.subject) && <option value={r.subject}>{r.subject || '（選科目）'}</option>}
+                        {subjectsOf(r.grade).map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <span className="text-zinc-500">每班</span>
+                      <NumberInput min={0} max={9} value={r.perClass}
+                        onChange={n => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, perClass: n } : x) }))}
+                        className="input w-11 py-0.5 text-xs text-center" />
+                      <span className="text-zinc-500">節</span>
+                      <span className="text-zinc-400">→ {active} 班 × {r.perClass} ＝ <b className="text-zinc-700">{active * r.perClass}</b> 節</span>
+                      <button onClick={() => setExcludeOpen(p => ({ ...p, [key]: !open }))}
+                        className={`ml-auto px-1.5 py-0.5 rounded-sm border ${r.excluded.length ? 'text-amber-700 border-amber-300 bg-amber-50' : 'text-zinc-400 border-zinc-200 hover:text-zinc-700'}`}>
+                        {r.excluded.length ? `已排除 ${r.excluded.length} 班` : '排除班級'}{open ? ' ▴' : ' ▾'}
+                      </button>
+                      <button onClick={() => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600" title="刪除此年級">✕</button>
                     </div>
-                  )
-                })}
-              </section>
+                    {open && (
+                      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+                        {classes.map(c => {
+                          const ex = r.excluded.includes(c.key)
+                          return (
+                            <button key={c.key} onClick={() => update(ft.teacherId, f => ({ ...f, gradeRules: f.gradeRules.map((x, i) => i === idx ? { ...x, excluded: ex ? x.excluded.filter(k => k !== c.key) : [...x.excluded, c.key] } : x) }))}
+                              className={`text-[11px] px-1.5 py-0.5 rounded-sm border ${ex ? 'bg-zinc-100 text-zinc-400 border-zinc-200 line-through' : 'bg-white text-zinc-700 border-zinc-300 hover:border-zinc-500'}`}>
+                              {c.label}
+                            </button>
+                          )
+                        })}
+                        <span className="text-[10px] text-zinc-400 ml-1">點班級切換排除（劃線＝不跟）</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
 
-              {/* 不可到校時段 */}
-              <section className="space-y-1 lg:w-56">
-                <div className="text-xs font-semibold text-zinc-600">不可到校時段
-                  {ft.offSlots.length > 0 && <span className="ml-1 font-normal text-zinc-400">{ft.offSlots.length} 格</span>}
+            {/* 不可到校時段：預設收起，有需要再點開 */}
+            <section className="border border-zinc-200 rounded-sm">
+              <button onClick={() => setOffOpen(p => ({ ...p, [ft.teacherId]: !offShown }))}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-50">
+                <span className="text-zinc-400">{offShown ? '▾' : '▸'}</span>
+                <span className="font-semibold text-zinc-700">不可到校時段</span>
+                {ft.offSlots.length > 0
+                  ? <span className="px-1.5 py-0.5 rounded-sm bg-red-50 text-red-600 border border-red-200">{ft.offSlots.length} 格</span>
+                  : <span className="text-zinc-400">未設定（跨校／固定行程才需要）</span>}
+              </button>
+              {offShown && (
+                <div className="px-3 pb-3 pt-1 border-t border-zinc-100">
+                  <div className="max-w-xs">
+                    <SlotGrid periods={PERIODS}
+                      isOn={k => ft.offSlots.includes(k)}
+                      onToggle={k => update(ft.teacherId, f => ({ ...f, offSlots: f.offSlots.includes(k) ? f.offSlots.filter(x => x !== k) : [...f.offSlots, k] }))}
+                      onLabel="✕" onClass="bg-red-500 text-white border-red-500" />
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-1">點格子標紅＝該時段不排此外師的課（硬規則）。</p>
                 </div>
-                <SlotGrid periods={PERIODS}
-                  isOn={k => ft.offSlots.includes(k)}
-                  onToggle={k => update(ft.teacherId, f => ({ ...f, offSlots: f.offSlots.includes(k) ? f.offSlots.filter(x => x !== k) : [...f.offSlots, k] }))}
-                  onLabel="✕" onClass="bg-red-500 text-white border-red-500" />
-                <p className="text-[10px] text-zinc-400">跨校／固定行程點紅；紅格不排此外師的課（硬規則）。</p>
-              </section>
-            </div>
+              )}
+            </section>
           </div>
         )
       })}
