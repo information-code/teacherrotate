@@ -63,7 +63,8 @@ export default async function ScheduleWizardPage() {
   for (const g of GRADES) {
     classCounts[g] = allocConfig.grades[g].classCount
     gradeSubjects[g] = allocConfig.grades[g].subjects.map(s => ({ name: s.name, perClass: s.perClass, homeroom: s.homeroom }))
-    gradeHomeroomBase[g] = allocConfig.grades[g].homeroomBase
+    // 留白檢核用的導師節數＝基本 − 該年級採用情境減課（否則減課年級全數誤報「留白少於基本」）
+    gradeHomeroomBase[g] = allocConfig.grades[g].homeroomBase - adoptedReduction(allocConfig.grades[g])
   }
 
   return (
