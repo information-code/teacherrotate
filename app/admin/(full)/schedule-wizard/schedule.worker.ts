@@ -7,7 +7,7 @@
 import { EngineRun, type EngineInput, type EngineResult } from '../../../../lib/schedule-engine'
 
 const CHUNK_MS = 300        // 每段搜尋時間，段間讓出事件圈以接收停止訊息
-const P1 = { converge: 8000, cap: 45000 }   // 階段一：每種子收斂/上限
+const P1 = { converge: 20000, cap: 60000 }   // 階段一：每種子收斂/上限
 const P2 = { converge: 8000, cap: 90000 }   // 階段二：每輪收斂/上限
 const P1_SEEDS = [42, 7, 17, 63, 3]
 
@@ -24,7 +24,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         dailyMax: { ...b.dailyMax, level: 'off' },
         consecMax: { ...b.consecMax, level: 'off' },
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
-        compact: 'off', dayBalance: 'off', walkCost: 'off', roomPrefer: 'off',
+        compact: 'off', dayBalance: 'off', batchType: 'off', walkCost: 'off', roomPrefer: 'off',
         roomManagerFirst: 'off', homeroomMorning: 'off', homeroomBalance: 'off',
       },
       templates: input.weights.templates.map(t => t.template === 'doublePeriod' ? t : { ...t, level: 'off' as const }),

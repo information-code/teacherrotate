@@ -60,6 +60,7 @@ const RULE_ROWS: { key: SimpleKey | ParamKey; hasN?: boolean; name: string; tag:
   { key: 'homeroomDailyMax', hasN: true, name: '導師每日節數上限', tag: '導師', def: '高', desc: '每班每日留白 ≤ N 格，避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）' },
   { key: 'roomPrefer', name: '專科教室優先', tag: '教室', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班上課' },
   { key: 'roomManagerFirst', name: '教室管理教師優先', tag: '教室', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分。未設管理教師的教室不受此規則影響' },
+  { key: 'batchType', name: '同型態同日', tag: '科任', def: '高', desc: '老師同一天不混排連堂與單節（連堂日／單節日分開）。原為固定硬限制，改為權重：階段一可行性不計，階段二依權重盡量避免；排不開時允許少數混排日' },
   { key: 'walkCost', name: '走動成本', tag: '科任', def: '中', desc: '老師連續兩節跨教室，距離越遠扣越多（依教室設定的相鄰關係）' },
   { key: 'homeroomMorning', name: '上午留白給導師', tag: '導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午' },
   { key: 'compact', name: '減少零碎空堂', tag: '科任', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
@@ -135,7 +136,6 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           <li>不排課標記：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
           <li>永不連 7 節（連續授課絕對上限 6 節）</li>
           <li>任何老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以）</li>
-          <li>同型態同日：老師同一天不混排連堂與單節（連堂日／單節日分開）</li>
           <li>同科同日：同班同科一天最多一次（連堂本身不算）</li>
           <li>同科不隔天：同班同科不排相鄰兩天（每週每科最多 3 個落點：一、三、五）</li>
           <li>科任課同日成塊：同班同日（上、下午各自計）科任課與鎖課連成一塊，導師課不被切碎</li>
