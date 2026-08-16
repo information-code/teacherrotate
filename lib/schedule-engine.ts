@@ -45,6 +45,8 @@ export interface EngineInput {
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean } | null>
   weights: ScheduleWeights
   seed: number
+  /** 硬規則放寬（實驗／診斷用；product 未傳＝全部啟用）。key 為 true 時該硬規則不檢查。 */
+  hardRelax?: { gapSegs?: boolean; subjectDay?: boolean; batchMix?: boolean; cohesion?: boolean }
 }
 
 export interface Placement { day: number; period: number }
@@ -574,13 +576,13 @@ class State {
     // 永不連 7（絕對 6 連）：模擬放置後檢查該日連續數
     if (this.teacherRunAfter(l, p) > 6) return false
     // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
-    if (this.teacherGapSegsAfter(l, p) > 1) return false
+    if (!this.input.hardRelax?.gapSegs && this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止、相鄰日禁止（連堂自身除外）
-    if (this.subjectDayConflict(l, p)) return false
+    if (!this.input.hardRelax?.subjectDay && this.subjectDayConflict(l, p)) return false
     // 硬限制：同型態同日——老師同日連堂與單節不混
-    if (this.batchMixConflict(l, p)) return false
+    if (!this.input.hardRelax?.batchMix && this.batchMixConflict(l, p)) return false
     // 硬限制：科任課同日成塊（上、下午各自連成一塊）
-    if (this.cohesionConflict(l, p)) return false
+    if (!this.input.hardRelax?.cohesion && this.cohesionConflict(l, p)) return false
     return true
   }
 
