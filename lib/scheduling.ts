@@ -229,21 +229,17 @@ export function subjectClassKey(grade: number, index: number, subject: string): 
   return `${grade}-${index}|${subject}`
 }
 
-/** 外師（協同英語教學）設定：外師不是配課單位、不算供需，只是「掛在某些課上」的額外資源。
- *  年級規則＝主授（該年級每班 N 節、可排除個別班）；班級規則＝協同（單班×科目×節數）。
- *  兩者合併成 classKey×subject→節數，引擎在該班該科的科任課中挑 N 節掛上外師。
+/** 外師（協同英語教學）設定：外師不是配課單位、不算供需（無基本節數、無減課），只是「掛在某些課上」的額外資源。
+ *  年級規則＝主授（該年級每班 N 節、可排除個別班），展開成 classKey×subject→節數，引擎在該班該科的科任課中挑 N 節掛上外師。
  *  硬規則：同一外師同時段只能在一班、不可用時段不排、單日不連 7。 */
 export interface ForeignGradeRule { grade: number; subject: string; perClass: number; excluded: string[] }   // excluded＝classKey
-export interface ForeignClassRule { classKey: string; subject: string; count: number }
 export interface ForeignTeacherConfig {
   teacherId: string            // profiles.id（聘任別＝外師）
   gradeRules: ForeignGradeRule[]
-  classRules: ForeignClassRule[]
   offSlots: string[]           // 無法到校時段 slotKey
-  declared: number | null      // 申報本校總節數（對照用）
   note: string
 }
-/** 外師需求展開：classKey|subject → 節數（年級規則＋班級規則合併）。 */
+/** 外師需求展開：classKey|subject → 節數。 */
 export function foreignDemand(ft: ForeignTeacherConfig, classCounts: Record<number, number>): Record<string, number> {
   const out: Record<string, number> = {}
   for (const r of ft.gradeRules) {
@@ -254,10 +250,6 @@ export function foreignDemand(ft: ForeignTeacherConfig, classCounts: Record<numb
       if (r.excluded.includes(key)) continue
       out[`${key}|${r.subject}`] = (out[`${key}|${r.subject}`] ?? 0) + r.perClass
     }
-  }
-  for (const r of ft.classRules) {
-    if (!r.classKey || !r.subject || r.count <= 0) continue
-    out[`${r.classKey}|${r.subject}`] = (out[`${r.classKey}|${r.subject}`] ?? 0) + r.count
   }
   return out
 }
@@ -396,14 +388,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                 excluded: Array.isArray(r.excluded) ? r.excluded.map(String) : [],
               })).filter(r => r.grade >= 1 && r.grade <= 6)
             : [],
-          classRules: Array.isArray(f.classRules)
-            ? f.classRules.map(r => ({
-                classKey: String(r.classKey ?? ''), subject: String(r.subject ?? ''),
-                count: Math.max(0, Number(r.count) || 0),
-              }))
-            : [],
           offSlots: Array.isArray(f.offSlots) ? f.offSlots.map(String) : [],
-          declared: f.declared == null || f.declared === ('' as unknown) ? null : (Number.isFinite(Number(f.declared)) ? Number(f.declared) : null),
           note: String(f.note ?? ''),
         }))
       : [],

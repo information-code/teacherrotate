@@ -384,7 +384,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   }
 
   // ── 外師（協同英語）：把外師掛到該班該科的科任課上（每班 N 節、優先單節週課）；掛不上＝設定不成立（必須級）──
-  const foreignAgg = { noLesson: [] as string[], overload: [] as string[], declaredDiff: [] as string[] }
+  const foreignAgg = { noLesson: [] as string[], overload: [] as string[] }
   const foreignBlocked: Record<string, string[]> = {}
   for (const ft of config.foreignTeachers) {
     const fname = a.teacherNames[ft.teacherId] ?? '外師'
@@ -403,7 +403,6 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       }
     }
     foreignBlocked[ft.teacherId] = Array.from(new Set(ft.offSlots))
-    if (ft.declared != null && attached !== ft.declared) foreignAgg.declaredDiff.push(`${fname}（掛 ${attached}／申報 ${ft.declared}）`)
     // 可用格 = 全校可排格聯集 − 不可用時段；掛的節數超過即必有未排
     const union = new Set<string>()
     for (const l of lessons) if (l.coTeacherId === ft.teacherId) for (const s of classSlots[l.classKey] ?? []) if (!ft.offSlots.includes(s)) union.add(s)
@@ -468,7 +467,6 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   // 外師檢核（設定為絕對：掛不上／塞不下皆為必須級）
   if (foreignAgg.noLesson.length) preflight.push({ level: 'error', text: `外師掛課無對應科任課（該班該科無課、由導師自上或已掛滿）：${joinCap(foreignAgg.noLesson)}`, tab: 'foreign' })
   if (foreignAgg.overload.length) preflight.push({ level: 'error', text: `外師掛課節數超過其可用時段（扣除不可到校）：${joinCap(foreignAgg.overload)}`, tab: 'foreign' })
-  if (foreignAgg.declaredDiff.length) preflight.push({ level: 'warn', text: `外師掛課節數與申報本校總節數不符：${joinCap(foreignAgg.declaredDiff)}`, tab: 'foreign' })
   if (agg.noHomeroom.length) preflight.push({ level: 'warn', text: `尚未指定導師：${joinCap(agg.noHomeroom)}`, tab: 'homeroom' })
   if (agg.unassigned.size) {
     const parts = Array.from(agg.unassigned.entries()).map(([k2, n]) => {
