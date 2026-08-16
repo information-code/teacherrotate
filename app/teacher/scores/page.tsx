@@ -16,6 +16,7 @@ export default async function TeacherScoresPage() {
     admin.from('settings').select('key, value').in('key', ['preference_phase', 'preference_year']),
   ])
   if (profileResult.data?.employment_type === 'hourly') redirect('/teacher/equipment')
+  if (profileResult.data?.employment_type === 'foreign') redirect('/teacher/timetable')
   if (profileResult.data?.employment_type === 'substitute') redirect('/teacher/allocation')
   const settingsMap = Object.fromEntries((settingsResult.data ?? []).map(r => [r.key, r.value]))
   const closed = settingsMap['preference_phase'] === 'closed'

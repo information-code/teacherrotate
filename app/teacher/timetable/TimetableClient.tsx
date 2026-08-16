@@ -24,7 +24,7 @@ type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
 export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus }: Props) {
-  const iTeach = useMemo(() => placed.some(p => p.teacherId === userId), [placed, userId])
+  const iTeach = useMemo(() => placed.some(p => p.teacherId === userId || p.coTeacherId === userId), [placed, userId])
   const [view, setView] = useState<View>(myClassKey ? 'class' : 'teacher')
   const [classSel, setClassSel] = useState<string>(myClassKey ?? '')
   const [teacherSel, setTeacherSel] = useState<string>(!myClassKey && iTeach ? userId : '')
@@ -40,6 +40,12 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
   const teachers = useMemo(() => {
     const m = new Map<string, string>()
     for (const p of placed) m.set(p.teacherId, p.teacherName)
+    return Array.from(m.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
+  }, [placed])
+  // 外師（協同）：另列一群
+  const foreignList = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of placed) if (p.coTeacherId) m.set(p.coTeacherId, p.coTeacherName ?? '外師')
     return Array.from(m.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   }, [placed])
   const roomIds = useMemo(() => Array.from(new Set([
@@ -67,7 +73,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       }
       for (const p of placed.filter(p => p.classKey === classSel)) {
         const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
-        putPlaced(p, { main: p.subject, sub: p.teacherName + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi })
+        putPlaced(p, { main: p.subject + (p.coTeacherId ? ' ★' : ''), sub: p.teacherName + (p.coTeacherId ? `＋${p.coTeacherName ?? '外師'}` : '') + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi })
       }
       for (const [s, subj] of Object.entries(homeroomCells[classSel] ?? {})) {
         const [d, q] = s.split('-').map(Number)
@@ -80,7 +86,12 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
     } else if (view === 'teacher' && teacherSel) {
       for (const p of placed.filter(p => p.teacherId === teacherSel)) {
         const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
-        putPlaced(p, { main: `${p.classLabel} ${p.subject}`, sub: p.roomId ? roomNames[p.roomId] : '原班', kind: 'subject' as const, bi })
+        putPlaced(p, { main: `${p.classLabel} ${p.subject}${p.coTeacherId ? ' ★' : ''}`, sub: (p.coTeacherId ? `外師 ${p.coTeacherName ?? ''}・` : '') + (p.roomId ? roomNames[p.roomId] : '原班'), kind: 'subject' as const, bi })
+      }
+      // 外師（協同）：掛她的課——顯示班級、科目、搭配的中師
+      for (const p of placed.filter(p => p.coTeacherId === teacherSel)) {
+        const bi = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
+        putPlaced(p, { main: `${p.classLabel} ${p.subject}`, sub: `搭 ${p.teacherName}` + (p.roomId ? `・${roomNames[p.roomId]}` : ''), kind: 'subject' as const, bi })
       }
       // 閩南語師：原班本土語場次
       for (const c of nativeClassCells.filter(c => c.teacherId === teacherSel)) {
@@ -160,6 +171,11 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
           <select value={teacherSel} onChange={e => setTeacherSel(e.target.value)} className="input py-1 text-sm w-40 ml-auto">
             <option value="">選擇教師…</option>
             {teachers.map(t => <option key={t.id} value={t.id}>{t.name}{t.id === userId ? '（我）' : ''}</option>)}
+            {foreignList.length > 0 && (
+              <optgroup label="外師（協同）">
+                {foreignList.map(t => <option key={t.id} value={t.id}>★{t.name}{t.id === userId ? '（我）' : ''}</option>)}
+              </optgroup>
+            )}
           </select>
         )}
         {view === 'room' && (

@@ -22,6 +22,8 @@ export interface TTPlaced {
   size: number
   parity: string
   roomId: string | null
+  coTeacherId?: string     // 外師（協同）
+  coTeacherName?: string
 }
 
 export default async function TimetablePage() {

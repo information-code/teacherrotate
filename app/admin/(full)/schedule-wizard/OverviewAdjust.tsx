@@ -59,19 +59,28 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const teacherOcc = useMemo(() => {
     const m = new Map<string, Map<string, { w?: string; o?: string; e?: string }>>()
     for (const p of placed) {
-      const tm = m.get(p.teacherId) ?? new Map()
-      const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
-      for (const s of slots) {
-        const cell = tm.get(s) ?? {}
-        if (p.parity === 'weekly') cell.w = p.id
-        else if (p.parity === 'odd') cell.o = p.id
-        else cell.e = p.id
-        tm.set(s, cell)
+      // 中師與外師（協同）都占用：外師同時段唯一是硬規則
+      for (const rid of [p.teacherId, ...(p.coTeacherId ? [p.coTeacherId] : [])]) {
+        const tm = m.get(rid) ?? new Map()
+        const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+        for (const s of slots) {
+          const cell = tm.get(s) ?? {}
+          if (p.parity === 'weekly') cell.w = p.id
+          else if (p.parity === 'odd') cell.o = p.id
+          else cell.e = p.id
+          tm.set(s, cell)
+        }
+        m.set(rid, tm)
       }
-      m.set(p.teacherId, tm)
     }
     return m
   }, [placed])
+  // 外師不可到校時段
+  const foreignBlocked = useMemo(() => {
+    const m: Record<string, Set<string>> = {}
+    for (const f of config.foreignTeachers) m[f.teacherId] = new Set(f.offSlots)
+    return m
+  }, [config])
   // 科任個人不排課（mode='on' 是排課標記，不算封鎖）
   const teacherBlocked = useMemo(() => {
     const m: Record<string, Set<string>> = {}
@@ -152,6 +161,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (hrCells[s] && !ignoreIds.has(`hr|${l.classKey}|${s}`)) return { ok: false, why: '該格為導師課（請用互換）' }
       if (teacherBlocked[l.teacherId]?.has(s)) return { ok: false, why: `${l.teacherName} 該時段不排課` }
       if (teacherBusy(l.teacherId, s, l.parity, ignoreIds)) return { ok: false, why: `${l.teacherName} 該時段已有課` }
+      if (l.coTeacherId) {
+        if (foreignBlocked[l.coTeacherId]?.has(s)) return { ok: false, why: `外師 ${l.coTeacherName ?? ''} 該時段不可到校` }
+        if (teacherBusy(l.coTeacherId, s, l.parity, ignoreIds)) return { ok: false, why: `外師 ${l.coTeacherName ?? ''} 該時段已在別班` }
+      }
     }
     return { ok: true }
   }
@@ -500,8 +513,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             <td key={d} className="p-0.5">
                               <button onClick={() => clickCell(ck, k)} title={title}
                                 className={`w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                                <span className="truncate w-full font-medium">{occ.subject}</span>
-                                <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}</span>
+                                <span className="truncate w-full font-medium">{occ.subject}{occ.coTeacherId && <span className="text-rose-700">★</span>}</span>
+                                <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}{occ.coTeacherId && `＋${occ.coTeacherName ?? '外師'}`}</span>
                                 {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週' : '雙週'}</span>}
                               </button>
                             </td>

@@ -39,6 +39,7 @@ export default async function TeacherAllocationPage() {
 
   // 鐘點教師不參與配課，僅可用設備借用
   if (prof?.employment_type === 'hourly') redirect('/teacher/equipment')
+  if (prof?.employment_type === 'foreign') redirect('/teacher/timetable')
 
   const config = normalizeConfig(cfgRow?.config)
   const allSubjects = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => config.grades[g].subjects.map(s => s.name)))).filter(Boolean))

@@ -58,6 +58,17 @@ const HOURLY_GROUPS: NavGroup[] = [
   },
 ]
 
+// 外師（協同英語）：只看課表（不配課、不選填、不借設備）
+const FOREIGN_GROUPS: NavGroup[] = [
+  {
+    title: '常用功能',
+    items: [
+      { href: '/teacher',           label: '工作首頁' },
+      { href: '/teacher/timetable', label: '我的課表' },
+    ],
+  },
+]
+
 export function TeacherSidebar({
   employmentType = 'formal',
   siteTitle = '教師系統',
@@ -68,6 +79,7 @@ export function TeacherSidebar({
   const pathname = usePathname()
   const navGroups =
     employmentType === 'hourly' ? HOURLY_GROUPS
+    : employmentType === 'foreign' ? FOREIGN_GROUPS
     : employmentType === 'substitute' ? SUBSTITUTE_GROUPS
     : FORMAL_GROUPS
   const { open, setOpen } = useMobileNav()

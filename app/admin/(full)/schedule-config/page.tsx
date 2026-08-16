@@ -73,6 +73,8 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   // 導師自上供給（年級 → 科目 → 節數）：各導師於「該年級採用情境」配課的 breakdown 加總，
   // 供科任配班的供需說明與配課統計同口徑（導師＋科任＋行政＋鐘點）
   const homeroomSupply: Record<number, Record<string, number>> = {}
+  // 外師帳號（聘任別 foreign）：不進配課／配班名單，只供「外師」分頁掛課
+  const foreignProfiles = (profiles ?? []).filter(p => p.employment_type === 'foreign').map(p => ({ id: p.id, name: p.name ?? '' }))
 
   for (const id of ids) {
     const name = nameMap[id] ?? id
@@ -168,6 +170,7 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       offTeachers={offTeachers}
       needsRefs={needsRefs}
       allNames={nameMap}
+      foreignProfiles={foreignProfiles}
     />
   )
 }

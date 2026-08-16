@@ -7,7 +7,7 @@
 
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
-  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions,
+  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule,
 } from './scheduling'
 import { GRADE_LABEL, type ExtraCourse } from './allocation'
@@ -24,6 +24,8 @@ export interface EngineLesson {
   teacherName: string
   size: 1 | 2
   parity: Parity
+  coTeacherId?: string     // 外師（協同）：掛在此課上的外師——同時段唯一、不可用時段、連 7 皆為硬規則
+  coTeacherName?: string
 }
 
 export interface RoomInfo { id: string; label: string; subject: string; managerId: string; zone: number; index: number; zoneSize: number; ring: boolean }
@@ -381,9 +383,36 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     }
   }
 
-  // 科任教師封鎖（只需引擎會用到的老師）＝個人不排課 ∪ 本土語占用（原班閩南語／實體開課）
+  // ── 外師（協同英語）：把外師掛到該班該科的科任課上（每班 N 節、優先單節週課）；掛不上＝設定不成立（必須級）──
+  const foreignAgg = { noLesson: [] as string[], overload: [] as string[], declaredDiff: [] as string[] }
+  const foreignBlocked: Record<string, string[]> = {}
+  for (const ft of config.foreignTeachers) {
+    const fname = a.teacherNames[ft.teacherId] ?? '外師'
+    const demand = foreignDemand(ft, classCounts)
+    let attached = 0
+    for (const [k2, need] of Object.entries(demand)) {
+      const [key, subj] = k2.split('|')
+      const pool = lessons
+        .filter(l => l.classKey === key && l.subject === subj && !l.coTeacherId)
+        .sort((x, y) => (x.size - y.size) || (x.parity === 'weekly' ? -1 : 1))
+      const take = pool.slice(0, need)
+      for (const l of take) { l.coTeacherId = ft.teacherId; l.coTeacherName = fname; attached += l.size }
+      if (take.length < need) {
+        const [g, i] = key.split('-').map(Number)
+        foreignAgg.noLesson.push(`${fname}：${classLabel(g, i)} ${subj}（要 ${need}、可掛 ${take.length}）`)
+      }
+    }
+    foreignBlocked[ft.teacherId] = Array.from(new Set(ft.offSlots))
+    if (ft.declared != null && attached !== ft.declared) foreignAgg.declaredDiff.push(`${fname}（掛 ${attached}／申報 ${ft.declared}）`)
+    // 可用格 = 全校可排格聯集 − 不可用時段；掛的節數超過即必有未排
+    const union = new Set<string>()
+    for (const l of lessons) if (l.coTeacherId === ft.teacherId) for (const s of classSlots[l.classKey] ?? []) if (!ft.offSlots.includes(s)) union.add(s)
+    if (attached > union.size) foreignAgg.overload.push(`${fname}（${attached} 節／可用 ${union.size} 格）`)
+  }
+
+  // 科任教師封鎖（只需引擎會用到的老師）＝個人不排課 ∪ 本土語占用（原班閩南語／實體開課）；外師＝不可用時段
   const teacherIds = new Set(lessons.map(l => l.teacherId))
-  const teacherBlocked: Record<string, string[]> = {}
+  const teacherBlocked: Record<string, string[]> = { ...foreignBlocked }
   for (const id of Array.from(teacherIds)) {
     teacherBlocked[id] = Array.from(new Set([...(offByTeacher[id] ?? []), ...Array.from(nativeExtraBlocked[id] ?? [])]))
   }
@@ -436,6 +465,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班。', tab: 'subject' })
   if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}`, tab: 'subject' })
   if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}`, tab: 'subject' })
+  // 外師檢核（設定為絕對：掛不上／塞不下皆為必須級）
+  if (foreignAgg.noLesson.length) preflight.push({ level: 'error', text: `外師掛課無對應科任課（該班該科無課、由導師自上或已掛滿）：${joinCap(foreignAgg.noLesson)}`, tab: 'foreign' })
+  if (foreignAgg.overload.length) preflight.push({ level: 'error', text: `外師掛課節數超過其可用時段（扣除不可到校）：${joinCap(foreignAgg.overload)}`, tab: 'foreign' })
+  if (foreignAgg.declaredDiff.length) preflight.push({ level: 'warn', text: `外師掛課節數與申報本校總節數不符：${joinCap(foreignAgg.declaredDiff)}`, tab: 'foreign' })
   if (agg.noHomeroom.length) preflight.push({ level: 'warn', text: `尚未指定導師：${joinCap(agg.noHomeroom)}`, tab: 'homeroom' })
   if (agg.unassigned.size) {
     const parts = Array.from(agg.unassigned.entries()).map(([k2, n]) => {
@@ -490,6 +523,18 @@ class State {
     for (const l of input.lessons) this.lessonById.set(l.id, l)
     for (const c of input.classes) this.classOcc.set(c.classKey, new Map())
     for (const l of input.lessons) if (!this.teacherOcc.has(l.teacherId)) this.teacherOcc.set(l.teacherId, new Map())
+    for (const l of input.lessons) if (l.coTeacherId && !this.teacherOcc.has(l.coTeacherId)) this.teacherOcc.set(l.coTeacherId, new Map())
+  }
+
+  /** 某資源（中師／外師）於該格是否已被此週型占用。 */
+  private occClash(rid: string, s: string, parity: Parity): boolean {
+    const cell = this.teacherOcc.get(rid)?.get(s)
+    if (!cell) return false
+    if (cell.w) return true
+    if (parity === 'weekly' && (cell.o || cell.e)) return true
+    if (parity === 'odd' && cell.o) return true
+    if (parity === 'even' && cell.e) return true
+    return false
   }
 
   slotsOf(l: EngineLesson, p: Placement): string[] {
@@ -518,6 +563,15 @@ class State {
         if (l.parity === 'odd' && cell.o) return false
         if (l.parity === 'even' && cell.e) return false
       }
+    }
+    // 外師（協同）：同時段唯一、不可用時段、永不連 7
+    if (l.coTeacherId) {
+      const coBlocked = this.input.teacherBlocked[l.coTeacherId] ?? []
+      for (const s of slots) {
+        if (coBlocked.includes(s)) return false
+        if (this.occClash(l.coTeacherId, s, l.parity)) return false
+      }
+      if (this.teacherRunAfter(l, p, l.coTeacherId) > 6) return false
     }
     // 永不連 7（絕對 6 連）：模擬放置後檢查該日連續數
     if (this.teacherRunAfter(l, p) > 6) return false
@@ -605,8 +659,8 @@ class State {
     return worst
   }
 
-  private teacherRunAfter(l: EngineLesson, p: Placement): number {
-    const tOcc = this.teacherOcc.get(l.teacherId)!
+  private teacherRunAfter(l: EngineLesson, p: Placement, rid: string = l.teacherId): number {
+    const tOcc = this.teacherOcc.get(rid)!
     const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
     let worst = 0
     for (const par of parities) {
@@ -627,14 +681,17 @@ class State {
   place(l: EngineLesson, p: Placement) {
     this.pos.set(l.id, p)
     const cOcc = this.classOcc.get(l.classKey)!
-    const tOcc = this.teacherOcc.get(l.teacherId)!
+    const occs = [this.teacherOcc.get(l.teacherId)!]
+    if (l.coTeacherId) occs.push(this.teacherOcc.get(l.coTeacherId)!)
     for (const s of this.slotsOf(l, p)) {
       cOcc.set(s, l.id)
-      const cell = tOcc.get(s) ?? {}
-      if (l.parity === 'weekly') cell.w = l.id
-      else if (l.parity === 'odd') cell.o = l.id
-      else cell.e = l.id
-      tOcc.set(s, cell)
+      for (const tOcc of occs) {
+        const cell = tOcc.get(s) ?? {}
+        if (l.parity === 'weekly') cell.w = l.id
+        else if (l.parity === 'odd') cell.o = l.id
+        else cell.e = l.id
+        tOcc.set(s, cell)
+      }
     }
   }
 
@@ -643,15 +700,18 @@ class State {
     if (!p) return
     this.pos.delete(l.id)
     const cOcc = this.classOcc.get(l.classKey)!
-    const tOcc = this.teacherOcc.get(l.teacherId)!
+    const occs = [this.teacherOcc.get(l.teacherId)!]
+    if (l.coTeacherId) occs.push(this.teacherOcc.get(l.coTeacherId)!)
     for (const s of this.slotsOf(l, p)) {
       cOcc.delete(s)
-      const cell = tOcc.get(s)
-      if (cell) {
-        if (l.parity === 'weekly') delete cell.w
-        else if (l.parity === 'odd') delete cell.o
-        else delete cell.e
-        if (!cell.w && !cell.o && !cell.e) tOcc.delete(s)
+      for (const tOcc of occs) {
+        const cell = tOcc.get(s)
+        if (cell) {
+          if (l.parity === 'weekly') delete cell.w
+          else if (l.parity === 'odd') delete cell.o
+          else delete cell.e
+          if (!cell.w && !cell.o && !cell.e) tOcc.delete(s)
+        }
       }
     }
   }
@@ -1423,18 +1483,26 @@ function unplacedReason(st: State, l: EngineLesson): string {
   const avail = st.input.classSlots[l.classKey] ?? []
   const cOcc = st.classOcc.get(l.classKey)!
   const blocked = st.input.teacherBlocked[l.teacherId] ?? []
-  let classFree = 0, teacherClash = 0, blockedHit = 0
+  let classFree = 0, teacherClash = 0, blockedHit = 0, coClash = 0, coBlockedHit = 0
+  const coBlocked = l.coTeacherId ? (st.input.teacherBlocked[l.coTeacherId] ?? []) : []
   for (const s of avail) {
     if (cOcc.has(s)) continue
     classFree++
     if (blocked.includes(s)) { blockedHit++; continue }
     const cell = st.teacherOcc.get(l.teacherId)!.get(s)
-    if (cell && (cell.w || (l.parity !== 'even' && cell.o) || (l.parity !== 'odd' && cell.e))) teacherClash++
+    if (cell && (cell.w || (l.parity !== 'even' && cell.o) || (l.parity !== 'odd' && cell.e))) { teacherClash++; continue }
+    if (l.coTeacherId) {
+      if (coBlocked.includes(s)) { coBlockedHit++; continue }
+      const cc = st.teacherOcc.get(l.coTeacherId)?.get(s)
+      if (cc && (cc.w || (l.parity !== 'even' && cc.o) || (l.parity !== 'odd' && cc.e))) coClash++
+    }
   }
   if (classFree === 0) return '班級課表已無空格'
   const parts: string[] = [`班級尚有 ${classFree} 空格`]
   if (teacherClash) parts.push(`其中 ${teacherClash} 格老師已有課`)
   if (blockedHit) parts.push(`${blockedHit} 格為老師不排課時段`)
+  if (coClash) parts.push(`${coClash} 格外師 ${l.coTeacherName ?? ''} 已在別班`)
+  if (coBlockedHit) parts.push(`${coBlockedHit} 格外師不可到校`)
   if (l.size === 2) parts.push('連堂需相鄰兩格皆可用')
   if (l.parity !== 'weekly') parts.push(`單雙週起始節次限制（${l.parity === 'odd' ? '1,3,5' : '2,4,6'}）`)
   return parts.join('；')

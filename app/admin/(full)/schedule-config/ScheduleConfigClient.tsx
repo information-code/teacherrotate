@@ -8,6 +8,7 @@ import {
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import SubjectAssignTab from './SubjectAssignTab'
+import ForeignTab from './ForeignTab'
 import RoomTab from './RoomTab'
 import LockTab from './LockTab'
 import OffTab from './OffTab'
@@ -26,9 +27,10 @@ interface Props {
   offTeachers: OffTeacher[]
   needsRefs: NeedsRef[]
   allNames: Record<string, string>   // 全教師名單（含已不具身分者）：顯示殘留指派用
+  foreignProfiles: { id: string; name: string }[]   // 聘任別＝外師的帳號
 }
 
-type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight'
+type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight' | 'foreign'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'time', label: '1 年段可排課時間' },
   { key: 'homeroom', label: '2 導師配班' },
@@ -37,9 +39,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'lock', label: '5 鎖課設定' },
   { key: 'off', label: '6 排課/不排課標記' },
   { key: 'weight', label: '7 權重設定' },
+  { key: 'foreign', label: '8 外師' },
 ]
 
-export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, subjectTeachers, offTeachers, needsRefs, allNames }: Props) {
+export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
   const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -247,6 +250,11 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
       {/* ── 七、權重設定 ── */}
       {tab === 'weight' && (
         <WeightTab config={config} setConfig={setConfig} gradeSubjects={gradeSubjects} />
+      )}
+
+      {/* ── 八、外師（協同英語）── */}
+      {tab === 'foreign' && (
+        <ForeignTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} foreignProfiles={foreignProfiles} />
       )}
     </div>
   )

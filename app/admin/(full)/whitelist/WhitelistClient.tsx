@@ -6,12 +6,13 @@ import { isVirtualEmail } from '@/lib/utils'
 
 const GRADE_LABELS = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級']
 
-// 聘任別：正式（全功能）、代理（配課選填＋設備借用）、鐘點（僅設備借用）
-type EmploymentType = 'formal' | 'substitute' | 'hourly'
+// 聘任別：正式（全功能）、代理（配課選填＋設備借用）、鐘點（僅設備借用）、外師（協同英語，僅看課表）
+type EmploymentType = 'formal' | 'substitute' | 'hourly' | 'foreign'
 const EMPLOYMENT_LABELS: Record<string, string> = {
   formal: '正式',
   substitute: '代理',
   hourly: '鐘點',
+  foreign: '外師',
 }
 
 interface TeacherEntry {
@@ -38,7 +39,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   const [email, setEmail] = useState('')
   const [employmentType, setEmploymentType] = useState<EmploymentType>('formal')
   const [virtualMode, setVirtualMode] = useState(false)          // 待聘（虛擬）帳號
-  const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom' | 'hourly'>('subject')   // 待聘職務：代理科任／代理導師／鐘點
+  const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom' | 'hourly' | 'foreign'>('subject')   // 待聘職務：代理科任／代理導師／鐘點／外師
   const [virtualGrade, setVirtualGrade] = useState(1)
   const [addError, setAddError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -196,6 +197,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
               {entry.employment_type === 'hourly' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-700 border border-violet-200 rounded-sm">鐘點</span>
               )}
+              {entry.employment_type === 'foreign' && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-sm">外師</span>
+              )}
             </div>
             {isEditing ? (
               <div className="mt-1.5 flex items-center gap-2 flex-wrap">
@@ -250,6 +254,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                   <option value="formal">正式</option>
                   <option value="substitute">代理</option>
                   <option value="hourly">鐘點</option>
+                  <option value="foreign">外師</option>
                 </select>
               )}
               <button onClick={() => { setEditingId(entry.id); setEditEmail(virtual ? '' : entry.email); setEditName(virtual ? '' : (entry.name ?? '')); setEditError('') }}
@@ -288,7 +293,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
         <form onSubmit={handleAdd} className="flex gap-2 items-end flex-wrap">
           <div className="flex-1 min-w-32">
             <label className="block text-xs text-zinc-500 mb-1">姓名</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder={virtualMode ? (virtualRole === 'hourly' ? '待聘鐘點A' : '待聘代理A') : '王小明'} required className="input" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={virtualMode ? (virtualRole === 'hourly' ? '待聘鐘點A' : virtualRole === 'foreign' ? '待聘外師A' : '待聘代理A') : '王小明'} required className="input" />
           </div>
           {!virtualMode && (
             <>
@@ -302,6 +307,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                   <option value="formal">正式</option>
                   <option value="substitute">代理</option>
                   <option value="hourly">鐘點</option>
+                  <option value="foreign">外師</option>
                 </select>
               </div>
             </>
@@ -310,10 +316,11 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
             <>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">預定職務</label>
-                <select value={virtualRole} onChange={e => setVirtualRole(e.target.value as 'subject' | 'homeroom' | 'hourly')} className="input">
+                <select value={virtualRole} onChange={e => setVirtualRole(e.target.value as 'subject' | 'homeroom' | 'hourly' | 'foreign')} className="input">
                   <option value="subject">代理科任</option>
                   <option value="homeroom">代理導師</option>
                   <option value="hourly">鐘點教師</option>
+                  <option value="foreign">外師（協同英語）</option>
                 </select>
               </div>
               {virtualRole === 'homeroom' && (
@@ -332,7 +339,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
         </form>
         <label className="flex items-center gap-1.5 mt-2 text-xs text-zinc-500">
           <input type="checkbox" checked={virtualMode} onChange={e => setVirtualMode(e.target.checked)} />
-          待聘（虛擬）帳號——甄選未放榜先建帳號假性配課排課（代理或鐘點皆可），考上後點「轉正」填入真實姓名與 Email，
+          待聘（虛擬）帳號——甄選未放榜先建帳號假性配課排課（代理／鐘點／外師皆可），考上後點「轉正」填入真實姓名與 Email，
           所有配課、配班、排課自動保留
         </label>
         {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}

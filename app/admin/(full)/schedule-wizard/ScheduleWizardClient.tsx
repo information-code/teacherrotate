@@ -152,6 +152,11 @@ export default function ScheduleWizardClient(props: Props) {
     const ids = Array.from(new Set(input.lessons.map(l => l.teacherId)))
     return ids.map(id => ({ id, name: teacherNames[id] ?? '？' })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   }, [input, teacherNames])
+  // 外師（協同）：另列一群，課表＝所有掛了她的課
+  const foreignList = useMemo(() => {
+    const ids = Array.from(new Set(input.lessons.map(l => l.coTeacherId).filter((x): x is string => Boolean(x))))
+    return ids.map(id => ({ id, name: teacherNames[id] ?? '外師' })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
+  }, [input, teacherNames])
   const roomList: RoomInfo[] = input.rooms
 
   const byClass = useMemo(() => {
@@ -161,7 +166,10 @@ export default function ScheduleWizardClient(props: Props) {
   }, [result])
   const byTeacher = useMemo(() => {
     const m = new Map<string, PlacedResult[]>()
-    for (const p of result?.placed ?? []) m.set(p.teacherId, [...(m.get(p.teacherId) ?? []), p])
+    for (const p of result?.placed ?? []) {
+      m.set(p.teacherId, [...(m.get(p.teacherId) ?? []), p])
+      if (p.coTeacherId) m.set(p.coTeacherId, [...(m.get(p.coTeacherId) ?? []), p])   // 外師視圖：掛她的課
+    }
     return m
   }, [result])
   const byRoom = useMemo(() => {
@@ -212,6 +220,7 @@ export default function ScheduleWizardClient(props: Props) {
                       <div className={`h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center text-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
                         <span className="truncate w-full">{text}</span>
                         {mode === 'class' && <span className="truncate w-full text-[9px] opacity-70">{p.teacherName}</span>}
+                        {p.coTeacherId && <span className="truncate w-full text-[8px] text-rose-700 font-medium">★{p.coTeacherName ?? '外師'}{mode === 'teacher' && teacherSel === p.coTeacherId ? `・${p.teacherName}` : ''}</span>}
                         {bi && <span className="text-[8px] opacity-70">{p.parity === 'odd' ? '單週' : '雙週'}</span>}
                       </div>
                     </td>
@@ -464,6 +473,11 @@ export default function ScheduleWizardClient(props: Props) {
                 <select value={teacherSel} onChange={e => setTeacherSel(e.target.value)} className="input py-1 text-sm w-44 ml-auto">
                   <option value="">選擇教師…</option>
                   {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {foreignList.length > 0 && (
+                    <optgroup label="外師（協同）">
+                      {foreignList.map(t => <option key={t.id} value={t.id}>★{t.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               )}
               {view === 'room' && (

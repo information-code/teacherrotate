@@ -6,8 +6,8 @@ import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
 import { defaultTeacherAllocation } from '@/lib/allocation'
 import { hasPerms } from '@/lib/staff-server'
 
-// 聘任別合法值：正式 / 代理 / 鐘點（鐘點僅可用設備借用）
-const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly']
+// 聘任別合法值：正式 / 代理 / 鐘點（僅設備借用）/ 外師（協同英語，僅看課表）
+const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly', 'foreign']
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       email: finalEmail,
       role: 'teacher',
-      // 待聘帳號：鐘點→hourly（無配課角色，課務組直接填節數）；代理導師/科任→substitute
+      // 待聘帳號：鐘點→hourly（無配課角色，課務組直接填節數）；外師→foreign（排課設定「外師」分頁掛課）；代理導師/科任→substitute
       employment_type: virtual
-        ? (virtualRole === 'hourly' ? 'hourly' : 'substitute')
+        ? (virtualRole === 'hourly' ? 'hourly' : virtualRole === 'foreign' ? 'foreign' : 'substitute')
         : EMPLOYMENT_TYPES.includes(employmentType) ? employmentType : 'formal',
     })
     .select('id, name, email, role, employment_type, created_at')
