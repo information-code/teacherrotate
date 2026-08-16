@@ -38,7 +38,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   const [email, setEmail] = useState('')
   const [employmentType, setEmploymentType] = useState<EmploymentType>('formal')
   const [virtualMode, setVirtualMode] = useState(false)          // 待聘（虛擬）帳號
-  const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom'>('subject')
+  const [virtualRole, setVirtualRole] = useState<'subject' | 'homeroom' | 'hourly'>('subject')   // 待聘職務：代理科任／代理導師／鐘點
   const [virtualGrade, setVirtualGrade] = useState(1)
   const [addError, setAddError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -288,7 +288,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
         <form onSubmit={handleAdd} className="flex gap-2 items-end flex-wrap">
           <div className="flex-1 min-w-32">
             <label className="block text-xs text-zinc-500 mb-1">姓名</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder={virtualMode ? '待聘代理A' : '王小明'} required className="input" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={virtualMode ? (virtualRole === 'hourly' ? '待聘鐘點A' : '待聘代理A') : '王小明'} required className="input" />
           </div>
           {!virtualMode && (
             <>
@@ -310,9 +310,10 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
             <>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">預定職務</label>
-                <select value={virtualRole} onChange={e => setVirtualRole(e.target.value as 'subject' | 'homeroom')} className="input">
+                <select value={virtualRole} onChange={e => setVirtualRole(e.target.value as 'subject' | 'homeroom' | 'hourly')} className="input">
                   <option value="subject">代理科任</option>
                   <option value="homeroom">代理導師</option>
+                  <option value="hourly">鐘點教師</option>
                 </select>
               </div>
               {virtualRole === 'homeroom' && (
@@ -331,7 +332,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
         </form>
         <label className="flex items-center gap-1.5 mt-2 text-xs text-zinc-500">
           <input type="checkbox" checked={virtualMode} onChange={e => setVirtualMode(e.target.checked)} />
-          待聘（虛擬）帳號——甄選未放榜先建帳號假性配課排課，考上後點「轉正」填入真實姓名與 Email，
+          待聘（虛擬）帳號——甄選未放榜先建帳號假性配課排課（代理或鐘點皆可），考上後點「轉正」填入真實姓名與 Email，
           所有配課、配班、排課自動保留
         </label>
         {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}

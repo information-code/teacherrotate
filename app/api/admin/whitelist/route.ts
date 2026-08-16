@@ -70,7 +70,10 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       email: finalEmail,
       role: 'teacher',
-      employment_type: virtual ? 'substitute' : EMPLOYMENT_TYPES.includes(employmentType) ? employmentType : 'formal',
+      // 待聘帳號：鐘點→hourly（無配課角色，課務組直接填節數）；代理導師/科任→substitute
+      employment_type: virtual
+        ? (virtualRole === 'hourly' ? 'hourly' : 'substitute')
+        : EMPLOYMENT_TYPES.includes(employmentType) ? employmentType : 'formal',
     })
     .select('id, name, email, role, employment_type, created_at')
     .single()
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // 虛擬帳號同時建立配課角色（代理導師/代理科任），讓配班與排課立即可用
+  // 虛擬帳號同時建立配課角色（代理導師/代理科任），讓配班與排課立即可用；鐘點無配課角色，不建
   if (virtual && data && (virtualRole === 'homeroom' || virtualRole === 'subject')) {
     const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
     const year = Number(settingsRows?.[0]?.value ?? 115)
