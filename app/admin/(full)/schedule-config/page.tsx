@@ -2,7 +2,7 @@ import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleConfigClient from './ScheduleConfigClient'
 import {
-  normalizeConfig, allocRole, homeroomGrade, subjectAreaOf, GRADES,
+  normalizeConfig, allocRole, homeroomGrade, subjectAreaOf, GRADES, adoptedReduction,
   type TeacherAllocation, type AllocRole,
 } from '@/lib/allocation'
 import { normalizeScheduleConfig } from '@/lib/scheduling'
@@ -70,6 +70,9 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   const subjectTeachers: SubjectTeacher[] = []
   const offTeachers: OffTeacher[] = []
   const needsRefs: NeedsRef[] = []
+  // 導師自上供給（年級 → 科目 → 節數）：各導師於「該年級採用情境」配課的 breakdown 加總，
+  // 供科任配班的供需說明與配課統計同口徑（導師＋科任＋行政＋鐘點）
+  const homeroomSupply: Record<number, Record<string, number>> = {}
 
   for (const id of ids) {
     const name = nameMap[id] ?? id
@@ -98,7 +101,14 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
     if (role === 'none') continue
 
     offTeachers.push({ id, name, work, role })
-    if (role === 'homeroom' && grade) homerooms.push({ id, name, grade, gradeGuessed })
+    if (role === 'homeroom' && grade) {
+      homerooms.push({ id, name, grade, gradeGuessed })
+      const rk = String(adoptedReduction(config.grades[grade]))
+      const bd = d?.scenarios?.[rk]?.breakdown ?? {}
+      for (const [subj, v] of Object.entries(bd)) {
+        if (Number(v) > 0) (homeroomSupply[grade] ??= {})[subj] = (homeroomSupply[grade][subj] ?? 0) + Number(v)
+      }
+    }
 
     if (role === 'subject' || role === 'admin') {
       // 配課節數：優先 subjectGradeHours（科目×年級，統計頁可編輯）；
@@ -153,6 +163,7 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       classCounts={classCounts}
       gradeSubjects={gradeSubjects}
       homerooms={homerooms}
+      homeroomSupply={homeroomSupply}
       subjectTeachers={subjectTeachers}
       offTeachers={offTeachers}
       needsRefs={needsRefs}

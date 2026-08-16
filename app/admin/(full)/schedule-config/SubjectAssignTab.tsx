@@ -12,12 +12,13 @@ interface Props {
   gradeSubjects: Record<number, GradeSubject[]>
   subjectTeachers: SubjectTeacher[]
   homerooms: HomeroomTeacher[]
+  homeroomSupply: Record<number, Record<string, number>>   // 導師自上供給（年級→科目→節數）
   avoidMap: Record<string, number[]>   // 排課需求—避開子女就讀年段：teacherId → 年級
   allNames: Record<string, string>     // 全教師名單（含已不具身分者）：顯示殘留指派用
 }
 
 /** 分頁三：科任配班。從配課結果（科目×年級×節數）帶入可授課教師，指派各班；可手動改派任何科任／行政。 */
-export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, avoidMap, allNames }: Props) {
+export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, homeroomSupply, avoidMap, allNames }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [showAll, setShowAll] = useState(false)
@@ -25,6 +26,7 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
   const nameOf = (id: string) => subjectTeachers.find(t => t.id === id)?.name ?? homerooms.find(h => h.id === id)?.name ?? '？'
   const hoursOf = (t: SubjectTeacher, subj: string, g: number) => Number(t.hours[subj]?.[String(g)]) || 0
   const supply = (subj: string, g: number) => subjectTeachers.reduce((s, t) => s + hoursOf(t, subj, g), 0)
+  const hrSupply = (subj: string, g: number) => Number(homeroomSupply[g]?.[subj]) || 0
 
   function setAssign(g: number, index: number, subject: string, teacherId: string) {
     setConfig(c => {
@@ -77,9 +79,9 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-400">
-        依配課結果（科目 × 年級 × 節數）列出可授課教師（含科任／行政／鐘點），指定每班由誰授課。
-        「導師自上」＝該班該科由導師授課、不派科任。已派滿容量的老師（手動名單選過一次）不再出現在下拉。
-        <b>未指定的班＝排課精靈會依配課節數自動分配</b>；有指定則排課必用該師。
+        依配課結果（科目 × 年級 × 節數）列出有配到該科該年級的教師（含科任／行政／鐘點）。
+        <b>預設「隨機」＝排課精靈依配課節數自動分配</b>，只有要固定某班由誰上時才指定；有指定則排課必用該師。
+        「導師自上」＝該班該科由導師授課、不派科任。已派滿容量的老師不再出現在下拉。
       </p>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -113,12 +115,11 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
               {subjects.map(s => {
                 const total = supply(s.name, grade)
                 const demand = count * s.perClass
+                const hr = hrSupply(s.name, grade)
+                const short = hr + total < demand
                 const eligible = subjectTeachers
                   .filter(t => hoursOf(t, s.name, grade) > 0)
                   .sort((a, b) => hoursOf(b, s.name, grade) - hoursOf(a, s.name, grade))
-                const others = subjectTeachers
-                  .filter(t => hoursOf(t, s.name, grade) <= 0)
-                  .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
                 return (
                   <div key={s.name} className="card p-3 space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -127,8 +128,9 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                       </div>
                       <button onClick={() => autoAssign(grade, s.name, s.perClass)} className="btn btn-secondary text-xs py-0.5">自動分配</button>
                     </div>
-                    <div className={`text-[11px] ${total < demand ? 'text-amber-600' : 'text-zinc-400'}`}>
-                      需求 {demand} 節（{count} 班）｜科任供給 {total} 節{total < demand && '，不足'}
+                    {/* 供需說明與配課統計同口徑：導師自上＋科任/行政/鐘點；只有總和不足才警示 */}
+                    <div className={`text-[11px] ${short ? 'text-amber-600' : 'text-zinc-400'}`}>
+                      需求 {demand} 節（{count} 班）｜{hr > 0 && <>導師自上 {hr}＋</>}科任 {total} 節{short && `，不足 ${demand - hr - total}`}
                     </div>
                     <div className="space-y-1">
                       {Array.from({ length: count }, (_, i) => {
@@ -142,25 +144,15 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         // 選滿即隱藏：有配課者以容量計（已派 ≥ 容量），手動名單選過一次即消失；當前選中者仍顯示
                         const capOf = (t: SubjectTeacher) => Math.max(1, Math.floor(hoursOf(t, s.name, grade) / s.perClass))
                         const eligibleVisible = eligible.filter(t => t.id === val || assignedCount(t.id, s.name, grade) < capOf(t))
-                        const othersVisible = others.filter(t => t.id === val || assignedCount(t.id, s.name, grade) < 1)
                         return (
                           <label key={i} className="flex items-center gap-2 text-sm">
                             <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}</span>
                             <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)}
                               className={`input py-1 text-sm flex-1 min-w-0 ${stale ? 'border-red-400 text-red-700 bg-red-50' : warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
-                              <option value="">未指定</option>
+                              <option value="">隨機（精靈自動分配）</option>
                               <option value={HOMEROOM_SELF}>導師自上{homeroomName !== '？' ? `（${homeroomName}）` : ''}</option>
                               {stale && <option value={val}>⚠ {allNames[val] ?? '未知帳號'}（已不具科任／行政身分，請改選）</option>}
-                              {eligibleVisible.length > 0 && (
-                                <optgroup label="有配課">
-                                  {eligibleVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}
-                                </optgroup>
-                              )}
-                              {othersVisible.length > 0 && (
-                                <optgroup label="其他科任／行政（手動調整）">
-                                  {othersVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}{warnOf(t.id) ? '（⚠ 子女在此年段）' : ''}</option>)}
-                                </optgroup>
-                              )}
+                              {eligibleVisible.map(t => <option key={t.id} value={t.id} style={warnOf(t.id) ? { color: '#b45309' } : undefined}>{t.name}（{hoursOf(t, s.name, grade)}節）{warnOf(t.id) ? '⚠ 子女在此年段' : ''}</option>)}
                             </select>
                           </label>
                         )
