@@ -7,3 +7,6 @@ out/
 supabase/.temp/
 remotion/out/
 remotion/assets/shots/_upload.png
+
+# 沙盒／臨時檔
+*.tmp.*
