@@ -74,20 +74,6 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
   const subjects = (gradeSubjects[grade] ?? []).filter(s =>
     s.perClass > 0 && (showAll || !s.homeroom || supply(s.name, grade) > 0))
 
-  // 教師工作面小結：配課總節數 vs 已派節數（指派班數 × 每班節數，跨全部年級科目）
-  const summary = subjectTeachers.map(t => {
-    let allocTotal = 0
-    for (const m of Object.values(t.hours)) for (const v of Object.values(m)) allocTotal += Number(v) || 0
-    let assigned = 0
-    for (const g of GRADES) {
-      for (const s of gradeSubjects[g] ?? []) {
-        if (s.perClass <= 0) continue
-        assigned += assignedCount(t.id, s.name, g) * s.perClass
-      }
-    }
-    return { ...t, allocTotal, assigned }
-  }).filter(t => t.allocTotal > 0 || t.assigned > 0)
-
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-400">
@@ -199,35 +185,6 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
               })}
             </div>
           )}
-
-      {summary.length > 0 && (
-        <div className="card p-0 overflow-x-auto">
-          <div className="px-4 pt-3 text-sm font-semibold text-zinc-700">教師工作面小結
-            <span className="text-xs font-normal text-zinc-400 ml-1">已派節數＝指派班數 × 每班節數（跨全部年級科目）</span>
-          </div>
-          <table className="table-base mt-2">
-            <thead>
-              <tr><th>教師</th><th>職務</th><th className="text-center">配課總節數</th><th className="text-center">已派節數</th><th className="text-center">差</th></tr>
-            </thead>
-            <tbody>
-              {summary.map(t => {
-                const diff = t.assigned - t.allocTotal
-                return (
-                  <tr key={t.id}>
-                    <td className="font-medium text-zinc-800">{t.name}</td>
-                    <td className="text-zinc-500 text-xs">{t.work}</td>
-                    <td className="text-center">{t.allocTotal}</td>
-                    <td className="text-center">{t.assigned}</td>
-                    <td className={`text-center font-medium ${diff === 0 ? 'text-green-700' : diff > 0 ? 'text-red-600' : 'text-amber-600'}`}>
-                      {diff === 0 ? '✓' : diff > 0 ? `+${diff}` : diff}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   )
 }
