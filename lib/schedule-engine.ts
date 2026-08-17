@@ -1,7 +1,7 @@
 // 排課引擎：只排「科任課」。班級課表的留白＝導師自排空間。
 // 三階段：組裝（assembleEngineInput）→ 建構＋局部搜尋（runEngine）→ 罰分明細報告。
-// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連）、上空上空、同型態同日、同科同日、外師唯一/不可到校。
-// 權重（2026-08 依 114-2 人工課表檢核降為可調）：同科不隔天、科任課同日成塊。
+// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連）、上空上空、同科同日、連堂不跨午休、外師唯一/不可到校。
+// 權重（2026-08 依 114-2 人工課表檢核降為可調）：同科不隔天、科任課同日成塊、同型態同日。
 // 建構模擬人工排課：錨定老師（不排課多／負載比高）先回溯整批落位 → 洞少的班先排 → 緊的老師先排；
 // 局部搜尋含必排格覆蓋、成塊補洞、未排課逐出（同師衝堂或占格的別師課）。
 // 軟限制：權重設定（關/低/中/高＝0/1/3/9；必須＝1e6 大罰分，違反時列入報告但不卡死搜尋）。
@@ -10,7 +10,7 @@
 
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
-  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand,
+  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule,
 } from './scheduling'
 import { GRADE_LABEL, type ExtraCourse } from './allocation'
@@ -27,6 +27,7 @@ export interface EngineLesson {
   teacherName: string
   size: 1 | 2
   parity: Parity
+  pairable?: boolean       // 連堂模式「都可以」的單節：允許同科同日相鄰兩節自然成對（不跨午休）——人工排課「塞得順就連」
   coTeacherId?: string     // 外師（協同）：掛在此課上的外師——同時段唯一、不可用時段、連 7 皆為硬規則
   coTeacherName?: string
 }
@@ -166,8 +167,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const lessons: EngineLesson[] = []
 
   const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
-  const dblTemplates = config.weights.templates.filter(t => t.template === 'doublePeriod')
-  const art = config.weights.builtin.artBiweekly
+  const dmode = (subj: string, g: number) => doubleModeOf(config.weights, subj, g)
 
   // 個人不排課 → teacherId → slots（科任用於自身封鎖；導師用於班級 mustFill）
   // 個人排課（mode='on'）→ 反向：導師用於班級必留導師格；科任用於必排時段
@@ -327,10 +327,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         let hours = s.perClass - (lockCountBySubject[s.name] ?? 0) - selfHours
         if (hours <= 0) continue
 
-        const isArtBiweekly = art.enabled && s.name === '視覺藝術' && art.grades.includes(g)
-        if (isArtBiweekly) {
-          // 隔週連堂：占固定兩格（整週，另一週保留給導師），教師只占自己週型
-          if (s.perClass !== 1) agg.artBiweekly.push(`${classLabel(g, i)}（${s.perClass} 節）`)
+        const mode = dmode(s.name, g)
+        if (mode === 'biweekly') {
+          // 單雙週連堂：占固定兩格（整週，另一週保留給導師），教師只占自己週型
+          if (s.perClass !== 1) agg.artBiweekly.push(`${classLabel(g, i)} ${s.name}（${s.perClass} 節）`)
           lessons.push({
             id: `${key}|${s.name}|bi`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 2,
@@ -339,8 +339,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           continue
         }
 
-        const wantsDouble = dblTemplates.some(t =>
-          t.level !== 'off' && t.subjects.includes(s.name) && (t.grades.length === 0 || t.grades.includes(g)))
+        const wantsDouble = mode === 'double'
+        const pairable = mode === 'auto'
         let n = 0
         // 連堂科目盡量成組：每 2 節一組連堂（如生活 6 節＝3 組連堂），
         // 否則高節數科目無法滿足「同科不隔天」硬限制（每週最多 3 個落點）
@@ -352,12 +352,14 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           })
           hours -= 2
         }
-        // 落點數（連堂組數＋單節數）> 3 即無法同時滿足「同科不隔天」（權重）——提醒但不擋
-        if (d2 + hours > 3 && config.weights.builtin.subjectSpread !== 'off') preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週 ${d2 + hours} 個落點，超過「同科不隔天」可容納的 3 個（一三五），必有相鄰兩天，將計入權重扣分。` })
+        // 落點數（連堂組數＋單節數；「都可以」以可成對的最少落點估）> 3 即無法同時滿足「同科不隔天」（權重）——提醒但不擋
+        const spots = d2 + (pairable ? Math.ceil(hours / 2) : hours)
+        if (spots > 3 && config.weights.builtin.subjectSpread !== 'off') preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週至少 ${spots} 個落點，超過「同科不隔天」可容納的 3 個（一三五），必有相鄰兩天，將計入權重扣分。` })
         while (hours > 0) {
           lessons.push({
             id: `${key}|${s.name}|s${n++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 1, parity: 'weekly',
+            ...(pairable ? { pairable: true } : {}),
           })
           hours--
         }
@@ -486,7 +488,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     preflight.push({ level: 'warn', text: `未手動配班、已依配課節數自動分配：${joinCap(parts)}——如需指定授課教師請至科任配班。`, tab: 'subject' })
   }
   if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
-  if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `視藝單雙週假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
+  if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
   const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
   if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}`, tab: 'room' })
   // 本土語檢核
@@ -509,6 +511,9 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 }
 
 // ══════════════════ 引擎狀態 ══════════════════
+
+/** 上午最後一節：連堂不得由此節起始（會跨午休）；上/下午分段亦以此為界。 */
+const MORNING_LAST = 4
 
 type TCell = { w?: string; o?: string; e?: string }
 
@@ -552,6 +557,8 @@ class State {
     // 視藝單雙週：實體區塊一律對齊 (1-2)(3-4)(5-6)——單雙週兩班共用同一區塊；
     // 顯示時單週畫在起始節（1/3/5）、雙週畫在次節（2/4/6），此為顯示層職責
     if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) return false
+    // 硬限制：連堂不跨午休（114-2 人工課表 178 組連堂，0 組起始於第 4 節）
+    if (l.size === 2 && p.period === MORNING_LAST) return false
     for (const s of slots) {
       if (!avail.includes(s)) return false
       if (cOcc.has(s)) return false
@@ -580,42 +587,40 @@ class State {
     if (this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
     if (this.subjectSameDayConflict(l, p)) return false
-    // 硬限制：同型態同日——老師同日連堂與單節不混
-    if (this.batchMixConflict(l, p)) return false
     return true
   }
 
-  /** 同班同科已排在同日？ */
+  /** 同班同科已排在同日？（連堂模式「都可以」的兩堂單節相鄰、不跨午休＝自然成對，放行；第三堂同日仍禁） */
   private subjectSameDayConflict(l: EngineLesson, p: Placement): boolean {
     const cOcc = this.classOcc.get(l.classKey)!
+    let sameDay = 0, pairedOk = false
     for (const [slot, id] of Array.from(cOcc)) {
       if (id === l.id) continue
       const other = this.lessonById.get(id)!
       if (other.subject !== l.subject) continue
-      if (Number(slot.split('-')[0]) === p.day) return true
-    }
-    return false
-  }
-
-  /** 老師該日已有不同型態（連堂 vs 單節）的課？（週型感知） */
-  private batchMixConflict(l: EngineLesson, p: Placement): boolean {
-    const tOcc = this.teacherOcc.get(l.teacherId)!
-    const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
-    for (let q = 1; q <= 7; q++) {
-      const cell = tOcc.get(`${p.day}-${q}`)
-      if (!cell) continue
-      const ids = new Set<string>()
-      if (cell.w) ids.add(cell.w)
-      for (const par of parities) { const v = par === 'o' ? cell.o : cell.e; if (v) ids.add(v) }
-      for (const id of Array.from(ids)) {
-        if (id === l.id) continue
-        if (this.lessonById.get(id)!.size !== l.size) return true
+      const { day, period } = parseSlotKey(slot)
+      if (day !== p.day) continue
+      sameDay++
+      if (l.pairable && other.pairable && l.size === 1 && other.size === 1) {
+        const lo = Math.min(period, p.period), hi = Math.max(period, p.period)
+        if (hi - lo === 1 && lo !== MORNING_LAST) pairedOk = true
       }
     }
-    return false
+    if (sameDay === 0) return false
+    return !(sameDay === 1 && pairedOk)
+  }
+  /** 「都可以」單節是否已與同科另一單節相鄰成對（供同型態同日計分視為連堂）。 */
+  pairedWith(l: EngineLesson, p: Placement): string | null {
+    if (!l.pairable) return null
+    for (const q of [p.period - 1, p.period + 1]) {
+      const id = this.classOcc.get(l.classKey)!.get(`${p.day}-${q}`)
+      if (!id || id === l.id) continue
+      const o = this.lessonById.get(id)!
+      if (o.pairable && o.subject === l.subject && Math.min(q, p.period) !== MORNING_LAST) return id
+    }
+    return null
   }
 
-  /** 放置後該班該日的上／下午內，科任課＋鎖課是否裂成多塊？ */
   /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。 */
   private teacherGapSegsAfter(l: EngineLesson, p: Placement): number {
     const tOcc = this.teacherOcc.get(l.teacherId)!
@@ -817,8 +822,9 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   }
 
   // ── 班級面 ──
-  const tplAvoid = input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
-  const tplTime = input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
+  // 母開關關閉＝該類子規則全部不計
+  const tplAvoid = w.avoidPeriods === 'off' ? [] : input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
+  const tplTime = w.timePrefer === 'off' ? [] : input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
   const matches = (t: TemplateRule, l: EngineLesson) =>
     t.subjects.includes(l.subject) && (t.grades.length === 0 || t.grades.includes(l.grade))
 
@@ -858,12 +864,13 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   byClassSubject.forEach((arr, k) => {
     const [key2, subject] = k.split('|')
     const days = arr.map(x => x.p.day)
-    // 硬限制安全網：同科同日
+    // 硬限制安全網：同科同日（「都可以」的兩單節相鄰成對＝一個落點，放行）
     {
-      const cnt: Record<number, number> = {}
-      for (const d of days) cnt[d] = (cnt[d] ?? 0) + 1
-      for (const [d, n] of Object.entries(cnt)) if (n > 1) {
-        acc(map, 'sameSubjectSameDay', '同科同日（硬限制）', MUST * (n - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${n} 次`)
+      const byDay: Record<number, { l: EngineLesson; p: Placement }[]> = {}
+      for (const x of arr) (byDay[x.p.day] ??= []).push(x)
+      for (const [d, xs] of Object.entries(byDay)) if (xs.length > 1) {
+        const paired = xs.length === 2 && xs.every(x => x.l.pairable && x.l.size === 1) && st.pairedWith(xs[0].l, xs[0].p) === xs[1].l.id
+        if (!paired) acc(map, 'sameSubjectSameDay', '同科同日（硬限制）', MUST * (xs.length - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${xs.length} 次`)
       }
     }
     // 同科不隔天（權重）：相鄰兩日各扣一次
@@ -970,19 +977,25 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
-  // 硬限制安全網：同型態同日（老師當日連堂/單節不混）
-  {
+  // 同型態同日（權重）：老師當日連堂/單節不混。混得越兇扣越多——以「較少的那一邊」計次，
+  // 兼教兩種型態科目的老師（如社會連堂＋數學單節）不會因為 1 堂單節就被重罰。
+  if (w.batchType !== 'off') {
     const byTeacherDay = new Map<string, { dbl: number; sgl: number }>()
+    const seenPair = new Set<string>()
     for (const { l, p } of placedLessons) {
       const k = `${l.teacherId}|${p.day}`
       const e = byTeacherDay.get(k) ?? { dbl: 0, sgl: 0 }
-      if (l.size === 2) e.dbl++; else e.sgl++
+      const mate = l.size === 1 ? st.pairedWith(l, p) : null
+      if (l.size === 2) e.dbl++
+      else if (mate) { if (!seenPair.has(l.id)) { e.dbl++; seenPair.add(l.id); seenPair.add(mate) } }   // 自然成對＝一組連堂
+      else e.sgl++
       byTeacherDay.set(k, e)
     }
     byTeacherDay.forEach((e, k) => {
       if (e.dbl > 0 && e.sgl > 0) {
         const [tid, d] = k.split('|')
-        acc(map, 'batchType', '同型態同日（硬限制）', MUST, `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂與單節混排`)
+        acc(map, 'batchType', '同型態同日', pen(w.batchType) * Math.min(e.dbl, e.sgl),
+          `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂 ${e.dbl} 組與單節 ${e.sgl} 堂混排`)
       }
     })
   }

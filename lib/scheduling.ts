@@ -120,7 +120,9 @@ export interface BuiltinRules {
   dayBalance: WeightLevel                         // 教師每日負擔平衡
   subjectSpread: WeightLevel                      // 同科不隔天：同班同科不排相鄰兩天（2026-08 依人工課表檢核自硬限制降為權重；同科同日仍為硬限制）
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
-  // 固定硬限制（人工課表 0 違反，維持）：同時段唯一、永不連 7、同型態同日、同科同日、連堂不拆、科任老師上空上空
+  batchType: WeightLevel                          // 同型態同日：老師同日不混排連堂與單節。114-2 人工課表 14/235 組混排，且成因結構性
+                                                  //（同一師兼教連堂科目與單節科目；自然/社會 3 節＝連堂＋單節，單科內就會混）→ 權重非硬限制
+  // 固定硬限制（人工課表 0 違反，維持）：同時段唯一、永不連 7、同科同日、連堂不拆、連堂不跨午休、科任老師上空上空
   // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
@@ -128,13 +130,27 @@ export interface BuiltinRules {
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
   homeroomBalance: WeightLevel                    // 班級科任課每日平衡＝導師的每日負擔平衡（留白分散）
   homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
-  artBiweekly: { enabled: boolean; grades: number[] }  // 視藝單雙週連堂（占固定兩格，藝術週/導師週輪替；單週組起始 1,3,5、雙週組 2,4,6）
+  // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
+  // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
+  avoidPeriods: WeightLevel
+  timePrefer: WeightLevel
 }
 
-/** 模板規則：管理者可無限新增實例，引擎實作模板計分邏輯。 */
-export type RuleTemplate = 'avoidPeriods' | 'noConsecDays' | 'doublePeriod' | 'timePrefer'
+/** 科目連堂模式（結構設定，非權重；影響第一階段可行性）：
+ *  auto＝都可以（單節排、允許同科同日相鄰兩節自然成對，不跨午休）；double＝連堂（每 2 節綁一組永不拆）；
+ *  single＝不連堂（單節、同科不同日）；biweekly＝單雙週連堂（視藝：占固定兩格、單週組/雙週組輪替）。 */
+export type DoubleMode = 'auto' | 'double' | 'single' | 'biweekly'
+export const DOUBLE_MODES: DoubleMode[] = ['auto', 'double', 'single', 'biweekly']
+export const DOUBLE_MODE_LABEL: Record<DoubleMode, string> = { auto: '都可以', double: '連堂', single: '不連堂', biweekly: '單雙週' }
+/** 取某科某年級的連堂模式（未設＝都可以）。 */
+export function doubleModeOf(w: ScheduleWeights, subject: string, grade: number): DoubleMode {
+  return w.doubleMode[subject]?.[String(grade)] ?? 'auto'
+}
+
+/** 模板規則：管理者可無限新增實例，引擎實作模板計分邏輯。（doublePeriod／noConsecDays 為舊資料，normalize 時遷移／剔除） */
+export type RuleTemplate = 'avoidPeriods' | 'timePrefer'
 export const RULE_TEMPLATE_LABEL: Record<RuleTemplate, string> = {
-  avoidPeriods: '科目避開節次', noConsecDays: '科目不連續日', doublePeriod: '科目連堂', timePrefer: '科目時段偏好',
+  avoidPeriods: '科目避開節次', timePrefer: '科目時段偏好',
 }
 export interface TemplateRule {
   id: string
@@ -150,33 +166,42 @@ export interface TemplateRule {
 export interface ScheduleWeights {
   builtin: BuiltinRules
   templates: TemplateRule[]
+  doubleMode: Record<string, Record<string, DoubleMode>>   // 科目 → 年級("1"~"6") → 連堂模式（未設＝auto）
+}
+
+/** 預設連堂矩陣（＝原本五條連堂模板＋視藝四六單雙週）。 */
+export function defaultDoubleMode(): Record<string, Record<string, DoubleMode>> {
+  const m: Record<string, Record<string, DoubleMode>> = {}
+  const set = (subj: string, grades: number[], mode: DoubleMode) => { for (const g of grades) (m[subj] ??= {})[String(g)] = mode }
+  set('自然', [1, 2, 3, 4, 5, 6], 'double'); set('社會', [1, 2, 3, 4, 5, 6], 'double')
+  set('生活', [1, 2], 'double'); set('智慧探究家：科技創新任務', [3, 4, 5, 6], 'double')
+  set('視覺藝術', [3, 5], 'double'); set('視覺藝術', [4, 6], 'biweekly')
+  return m
 }
 
 export function defaultScheduleWeights(): ScheduleWeights {
   return {
     builtin: {
-      dailyMax: { level: 'high', n: 6 },
-      consecMax: { level: 'high', n: 3 },
+      dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
+      consecMax: { level: 'high', n: 5 },     // N=3 時人工課表 110 筆超標（最長 6 連）→ 放寬至 5
       compact: 'low',
       dayBalance: 'low',
       subjectSpread: 'mid',
       classCohesion: 'mid',
-      walkCost: 'mid',
+      batchType: 'high',
+      walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomPrefer: 'high',
       roomManagerFirst: 'mid',
       homeroomMorning: 'mid',
       homeroomBalance: 'low',
       homeroomDailyMax: { level: 'high', n: 5 },
-      artBiweekly: { enabled: true, grades: [4, 6] },
+      avoidPeriods: 'mid',
+      timePrefer: 'off',
     },
+    doubleMode: defaultDoubleMode(),
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
       { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'mid' },
-      { id: 'tpl-dbl-nature', template: 'doublePeriod', subjects: ['自然'], grades: [], level: 'high' },
-      { id: 'tpl-dbl-social', template: 'doublePeriod', subjects: ['社會'], grades: [], level: 'high' },
-      { id: 'tpl-dbl-life', template: 'doublePeriod', subjects: ['生活'], grades: [], level: 'high' },
-      { id: 'tpl-dbl-maker', template: 'doublePeriod', subjects: ['智慧探究家：科技創新任務'], grades: [], level: 'high' },
-      { id: 'tpl-dbl-art', template: 'doublePeriod', subjects: ['視覺藝術'], grades: [3, 5], level: 'high' },
     ],
   }
 }
@@ -201,22 +226,44 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       dayBalance: normLevel(b.dayBalance, db.dayBalance),
       subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
+      batchType: normLevel(b.batchType, db.batchType),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
       homeroomBalance: normLevel(b.homeroomBalance, db.homeroomBalance),
       homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
-      artBiweekly: {
-        enabled: b.artBiweekly?.enabled !== false,
-        grades: Array.isArray(b.artBiweekly?.grades) ? b.artBiweekly!.grades.map(Number) : [...db.artBiweekly.grades],
-      },
+      avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
+      timePrefer: normLevel(b.timePrefer, db.timePrefer),
     },
+    // 連堂矩陣：新資料直接讀；舊資料由 doublePeriod 模板＋builtin.artBiweekly 遷移；皆無＝預設矩陣
+    doubleMode: (() => {
+      const rawDm = (r as { doubleMode?: unknown }).doubleMode
+      if (rawDm && typeof rawDm === 'object') {
+        const out: Record<string, Record<string, DoubleMode>> = {}
+        for (const [subj, byG] of Object.entries(rawDm as Record<string, Record<string, unknown>>)) {
+          if (!byG || typeof byG !== 'object') continue
+          for (const [g, v] of Object.entries(byG)) if (DOUBLE_MODES.includes(v as DoubleMode) && v !== 'auto') (out[subj] ??= {})[g] = v as DoubleMode
+        }
+        return out
+      }
+      const legacyTpl = Array.isArray(r.templates) ? r.templates.filter(t => (t.template as string) === 'doublePeriod') : []
+      const legacyArt = (b as { artBiweekly?: { enabled?: boolean; grades?: number[] } }).artBiweekly
+      if (!legacyTpl.length && !legacyArt) return defaultDoubleMode()
+      const out: Record<string, Record<string, DoubleMode>> = {}
+      for (const t of legacyTpl) {
+        if (t.level === 'off') continue
+        const gs = Array.isArray(t.grades) && t.grades.length ? t.grades.map(Number) : [1, 2, 3, 4, 5, 6]
+        for (const subj of t.subjects ?? []) for (const g of gs) (out[String(subj)] ??= {})[String(g)] = 'double'
+      }
+      if (legacyArt?.enabled !== false) for (const g of (legacyArt?.grades ?? [4, 6])) (out['視覺藝術'] ??= {})[String(g)] = 'biweekly'
+      return out
+    })(),
     templates: Array.isArray(r.templates)
-      ? r.templates.filter(t => t.template !== 'noConsecDays')   // 已被硬限制「同科不隔天」涵蓋
+      ? r.templates.filter(t => (['avoidPeriods', 'timePrefer'] as string[]).includes(t.template as string))   // doublePeriod 已遷移為連堂矩陣、noConsecDays 已為內建權重
         .map(t => ({
           id: String(t.id ?? ''),
-          template: (['avoidPeriods', 'noConsecDays', 'doublePeriod', 'timePrefer'] as RuleTemplate[]).includes(t.template as RuleTemplate) ? t.template as RuleTemplate : 'avoidPeriods',
+          template: t.template as RuleTemplate,
           subjects: Array.isArray(t.subjects) ? t.subjects.map(String) : [],
           grades: Array.isArray(t.grades) ? t.grades.map(Number) : [],
           level: normLevel(t.level, 'mid'),

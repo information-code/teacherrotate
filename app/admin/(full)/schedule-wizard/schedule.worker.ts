@@ -24,10 +24,12 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         dailyMax: { ...b.dailyMax, level: 'off' },
         consecMax: { ...b.consecMax, level: 'off' },
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
-        compact: 'off', dayBalance: 'off', subjectSpread: 'off', classCohesion: 'off', walkCost: 'off', roomPrefer: 'off',
-        roomManagerFirst: 'off', homeroomMorning: 'off', homeroomBalance: 'off',
+        compact: 'off', dayBalance: 'off', subjectSpread: 'off', classCohesion: 'off', batchType: 'off',
+        walkCost: 'off', roomPrefer: 'off', roomManagerFirst: 'off', homeroomMorning: 'off', homeroomBalance: 'off',
+        avoidPeriods: 'off', timePrefer: 'off',
       },
-      templates: input.weights.templates.map(t => t.template === 'doublePeriod' ? t : { ...t, level: 'off' as const }),
+      templates: input.weights.templates.map(t => ({ ...t, level: 'off' as const })),
+      doubleMode: input.weights.doubleMode,   // 連堂矩陣為結構設定、不是權重，維持原樣
     },
   }
 }
