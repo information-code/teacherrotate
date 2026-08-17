@@ -104,7 +104,7 @@ export default async function TimetablePage() {
       slot: s.slot, roomId: s.roomId!, roomLabel: roomNames[s.roomId!] ?? '本土語言教室',
       lang: s.lang, mode: s.state === 'stream' ? 'stream' as const : 'physical' as const,
       teacherId: s.teacherId,
-      teacherName: s.state === 'stream' ? '' : (nameOf[s.teacherId] ?? ''),
+      teacherName: nameOf[s.teacherId] ?? '',   // 線上場次也有授課老師（線上授課）
     }))
 
   const myClassKey = Object.entries(config.classTeacher).find(([, tid]) => tid === user.id)?.[0] ?? null

@@ -99,9 +99,9 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         put(d, q, { main: `${labelOf(c.classKey)} 本土語`, sub: '原班（閩南語）', kind: 'lock' })
       }
       // 實體語師：本土語言教室場次
-      for (const s of nativeSessions.filter(s => s.mode === 'physical' && s.teacherId === teacherSel)) {
+      for (const s of nativeSessions.filter(s => s.teacherId === teacherSel)) {
         const [d, q] = s.slot.split('-').map(Number)
-        put(d, q, { main: `本土語（${s.lang}）`, sub: s.roomLabel, kind: 'lock' })
+        put(d, q, { main: `本土語（${s.lang}）`, sub: s.mode === 'stream' ? `線上・${s.roomLabel}` : s.roomLabel, kind: 'lock' })
       }
       // 導師自己的課（若此老師是導師）
       const ck = Object.entries(classTeacher).find(([, tid]) => tid === teacherSel)?.[0]
@@ -119,7 +119,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         const [d, q] = s.slot.split('-').map(Number)
         put(d, q, {
           main: `本土語（${s.lang}）`,
-          sub: s.mode === 'physical' ? s.teacherName : '直播共學',
+          sub: s.mode === 'physical' ? s.teacherName : `${s.teacherName}（線上）`,
           kind: 'lock',
         })
       }

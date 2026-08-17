@@ -528,16 +528,16 @@ export function deriveNativeSessions(opts: {
     }
     if (exp.length === 0 && c.hours === 0) continue
     // 每個本土語時段都是一個候選場次（該時段各班選此語別的學生集合上課）；狀態由課務組定：
-    //   實體＝老師到校開課（耗 1 節配課）／直播＝共學不具名（不耗）／不開＝此時段沒有該語別學生（不耗）
+    //   實體＝老師到校開課／線上＝老師線上授課（皆耗 1 節配課）／不開＝此時段沒有該語別學生（不耗）
     const slots = gradeSlots[g] ?? []
     const list: DerivedNativeSession[] = slots.map(sl => ({
       slot: sl, course: c.lang, lang: c.lang, grade: g, teacherId: '', roomId: null,
       state: config.nativeLang.states[`${sl}|${c.lang}|${g}`] ?? 'physical',
     }))
-    // 老師配給實體場次：課務組指定者優先（該師該語別該年級尚有節數才生效），其餘依剩餘節數自動配
+    // 老師配給開課場次（實體＋線上）：課務組指定者優先（該師該語別該年級尚有節數才生效），其餘依剩餘節數自動配
     const remain: Record<string, number> = {}
     for (const tid of exp) remain[tid] = (remain[tid] ?? 0) + 1
-    const physicalList = list.filter(s => s.state === 'physical')
+    const physicalList = list.filter(s => s.state !== 'cancelled')
     for (const s of physicalList) {
       const want = config.nativeLang.teachers[`${s.slot}|${c.lang}|${g}`]
       if (want && (remain[want] ?? 0) > 0) { s.teacherId = want; remain[want]-- }
@@ -548,14 +548,14 @@ export function deriveNativeSessions(opts: {
       if (tid) { s.teacherId = tid; remain[tid]-- }
     }
     sessions.push(...list)
-    const physical = list.filter(s => s.state === 'physical').length
-    if (slots.length > 0 && physical !== exp.length) {
-      const where = (st: 'physical' | 'stream' | 'cancelled') => list.filter(s => s.state === st).map(s => { const { day, period } = parseSlotKey(s.slot); return `${DAY_LABEL[day]}第${period}節` }).join('、')
+    const active = physicalList.length
+    if (slots.length > 0 && active !== exp.length) {
+      const where = physicalList.map(s => { const { day, period } = parseSlotKey(s.slot); return `${DAY_LABEL[day]}第${period}節` }).join('、')
       issues.push({
         level: 'warn',
-        text: physical > exp.length
-          ? `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次有 ${physical} 場（${where('physical')}）——請到「6 本土語場次」把沒有該語別學生的時段設為「不開」（或改「直播」），或補配課節數。`
-          : `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次只有 ${physical} 場——多配的節數沒有場次可上，請把某個時段改回「實體」或減少配課。`,
+        text: active > exp.length
+          ? `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但開課場次有 ${active} 場（${where}）——請到「6 本土語場次」把沒有該語別學生的時段設為「不開」，或補配課節數。`
+          : `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但開課場次只有 ${active} 場——多配的節數沒有場次可上，請把某個時段改回「實體／線上」或減少配課。`,
         tab: 'native',
       })
     }

@@ -22,8 +22,8 @@ export default function NativeTab({ config, setConfig, extraCourses, hoursByTeac
       <p className="text-xs text-zinc-400">
         本土語鎖課格（5 鎖課設定）＝該班上閩南語的時間；閩南語老師由科任配班指派、在原班上。
         其他語別的學生在那一節出來、集合到本土語言教室上課——場次由「該年級本土語鎖課時段 × 語別課（配課設定「設定二」）」自動推導。
-        每個時段點狀態：<b>實體</b>＝老師到校（耗 1 節配課）、<b>直播</b>＝共學不具名（不耗）、<b>不開</b>＝該時段沒有這個語別的學生（不耗）。
-        檢核＝實體場次數要等於該語別老師的配課節數。
+        每個時段點狀態：<b>實體</b>＝老師到校、<b>線上</b>＝老師線上授課（兩者都耗 1 節配課）、<b>不開</b>＝該時段沒有這個語別的學生（不耗）。
+        檢核＝開課（實體＋線上）場次數要等於該語別老師的配課節數。
         <b>老師欄</b>：來源是配課統計（誰配了這語別這年級幾節）；同一語別有兩位以上老師時，哪位上哪個時段系統不知道、只是照節數自動配——請在下拉指定正確的老師。
       </p>
       {grades.length === 0 && (
@@ -104,7 +104,7 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                 <tbody>
                   {Array.from(langs.entries()).map(([lang, list]) => {
                     const hours = hoursOf(lang, g)
-                    const physical = list.filter(s => s.state === 'physical').length
+                    const physical = list.filter(s => s.state !== 'cancelled').length
                     const ok = physical === hours
                     return (
                       <tr key={lang}>
@@ -116,13 +116,14 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                           const key = `${sl}|${lang}|${g}`
                           const cls = s.state === 'physical' ? 'bg-emerald-600 text-white border-emerald-600' : s.state === 'stream' ? 'bg-sky-600 text-white border-sky-600' : 'bg-zinc-100 text-zinc-500 border-zinc-300'
                           const next = s.state === 'physical' ? 'stream' : s.state === 'stream' ? 'cancelled' : 'physical'
+                          const open = s.state !== 'cancelled'
                           const cands = teachersOf(lang, g)
                           const pinned = config.nativeLang.teachers[key]
                           return (
                             <td key={sl} className="text-center">
-                              <button onClick={() => setState(key, next)} title="點擊切換：實體 → 直播 → 不開"
-                                className={`text-xs px-2 py-0.5 rounded-sm border ${cls}`}>{s.state === 'physical' ? '實體' : s.state === 'stream' ? '直播' : '不開'}</button>
-                              {s.state === 'physical' && (
+                              <button onClick={() => setState(key, next)} title="點擊切換：實體 → 線上 → 不開"
+                                className={`text-xs px-2 py-0.5 rounded-sm border ${cls}`}>{s.state === 'physical' ? '實體' : s.state === 'stream' ? '線上' : '不開'}</button>
+                              {open && (
                                 <div className="mt-0.5 flex flex-col items-center gap-0.5">
                                   {/* 老師：預設依配課節數自動配（多位老師時順序不保證），課務組可在此指定 */}
                                   <select value={pinned ?? ''} onChange={e => setTeacher(key, e.target.value)}
@@ -135,11 +136,10 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                                   <span className={`text-[10px] ${s.roomId ? 'text-zinc-400' : 'text-red-500'}`}>{s.roomId ? roomNames[s.roomId] : '教室不足'}</span>
                                 </div>
                               )}
-                              {s.state === 'stream' && <div className="text-[10px] mt-0.5 text-zinc-400">共學</div>}
                             </td>
                           )
                         })}
-                        <td className={`text-center text-xs ${ok ? 'text-emerald-700' : 'text-amber-600'}`}>{ok ? '✓' : `實體 ${physical}／配 ${hours}`}</td>
+                        <td className={`text-center text-xs ${ok ? 'text-emerald-700' : 'text-amber-600'}`}>{ok ? '✓' : `開課 ${physical}／配 ${hours}`}</td>
                       </tr>
                     )
                   })}
