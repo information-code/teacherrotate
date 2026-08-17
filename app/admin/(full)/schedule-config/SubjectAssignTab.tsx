@@ -13,12 +13,13 @@ interface Props {
   subjectTeachers: SubjectTeacher[]
   homerooms: HomeroomTeacher[]
   homeroomSupply: Record<number, Record<string, number>>   // 導師自上供給（年級→科目→節數）
+  homeroomBreakdown: Record<string, Record<string, number>> // 各導師自上節數（teacherId→科目→節數）
   avoidMap: Record<string, number[]>   // 排課需求—避開子女就讀年段：teacherId → 年級
   allNames: Record<string, string>     // 全教師名單（含已不具身分者）：顯示殘留指派用
 }
 
 /** 分頁三：科任配班。從配課結果（科目×年級×節數）帶入可授課教師，指派各班；可手動改派任何科任／行政。 */
-export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, homeroomSupply, avoidMap, allNames }: Props) {
+export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, homeroomSupply, homeroomBreakdown, avoidMap, allNames }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [showAll, setShowAll] = useState(false)
@@ -27,6 +28,19 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
   const hoursOf = (t: SubjectTeacher, subj: string, g: number) => Number(t.hours[subj]?.[String(g)]) || 0
   const supply = (subj: string, g: number) => subjectTeachers.reduce((s, t) => s + hoursOf(t, subj, g), 0)
   const hrSupply = (subj: string, g: number) => Number(homeroomSupply[g]?.[subj]) || 0
+  /** 該班該科「科任要排的節數」＝每班節數 − 該班導師自上（同科分擔，如生活 6＝導師 4＋科任 2）；與引擎同口徑（鎖課另扣，此處略）。 */
+  function classNeed(g: number, index: number, subj: string, perClass: number) {
+    const tid = config.classTeacher[classKey(g, index)] ?? ''
+    const self = tid ? Number(homeroomBreakdown[tid]?.[subj]) || 0 : 0
+    return Math.max(0, perClass - self)
+  }
+  /** 某老師在某科某年級已被指派的「節數」（各班需求加總，非班數）。 */
+  function assignedHours(tid: string, subj: string, g: number, perClass: number) {
+    const count = classCounts[g] ?? 0
+    let n = 0
+    for (let i = 0; i < count; i++) if (config.subjectClassTeacher[subjectClassKey(g, i, subj)] === tid) n += classNeed(g, i, subj, perClass)
+    return n
+  }
 
   function setAssign(g: number, index: number, subject: string, teacherId: string) {
     setConfig(c => {
@@ -54,19 +68,20 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
       .sort((a, b) => hoursOf(b, subj, g) - hoursOf(a, subj, g))
     setConfig(c => {
       const next = { ...c.subjectClassTeacher }
-      const used: Record<string, number> = {}
+      // 剩餘節數＝配課節數 − 已指派各班需求
+      const left: Record<string, number> = {}
+      for (const t of eligible) left[t.id] = hoursOf(t, subj, g)
       for (let i = 0; i < count; i++) {
         const cur = next[subjectClassKey(g, i, subj)]
-        if (cur && cur !== '') used[cur] = (used[cur] ?? 0) + 1
-      }
-      const queue: string[] = []
-      for (const t of eligible) {
-        const cap = Math.floor(hoursOf(t, subj, g) / perClass) - (used[t.id] ?? 0)
-        for (let i = 0; i < cap; i++) queue.push(t.id)
+        if (cur && cur in left) left[cur] -= classNeed(g, i, subj, perClass)
       }
       for (let i = 0; i < count; i++) {
         const k = subjectClassKey(g, i, subj)
-        if (!next[k] && queue.length) next[k] = queue.shift()!
+        if (next[k]) continue
+        const need = classNeed(g, i, subj, perClass)
+        if (need <= 0) continue
+        const t = eligible.find(x => (left[x.id] ?? 0) >= need)
+        if (t) { next[k] = t.id; left[t.id] -= need }
       }
       return { ...c, subjectClassTeacher: next }
     })
@@ -141,12 +156,12 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         // 殘留指派：存的值已不在科任／行政名單（如異動、離職）→ 如實顯示並標紅
                         const stale = Boolean(val && val !== HOMEROOM_SELF && !subjectTeachers.some(t => t.id === val))
                         const warnOf = (tid: string) => avoidMap[tid]?.includes(grade)
-                        // 選滿即隱藏：有配課者以容量計（已派 ≥ 容量），手動名單選過一次即消失；當前選中者仍顯示
-                        const capOf = (t: SubjectTeacher) => Math.max(1, Math.floor(hoursOf(t, s.name, grade) / s.perClass))
-                        const eligibleVisible = eligible.filter(t => t.id === val || assignedCount(t.id, s.name, grade) < capOf(t))
+                        // 選滿即隱藏：已派節數 ≥ 配課節數即消失（節數口徑：各班需求＝每班節數 − 該班導師自上）；當前選中者仍顯示
+                        const need = classNeed(grade, i, s.name, s.perClass)
+                        const eligibleVisible = eligible.filter(t => t.id === val || assignedHours(t.id, s.name, grade, s.perClass) + need <= hoursOf(t, s.name, grade))
                         return (
                           <label key={i} className="flex items-center gap-2 text-sm">
-                            <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}</span>
+                            <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}{need !== s.perClass && <span className="block text-[10px] text-zinc-400 leading-none">科任 {need} 節</span>}</span>
                             <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)}
                               className={`input py-1 text-sm flex-1 min-w-0 ${stale ? 'border-red-400 text-red-700 bg-red-50' : warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                               <option value="">隨機（精靈自動分配）</option>
@@ -161,12 +176,14 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                     {eligible.length > 0 && (
                       <div className="flex flex-wrap gap-1 pt-1 border-t border-zinc-100">
                         {eligible.map(t => {
-                          const cap = Math.floor(hoursOf(t, s.name, grade) / s.perClass)
-                          const used = assignedCount(t.id, s.name, grade)
+                          const cap = hoursOf(t, s.name, grade)
+                          const used = assignedHours(t.id, s.name, grade, s.perClass)
+                          const cls = assignedCount(t.id, s.name, grade)
                           const over = used > cap
                           return (
-                            <span key={t.id} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${over ? 'bg-red-50 text-red-600 border-red-200' : used === cap ? 'bg-zinc-100 text-zinc-500 border-zinc-200' : 'bg-white text-zinc-500 border-zinc-200'}`}>
-                              {t.name} {used}/{cap} 班{over && '（超派）'}
+                            <span key={t.id} title={`已指派 ${cls} 班、${used} 節／配課 ${cap} 節`}
+                              className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${over ? 'bg-red-50 text-red-600 border-red-200' : used === cap ? 'bg-zinc-100 text-zinc-500 border-zinc-200' : 'bg-white text-zinc-500 border-zinc-200'}`}>
+                              {t.name} {used}/{cap} 節{cls > 0 && `・${cls} 班`}{over && '（超派）'}
                             </span>
                           )
                         })}

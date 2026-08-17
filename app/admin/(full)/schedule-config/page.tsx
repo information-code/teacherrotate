@@ -73,6 +73,8 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   // 導師自上供給（年級 → 科目 → 節數）：各導師於「該年級採用情境」配課的 breakdown 加總，
   // 供科任配班的供需說明與配課統計同口徑（導師＋科任＋行政＋鐘點）
   const homeroomSupply: Record<number, Record<string, number>> = {}
+  // 各導師自上節數（teacherId → 科目 → 節數）：科任配班算每班「科任剩餘節數」＝每班節數 − 該班導師自上
+  const homeroomBreakdown: Record<string, Record<string, number>> = {}
   // 外師帳號（聘任別 foreign）：不進配課／配班名單，只供「外師」分頁掛課
   const foreignProfiles = (profiles ?? []).filter(p => p.employment_type === 'foreign').map(p => ({ id: p.id, name: p.name ?? '' }))
 
@@ -108,7 +110,10 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       const rk = String(adoptedReduction(config.grades[grade]))
       const bd = d?.scenarios?.[rk]?.breakdown ?? {}
       for (const [subj, v] of Object.entries(bd)) {
-        if (Number(v) > 0) (homeroomSupply[grade] ??= {})[subj] = (homeroomSupply[grade][subj] ?? 0) + Number(v)
+        if (Number(v) > 0) {
+          (homeroomSupply[grade] ??= {})[subj] = (homeroomSupply[grade][subj] ?? 0) + Number(v)
+          ;(homeroomBreakdown[id] ??= {})[subj] = Number(v)
+        }
       }
     }
 
@@ -166,6 +171,7 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       gradeSubjects={gradeSubjects}
       homerooms={homerooms}
       homeroomSupply={homeroomSupply}
+      homeroomBreakdown={homeroomBreakdown}
       subjectTeachers={subjectTeachers}
       offTeachers={offTeachers}
       needsRefs={needsRefs}

@@ -23,6 +23,7 @@ interface Props {
   gradeSubjects: Record<number, GradeSubject[]>
   homerooms: HomeroomTeacher[]
   homeroomSupply: Record<number, Record<string, number>>   // 導師自上供給（年級→科目→節數）
+  homeroomBreakdown: Record<string, Record<string, number>> // 各導師自上節數（teacherId→科目→節數）
   subjectTeachers: SubjectTeacher[]
   offTeachers: OffTeacher[]
   needsRefs: NeedsRef[]
@@ -42,7 +43,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'foreign', label: '8 外師' },
 ]
 
-export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles }: Props) {
+export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, homeroomBreakdown, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
   const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -227,7 +228,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
         <SubjectAssignTab
           config={config} setConfig={setConfig}
           classCounts={classCounts} gradeSubjects={gradeSubjects}
-          subjectTeachers={subjectTeachers} homerooms={homerooms} homeroomSupply={homeroomSupply}
+          subjectTeachers={subjectTeachers} homerooms={homerooms} homeroomSupply={homeroomSupply} homeroomBreakdown={homeroomBreakdown}
           avoidMap={avoidMap} allNames={allNames}
         />
       )}
