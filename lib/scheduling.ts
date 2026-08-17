@@ -526,9 +526,16 @@ export function deriveNativeSessions(opts: {
     if (exp.length === 0 && c.hours === 0) continue
     const slots = gradeSlots[g] ?? []
     if (exp.length !== slots.length) {
+      // 各時段幾個班鎖在那裡（讓課務組看得出「兩個時段」是誰跟誰）
+      const cnt: Record<string, number> = {}
+      for (const [ck2, cells] of Object.entries(config.lockCells)) {
+        if (Number(ck2.split('-')[0]) !== g) continue
+        for (const [slot, tid] of Object.entries(cells)) if (nativeTypeIds.has(tid)) cnt[slot] = (cnt[slot] ?? 0) + 1
+      }
+      const where = slots.map(sl => { const { day, period } = parseSlotKey(sl); return `${DAY_LABEL[day]}第${period}節×${cnt[sl] ?? 0}班` }).join('、')
       issues.push({
         level: 'warn',
-        text: `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖課有 ${slots.length} 個相異時段——需相等才能自動推導場次（請調整配課或鎖課）。`,
+        text: `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖在 ${slots.length} 個不同時段（${where}）——語別課場次跟著鎖課時段走，每個時段都要有 1 節才能推導；請把該語別改配 ${slots.length} 節，或把該年級本土語鎖到同一時段。`,
         tab: 'lock',
       })
     }

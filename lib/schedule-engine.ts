@@ -371,9 +371,19 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const lessonPeriods = classLessons.reduce((s2, l) => s2 + l.size, 0)
       const biBlocks = classLessons.filter(l => l.parity !== 'weekly').length
       const leftover = slots.length - lessonPeriods
-      const base = a.gradeHomeroomBase[g] ?? 0
+      // 導師還要排進留白的節數＝該班導師實際配課合計（有配課資料時）− 已鎖在固定格的導師科目（種子班鎖課國數班會、游泳等）
+      // 無配課資料時退回年級基本（已扣採用情境減課）
+      const hrBd = a.homeroomHours?.[key]
+      let need = a.gradeHomeroomBase[g] ?? 0
+      if (hrBd && Object.values(hrBd).some(v => Number(v) > 0)) {
+        const total = Object.values(hrBd).reduce((s2, v) => s2 + (Number(v) || 0), 0)
+        const hrSubjects = new Set(Object.keys(hrBd).filter(k2 => Number(hrBd[k2]) > 0))
+        let lockedHr = 0
+        for (const tid of Object.values(locks)) { const t = lockTypeMap[tid]; if (t && !t.isNative && hrSubjects.has(t.subject)) lockedHr++ }
+        need = Math.max(0, total - lockedHr)
+      }
       if (leftover < 0) agg.overCap.push(`${classLabel(g, i)}（${lessonPeriods}/${slots.length}）`)
-      else if (base > 0 && leftover + biBlocks * 2 < base) agg.leftoverLow.push(`${classLabel(g, i)}（${leftover + biBlocks * 2}/${base}）`)
+      else if (need > 0 && leftover + biBlocks * 2 < need) agg.leftoverLow.push(`${classLabel(g, i)}（${leftover + biBlocks * 2}/${need}）`)
       if (mustSet.size > lessonPeriods) agg.mustOver.push(`${classLabel(g, i)}（${mustSet.size} 格/${lessonPeriods} 節）`)
       if (!homeroomId) agg.noHomeroom.push(classLabel(g, i))
 
@@ -489,10 +499,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     const totalAuto = Array.from(autoAgg.values()).reduce((s2, n) => s2 + n, 0)
     preflight.push({ level: 'info', text: `${totalAuto} 個班科由精靈依配課節數自動配班（未手動指定授課老師）——這是預設行為；只有要固定某班由誰上時才需到科任配班指定。`, tab: 'subject' })
   }
-  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
+  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師須排入的節數（留白/導師待排＝實際配課−已鎖固定格）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
   const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
-  if (noManager.length) preflight.push({ level: 'warn', text: `尚未指定科任教室管理者：${joinCap(noManager)}`, tab: 'room' })
+  if (noManager.length) preflight.push({ level: 'info', text: `未指定管理教師的科任教室（「教室管理教師優先」權重不作用於這些教室，其餘照常）：${joinCap(noManager)}`, tab: 'room' })
   // 本土語檢核
   if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
   for (const issue of derived.issues) preflight.push(issue)
