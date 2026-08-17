@@ -373,7 +373,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const leftover = slots.length - lessonPeriods
       // 導師還要排進留白的節數＝該班導師實際配課合計（有配課資料時）− 已鎖在固定格的導師科目（種子班鎖課國數班會、游泳等）
       // 無配課資料時退回年級基本（已扣採用情境減課）
-      const hrBd = a.homeroomHours?.[key]
+      // 只算該年級有開的科目（導師配課資料可能殘留他年級科目，如四年級導師還留著「生活 3」——統計頁的合計也不含）
+      const gradeSubjNames = new Set((gradeSubjects[g] ?? []).map(s2 => s2.name))
+      const hrBd0 = a.homeroomHours?.[key]
+      const hrBd = hrBd0 ? Object.fromEntries(Object.entries(hrBd0).filter(([k2]) => gradeSubjNames.has(k2))) : undefined
       let need = a.gradeHomeroomBase[g] ?? 0
       if (hrBd && Object.values(hrBd).some(v => Number(v) > 0)) {
         const total = Object.values(hrBd).reduce((s2, v) => s2 + (Number(v) || 0), 0)
@@ -499,7 +502,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     const totalAuto = Array.from(autoAgg.values()).reduce((s2, n) => s2 + n, 0)
     preflight.push({ level: 'info', text: `${totalAuto} 個班科由精靈依配課節數自動配班（未手動指定授課老師）——這是預設行為；只有要固定某班由誰上時才需到科任配班指定。`, tab: 'subject' })
   }
-  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師須排入的節數（留白/導師待排＝實際配課−已鎖固定格）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
+  if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `班級課表塞不下：導師要排進留白的節數多於留白格（留白/導師待排＝導師實際配課−已鎖固定格）——請於配課統計調整該班導師或科任的節數：${joinCap(agg.leftoverLow)}`, href: '/admin/allocation-statistics' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
   const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
   if (noManager.length) preflight.push({ level: 'info', text: `未指定管理教師的科任教室（「教室管理教師優先」權重不作用於這些教室，其餘照常）：${joinCap(noManager)}`, tab: 'room' })
