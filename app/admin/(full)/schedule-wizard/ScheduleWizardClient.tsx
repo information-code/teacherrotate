@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
@@ -67,6 +68,7 @@ function summaryOf(r: EngineResult) {
 }
 
 export default function ScheduleWizardClient(props: Props) {
+  const router = useRouter()
   const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
@@ -91,7 +93,6 @@ export default function ScheduleWizardClient(props: Props) {
   const [gradeSel, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
   const [teacherSel, setTeacherSel] = useState('')
   const [roomSel, setRoomSel] = useState('')
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [planStatus, setPlanStatus] = useState<string | null>(props.initialPlanStatus)
   const [phaseBusy, setPhaseBusy] = useState(false)
   const [runFailed, setRunFailed] = useState(false)          // 全部種子跑完仍有未排／必須級違反
@@ -101,17 +102,15 @@ export default function ScheduleWizardClient(props: Props) {
   const [versionNames, setVersionNames] = useState<Record<string, string>>({})
   const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
   const [penaltyOpen, setPenaltyOpen] = useState(false)     // 罰分明細 modal
+  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null)   // 正在預覽的版本（null＝正式課表或剛跑出來的結果）
+  const [versionBusy, setVersionBusy] = useState<string | null>(null)
   const lastVerSig = useRef<string | null>(null)   // 已存成版本的落點指紋，避免同一份重複存
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
-  // 排課進行中，或「這一輪跑出來的」結果尚未儲存時，離開頁面要確認。
-  // fromSaved＝畫面上顯示的是上次儲存的課表（頁面載入時還原的），它本身就是已存檔的內容，
-  // 使用者什麼都沒做，不可以攔——否則一進頁面按重新整理就跳確認框。
-  useUnsavedGuard(
-    running || (result !== null && !fromSaved && saveStatus !== 'saved'),
-    '排課仍在進行或結果尚未儲存，離開將遺失本次排課結果。確定要離開嗎？',
-  )
+  // 只在排課進行中攔截。跑出來的結果一律自動存成版本快照、離開不會遺失，
+  // 沒有「未儲存」這回事了（發布才是決定哪一份算數的動作）。
+  useUnsavedGuard(running, '排課仍在進行，離開將中斷本次排課。確定要離開嗎？')
 
   const { input, preflight } = useMemo(
     () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher }),
@@ -198,7 +197,7 @@ export default function ScheduleWizardClient(props: Props) {
 
   function run() {
     workerRef.current?.terminate()
-    setResult(null); setProgress(null); setRunning(true); setSaveStatus('idle'); setRunFailed(false); setHints([]); setProbePerfect(null); setFromSaved(false)
+    setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setFromSaved(false); setPreviewVersionId(null)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
@@ -220,42 +219,39 @@ export default function ScheduleWizardClient(props: Props) {
     // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
     workerRef.current?.postMessage({ type: 'stop' })
   }
-  async function save() {
-    if (!result) return
-    setSaveStatus('saving')
-    try {
-      const res = await fetch('/api/admin/schedule-plan', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          year,
-          plan: {
-            status: 'draft',   // 重新儲存＝回到草稿，需重新發布
-            totalPenalty: result.totalPenalty,
-            softPenalty: result.softPenalty,
-            placed: result.placed,
-            unplaced: result.unplaced,
-            penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
-            uncoveredMustFill: result.uncoveredMustFill,
-          },
-        }),
-      })
-      setSaveStatus(res.ok ? 'saved' : 'error')
-      if (res.ok) {
-        setPlanStatus('draft')
-        saveVersion(result, 'manual')   // 手動微調過才會真的多存一份（落點沒變會被指紋擋掉）
-      }
-    } catch { setSaveStatus('error') }
-  }
-
-  /** 發布導師排課／撤回發布（伺服器端把關：未排與必排未覆蓋須為 0）。 */
+  /** 發布導師排課／撤回發布（伺服器端把關：未排與必排未覆蓋須為 0）。
+   *  發布＝把目前預覽的這一份寫進 schedule_plan（正式課表）再發布，中間沒有獨立的「儲存」步驟——
+   *  排課結果本來就自動存成版本了，「儲存」只是在決定哪一份算數，那件事併進發布更單純。 */
   async function setPhase(action: 'publish' | 'unpublish') {
-    if (action === 'publish' && result && saveStatus !== 'saved') {
-      alert('請先按「儲存課表」再發布（發布的是已儲存的結果）。')
-      return
-    }
     if (action === 'unpublish' && !confirm('撤回發布後可重新排課，但導師已填的排課選填可能與新課表不符。確定撤回？')) return
+    if (action === 'publish') {
+      if (!result) { alert('沒有可發布的課表：請先按「開始排課」，或到版本紀錄挑一份預覽。'); return }
+      // 正式課表若有手動微調紀錄，發布別份會把它們蓋掉——講明白再做
+      const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
+      if (adj > 0 && previewVersionId && !confirm(`目前的正式課表有 ${adj} 筆手動微調紀錄。\n發布這一份會整個覆蓋掉，微調將全部消失。確定發布？`)) return
+    }
     setPhaseBusy(true)
     try {
+      if (action === 'publish') {
+        // ① 寫入正式課表（草稿）
+        const put = await fetch('/api/admin/schedule-plan', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            year,
+            plan: {
+              status: 'draft',
+              totalPenalty: result!.totalPenalty,
+              softPenalty: result!.softPenalty,
+              placed: result!.placed,
+              unplaced: result!.unplaced,
+              penalties: result!.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+              uncoveredMustFill: result!.uncoveredMustFill,
+            },
+          }),
+        })
+        if (!put.ok) { alert('寫入正式課表失敗，請稍後再試。'); return }
+      }
+      // ② 發布／撤回（伺服器端仍會擋未排、必排未覆蓋、必須級違反）
       const res = await fetch('/api/admin/schedule-plan', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year, action }),
@@ -263,7 +259,33 @@ export default function ScheduleWizardClient(props: Props) {
       const data = await res.json()
       if (!res.ok) { alert(data.error ?? '操作失敗'); return }
       setPlanStatus(data.status)
+      if (action === 'publish') { setPreviewVersionId(null); setFromSaved(true); router.refresh() }
     } finally { setPhaseBusy(false) }
+  }
+
+  /** 從版本紀錄挑一份來預覽（不會動到正式課表，要按發布才算數）。 */
+  async function previewVersion(v: VersionRow) {
+    setVersionBusy(v.id)
+    try {
+      const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
+      if (!res.ok) { alert('載入版本失敗'); return }
+      const full = await res.json()
+      const p = full.plan ?? {}
+      if (!Array.isArray(p.placed)) { alert('這份版本沒有課表內容'); return }
+      const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
+      setResult({
+        placed: p.placed, unplaced: Array.isArray(p.unplaced) ? p.unplaced : [],
+        penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
+        totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
+        uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill : [],
+        iterations: 0, elapsedMs: 0,
+      })
+      lastVerSig.current = sigOfPlaced(p.placed)   // 預覽既有版本不該再存成新版本
+      setPreviewVersionId(v.id)
+      setFromSaved(false)
+      setRunFailed(false); setHints([]); setProbePerfect(null)
+      setVersionsOpen(false)
+    } finally { setVersionBusy(null) }
   }
 
   // ── 本土語（不進引擎、鎖課時段固定）：教師課表要一併顯示 ──
@@ -414,7 +436,7 @@ export default function ScheduleWizardClient(props: Props) {
           <p className="text-xs text-zinc-400">一鍵排出科任教師與科任教室課表；班級課表留白＝導師自排空間。{props.lastGeneratedAt && `上次儲存：${new Date(props.lastGeneratedAt).toLocaleString('zh-TW')}`}</p>
         </div>
         <span className="flex gap-2 flex-shrink-0">
-          {planStatus !== 'published' && planStatus !== 'final' && (props.lastGeneratedAt || saveStatus === 'saved') && (
+          {planStatus !== 'published' && planStatus !== 'final' && result !== null && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
               title="發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結">
               📢 初版課表發布
@@ -495,6 +517,7 @@ export default function ScheduleWizardClient(props: Props) {
           setPlanStatus={setPlanStatus}
           savedPlan={props.savedPlan}
           homeroomRows={props.homeroomRows}
+          baseHash={curBaseHash}
           config={scheduleConfig}
           classCounts={classCounts}
           teacherNames={teacherNames}
@@ -579,11 +602,20 @@ export default function ScheduleWizardClient(props: Props) {
               {probePerfect === null && <p className="text-xs text-red-600">已中途停止，未進行診斷。</p>}
             </div>
           )}
-          {fromSaved && (
+          {fromSaved && !previewVersionId && (
             <div className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-1.5">
-              顯示<b>上次儲存</b>的課表（{props.lastGeneratedAt ? new Date(props.lastGeneratedAt).toLocaleString('zh-TW') : ''}）。要重排請按「開始排課」；確認無誤可直接發布。
+              顯示<b>目前的正式課表</b>（{props.lastGeneratedAt ? new Date(props.lastGeneratedAt).toLocaleString('zh-TW') : ''}）。要重排請按「開始排課」；想換一份請開「版本紀錄」挑；確認無誤可直接發布。
             </div>
           )}
+          {previewVersionId && (() => {
+            const v = versions.find(x => x.id === previewVersionId)
+            return (
+              <div className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap">
+                <span>正在<b>預覽版本</b>「{v?.label || (v ? new Date(v.created_at).toLocaleString('zh-TW') : '')}」——<b>尚未生效</b>，按「初版課表發布」才會成為正式課表。</span>
+                <button onClick={() => { setPreviewVersionId(null); router.refresh() }} className="btn btn-secondary text-xs py-0.5 ml-auto">回到正式課表</button>
+              </div>
+            )
+          })()}
           {/* 摘要 */}
           <div className="flex gap-2 flex-wrap text-xs">
             <span className="px-2 py-1 rounded-sm bg-green-50 text-green-700 border border-green-200">已排 {result.placed.length} 堂</span>
@@ -595,9 +627,6 @@ export default function ScheduleWizardClient(props: Props) {
               軟規則罰分 {Math.round(result.softPenalty)}{bigPenalty.length > 0 && `（另有必須級違反）`}
             </span>
             <span className="ml-auto flex gap-2 items-center">
-              {saveStatus === 'saved' && <span className="text-green-600">✓ 已儲存</span>}
-              {saveStatus === 'error' && <span className="text-red-600">儲存失敗</span>}
-              <button onClick={save} disabled={saveStatus === 'saving'} className="btn btn-primary text-xs py-1">💾 儲存課表</button>
               <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分">📊 罰分明細</button>
               <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}</button>
             </span>
@@ -771,8 +800,11 @@ export default function ScheduleWizardClient(props: Props) {
                               <td className={`text-center ${isBest ? 'text-green-700 font-semibold' : 'text-zinc-600'}`}>{s.softPenalty ?? '—'}</td>
                               <td className="text-xs text-zinc-500">{v.created_by ? (versionNames[v.created_by] ?? '') : ''}</td>
                               <td className="text-right whitespace-nowrap">
+                                <button onClick={() => previewVersion(v)} disabled={versionBusy === v.id}
+                                  title="把預覽畫面切成這一份（不會動到正式課表）"
+                                  className="btn btn-secondary text-xs py-0.5">{versionBusy === v.id ? '載入中…' : '預覽'}</button>
                                 <button onClick={() => { const n = window.prompt('版本名稱（留空＝顯示時間）', v.label ?? ''); if (n !== null) patchVersion(v.id, { label: n }) }}
-                                  className="text-xs text-zinc-400 hover:text-sky-600">改名</button>
+                                  className="ml-2 text-xs text-zinc-400 hover:text-sky-600">改名</button>
                                 <button onClick={() => deleteVersion(v)} className="ml-2 text-xs text-zinc-400 hover:text-red-500">刪除</button>
                               </td>
                             </tr>

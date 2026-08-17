@@ -16,6 +16,7 @@ interface Props {
   config: ScheduleConfig
   classCounts: Record<number, number>
   teacherNames: Record<string, string>
+  baseHash: string          // 版本快照用：課的組成／可排格／鎖課指紋
 }
 
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
@@ -28,7 +29,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash }: Props) {
   const [placed, setPlaced] = useState<PlacedResult[]>(() => (savedPlan.placed as PlacedResult[] | undefined) ?? [])
   const [hr, setHr] = useState<Record<string, HomeroomRow>>(() => Object.fromEntries(homeroomRows.map(r => [r.class_key, { ...r, cells: { ...r.cells } }])))
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => (savedPlan.adjustments as Adjustment[] | undefined) ?? [])
@@ -38,6 +39,35 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [adjustMode, setAdjustMode] = useState(false)
   const [note, setNote] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [snapState, setSnapState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  /** 把目前（微調後）的課表另存成一份版本快照。
+   *  微調是每步自動存進正式課表的，沒有版本可回頭；批次調完按這顆就留一個復原點。
+   *  罰分不重算——引擎的計分要完整 EngineInput，這裡沒有；故標明數值為微調前的，避免被拿去比較。 */
+  async function snapshot() {
+    setSnapState('saving')
+    try {
+      const pens = (savedPlan.penalties as { key: string; label: string; count: number; points: number }[] | undefined) ?? []
+      const res = await fetch('/api/admin/schedule-plan-versions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          year, source: 'manual', baseHash, weights: config.weights,
+          label: `手動微調後（${adjustments.length} 筆調整）`,
+          summary: {
+            placed: placed.length,
+            unplaced: Array.isArray(savedPlan.unplaced) ? (savedPlan.unplaced as unknown[]).length : 0,
+            uncovered: Array.isArray(savedPlan.uncoveredMustFill) ? (savedPlan.uncoveredMustFill as unknown[]).length : 0,
+            mustCount: pens.filter(x => Number(x.points) >= 1e6).reduce((a, x) => a + (x.count ?? 0), 0),
+            softPenalty: Math.round(Number(savedPlan.softPenalty ?? 0)),
+            note: '手動微調後保存；罰分為微調前的數值、未重算，不可與其他版本比較。',
+            rules: pens.filter(x => Number(x.points) > 0).map(x => ({ key: x.key, label: x.label, count: x.count, points: Math.round(Number(x.points)) })),
+          },
+          plan: { ...savedPlan, placed, adjustments },
+        }),
+      })
+      setSnapState(res.ok ? 'saved' : 'error')
+    } catch { setSnapState('error') }
+  }
   const [busy, setBusy] = useState(false)
 
   const rooms = useMemo(() => roomsFromConfig(config), [config])
@@ -411,6 +441,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           {saveState === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
           {saveState === 'saved' && <span className="text-xs text-green-600">✓ 已儲存</span>}
           {saveState === 'error' && <span className="text-xs text-red-600">⚠ 儲存失敗</span>}
+          {snapState === 'saved' && <span className="text-xs text-green-600">✓ 已存為版本</span>}
+          {snapState === 'error' && <span className="text-xs text-red-600">⚠ 存版本失敗</span>}
+          {adjustments.length > 0 && (
+            <button onClick={snapshot} disabled={snapState === 'saving'} title="把目前微調後的課表另存成一份版本，之後可在版本紀錄找回"
+              className="btn btn-secondary text-xs py-0.5">📌 存為版本</button>
+          )}
           {adjustMode && undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
           <button onClick={() => { setAdjustMode(m => !m); setSel(null) }}
             className={`btn text-xs py-0.5 ${adjustMode ? 'btn-primary' : 'btn-secondary'}`}>
