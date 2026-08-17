@@ -1,6 +1,7 @@
 // 排課引擎：只排「科任課」。班級課表的留白＝導師自排空間。
 // 三階段：組裝（assembleEngineInput）→ 建構＋局部搜尋（runEngine）→ 罰分明細報告。
-// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連）、上空上空、同科同日/不隔天、成塊、外師唯一/不可到校。
+// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連）、上空上空、同型態同日、同科同日、外師唯一/不可到校。
+// 權重（2026-08 依 114-2 人工課表檢核降為可調）：同科不隔天、科任課同日成塊。
 // 建構模擬人工排課：錨定老師（不排課多／負載比高）先回溯整批落位 → 洞少的班先排 → 緊的老師先排；
 // 局部搜尋含必排格覆蓋、成塊補洞、未排課逐出（同師衝堂或占格的別師課）。
 // 軟限制：權重設定（關/低/中/高＝0/1/3/9；必須＝1e6 大罰分，違反時列入報告但不卡死搜尋）。
@@ -47,8 +48,6 @@ export interface EngineInput {
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean } | null>
   weights: ScheduleWeights
   seed: number
-  /** 硬規則放寬（實驗／診斷用；product 未傳＝全部啟用）。key 為 true 時該硬規則不檢查。 */
-  hardRelax?: { gapSegs?: boolean; subjectDay?: boolean; cohesion?: boolean }
 }
 
 export interface Placement { day: number; period: number }
@@ -353,8 +352,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           })
           hours -= 2
         }
-        // 落點數（連堂組數＋單節數）> 3 即無法滿足同科不隔天
-        if (d2 + hours > 3) preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週 ${d2 + hours} 個落點，超過「同科不隔天」硬限制的上限 3（一三五），必有未排。` })
+        // 落點數（連堂組數＋單節數）> 3 即無法同時滿足「同科不隔天」（權重）——提醒但不擋
+        if (d2 + hours > 3 && config.weights.builtin.subjectSpread !== 'off') preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週 ${d2 + hours} 個落點，超過「同科不隔天」可容納的 3 個（一三五），必有相鄰兩天，將計入權重扣分。` })
         while (hours > 0) {
           lessons.push({
             id: `${key}|${s.name}|s${n++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
@@ -519,12 +518,10 @@ class State {
   classOcc: Map<string, Map<string, string>> = new Map()       // classKey → slot → lessonId（班級格整週占用）
   teacherOcc: Map<string, Map<string, TCell>> = new Map()      // teacherId → slot → 週型占用
   lessonById: Map<string, EngineLesson> = new Map()
-  classUnplaced: Map<string, number> = new Map()               // classKey → 尚未落位的課數（成塊檢查用：還有課要進來時，空格視為「待填」）
 
   constructor(input: EngineInput) {
     this.input = input
     for (const l of input.lessons) this.lessonById.set(l.id, l)
-    for (const l of input.lessons) this.classUnplaced.set(l.classKey, (this.classUnplaced.get(l.classKey) ?? 0) + 1)
     for (const c of input.classes) this.classOcc.set(c.classKey, new Map())
     for (const l of input.lessons) if (!this.teacherOcc.has(l.teacherId)) this.teacherOcc.set(l.teacherId, new Map())
     for (const l of input.lessons) if (l.coTeacherId && !this.teacherOcc.has(l.coTeacherId)) this.teacherOcc.set(l.coTeacherId, new Map())
@@ -580,29 +577,28 @@ class State {
     // 永不連 7（絕對 6 連）：模擬放置後檢查該日連續數
     if (this.teacherRunAfter(l, p) > 6) return false
     // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
-    if (!this.input.hardRelax?.gapSegs && this.teacherGapSegsAfter(l, p) > 1) return false
-    // 硬限制：同班同科同日禁止、相鄰日禁止（連堂自身除外）
-    if (!this.input.hardRelax?.subjectDay && this.subjectDayConflict(l, p)) return false
-    // 硬限制：科任課同日成塊（上、下午各自連成一塊）
-    if (!this.input.hardRelax?.cohesion && this.cohesionConflict(l, p)) return false
+    if (this.teacherGapSegsAfter(l, p) > 1) return false
+    // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
+    if (this.subjectSameDayConflict(l, p)) return false
+    // 硬限制：同型態同日——老師同日連堂與單節不混
+    if (this.batchMixConflict(l, p)) return false
     return true
   }
 
-  /** 同班同科已排在同日或相鄰日？ */
-  private subjectDayConflict(l: EngineLesson, p: Placement): boolean {
+  /** 同班同科已排在同日？ */
+  private subjectSameDayConflict(l: EngineLesson, p: Placement): boolean {
     const cOcc = this.classOcc.get(l.classKey)!
     for (const [slot, id] of Array.from(cOcc)) {
       if (id === l.id) continue
       const other = this.lessonById.get(id)!
       if (other.subject !== l.subject) continue
-      const d = Number(slot.split('-')[0])
-      if (Math.abs(d - p.day) <= 1) return true
+      if (Number(slot.split('-')[0]) === p.day) return true
     }
     return false
   }
 
-  /** 老師該日已有不同型態（連堂 vs 單節）的課？（週型感知）——已降為權重「同型態同日」，僅供候選排序參考。 */
-  batchMixConflict(l: EngineLesson, p: Placement): boolean {
+  /** 老師該日已有不同型態（連堂 vs 單節）的課？（週型感知） */
+  private batchMixConflict(l: EngineLesson, p: Placement): boolean {
     const tOcc = this.teacherOcc.get(l.teacherId)!
     const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
     for (let q = 1; q <= 7; q++) {
@@ -620,30 +616,6 @@ class State {
   }
 
   /** 放置後該班該日的上／下午內，科任課＋鎖課是否裂成多塊？ */
-  private cohesionConflict(l: EngineLesson, p: Placement): boolean {
-    const cOcc = this.classOcc.get(l.classKey)!
-    const locks = this.input.lockedCells[l.classKey] ?? {}
-    const avail = this.input.classSlots[l.classKey] ?? []
-    const mustLeave = this.input.classMustLeave?.[l.classKey] ?? []
-    const newSlots = this.slotsOf(l, p)
-    // 該班還有別堂課沒落位時，空的可排格視為「待填」（人工排課：先放這堂，洞留給後面的課補；
-    // 最終狀態仍由計分的成塊硬限制把關，班級排滿後回到嚴格檢查）
-    const pending = (this.classUnplaced.get(l.classKey) ?? 0) - (this.pos.has(l.id) ? 0 : 1) > 0
-    for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
-      if (!newSlots.some(s => seg.includes(parseSlotKey(s).period))) continue
-      let blocks = 0, inBlock = false
-      for (const q of seg) {
-        const k = `${p.day}-${q}`
-        const teachable = avail.includes(k) || k in locks
-        if (!teachable) { inBlock = false; continue }
-        const taken = cOcc.has(k) || k in locks || newSlots.includes(k) || (pending && avail.includes(k) && !mustLeave.includes(k))
-        if (taken) { if (!inBlock) blocks++; inBlock = true } else inBlock = false
-      }
-      if (blocks > 1) return true
-    }
-    return false
-  }
-
   /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。 */
   private teacherGapSegsAfter(l: EngineLesson, p: Placement): number {
     const tOcc = this.teacherOcc.get(l.teacherId)!
@@ -686,7 +658,6 @@ class State {
 
   place(l: EngineLesson, p: Placement) {
     this.pos.set(l.id, p)
-    this.classUnplaced.set(l.classKey, (this.classUnplaced.get(l.classKey) ?? 1) - 1)
     const cOcc = this.classOcc.get(l.classKey)!
     const occs = [this.teacherOcc.get(l.teacherId)!]
     if (l.coTeacherId) occs.push(this.teacherOcc.get(l.coTeacherId)!)
@@ -706,7 +677,6 @@ class State {
     const p = this.pos.get(l.id)
     if (!p) return
     this.pos.delete(l.id)
-    this.classUnplaced.set(l.classKey, (this.classUnplaced.get(l.classKey) ?? 0) + 1)
     const cOcc = this.classOcc.get(l.classKey)!
     const occs = [this.teacherOcc.get(l.teacherId)!]
     if (l.coTeacherId) occs.push(this.teacherOcc.get(l.coTeacherId)!)
@@ -896,18 +866,19 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         acc(map, 'sameSubjectSameDay', '同科同日（硬限制）', MUST * (n - 1), `${labelOf(key2)} ${subject} 週${DAY_ZH[Number(d)]}排了 ${n} 次`)
       }
     }
-    // 硬限制安全網：同科不隔天（相鄰兩日禁止）
-    // 註：連堂與單節「不同天／分半週」由同科同日＋不隔天硬限制自動保證，毋須另計
-    const uniq = Array.from(new Set(days)).sort()
-    for (let i = 1; i < uniq.length; i++) {
-      if (uniq[i] - uniq[i - 1] === 1) {
-        acc(map, 'subjectSpread', '同科不隔天（硬限制）', MUST, `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
+    // 同科不隔天（權重）：相鄰兩日各扣一次
+    if (w.subjectSpread !== 'off') {
+      const uniq = Array.from(new Set(days)).sort()
+      for (let i = 1; i < uniq.length; i++) {
+        if (uniq[i] - uniq[i - 1] === 1) {
+          acc(map, 'subjectSpread', '同科不隔天', pen(w.subjectSpread), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
+        }
       }
     }
   })
 
-  // 硬限制安全網：科任課同日成塊——同班同日（上、下午各自計）科任課＋鎖課須連成一塊
-  for (const c of input.classes) {
+  // 科任課同日成塊（權重）——同班同日（上、下午各自計）科任課＋鎖課連成一塊，每多一塊扣一次
+  if (w.classCohesion !== 'off') for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
     const locks = input.lockedCells[c.classKey] ?? {}
@@ -923,7 +894,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           else inBlock = false
         }
         if (blocks > 1) {
-          acc(map, 'classCohesion', '科任課同日成塊（硬限制）', MUST * (blocks - 1),
+          acc(map, 'classCohesion', '科任課同日成塊', pen(w.classCohesion) * (blocks - 1),
             `${c.label} 週${DAY_ZH[d]}${seg[0] === 1 ? '上午' : '下午'}科任課分成 ${blocks} 塊（與導師課交錯）`)
         }
       }
@@ -999,8 +970,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
-  // 同型態同日（權重）：老師當日連堂/單節混排，每個混排日扣一次
-  if (w.batchType !== 'off') {
+  // 硬限制安全網：同型態同日（老師當日連堂/單節不混）
+  {
     const byTeacherDay = new Map<string, { dbl: number; sgl: number }>()
     for (const { l, p } of placedLessons) {
       const k = `${l.teacherId}|${p.day}`
@@ -1011,7 +982,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     byTeacherDay.forEach((e, k) => {
       if (e.dbl > 0 && e.sgl > 0) {
         const [tid, d] = k.split('|')
-        acc(map, 'batchType', '同型態同日', pen(w.batchType), `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂與單節混排`)
+        acc(map, 'batchType', '同型態同日（硬限制）', MUST, `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂與單節混排`)
       }
     })
   }
@@ -1228,8 +1199,7 @@ export class EngineRun {
         const coverMust = slots.filter(s =>
           (must.has(s) && !this.st.classOcc.get(l.classKey)!.has(s))
           || (tmust.has(s) && !this.st.teacherOcc.get(l.teacherId)!.has(s))).length
-        const mix = input.weights.builtin.batchType !== 'off' && this.st.batchMixConflict(l, p) ? 20 : 0
-        const score = -coverMust * 1000 + mix + (p.period <= 4 ? 5 : 0) + this.rnd()
+        const score = -coverMust * 1000 + (p.period <= 4 ? 5 : 0) + this.rnd()
         if (score < bestScore) { bestScore = score; best = p }
       }
       if (best) this.st.place(l, best)
@@ -1255,8 +1225,9 @@ export class EngineRun {
   }
 
   /** 定向補洞：挑一個未覆蓋的必排格，把該班某堂課搬進來（總分下降才保留）。 */
-  /** 成塊修補：找出「同班同日（上/下午）科任課分成兩塊」的洞，把該班別處的一堂課搬進洞裡（人工排課的「補洞」）。 */
+  /** 成塊補洞（權重）：找出「同班同日（上/下午）科任課分成兩塊」的洞，把該班別處的一堂單節搬進洞裡（人工排課的「補洞」）；權重關閉時不做。 */
   private tryFixCohesion() {
+    if (this.input.weights.builtin.classCohesion === 'off') return
     const holes: { classKey: string; slot: string }[] = []
     for (const c of this.input.classes) {
       const cOcc = this.st.classOcc.get(c.classKey)!
@@ -1363,7 +1334,7 @@ export class EngineRun {
           const ids = [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]
           for (const id of ids) if (id && id !== l.id) blockers.add(id)
         }
-        if (blockers.size === 0 || blockers.size > 2) {
+        if (blockers.size === 0 || blockers.size > this.ejectDepth()) {
           if (oldP) this.st.place(l, oldP)
           continue
         }
@@ -1506,7 +1477,7 @@ export class EngineRun {
         const occId = cOcc.get(x)
         if (occId && occId !== l.id) blockers.add(occId)
       }
-      if (blockers.size === 0 || blockers.size > 2) continue
+      if (blockers.size === 0 || blockers.size > this.ejectDepth()) continue
       if (!this.anchored.has(l.id) && Array.from(blockers).some(id => this.anchored.has(id))) continue   // 錨定課不被非錨定課逐出
       const moved: { bl: EngineLesson; from: Placement }[] = []
       let fail = false
@@ -1533,6 +1504,9 @@ export class EngineRun {
       }
     }
   }
+
+  /** 逐出鏈深度：平常最多搬 2 堂；只差 1～2 節（未排／必須級合計 ≤2）時放寬到 4，最後那幾節往往要多搬幾堂才騰得出位。 */
+  private ejectDepth() { return this.cur <= 2 * MUST ? 4 : 2 }
 
   get elapsed() { return Date.now() - this.startTime }
   get sinceImprove() { return Date.now() - this.lastImprove }

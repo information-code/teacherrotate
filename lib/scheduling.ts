@@ -118,8 +118,9 @@ export interface BuiltinRules {
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
   dayBalance: WeightLevel                         // 教師每日負擔平衡
-  batchType: WeightLevel                          // 同型態同日：老師同日連堂／單節不混（2026-08 自硬限制降為權重；階段一不計、階段二依權重扣分）
-  // 固定硬限制（2026-07-04 使用者拍板，不是權重）：同科同日、同科不隔天、科任課同日成塊
+  subjectSpread: WeightLevel                      // 同科不隔天：同班同科不排相鄰兩天（2026-08 依人工課表檢核自硬限制降為權重；同科同日仍為硬限制）
+  classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
+  // 固定硬限制（人工課表 0 違反，維持）：同時段唯一、永不連 7、同型態同日、同科同日、連堂不拆、科任老師上空上空
   // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
@@ -158,7 +159,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       consecMax: { level: 'high', n: 3 },
       compact: 'low',
       dayBalance: 'low',
-      batchType: 'high',
+      subjectSpread: 'mid',
+      classCohesion: 'mid',
       walkCost: 'mid',
       roomPrefer: 'high',
       roomManagerFirst: 'mid',
@@ -197,7 +199,8 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
       dayBalance: normLevel(b.dayBalance, db.dayBalance),
-      batchType: normLevel(b.batchType, db.batchType),
+      subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
+      classCohesion: normLevel(b.classCohesion, db.classCohesion),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
