@@ -1,6 +1,6 @@
 // 排課引擎：只排「科任課」。班級課表的留白＝導師自排空間。
 // 三階段：組裝（assembleEngineInput）→ 建構＋局部搜尋（runEngine）→ 罰分明細報告。
-// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連）、上空上空、同科同日、連堂不跨午休、外師唯一/不可到校。
+// 硬限制：班/師/教室同時段唯一、年段可排時段、鎖課格、教師不排課、永不連 7（絕對 6 連；導師側＝班級整天日至少 1 堂科任/鎖課）、上空上空、同科同日、連堂不跨午休、外師唯一/不可到校。
 // 權重（2026-08 依 114-2 人工課表檢核降為可調）：同科不隔天、科任課同日成塊、同型態同日。
 // 建構模擬人工排課：錨定老師（不排課多／負載比高）先回溯整批落位 → 洞少的班先排 → 緊的老師先排；
 // 局部搜尋含必排格覆蓋、成塊補洞、未排課逐出（同師衝堂或占格的別師課）。
@@ -883,6 +883,24 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
     }
   })
+
+  // 硬限制安全網：導師永不連 7——班級整天日 7 格全是留白（無科任課、無鎖課）＝導師該日 7 節連上。
+  // 引擎只排科任課，導師側靠「該日至少落 1 堂科任課或鎖課」保證；人工課表 0 違反
+  for (const c of input.classes) {
+    const occ = st.classOcc.get(c.classKey)!
+    const avail = new Set(input.classSlots[c.classKey] ?? [])
+    const locks = input.lockedCells[c.classKey] ?? {}
+    for (const d of SCHEDULE_DAYS) {
+      let teachable = 0, blank = 0
+      for (let q = 1; q <= 7; q++) {
+        const k = `${d}-${q}`
+        if (!(avail.has(k) || k in locks)) continue
+        teachable++
+        if (!occ.has(k) && !(k in locks)) blank++
+      }
+      if (teachable === 7 && blank === 7) acc(map, 'homeroomRun7', '導師連 7（硬限制）', MUST, `${c.label} 週${DAY_ZH[d]}整天皆導師課`)
+    }
+  }
 
   // 科任課同日成塊（權重）——同班同日（上、下午各自計）科任課＋鎖課連成一塊，每多一塊扣一次
   if (w.classCohesion !== 'off') for (const c of input.classes) {
