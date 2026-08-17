@@ -33,7 +33,23 @@ export default function ScheduleWizardClient(props: Props) {
   const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
-  const [result, setResult] = useState<EngineResult | null>(null)
+  // 上次儲存的草稿課表：頁面載入時直接還原成結果顯示（否則儲存後重新整理／另一位管理者打開只看到「上次儲存」一行字）
+  const [result, setResult] = useState<EngineResult | null>(() => {
+    const sp = props.savedPlan
+    if (!sp || !Array.isArray(sp.placed) || props.initialPlanStatus === 'published' || props.initialPlanStatus === 'final') return null
+    const penalties = (Array.isArray(sp.penalties) ? sp.penalties : []) as { key: string; label: string; count: number; points: number; items?: string[] }[]
+    const soft = penalties.filter(p => p.key !== 'unplaced' && p.points / Math.max(1, p.count) < 1e5).reduce((s2, p) => s2 + p.points, 0)
+    return {
+      placed: sp.placed as EngineResult['placed'],
+      unplaced: (Array.isArray(sp.unplaced) ? sp.unplaced : []) as EngineResult['unplaced'],
+      penalties: penalties.map(p => ({ ...p, items: p.items ?? [] })),
+      totalPenalty: Number(sp.totalPenalty ?? 0),
+      softPenalty: typeof sp.softPenalty === 'number' ? sp.softPenalty : soft,
+      uncoveredMustFill: (Array.isArray(sp.uncoveredMustFill) ? sp.uncoveredMustFill : []) as EngineResult['uncoveredMustFill'],
+      iterations: 0, elapsedMs: 0,
+    }
+  })
+  const [fromSaved, setFromSaved] = useState<boolean>(() => Boolean(props.savedPlan && Array.isArray(props.savedPlan.placed) && props.initialPlanStatus !== 'published' && props.initialPlanStatus !== 'final'))
   const [view, setView] = useState<ViewKey>('class')
   const [gradeSel, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
   const [teacherSel, setTeacherSel] = useState('')
@@ -90,7 +106,7 @@ export default function ScheduleWizardClient(props: Props) {
 
   function run() {
     workerRef.current?.terminate()
-    setResult(null); setProgress(null); setRunning(true); setSaveStatus('idle'); setRunFailed(false); setHints([]); setProbePerfect(null)
+    setResult(null); setProgress(null); setRunning(true); setSaveStatus('idle'); setRunFailed(false); setHints([]); setProbePerfect(null); setFromSaved(false)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
@@ -121,9 +137,10 @@ export default function ScheduleWizardClient(props: Props) {
           plan: {
             status: 'draft',   // 重新儲存＝回到草稿，需重新發布
             totalPenalty: result.totalPenalty,
+            softPenalty: result.softPenalty,
             placed: result.placed,
             unplaced: result.unplaced,
-            penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points })),
+            penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
             uncoveredMustFill: result.uncoveredMustFill,
           },
         }),
@@ -423,6 +440,11 @@ export default function ScheduleWizardClient(props: Props) {
                 </p>
               )}
               {probePerfect === null && <p className="text-xs text-red-600">已中途停止，未進行診斷。</p>}
+            </div>
+          )}
+          {fromSaved && (
+            <div className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-1.5">
+              顯示<b>上次儲存</b>的課表（{props.lastGeneratedAt ? new Date(props.lastGeneratedAt).toLocaleString('zh-TW') : ''}）。要重排請按「開始排課」；確認無誤可直接發布。
             </div>
           )}
           {/* 摘要 */}
