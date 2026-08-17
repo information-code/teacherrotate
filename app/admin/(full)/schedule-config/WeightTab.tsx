@@ -74,7 +74,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
 type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax'
-type MasterKey = 'avoidPeriods' | 'timePrefer'
+type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
@@ -84,6 +84,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
     { key: 'avoidPeriods', name: '科目避開節次', def: '中', desc: '指定科目避開某些節次（如體育避午餐前後、考科避第 7 節）。可加多組，各組可再調權重；母開關關閉＝全部不計', master: 'avoidPeriods' },
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
+    { key: 'subjectApart', name: '科目互斥同日', def: '高', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
     { key: 'homeroomMorning', name: '上午留白給導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午（人工課表：上午格 46% 是科任、下午 60%，有偏好但不絕對）' },
     { key: 'homeroomBalance', name: '導師每日負擔平衡', def: '低', desc: '班級的科任課每日平均分布＝導師每天的課量平均' },
     { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）' },
@@ -138,7 +139,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
     const t: TemplateRule = {
       id: crypto.randomUUID(), template, subjects: [], grades: [], level: master === 'off' ? 'mid' : master,
       ...(template === 'avoidPeriods' ? { periods: [] } : {}),
-      ...(template === 'timePrefer' ? { pref: 'morning' as const } : {}),
+      ...(template === 'timePrefer' ? { pref: 'morning' as const } : {}),   // subjectApart：只用 subjects/grades
     }
     setWeights(x => ({ ...x, templates: [...x.templates, t] }))
   }
@@ -236,7 +237,9 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                           <LevelPicker size="sm" value={t.level} onChange={l => updateTemplate(t.id, { level: l })} />
                           <button onClick={() => removeTemplate(t)} className="text-red-400 hover:text-red-600" title="刪除這組">✕</button>
                         </span>
-                        {t.subjects.length === 0 && <span className="w-full text-[11px] text-amber-600">未選科目＝此組不作用</span>}
+                        {t.template === 'subjectApart'
+                          ? t.subjects.length < 2 && <span className="w-full text-[11px] text-amber-600">互斥至少要選兩科</span>
+                          : t.subjects.length === 0 && <span className="w-full text-[11px] text-amber-600">未選科目＝此組不作用</span>}
                       </div>
                     ))}
                     <button onClick={() => addTemplate(r.master!)} className="text-xs text-sky-700 hover:underline">＋ 新增一組</button>
@@ -316,7 +319,20 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           <ul className="text-xs text-zinc-500 list-disc pl-9 pr-4 pb-3 space-y-0.5">
             <li>同班／同師／同教室同時段只有一堂課；只用年段可排課時段；避開鎖課格</li>
             <li>不排課標記：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
-            <li>永不連 7 節（連續授課絕對上限 6 節）——導師亦適用：班級整天日至少落 1 堂科任課或鎖課，導師不會整天 7 節連上</li>
+            <li className="flex items-center gap-2 flex-wrap">
+              <span>老師連續授課絕對上限</span>
+              <input type="number" min={2} max={6} value={w.hardParams.maxRunTeacher}
+                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunTeacher: Math.min(6, Math.max(2, Number(e.target.value) || 6)) } }))}
+                className="input w-14 text-center py-0.5 text-xs" />
+              <span>節（科任與外師；預設 6＝永不連 7）</span>
+            </li>
+            <li className="flex items-center gap-2 flex-wrap">
+              <span>導師連上絕對上限</span>
+              <input type="number" min={2} max={6} value={w.hardParams.maxRunHomeroom}
+                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunHomeroom: Math.min(6, Math.max(2, Number(e.target.value) || 6)) } }))}
+                className="input w-14 text-center py-0.5 text-xs" />
+              <span>節（＝班級整天日連續留白不得超過此數，引擎會用科任課／鎖課切開；預設 6）</span>
+            </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>
             <li>連堂 2 節成對永不拆散、且不跨午休（不由第 4 節起始）；視藝單雙週固定兩格輪替（單週組起始 1/3/5、雙週組 2/4/6）</li>

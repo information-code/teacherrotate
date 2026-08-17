@@ -28,10 +28,11 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
         compact: 'off', dayBalance: 'off', subjectSpread: 'off', classCohesion: 'off', batchType: 'off',
         walkCost: 'off', roomPrefer: 'off', roomManagerFirst: 'off', homeroomMorning: 'off', homeroomBalance: 'off',
-        avoidPeriods: 'off', timePrefer: 'off',
+        avoidPeriods: 'off', timePrefer: 'off', subjectApart: 'off',
       },
       templates: input.weights.templates.map(t => ({ ...t, level: 'off' as const })),
       doubleMode: input.weights.doubleMode,
+      hardParams: input.weights.hardParams,
     },
   }
 }

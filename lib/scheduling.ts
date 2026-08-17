@@ -134,7 +134,15 @@ export interface BuiltinRules {
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
   avoidPeriods: WeightLevel
   timePrefer: WeightLevel
+  subjectApart: WeightLevel                       // 科目互斥同日（母開關）：子規則列的幾科同班不同天出現，預設高
 }
+
+/** 固定硬限制的參數（不是權重、只是數字；引擎絕不違反）。 */
+export interface HardParams {
+  maxRunTeacher: number    // 老師（科任／外師）連續授課絕對上限（預設 6＝永不連 7）
+  maxRunHomeroom: number   // 導師連上絕對上限（預設 6）：班級整天日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開
+}
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 6 }
 
 /** 科目連堂模式（結構設定，非權重；影響第一階段可行性）：
  *  auto＝都可以（單節排、允許同科同日相鄰兩節自然成對，不跨午休）；double＝連堂（每 2 節綁一組永不拆）；
@@ -148,9 +156,9 @@ export function doubleModeOf(w: ScheduleWeights, subject: string, grade: number)
 }
 
 /** 模板規則：管理者可無限新增實例，引擎實作模板計分邏輯。（doublePeriod／noConsecDays 為舊資料，normalize 時遷移／剔除） */
-export type RuleTemplate = 'avoidPeriods' | 'timePrefer'
+export type RuleTemplate = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
 export const RULE_TEMPLATE_LABEL: Record<RuleTemplate, string> = {
-  avoidPeriods: '科目避開節次', timePrefer: '科目時段偏好',
+  avoidPeriods: '科目避開節次', timePrefer: '科目時段偏好', subjectApart: '科目互斥同日',
 }
 export interface TemplateRule {
   id: string
@@ -167,6 +175,7 @@ export interface ScheduleWeights {
   builtin: BuiltinRules
   templates: TemplateRule[]
   doubleMode: Record<string, Record<string, DoubleMode>>   // 科目 → 年級("1"~"6") → 連堂模式（未設＝auto）
+  hardParams: HardParams                                    // 固定硬限制參數
 }
 
 /** 預設連堂矩陣（＝原本五條連堂模板＋視藝四六單雙週）。 */
@@ -197,8 +206,10 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomDailyMax: { level: 'high', n: 5 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
+      subjectApart: 'high',
     },
     doubleMode: defaultDoubleMode(),
+    hardParams: { ...DEFAULT_HARD_PARAMS },
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
       { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'mid' },
@@ -235,7 +246,13 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),
+      subjectApart: normLevel(b.subjectApart, db.subjectApart),
     },
+    hardParams: (() => {
+      const hp = (r as { hardParams?: Partial<HardParams> }).hardParams ?? {}
+      const clamp = (v: unknown, d: number) => { const n = Number(v); return Number.isInteger(n) && n >= 2 && n <= 6 ? n : d }
+      return { maxRunTeacher: clamp(hp.maxRunTeacher, DEFAULT_HARD_PARAMS.maxRunTeacher), maxRunHomeroom: clamp(hp.maxRunHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom) }
+    })(),
     // 連堂矩陣：新資料直接讀；舊資料由 doublePeriod 模板＋builtin.artBiweekly 遷移；皆無＝預設矩陣
     doubleMode: (() => {
       const rawDm = (r as { doubleMode?: unknown }).doubleMode
@@ -260,7 +277,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       return out
     })(),
     templates: Array.isArray(r.templates)
-      ? r.templates.filter(t => (['avoidPeriods', 'timePrefer'] as string[]).includes(t.template as string))   // doublePeriod 已遷移為連堂矩陣、noConsecDays 已為內建權重
+      ? r.templates.filter(t => (['avoidPeriods', 'timePrefer', 'subjectApart'] as string[]).includes(t.template as string))   // doublePeriod 已遷移為連堂矩陣、noConsecDays 已為內建權重
         .map(t => ({
           id: String(t.id ?? ''),
           template: t.template as RuleTemplate,

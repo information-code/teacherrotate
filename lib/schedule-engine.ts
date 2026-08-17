@@ -579,10 +579,10 @@ class State {
         if (coBlocked.includes(s)) return false
         if (this.occClash(l.coTeacherId, s, l.parity)) return false
       }
-      if (this.teacherRunAfter(l, p, l.coTeacherId) > 6) return false
+      if (this.teacherRunAfter(l, p, l.coTeacherId) > this.input.weights.hardParams.maxRunTeacher) return false
     }
-    // 永不連 7（絕對 6 連）：模擬放置後檢查該日連續數
-    if (this.teacherRunAfter(l, p) > 6) return false
+    // 連續授課絕對上限（預設 6＝永不連 7）：模擬放置後檢查該日連續數
+    if (this.teacherRunAfter(l, p) > this.input.weights.hardParams.maxRunTeacher) return false
     // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
     if (this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
@@ -825,6 +825,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   // 母開關關閉＝該類子規則全部不計
   const tplAvoid = w.avoidPeriods === 'off' ? [] : input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
   const tplTime = w.timePrefer === 'off' ? [] : input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
+  const tplApart = w.subjectApart === 'off' ? [] : input.weights.templates.filter(t => t.template === 'subjectApart' && t.level !== 'off' && t.subjects.length >= 2)
   const matches = (t: TemplateRule, l: EngineLesson) =>
     t.subjects.includes(l.subject) && (t.grades.length === 0 || t.grades.includes(l.grade))
 
@@ -884,21 +885,41 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   })
 
+  // 科目互斥同日（權重）：子規則列的幾科，同班同一天出現超過一科即扣（每多一科扣一次）
+  if (tplApart.length) {
+    const subjByClassDay = new Map<string, Set<string>>()
+    for (const { l, p } of placedLessons) {
+      const k = `${l.classKey}|${p.day}`
+      const set = subjByClassDay.get(k) ?? new Set<string>()
+      set.add(l.subject); subjByClassDay.set(k, set)
+    }
+    for (const c of input.classes) for (const d of SCHEDULE_DAYS) {
+      const set = subjByClassDay.get(`${c.classKey}|${d}`)
+      if (!set) continue
+      for (const t of tplApart) {
+        if (t.grades.length && !t.grades.includes(c.grade)) continue
+        const hit = t.subjects.filter(s => set.has(s))
+        if (hit.length > 1) acc(map, `tpl-apart-${t.id}`, `科目互斥同日：${t.subjects.join('／')}`, pen(t.level) * (hit.length - 1), `${c.label} 週${DAY_ZH[d]} ${hit.join('＋')}`)
+      }
+    }
+  }
+
   // 硬限制安全網：導師永不連 7——班級整天日 7 格全是留白（無科任課、無鎖課）＝導師該日 7 節連上。
   // 引擎只排科任課，導師側靠「該日至少落 1 堂科任課或鎖課」保證；人工課表 0 違反
   for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
     const locks = input.lockedCells[c.classKey] ?? {}
+    const maxRun = input.weights.hardParams.maxRunHomeroom
     for (const d of SCHEDULE_DAYS) {
-      let teachable = 0, blank = 0
+      let run = 0, best = 0
       for (let q = 1; q <= 7; q++) {
         const k = `${d}-${q}`
-        if (!(avail.has(k) || k in locks)) continue
-        teachable++
-        if (!occ.has(k) && !(k in locks)) blank++
+        const teachable = avail.has(k) || k in locks
+        const blank = teachable && !occ.has(k) && !(k in locks)
+        run = blank ? run + 1 : 0; best = Math.max(best, run)
       }
-      if (teachable === 7 && blank === 7) acc(map, 'homeroomRun7', '導師連 7（硬限制）', MUST, `${c.label} 週${DAY_ZH[d]}整天皆導師課`)
+      if (best > maxRun) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節（硬限制）`, MUST, `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
     }
   }
 
