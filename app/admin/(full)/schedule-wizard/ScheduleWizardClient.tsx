@@ -105,9 +105,11 @@ export default function ScheduleWizardClient(props: Props) {
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
-  // 排課進行中或結果尚未儲存時，離開頁面要確認
+  // 排課進行中，或「這一輪跑出來的」結果尚未儲存時，離開頁面要確認。
+  // fromSaved＝畫面上顯示的是上次儲存的課表（頁面載入時還原的），它本身就是已存檔的內容，
+  // 使用者什麼都沒做，不可以攔——否則一進頁面按重新整理就跳確認框。
   useUnsavedGuard(
-    running || (result !== null && saveStatus !== 'saved'),
+    running || (result !== null && !fromSaved && saveStatus !== 'saved'),
     '排課仍在進行或結果尚未儲存，離開將遺失本次排課結果。確定要離開嗎？',
   )
 
