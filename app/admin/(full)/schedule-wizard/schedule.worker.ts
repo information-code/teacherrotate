@@ -1,19 +1,21 @@
-// 排課引擎 Web Worker：兩階段執行。
-// 階段一（可行性・需要）：關閉所有軟規則，多種子輪流求「未排 0＋必須級 0」的完整解；
-//   全部種子都找不到 → 直接回報失敗（帶最佳嘗試供診斷），不進階段二。
-// 階段二（精緻化・想要）：軟規則＋自訂規則全開，以階段一完整解「熱啟動」優化，
-//   另跑一輪「冷啟動」對照，取較佳者（未排 → 必須級 → 軟分 字典序比較）。
+// 排課引擎 Web Worker：硬限制＋權重一次跑（多種子多起點），成功條件＝未排 0 且必須級 0。
+//   罰分字典序：未排（1e5/堂）→ 必須級（1e6/筆）→ 軟權重——引擎天生先求排入、再求好看，不需分兩階段。
+//   每個種子跑到收斂（只差 1～2 節時多給耐心）；已有完整解後其餘種子縮短預算、只為多起點比軟分。
+//   全部種子跑完仍有未排 → 診斷：以純硬模式從最佳解熱啟動探測——
+//     探測排得完 → 是權重把搜尋牽住了：比對哪些規則在探測解裡多了違反 → 建議降低那些權重；
+//     探測也排不完 → 非權重問題（硬限制／配課結構），列未排原因。
 // 全程可中途停止並採用目前最佳解。
 import { EngineRun, type EngineInput, type EngineResult } from '../../../../lib/schedule-engine'
 
-const CHUNK_MS = 300        // 每段搜尋時間，段間讓出事件圈以接收停止訊息
-const P1 = { converge: 20000, cap: 90000 }   // 階段一：每種子收斂/上限
-const P2 = { converge: 8000, cap: 90000 }   // 階段二：每輪收斂/上限
-const P1_SEEDS = [42, 7, 17, 63, 3]
+const CHUNK_MS = 300
+const SEEDS = [42, 7, 17, 63, 3]
+const BUDGET = { converge: 20000, cap: 90000 }        // 尚未有完整解：每種子收斂/上限
+const BUDGET_MORE = { converge: 12000, cap: 60000 }   // 已有完整解：其餘種子只為多起點比軟分
+const PROBE_MS = 20000
 
 let stopRequested = false
 
-/** 純硬限制版輸入：內建軟規則全關、自訂規則關（連堂設定為課的結構、已反映在 lessons，不受影響）。 */
+/** 純硬限制版輸入（診斷探測用）：所有權重與子規則關閉；連堂矩陣為結構設定、維持。 */
 function hardOnlyInput(input: EngineInput): EngineInput {
   const b = input.weights.builtin
   return {
@@ -29,7 +31,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         avoidPeriods: 'off', timePrefer: 'off',
       },
       templates: input.weights.templates.map(t => ({ ...t, level: 'off' as const })),
-      doubleMode: input.weights.doubleMode,   // 連堂矩陣為結構設定、不是權重，維持原樣
+      doubleMode: input.weights.doubleMode,
     },
   }
 }
@@ -46,20 +48,41 @@ function betterThan(a: EngineResult, b: EngineResult): boolean {
 
 async function runOne(
   input: EngineInput,
-  opts: { phase: 1 | 2; label: string; budget: { converge: number; cap: number }; perfectExit?: boolean; initial?: { id: string; day: number; period: number }[] },
+  opts: { label: string; budget: { converge: number; cap: number }; perfectExit?: boolean; initial?: { id: string; day: number; period: number }[] },
 ): Promise<EngineResult> {
   const run = new EngineRun(input, opts.initial)
   for (;;) {
     run.step(CHUNK_MS)
-    self.postMessage({ type: 'progress', phase: opts.phase, label: opts.label, ...run.progress() })
+    const pg = run.progress()
+    self.postMessage({ type: 'progress', label: opts.label, ...pg })
     if (stopRequested) break
-    if (opts.perfectExit && run.progress().best === 0) break   // 純硬模式下 0 分＝完整解
-    // 只差 1～2 節（未排／必須級合計 ≤2）時多給一倍耐心——結太緊時最後那一節常在收斂線後才落位
-    const nearPerfect = opts.perfectExit && run.progress().best <= 2e6
+    if (opts.perfectExit && pg.best === 0) break
+    // 只差 1～2 節（未排／必須級合計 ≤2；軟分永遠 < 1e5）時多給一倍耐心
+    const nearPerfect = pg.best < 2.1e6 && pg.best >= 1e5
     if (run.sinceImprove >= opts.budget.converge * (nearPerfect ? 2.5 : 1) || run.elapsed >= opts.budget.cap) break
     await new Promise(r => setTimeout(r, 0))
   }
   return run.finalize()
+}
+
+/** 未排診斷：純硬模式從最佳解熱啟動探測，回報該降哪些權重。 */
+async function diagnose(input: EngineInput, best: EngineResult, seed: number): Promise<{ probePerfect: boolean; hints: string[] }> {
+  const probe = await runOne({ ...hardOnlyInput(input), seed }, {
+    label: '診斷：純硬探測', budget: { converge: PROBE_MS, cap: PROBE_MS }, perfectExit: true,
+    initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+  })
+  if (!isPerfect(probe)) return { probePerfect: false, hints: [] }
+  // 探測解在「完整權重」下的罰分 → 與最佳解比對，哪些規則多了違反＝搜尋為了守它們而放棄排入
+  const scored = new EngineRun({ ...input, seed }, probe.placed.map(p => ({ id: p.id, day: p.day, period: p.period }))).finalize()
+  const before = new Map(best.penalties.map(p => [p.label, p.count]))
+  const hints = scored.penalties
+    .filter(p => p.points > 0 && p.points < 1e6)
+    .map(p => ({ label: p.label, delta: p.count - (before.get(p.label) ?? 0) }))
+    .filter(x => x.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 5)
+    .map(x => `「${x.label}」（放寬後多 ${x.delta} 筆違反即可全部排入）`)
+  return { probePerfect: true, hints }
 }
 
 self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>) => {
@@ -68,35 +91,24 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
   stopRequested = false
   const input = e.data.input
 
-  // ── 階段一：純硬多種子求可行解 ──
-  const hard = hardOnlyInput(input)
-  let p1: EngineResult | null = null
-  let p1Seed = P1_SEEDS[0]
-  for (let i = 0; i < P1_SEEDS.length; i++) {
-    const seed = P1_SEEDS[i]
-    const r = await runOne({ ...hard, seed }, {
-      phase: 1, label: `種子 ${i + 1}/${P1_SEEDS.length}`, budget: P1, perfectExit: true,
+  let best: EngineResult | null = null
+  let bestSeed = SEEDS[0]
+  for (let i = 0; i < SEEDS.length; i++) {
+    const seed = SEEDS[i]
+    const havePerfect = best !== null && isPerfect(best)
+    const r = await runOne({ ...input, seed }, {
+      label: `種子 ${i + 1}/${SEEDS.length}${havePerfect ? '・比較中' : ''}`,
+      budget: havePerfect ? BUDGET_MORE : BUDGET,
     })
-    if (!p1 || betterThan(r, p1)) { p1 = r; p1Seed = seed }
-    if (stopRequested || isPerfect(r)) break
+    if (!best || betterThan(r, best)) { best = r; bestSeed = seed }
+    if (stopRequested) break
   }
+  if (!best) return
 
-  if (stopRequested || !p1 || !isPerfect(p1)) {
-    // 中途停止 → 採用目前最佳；跑完仍不完整 → 回報階段一失敗（附最佳嘗試供診斷）
-    self.postMessage({ type: 'done', result: p1, stopped: stopRequested, phase: 1, phase1Failed: !stopRequested })
+  if (isPerfect(best) || stopRequested) {
+    self.postMessage({ type: 'done', result: best, stopped: stopRequested, failed: !isPerfect(best), hints: [], probePerfect: null, meta: { seed: bestSeed } })
     return
   }
-
-  // ── 階段二：軟規則全開，熱啟動（自階段一解）＋冷啟動對照 ──
-  const warm = await runOne({ ...input, seed: p1Seed }, {
-    phase: 2, label: '熱啟動優化', budget: P2,
-    initial: p1.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
-  })
-  let final = warm
-  let winner: 'warm' | 'cold' = 'warm'
-  if (!stopRequested) {
-    const cold = await runOne({ ...input, seed: p1Seed + 1 }, { phase: 2, label: '冷啟動對照', budget: P2 })
-    if (betterThan(cold, warm)) { final = cold; winner = 'cold' }
-  }
-  self.postMessage({ type: 'done', result: final, stopped: stopRequested, phase: 2, meta: { p1Seed, winner } })
+  const diag = await diagnose(input, best, bestSeed)
+  self.postMessage({ type: 'done', result: best, stopped: false, failed: true, hints: diag.hints, probePerfect: diag.probePerfect, meta: { seed: bestSeed } })
 }

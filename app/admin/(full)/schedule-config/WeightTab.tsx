@@ -172,7 +172,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-zinc-400">
           引擎只排科任課，所有規則都作用在「科任課的落點」。權重四段：關閉／低／中／高，「高」一項約抵「低」九項；
-          第一階段只看固定硬限制與連堂矩陣，第二階段才依權重精緻化。
+          排課時硬限制與權重一次跑，成功條件＝未排 0；排不完時精靈會建議降低哪些權重。
         </p>
         <span className="flex gap-2 flex-shrink-0">
           <button onClick={resetAll} className="btn btn-secondary text-xs py-0.5">恢復預設</button>
@@ -252,7 +252,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 flex items-baseline gap-2 flex-wrap">
           <span className="text-sm font-semibold text-zinc-700">科目連堂</span>
-          <span className="text-xs text-zinc-400">結構設定、非權重——影響第一階段可行性。點格子循環切換；列首一次設整列。</span>
+          <span className="text-xs text-zinc-400">結構設定、非權重——連堂綁定會直接影響排不排得進去。點格子循環切換；列尾一次設整列。</span>
           <span className="ml-auto flex items-center gap-2 text-[11px] text-zinc-500">
             <span className={`px-1.5 py-0.5 rounded-sm border ${MODE_CLS.auto}`}>·</span>都可以（預設：單節排，同科同日相鄰兩節可自然成對）
             <span className={`px-1.5 py-0.5 rounded-sm border ${MODE_CLS.double}`}>連</span>連堂（每 2 節綁一組）

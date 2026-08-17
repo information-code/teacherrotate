@@ -1068,7 +1068,7 @@ export class EngineRun {
   private rankOf = new Map<string, number>()   // 難排順位（0＝最難）：未排安插時優先處理最難的課，模擬人工「先排最難的」
   private anchored = new Set<string>()          // 錨定課：時間極受限老師（不排課多／負載比高）的課，先排且不被別堂逐出——人工排課的「先把行政／輔導團的課釘住」
 
-  /** @param initial 熱啟動落點（兩階段的第二階段用）：以既有解為搜尋起點，不合法的落點靜默略過，
+  /** @param initial 熱啟動落點（診斷探測／重排續跑用）：以既有解為搜尋起點，不合法的落點靜默略過，
    *  其餘課照常走建構流程補齊。 */
   constructor(input: EngineInput, initial?: { id: string; day: number; period: number }[]) {
     this.input = input
