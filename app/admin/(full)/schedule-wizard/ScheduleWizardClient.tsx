@@ -414,7 +414,7 @@ export default function ScheduleWizardClient(props: Props) {
                 <div className="text-xs text-red-700 space-y-1">
                   <p>純硬規則探測可以全部排入 → <b>是權重把搜尋牽住了</b>。建議降低（依影響大小排序）：</p>
                   <ul className="list-disc pl-5">{hints.map(h => <li key={h}>{h}</li>)}</ul>
-                  <p className="text-zinc-500">到「排課設定 → 7 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
+                  <p className="text-zinc-500">到「排課設定 → 8 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
                 </div>
               )}
               {probePerfect === false && (

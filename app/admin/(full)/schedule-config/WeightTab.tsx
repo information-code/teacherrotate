@@ -112,7 +112,7 @@ const MODE_CLS: Record<DoubleMode, string> = {
 }
 const MODE_SHORT: Record<DoubleMode, string> = { auto: '·', double: '連', single: '單', biweekly: '雙' }
 
-/** 分頁七：權重設定。規則表（分組、參數內嵌）＋科目連堂矩陣＋固定硬限制（摺疊）。 */
+/** 分頁八：權重設定。規則表（分組、參數內嵌）＋科目連堂矩陣＋固定硬限制（摺疊）。 */
 export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   const w = config.weights
   const [hardOpen, setHardOpen] = useState(false)

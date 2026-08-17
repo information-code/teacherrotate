@@ -39,8 +39,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'room', label: '4 教室設定' },
   { key: 'lock', label: '5 鎖課設定' },
   { key: 'off', label: '6 排課/不排課標記' },
-  { key: 'weight', label: '7 權重設定' },
-  { key: 'foreign', label: '8 外師' },
+  { key: 'foreign', label: '7 外師設定' },
+  { key: 'weight', label: '8 權重設定' },
 ]
 
 export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, homeroomBreakdown, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles }: Props) {
@@ -248,14 +248,14 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
         <OffTab config={config} setConfig={setConfig} offTeachers={offTeachers} needsRefs={needsRefs} />
       )}
 
-      {/* ── 七、權重設定 ── */}
-      {tab === 'weight' && (
-        <WeightTab config={config} setConfig={setConfig} gradeSubjects={gradeSubjects} />
-      )}
-
-      {/* ── 八、外師（協同英語）── */}
+      {/* ── 七、外師設定（協同英語）── */}
       {tab === 'foreign' && (
         <ForeignTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} foreignProfiles={foreignProfiles} />
+      )}
+
+      {/* ── 八、權重設定 ── */}
+      {tab === 'weight' && (
+        <WeightTab config={config} setConfig={setConfig} gradeSubjects={gradeSubjects} />
       )}
     </div>
   )
