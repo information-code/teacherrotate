@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
-import { assembleEngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
+import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
 import type { GradeSubject } from '../schedule-config/page'
@@ -28,6 +28,42 @@ interface Props {
 
 type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number; label?: string }
 type ViewKey = 'class' | 'teacher' | 'room'
+
+// ── 版本紀錄 ──
+// schedule_plan 一年只有一份、存新的蓋掉舊的；跑了三次才發現第一次最好就找不回來了。
+// 每次排課完自動存一份快照到 schedule_plan_version，不佔用「目前採用的那一份」。
+interface VersionRule { key: string; label: string; count: number; points: number }
+interface VersionRow {
+  id: string; label: string | null; starred: boolean; source: string; base_hash: string
+  created_at: string; created_by: string | null
+  summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; rules?: VersionRule[] }
+}
+/** FNV-1a：只用來判斷「基礎資料是否相同」「落點是否變過」，不需要密碼學強度。 */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) }
+  return (h >>> 0).toString(36)
+}
+/** 基礎資料指紋＝課的組成＋可排格＋必排格＋鎖課。這個一樣，兩份版本才有逐格比對的意義。 */
+function baseHashOf(input: EngineInput): string {
+  const lessons = input.lessons.map(l => `${l.classKey}|${l.subject}|${l.teacherId}|${l.size}|${l.parity}`).sort().join(';')
+  const slots = Object.entries(input.classSlots).map(([k, v]) => `${k}:${[...v].sort().join(',')}`).sort().join(';')
+  const must = Object.entries(input.classMustFill).map(([k, v]) => `${k}:${[...v].sort().join(',')}`).sort().join(';')
+  const locks = Object.entries(input.lockedCells).map(([k, v]) => `${k}:${Object.keys(v).sort().join(',')}`).sort().join(';')
+  return fnv1a([lessons, slots, must, locks].join('#'))
+}
+/** 落點指紋：手動微調後沒真的動過就不再存一份重複版本。 */
+const sigOfPlaced = (placed: PlacedResult[]) => fnv1a(placed.map(p => `${p.id}@${p.day}-${p.period}`).sort().join('|'))
+function summaryOf(r: EngineResult) {
+  return {
+    placed: r.placed.length,
+    unplaced: r.unplaced.length,
+    uncovered: r.uncoveredMustFill.length,
+    mustCount: r.penalties.filter(p => p.points >= 1e6).reduce((s, p) => s + p.count, 0),
+    softPenalty: Math.round(r.softPenalty),
+    rules: r.penalties.filter(p => p.points > 0).map(p => ({ key: p.key, label: p.label, count: p.count, points: Math.round(p.points) })),
+  }
+}
 
 export default function ScheduleWizardClient(props: Props) {
   const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
@@ -60,6 +96,10 @@ export default function ScheduleWizardClient(props: Props) {
   const [runFailed, setRunFailed] = useState(false)          // 全部種子跑完仍有未排／必須級違反
   const [hints, setHints] = useState<string[]>([])           // 未排診斷：建議降低的權重
   const [probePerfect, setProbePerfect] = useState<boolean | null>(null)   // 純硬探測是否排得完（null＝未診斷）
+  const [versions, setVersions] = useState<VersionRow[]>([])
+  const [versionNames, setVersionNames] = useState<Record<string, string>>({})
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const lastVerSig = useRef<string | null>(null)   // 已存成版本的落點指紋，避免同一份重複存
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
@@ -76,6 +116,54 @@ export default function ScheduleWizardClient(props: Props) {
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')
   const infos = preflight.filter(p => p.level === 'info')
+
+  const curBaseHash = useMemo(() => baseHashOf(input), [input])
+
+  // ── 版本紀錄：載入清單、跑完自動存快照 ──
+  // 版本紀錄是附加功能，任何一步失敗都只記錄在 console，不擋排課本身。
+  const loadVersions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/schedule-plan-versions?year=${year}`)
+      if (!res.ok) return
+      const d = await res.json()
+      setVersions(Array.isArray(d.versions) ? d.versions : [])
+      setVersionNames(d.names ?? {})
+    } catch { /* 略過 */ }
+  }, [year])
+  useEffect(() => { loadVersions() }, [loadVersions])
+
+  const saveVersion = useCallback(async (r: EngineResult, source: 'engine' | 'manual') => {
+    const sig = sigOfPlaced(r.placed)
+    if (lastVerSig.current === sig) return   // 落點沒變＝同一份，不重複存
+    lastVerSig.current = sig
+    try {
+      const res = await fetch('/api/admin/schedule-plan-versions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          year, source, baseHash: curBaseHash, weights: scheduleConfig.weights, summary: summaryOf(r),
+          plan: {
+            placed: r.placed, unplaced: r.unplaced, uncoveredMustFill: r.uncoveredMustFill,
+            totalPenalty: r.totalPenalty, softPenalty: r.softPenalty,
+            penalties: r.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+          },
+        }),
+      })
+      if (res.ok) loadVersions()
+    } catch { /* 略過 */ }
+  }, [year, curBaseHash, scheduleConfig.weights, loadVersions])
+
+  async function patchVersion(id: string, patch: { label?: string | null; starred?: boolean }) {
+    await fetch('/api/admin/schedule-plan-versions', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...patch }),
+    })
+    loadVersions()
+  }
+  async function deleteVersion(v: VersionRow) {
+    if (!confirm(`刪除版本「${v.label || new Date(v.created_at).toLocaleString('zh-TW')}」？此操作無法復原。`)) return
+    await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`, { method: 'DELETE' })
+    loadVersions()
+  }
 
   // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
   const [nativeStates, setNativeStates] = useState<Record<string, 'stream' | 'cancelled'>>(scheduleConfig.nativeLang.states)
@@ -112,7 +200,9 @@ export default function ScheduleWizardClient(props: Props) {
     w.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'progress') setProgress(e.data as Progress)
       else if (e.data.type === 'done') {
-        setResult(e.data.result as EngineResult)
+        const done = e.data.result as EngineResult
+        setResult(done)
+        saveVersion(done, 'engine')   // 跑完就留一份，不然重排一次就找不回來了
         setRunFailed(Boolean(e.data.failed))
         setHints(Array.isArray(e.data.hints) ? e.data.hints : [])
         setProbePerfect(typeof e.data.probePerfect === 'boolean' ? e.data.probePerfect : null)
@@ -146,7 +236,10 @@ export default function ScheduleWizardClient(props: Props) {
         }),
       })
       setSaveStatus(res.ok ? 'saved' : 'error')
-      if (res.ok) setPlanStatus('draft')
+      if (res.ok) {
+        setPlanStatus('draft')
+        saveVersion(result, 'manual')   // 手動微調過才會真的多存一份（落點沒變會被指紋擋掉）
+      }
     } catch { setSaveStatus('error') }
   }
 
@@ -597,6 +690,81 @@ export default function ScheduleWizardClient(props: Props) {
           </div>
         </>
       )}
+
+      {/* ── 排課版本紀錄 ──
+          每次排課完自動留一份快照（手動微調後儲存、落點真的變過時再留一份）。
+          這裡只做保存與檢視，不提供「還原成舊版本」——舊版本的留白位置與導師已填的排課對不上，
+          還原會讓導師填的內容失效，風險高於效益。 */}
+      <div className="card p-0 overflow-hidden">
+        <button onClick={() => setVersionsOpen(o => !o)} className="w-full px-4 py-2 flex items-center gap-2 text-left hover:bg-zinc-50">
+          <span className="text-zinc-400">{versionsOpen ? '▾' : '▸'}</span>
+          <span className="text-sm font-semibold text-zinc-700">排課版本紀錄</span>
+          <span className="text-xs text-zinc-400">{versions.length} 份　每次排課自動保存，最多留 20 份（加 ★ 者不會被自動刪除）</span>
+        </button>
+        {versionsOpen && (
+          <div className="px-4 pb-3">
+            {versions.length === 0
+              ? <p className="text-sm text-zinc-400 py-3">還沒有版本紀錄。按「開始排課」跑完一次就會自動保存一份。</p>
+              : (() => {
+                  // 「軟分最低」只在可發布（未排 0、必須級 0）的版本之間比，且必須是同一份基礎資料——
+                  // 基礎資料變過的版本課本身就不一樣，分數不能拿來比。
+                  const comparable = versions.filter(v =>
+                    v.base_hash === curBaseHash && !v.summary.unplaced && !v.summary.mustCount && typeof v.summary.softPenalty === 'number')
+                  const bestSoft = comparable.length ? Math.min(...comparable.map(v => v.summary.softPenalty as number)) : null
+                  return (
+                    <table className="table-base no-hover mt-1">
+                      <thead>
+                        <tr>
+                          <th className="w-8"></th><th>時間／名稱</th><th className="w-16 text-center">來源</th>
+                          <th className="w-16 text-center">未排</th><th className="w-20 text-center">必須級</th>
+                          <th className="w-20 text-center">軟分</th><th className="w-20">建立者</th><th className="w-24"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {versions.map(v => {
+                          const s = v.summary
+                          const stale = v.base_hash !== curBaseHash
+                          const ok = !s.unplaced && !s.mustCount
+                          const isBest = !stale && ok && bestSoft !== null && s.softPenalty === bestSoft && comparable.length > 1
+                          return (
+                            <tr key={v.id}>
+                              <td className="text-center">
+                                <button onClick={() => patchVersion(v.id, { starred: !v.starred })}
+                                  title={v.starred ? '取消星號（可能被保留上限自動刪除）' : '加星號（永久保留）'}
+                                  className={v.starred ? 'text-amber-500' : 'text-zinc-300 hover:text-amber-400'}>★</button>
+                              </td>
+                              <td>
+                                <div className="text-zinc-800">{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</div>
+                                <div className="text-[10px] text-zinc-400">
+                                  {v.label && `${new Date(v.created_at).toLocaleString('zh-TW')}　`}
+                                  {isBest && <span className="text-green-700">軟分最低</span>}
+                                  {stale && <span className="text-amber-600">基礎資料已變更（配課／鎖課／不排課有異動，分數不可與現況相比）</span>}
+                                </div>
+                              </td>
+                              <td className="text-center text-xs text-zinc-500">{v.source === 'manual' ? '手動調整' : '精靈'}</td>
+                              <td className={`text-center ${s.unplaced ? 'text-red-600 font-medium' : 'text-zinc-400'}`}>{s.unplaced ?? '—'}</td>
+                              <td className={`text-center ${s.mustCount ? 'text-red-600 font-medium' : 'text-zinc-400'}`}>{s.mustCount ?? '—'}</td>
+                              <td className={`text-center ${isBest ? 'text-green-700 font-semibold' : 'text-zinc-600'}`}>{s.softPenalty ?? '—'}</td>
+                              <td className="text-xs text-zinc-500">{v.created_by ? (versionNames[v.created_by] ?? '') : ''}</td>
+                              <td className="text-right whitespace-nowrap">
+                                <button onClick={() => { const n = window.prompt('版本名稱（留空＝顯示時間）', v.label ?? ''); if (n !== null) patchVersion(v.id, { label: n }) }}
+                                  className="text-xs text-zinc-400 hover:text-sky-600">改名</button>
+                                <button onClick={() => deleteVersion(v)} className="ml-2 text-xs text-zinc-400 hover:text-red-500">刪除</button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )
+                })()}
+            <p className="text-[11px] text-zinc-400 pt-2">
+              未排與必須級是硬性條件，只要不是 0 就不能發布；軟分只在同一份基礎資料、且皆可發布的版本之間比較才有意義，
+              分數接近時屬於雜訊、不代表誰比較好。逐版逐格比對之後再做。
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
