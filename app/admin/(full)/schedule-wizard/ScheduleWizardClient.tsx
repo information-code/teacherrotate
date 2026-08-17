@@ -36,7 +36,8 @@ interface VersionRule { key: string; label: string; count: number; points: numbe
 interface VersionRow {
   id: string; label: string | null; starred: boolean; source: string; base_hash: string
   created_at: string; created_by: string | null
-  summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; rules?: VersionRule[] }
+  // note＝這份版本的分數為什麼不能直接跟現況比（回填的舊課表、規則改過等）；有 note 就取代通用的「基礎資料已變更」訊息
+  summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; note?: string; rules?: VersionRule[] }
 }
 /** FNV-1a：只用來判斷「基礎資料是否相同」「落點是否變過」，不需要密碼學強度。 */
 function fnv1a(s: string): string {
@@ -738,7 +739,7 @@ export default function ScheduleWizardClient(props: Props) {
                                 <div className="text-[10px] text-zinc-400">
                                   {v.label && `${new Date(v.created_at).toLocaleString('zh-TW')}　`}
                                   {isBest && <span className="text-green-700">軟分最低</span>}
-                                  {stale && <span className="text-amber-600">基礎資料已變更（配課／鎖課／不排課有異動，分數不可與現況相比）</span>}
+                                  {stale && <span className="text-amber-600">{s.note ?? '基礎資料已變更（配課／鎖課／不排課有異動，分數不可與現況相比）'}</span>}
                                 </div>
                               </td>
                               <td className="text-center text-xs text-zinc-500">{v.source === 'manual' ? '手動調整' : '精靈'}</td>
