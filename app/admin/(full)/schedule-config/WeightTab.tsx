@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, type Dispatch, type SetStateAction } from 'react'
 import Link from 'next/link'
 import {
-  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights, doubleModeOf, DOUBLE_MODE_LABEL,
+  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights, doubleModeOf, DOUBLE_MODE_LABEL, BANDS, BAND_LABEL,
   type ScheduleConfig, type ScheduleWeights, type BuiltinRules, type WeightLevel,
   type RuleTemplate, type TemplateRule, type DoubleMode,
 } from '@/lib/scheduling'
@@ -326,12 +326,35 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                 className="input w-14 text-center py-0.5 text-xs" />
               <span>節（科任與外師；預設 6＝永不連 7）</span>
             </li>
-            <li className="flex items-center gap-2 flex-wrap">
-              <span>導師連上絕對上限</span>
-              <input type="number" min={2} max={6} value={w.hardParams.maxRunHomeroom}
-                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunHomeroom: Math.min(6, Math.max(2, Number(e.target.value) || 6)) } }))}
-                className="input w-14 text-center py-0.5 text-xs" />
-              <span>節（＝班級整天日連續留白不得超過此數，引擎會用科任課／鎖課切開；預設 6）</span>
+            <li className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>導師連上絕對上限</span>
+                <input type="number" min={2} max={6} value={w.hardParams.maxRunHomeroom}
+                  onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunHomeroom: Math.min(6, Math.max(2, Number(e.target.value) || 3)) } }))}
+                  className="input w-14 text-center py-0.5 text-xs" />
+                <span>節（＝班級同日連續留白不得超過此數，引擎會用科任課／鎖課切開；預設 3＝導師不連四）</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-zinc-400">適用年段</span>
+                {BANDS.map(b => (
+                  <label key={b} className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={w.hardParams.homeroomRunBands.includes(b)}
+                      onChange={e => setWeights(x => ({
+                        ...x,
+                        hardParams: {
+                          ...x.hardParams,
+                          homeroomRunBands: e.target.checked
+                            ? BANDS.filter(k => k === b || x.hardParams.homeroomRunBands.includes(k))
+                            : x.hardParams.homeroomRunBands.filter(k => k !== b),
+                        },
+                      }))} />
+                    <span>{BAND_LABEL[b]}</span>
+                  </label>
+                ))}
+                {w.hardParams.homeroomRunBands.length === 0
+                  ? <span className="text-amber-600">未選任何年段＝此限制停用</span>
+                  : <span className="text-zinc-400">避免導師整個上午連上、中間沒有一節可喘息／改作業</span>}
+              </div>
             </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>

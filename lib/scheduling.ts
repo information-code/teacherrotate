@@ -141,10 +141,12 @@ export interface BuiltinRules {
 
 /** 固定硬限制的參數（不是權重、只是數字；引擎絕不違反）。 */
 export interface HardParams {
-  maxRunTeacher: number    // 老師（科任／外師）連續授課絕對上限（預設 6＝永不連 7）
-  maxRunHomeroom: number   // 導師連上絕對上限（預設 6）：班級整天日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開
+  maxRunTeacher: number       // 老師（科任／外師）連續授課絕對上限（預設 6＝永不連 7）
+  maxRunHomeroom: number      // 導師連上絕對上限（預設 3＝不連四）：班級同日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開。
+                              // 目的＝導師不會整個上午連四節都是自己的課（中間要有科任課能喘口氣、改作業）
+  homeroomRunBands: Band[]    // 上一條適用的年段（預設全年段；清空＝停用）
 }
-export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 6 }
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS] }
 
 /** 科目連堂模式（結構設定，非權重；影響第一階段可行性）：
  *  auto＝都可以（單節排、允許同科同日相鄰兩節自然成對，不跨午休）；double＝連堂（每 2 節綁一組永不拆）；
@@ -253,7 +255,18 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
     hardParams: (() => {
       const hp = (r as { hardParams?: Partial<HardParams> }).hardParams ?? {}
       const clamp = (v: unknown, d: number) => { const n = Number(v); return Number.isInteger(n) && n >= 2 && n <= 6 ? n : d }
-      return { maxRunTeacher: clamp(hp.maxRunTeacher, DEFAULT_HARD_PARAMS.maxRunTeacher), maxRunHomeroom: clamp(hp.maxRunHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom) }
+      // 舊資料（無 homeroomRunBands）＝「導師連上上限」改版前存的設定：值仍是舊預設 6 者視為沒調過，
+      // 一律套新預設 3（不連四）；曾自行改成其他數字則尊重原設定。
+      const legacy = !Array.isArray(hp.homeroomRunBands)
+      const rawHomeroom = legacy && Number(hp.maxRunHomeroom) === 6 ? undefined : hp.maxRunHomeroom
+      const bands = Array.isArray(hp.homeroomRunBands)
+        ? BANDS.filter(b => (hp.homeroomRunBands as unknown[]).includes(b))
+        : [...BANDS]
+      return {
+        maxRunTeacher: clamp(hp.maxRunTeacher, DEFAULT_HARD_PARAMS.maxRunTeacher),
+        maxRunHomeroom: clamp(rawHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom),
+        homeroomRunBands: bands,
+      }
     })(),
     // 連堂矩陣：新資料直接讀；舊資料由 doublePeriod 模板＋builtin.artBiweekly 遷移；皆無＝預設矩陣
     doubleMode: (() => {

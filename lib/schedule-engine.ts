@@ -482,6 +482,34 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班。', tab: 'subject' })
   if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}`, tab: 'subject' })
   if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}`, tab: 'subject' })
+  // 導師連上上限（硬限制）可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
+  // 全週加總若多於該班的科任課堂數，就是怎麼排都必然違反——先在前置檢核講明白，別讓精靈白跑一輪。
+  {
+    const { maxRunHomeroom: hrN, homeroomRunBands } = config.weights.hardParams
+    const runBands = new Set(homeroomRunBands)
+    const lessonsByClass: Record<string, number> = {}
+    for (const l of lessons) lessonsByClass[l.classKey] = (lessonsByClass[l.classKey] ?? 0) + 1
+    const short: string[] = []
+    if (runBands.size) for (const c of classes) {
+      if (!runBands.has(bandOf(c.grade))) continue
+      const avail = new Set(classSlots[c.classKey] ?? [])
+      let need = 0
+      for (const d of SCHEDULE_DAYS) {
+        let run = 0
+        for (let q = 1; q <= 8; q++) {
+          if (q <= 7 && avail.has(`${d}-${q}`)) { run++; continue }
+          if (run > hrN) need += Math.ceil((run - hrN) / (hrN + 1))
+          run = 0
+        }
+      }
+      const have = lessonsByClass[c.classKey] ?? 0
+      if (have < need) short.push(`${c.label}（需 ${need} 堂／科任課 ${have} 堂）`)
+    }
+    if (short.length) preflight.push({
+      level: 'error', tab: 'weight',
+      text: `導師連上上限 ${hrN} 節（硬限制）需要科任課把連續留白切開，但這些班的科任課堂數不足、必然違反：${joinCap(short)}——請調高上限、縮小適用年段，或增加該班科任課。`,
+    })
+  }
   // 外師檢核（設定為絕對：掛不上／塞不下皆為必須級）
   if (foreignAgg.noLesson.length) preflight.push({ level: 'error', text: `外師掛課無對應科任課（該班該科無課、由導師自上或已掛滿）：${joinCap(foreignAgg.noLesson)}`, tab: 'foreign' })
   if (foreignAgg.overload.length) preflight.push({ level: 'error', text: `外師掛課節數超過其可用時段（扣除不可到校）：${joinCap(foreignAgg.overload)}`, tab: 'foreign' })
@@ -919,9 +947,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
-  // 硬限制安全網：導師永不連 7——班級整天日 7 格全是留白（無科任課、無鎖課）＝導師該日 7 節連上。
-  // 引擎只排科任課，導師側靠「該日至少落 1 堂科任課或鎖課」保證；人工課表 0 違反
-  for (const c of input.classes) {
+  // 硬限制：導師連上上限——班級同日連續留白（無科任課、無鎖課）不得超過 maxRunHomeroom（預設 3＝不連四）。
+  // 目的是導師不會整個上午連上四節、中間沒有一節科任課可以喘口氣／改作業。
+  // 引擎只排科任課，導師側靠「該段留白被科任課或鎖課切開」保證；適用年段可於權重頁調整（清空＝停用）。
+  const runBands = new Set(input.weights.hardParams.homeroomRunBands)
+  if (runBands.size) for (const c of input.classes) {
+    if (!runBands.has(bandOf(c.grade))) continue
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
     const locks = input.lockedCells[c.classKey] ?? {}
@@ -1121,6 +1152,8 @@ export class EngineRun {
   private lessonsByClass = new Map<string, EngineLesson[]>()
   private rankOf = new Map<string, number>()   // 難排順位（0＝最難）：未排安插時優先處理最難的課，模擬人工「先排最難的」
   private anchored = new Set<string>()          // 錨定課：時間極受限老師（不排課多／負載比高）的課，先排且不被別堂逐出——人工排課的「先把行政／輔導團的課釘住」
+  private hrBands = new Set<ReturnType<typeof bandOf>>()   // 導師連上上限適用年段
+  private hrRunN = 3                                       // 導師連上上限節數
 
   /** @param initial 熱啟動落點（診斷探測／重排續跑用）：以既有解為搜尋起點，不合法的落點靜默略過，
    *  其餘課照常走建構流程補齊。 */
@@ -1137,6 +1170,9 @@ export class EngineRun {
         if (this.st.canPlace(l, p)) this.st.place(l, p)
       }
     }
+
+    this.hrBands = new Set(input.weights.hardParams.homeroomRunBands)
+    this.hrRunN = input.weights.hardParams.maxRunHomeroom
 
     // 必排格索引
     for (const [key2, slots] of Object.entries(input.classMustFill)) {
@@ -1280,6 +1316,8 @@ export class EngineRun {
 
     // 建構後先做幾輪定向補洞
     for (let k = 0; k < this.mustTargets.length * 2; k++) this.tryCoverMustFill()
+    // 連上修補在建構後多跑幾輪：科任課的「哪一天」在建構期就定調，越早切開越不必後面大搬風
+    for (let k = 0; k < this.input.classes.length * 3; k++) this.tryFixHomeroomRun()
   }
 
   private snapshotIfBest(total: number, soft: number) {
@@ -1331,6 +1369,67 @@ export class EngineRun {
     }
   }
 
+  /** 導師連上定向修補（硬限制）：找出班級同日連續留白超過上限的段，把該班某堂課搬進段中把它切成兩截。
+   *  與必排格補洞同套路（直接搬 → 逐出式），差別只在目標格由「必排格」換成「切點」。
+   *  沒有這一步時，「同科不隔天」等權重會把科任課全推去一三五，讓某些班的週二整天沒有科任課可切。 */
+  private tryFixHomeroomRun() {
+    if (!this.hrBands.size) return
+    const n = this.hrRunN
+    const targets: { classKey: string; day: number; period: number }[] = []
+    for (const c of this.input.classes) {
+      if (!this.hrBands.has(bandOf(c.grade))) continue
+      const occ = this.st.classOcc.get(c.classKey)!
+      const avail = new Set(this.input.classSlots[c.classKey] ?? [])
+      const locks = this.input.lockedCells[c.classKey] ?? {}
+      const mustLeave = this.input.classMustLeave?.[c.classKey] ?? []
+      for (const d of SCHEDULE_DAYS) {
+        let start = -1, run = 0
+        for (let q = 1; q <= 8; q++) {
+          const k = `${d}-${q}`
+          const teachable = q <= 7 && (avail.has(k) || k in locks)
+          const blank = teachable && !occ.has(k) && !(k in locks)
+          if (blank) { if (run === 0) start = q; run++; continue }
+          // 切點＝段內第 n+1 格起、每隔 n+1 格一個（切完每截都 ≤ n）
+          if (run > n) for (let q2 = start + n; q2 < start + run; q2 += n + 1) {
+            const kk = `${d}-${q2}`
+            if (avail.has(kk) && !mustLeave.includes(kk)) targets.push({ classKey: c.classKey, day: d, period: q2 })
+          }
+          run = 0
+        }
+      }
+    }
+    if (!targets.length) return
+    const t = targets[Math.floor(this.rnd() * targets.length)]
+    const mustSet = this.mustSetByClass.get(t.classKey) ?? new Set<string>()
+    const lessons = this.lessonsByClass.get(t.classKey) ?? []
+    if (!lessons.length) return
+    const off = Math.floor(this.rnd() * lessons.length)
+    for (let j = 0; j < lessons.length; j++) {
+      const l = lessons[(off + j) % lessons.length]
+      const oldP = this.st.pos.get(l.id) ?? null
+      // 原位置若在覆蓋必排格則不動它（避免拆東牆補西牆）
+      if (oldP && this.st.slotsOf(l, oldP).some(s => mustSet.has(s))) continue
+      if (oldP) this.st.remove(l)
+      const tries: Placement[] = l.size === 2
+        ? [{ day: t.day, period: t.period }, { day: t.day, period: t.period - 1 }]
+        : [{ day: t.day, period: t.period }]
+      let ok = false
+      for (const p of tries) {
+        if (p.period >= 1 && this.st.canPlace(l, p)) { this.st.place(l, p); ok = true; break }
+      }
+      if (ok) {
+        const sc = scoreState(this.st)
+        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        this.st.remove(l)
+      }
+      if (oldP) this.st.place(l, oldP)
+    }
+    // 直接搬都失敗 → 逐出式：把擋住老師的課先搬走，再把本班課放進切點。
+    // 這裡固定用較深的逐出鏈（4）：切點通常卡在「老師該時段有別班的課」，只搬 2 堂常騰不出位子，
+    // 而剩幾筆連上違反時 cur 還沒低到 ejectDepth() 自動放寬的門檻。
+    this.tryEjectAndCover(t.classKey, t.day, t.period, mustSet, lessons, off, 4)
+  }
+
   private tryCoverMustFill() {
     const n = this.mustTargets.length
     if (n === 0) return
@@ -1374,7 +1473,7 @@ export class EngineRun {
   }
 
   /** 逐出式補洞：本班課 l 想進必排格但老師在該時段有別班的課 → 先把那堂課搬到別處。 */
-  private tryEjectAndCover(classKey2: string, day: number, period: number, mustSet: Set<string>, lessons: EngineLesson[], off: number): boolean {
+  private tryEjectAndCover(classKey2: string, day: number, period: number, mustSet: Set<string>, lessons: EngineLesson[], off: number, depth = this.ejectDepth()): boolean {
     const avail = this.input.classSlots[classKey2] ?? []
     for (let j = 0; j < lessons.length; j++) {
       const l = lessons[(off + j) % lessons.length]
@@ -1401,7 +1500,7 @@ export class EngineRun {
           const ids = [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]
           for (const id of ids) if (id && id !== l.id) blockers.add(id)
         }
-        if (blockers.size === 0 || blockers.size > this.ejectDepth()) {
+        if (blockers.size === 0 || blockers.size > depth) {
           if (oldP) this.st.place(l, oldP)
           continue
         }
@@ -1452,6 +1551,7 @@ export class EngineRun {
       this.iterations++
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
+      if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
       if (this.iterations % 8 === 4) { this.tryPlaceUnplacedWithEject(); continue }
       if (this.rnd() < 0.3) { this.trySwap(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
