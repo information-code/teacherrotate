@@ -87,6 +87,7 @@ export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸
 export interface NativeLangConfig {
   states: Record<string, 'stream' | 'cancelled'>   // 場次狀態（key＝`${slot}|${lang}|${grade}`；未存＝實體）
   teachers: Record<string, string>                 // 場次授課老師（同 key → teacherId）；未存＝依配課節數自動配（順序不保證）
+  rooms: Record<string, string>                    // 場次教室（同 key → roomId）；未存＝自動分配（可排該語別、該時段未被占用的第一間）
 }
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
@@ -366,7 +367,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     personalOff: [],
     roomZones: [],
     weights: defaultScheduleWeights(),
-    nativeLang: { states: {}, teachers: {} },
+    nativeLang: { states: {}, teachers: {}, rooms: {} },
     foreignTeachers: [],
   }
 }
@@ -446,7 +447,9 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       }
       const teachers: Record<string, string> = {}
       for (const [k, v] of Object.entries(n?.teachers ?? {})) if (typeof v === 'string' && v) teachers[k] = v
-      return { states, teachers }
+      const rooms: Record<string, string> = {}
+      for (const [k, v] of Object.entries(n?.rooms ?? {})) if (typeof v === 'string' && v) rooms[k] = v
+      return { states, teachers, rooms }
     })(),
     foreignTeachers: Array.isArray((raw as { foreignTeachers?: unknown }).foreignTeachers)
       ? ((raw as { foreignTeachers: Partial<ForeignTeacherConfig>[] }).foreignTeachers)
@@ -561,18 +564,22 @@ export function deriveNativeSessions(opts: {
     }
   }
 
-  // 教室自動分配（取消的場次不占教室）
+  // 教室分配（不開的場次不占教室）：課務組指定者優先（該教室可排此語別、該時段未被占才生效），其餘自動配
   const taken = new Map<string, Set<string>>()
-  for (const s of sessions) {
-    if (s.state === 'cancelled') continue
-    const room = nativeRooms.find(r =>
-      (r.langs.length === 0 || r.langs.includes(s.lang)) && !(taken.get(s.slot)?.has(r.id)))
-    if (room) {
-      s.roomId = room.id
-      ;(taken.get(s.slot) ?? taken.set(s.slot, new Set()).get(s.slot)!).add(room.id)
-    } else {
-      issues.push({ level: 'warn', text: `本土語言教室不足：${s.slot} 的「${s.course}」分不到教室（檢查教室數與可排語別）。`, tab: 'room' })
-    }
+  const canUse = (r: { id: string; langs: string[] }, s: DerivedNativeSession) =>
+    (r.langs.length === 0 || r.langs.includes(s.lang)) && !(taken.get(s.slot)?.has(r.id))
+  const occupy = (s: DerivedNativeSession, id: string) => { s.roomId = id; (taken.get(s.slot) ?? taken.set(s.slot, new Set()).get(s.slot)!).add(id) }
+  const active = sessions.filter(s => s.state !== 'cancelled')
+  for (const s of active) {
+    const want = config.nativeLang.rooms[`${s.slot}|${s.lang}|${s.grade}`]
+    const room = want ? nativeRooms.find(r => r.id === want) : undefined
+    if (room && canUse(room, s)) occupy(s, room.id)
+  }
+  for (const s of active) {
+    if (s.roomId) continue
+    const room = nativeRooms.find(r => canUse(r, s))
+    if (room) occupy(s, room.id)
+    else issues.push({ level: 'warn', text: `本土語言教室不足：${s.slot} 的「${s.course}」分不到教室（檢查教室數與可排語別）。`, tab: 'room' })
   }
 
   return { sessions, issues }

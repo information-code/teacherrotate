@@ -25,6 +25,7 @@ export default function NativeTab({ config, setConfig, extraCourses, hoursByTeac
         每個時段點狀態：<b>實體</b>＝老師到校、<b>線上</b>＝老師線上授課（兩者都耗 1 節配課）、<b>不開</b>＝該時段沒有這個語別的學生（不耗）。
         檢核＝開課（實體＋線上）場次數要等於該語別老師的配課節數。
         <b>老師欄</b>：來源是配課統計（誰配了這語別這年級幾節）；同一語別有兩位以上老師時，哪位上哪個時段系統不知道、只是照節數自動配——請在下拉指定正確的老師。
+        <b>教室欄</b>：來源是「4 教室設定」的本土語言教室（可排語別）；多間教室都能排同一語別時系統只是自動挑第一間，可在下拉指定。
       </p>
       {grades.length === 0 && (
         <div className="card text-sm text-zinc-400 text-center py-6">尚無場次——請先於「5 鎖課設定」鎖本土語時段，並於配課設定「設定二」建立語別課。</div>
@@ -71,6 +72,19 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
       if (st === 'physical') delete states[key]; else states[key] = st
       return { ...c, nativeLang: { ...c.nativeLang, states } }
     })
+  }
+  function setRoom(key: string, rid: string) {
+    setConfig(c => {
+      const rooms = { ...c.nativeLang.rooms }
+      if (!rid) delete rooms[key]; else rooms[key] = rid
+      return { ...c, nativeLang: { ...c.nativeLang, rooms } }
+    })
+  }
+  /** 可排該語別的本土語言教室（供場次下拉）。 */
+  const roomsOf = (lang: string) => {
+    const out: { id: string; label: string }[] = []
+    for (const z of config.roomZones) for (const r of z.rooms) if (r.kind === 'native' && (r.langs.length === 0 || r.langs.includes(lang))) out.push({ id: r.id, label: (r.name || '本土語言教室') + r.no })
+    return out
   }
   function setTeacher(key: string, tid: string) {
     setConfig(c => {
@@ -119,6 +133,8 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                           const open = s.state !== 'cancelled'
                           const cands = teachersOf(lang, g)
                           const pinned = config.nativeLang.teachers[key]
+                          const roomCands = roomsOf(lang)
+                          const pinnedRoom = config.nativeLang.rooms[key]
                           return (
                             <td key={sl} className="text-center">
                               <button onClick={() => setState(key, next)} title="點擊切換：實體 → 線上 → 不開"
@@ -133,7 +149,14 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                                     {cands.map(c2 => <option key={c2.tid} value={c2.tid}>{teacherNames[c2.tid] ?? '？'}（{c2.hours} 節）</option>)}
                                   </select>
                                   {pinned && s.teacherId !== pinned && <span className="text-[10px] text-red-500">該師節數不足，改自動</span>}
-                                  <span className={`text-[10px] ${s.roomId ? 'text-zinc-400' : 'text-red-500'}`}>{s.roomId ? roomNames[s.roomId] : '教室不足'}</span>
+                                  {/* 教室：預設自動（可排此語別、該時段未占用的第一間），多間教室可排同語別時課務組可指定 */}
+                                  <select value={pinnedRoom ?? ''} onChange={e => setRoom(key, e.target.value)}
+                                    className={`input py-0 text-[10px] w-24 ${!s.roomId ? 'border-red-300 text-red-600' : ''}`}
+                                    title={pinnedRoom ? '已指定教室' : '自動分配（點選可指定）'}>
+                                    <option value="">{s.roomId ? `自動：${roomNames[s.roomId]}` : '教室不足'}</option>
+                                    {roomCands.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                                  </select>
+                                  {pinnedRoom && s.roomId !== pinnedRoom && <span className="text-[10px] text-red-500">該教室此時段已被占用，改自動</span>}
                                 </div>
                               )}
                             </td>
