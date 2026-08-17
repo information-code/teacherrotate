@@ -117,10 +117,10 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   const w = config.weights
   const [hardOpen, setHardOpen] = useState(false)
   const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
-  // 連堂矩陣列：各年級科任可排科目（perClass>0 且非純導師科目）；灰格＝該年級沒開或導師科目
+  // 連堂矩陣列：各年級有開的科目（perClass>0）；灰格＝該年級沒開這科。
+  // 註：配課設定的 homeroom 旗標只表示「導師可配」，不代表科任不會教（本校全部科目皆勾），故不以此灰掉
   const matrixSubjects = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).filter(s => s.perClass > 0).map(s => s.name)))))
   const offered = (subj: string, g: number) => (gradeSubjects[g] ?? []).some(s => s.name === subj && s.perClass > 0)
-  const homeroomOnly = (subj: string) => GRADES.every(g => { const s = (gradeSubjects[g] ?? []).find(x => x.name === subj); return !s || s.perClass <= 0 || s.homeroom })
   const perClassOf = (subj: string, g: number) => (gradeSubjects[g] ?? []).find(s => s.name === subj)?.perClass ?? 0
 
   function setWeights(fn: (w: ScheduleWeights) => ScheduleWeights) { setConfig(c => ({ ...c, weights: fn(c.weights) })) }
@@ -271,12 +271,11 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
             </thead>
             <tbody>
               {matrixSubjects.map(subj => {
-                const hrOnly = homeroomOnly(subj)
                 return (
-                  <tr key={subj} className={hrOnly ? 'opacity-50' : ''}>
-                    <td className="font-medium text-zinc-800">{shortName(subj)}{hrOnly && <span className="ml-1 text-[10px] text-zinc-400">導師科目</span>}</td>
+                  <tr key={subj}>
+                    <td className="font-medium text-zinc-800">{shortName(subj)}</td>
                     {GRADES.map(g => {
-                      const ok = offered(subj, g) && !hrOnly
+                      const ok = offered(subj, g)
                       const mode = doubleModeOf(w, subj, g)
                       const pc = perClassOf(subj, g)
                       return (
@@ -289,13 +288,11 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                       )
                     })}
                     <td className="text-center">
-                      {!hrOnly && (
-                        <select value="" onChange={e => { if (e.target.value) setRow(subj, e.target.value as DoubleMode) }} className="input py-0.5 text-[11px] w-20">
-                          <option value="">設整列…</option>
-                          <option value="auto">都可以</option><option value="double">連堂</option><option value="single">不連堂</option>
-                          {subj === '視覺藝術' && <option value="biweekly">單雙週</option>}
-                        </select>
-                      )}
+                      <select value="" onChange={e => { if (e.target.value) setRow(subj, e.target.value as DoubleMode) }} className="input py-0.5 text-[11px] w-20">
+                        <option value="">設整列…</option>
+                        <option value="auto">都可以</option><option value="double">連堂</option><option value="single">不連堂</option>
+                        {subj === '視覺藝術' && <option value="biweekly">單雙週</option>}
+                      </select>
                     </td>
                   </tr>
                 )
