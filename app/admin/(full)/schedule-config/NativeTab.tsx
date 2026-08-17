@@ -24,6 +24,7 @@ export default function NativeTab({ config, setConfig, extraCourses, hoursByTeac
         其他語別的學生在那一節出來、集合到本土語言教室上課——場次由「該年級本土語鎖課時段 × 語別課（配課設定「設定二」）」自動推導。
         每個時段點狀態：<b>實體</b>＝老師到校（耗 1 節配課）、<b>直播</b>＝共學不具名（不耗）、<b>不開</b>＝該時段沒有這個語別的學生（不耗）。
         檢核＝實體場次數要等於該語別老師的配課節數。
+        <b>老師欄</b>：來源是配課統計（誰配了這語別這年級幾節）；同一語別有兩位以上老師時，哪位上哪個時段系統不知道、只是照節數自動配——請在下拉指定正確的老師。
       </p>
       {grades.length === 0 && (
         <div className="card text-sm text-zinc-400 text-center py-6">尚無場次——請先於「5 鎖課設定」鎖本土語時段，並於配課設定「設定二」建立語別課。</div>
@@ -68,9 +69,21 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
     setConfig(c => {
       const states = { ...c.nativeLang.states }
       if (st === 'physical') delete states[key]; else states[key] = st
-      return { ...c, nativeLang: { states } }
+      return { ...c, nativeLang: { ...c.nativeLang, states } }
     })
   }
+  function setTeacher(key: string, tid: string) {
+    setConfig(c => {
+      const teachers = { ...c.nativeLang.teachers }
+      if (!tid) delete teachers[key]; else teachers[key] = tid
+      return { ...c, nativeLang: { ...c.nativeLang, teachers } }
+    })
+  }
+  /** 該語別該年級有配課的老師（供場次下拉）。 */
+  const teachersOf = (lang: string, g: number) => Object.entries(hoursByTeacher)
+    .map(([tid, m]) => ({ tid, hours: Number(m[lang]?.[String(g)]) || 0 }))
+    .filter(x => x.hours > 0)
+    .sort((a, b) => (teacherNames[a.tid] ?? '').localeCompare(teacherNames[b.tid] ?? '', 'zh-Hant'))
   const grades = Array.from(byGrade.keys()).sort()
   if (grades.length === 0) return null
   return (
@@ -103,15 +116,26 @@ function NativeSessionsPanel({ config, setConfig, extraCourses, hoursByTeacher, 
                           const key = `${sl}|${lang}|${g}`
                           const cls = s.state === 'physical' ? 'bg-emerald-600 text-white border-emerald-600' : s.state === 'stream' ? 'bg-sky-600 text-white border-sky-600' : 'bg-zinc-100 text-zinc-500 border-zinc-300'
                           const next = s.state === 'physical' ? 'stream' : s.state === 'stream' ? 'cancelled' : 'physical'
-                          const sub = s.state === 'physical'
-                            ? (s.teacherId ? (teacherNames[s.teacherId] ?? '？') : '未配課') + (s.roomId ? `・${roomNames[s.roomId]}` : '・教室不足')
-                            : s.state === 'stream' ? '共學' : ''
-                          const bad = s.state === 'physical' && (!s.teacherId || !s.roomId)
+                          const cands = teachersOf(lang, g)
+                          const pinned = config.nativeLang.teachers[key]
                           return (
                             <td key={sl} className="text-center">
                               <button onClick={() => setState(key, next)} title="點擊切換：實體 → 直播 → 不開"
                                 className={`text-xs px-2 py-0.5 rounded-sm border ${cls}`}>{s.state === 'physical' ? '實體' : s.state === 'stream' ? '直播' : '不開'}</button>
-                              {sub && <div className={`text-[10px] mt-0.5 ${bad ? 'text-red-500' : 'text-zinc-400'}`}>{sub}</div>}
+                              {s.state === 'physical' && (
+                                <div className="mt-0.5 flex flex-col items-center gap-0.5">
+                                  {/* 老師：預設依配課節數自動配（多位老師時順序不保證），課務組可在此指定 */}
+                                  <select value={pinned ?? ''} onChange={e => setTeacher(key, e.target.value)}
+                                    className={`input py-0 text-[10px] w-24 ${!s.teacherId ? 'border-red-300 text-red-600' : ''}`}
+                                    title={pinned ? '已指定' : '自動配（點選可指定）'}>
+                                    <option value="">{s.teacherId ? `自動：${teacherNames[s.teacherId] ?? '？'}` : '未配課'}</option>
+                                    {cands.map(c2 => <option key={c2.tid} value={c2.tid}>{teacherNames[c2.tid] ?? '？'}（{c2.hours} 節）</option>)}
+                                  </select>
+                                  {pinned && s.teacherId !== pinned && <span className="text-[10px] text-red-500">該師節數不足，改自動</span>}
+                                  <span className={`text-[10px] ${s.roomId ? 'text-zinc-400' : 'text-red-500'}`}>{s.roomId ? roomNames[s.roomId] : '教室不足'}</span>
+                                </div>
+                              )}
+                              {s.state === 'stream' && <div className="text-[10px] mt-0.5 text-zinc-400">共學</div>}
                             </td>
                           )
                         })}

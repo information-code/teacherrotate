@@ -65,7 +65,7 @@ export default function ScheduleWizardClient(props: Props) {
   const [nativeStates, setNativeStates] = useState<Record<string, 'stream' | 'cancelled'>>(scheduleConfig.nativeLang.states)
   const [nativeSaving, setNativeSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const nativeDerived = useMemo(
-    () => deriveNativeSessions({ config: { ...scheduleConfig, nativeLang: { states: nativeStates } }, extraCourses, hoursByTeacher }),
+    () => deriveNativeSessions({ config: { ...scheduleConfig, nativeLang: { ...scheduleConfig.nativeLang, states: nativeStates } }, extraCourses, hoursByTeacher }),
     [scheduleConfig, nativeStates, extraCourses, hoursByTeacher],
   )
   const nativeRoomNames = useMemo(() => {
@@ -82,7 +82,7 @@ export default function ScheduleWizardClient(props: Props) {
     try {
       const res = await fetch('/api/admin/schedule-config', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, config: { ...scheduleConfig, nativeLang: { states } } }),
+        body: JSON.stringify({ year, config: { ...scheduleConfig, nativeLang: { ...scheduleConfig.nativeLang, states } } }),
       })
       setNativeSaving(res.ok ? 'saved' : 'error')
     } catch { setNativeSaving('error') }

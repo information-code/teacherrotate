@@ -85,7 +85,8 @@ export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸
  *  課表生成後管理者依實際情況覆寫：stream＝直播共學（不具名）、cancelled＝取消（學生回原班上閩南語）。
  *  key = `${slotKey}|${課程名}|${grade}` */
 export interface NativeLangConfig {
-  states: Record<string, 'stream' | 'cancelled'>
+  states: Record<string, 'stream' | 'cancelled'>   // 場次狀態（key＝`${slot}|${lang}|${grade}`；未存＝實體）
+  teachers: Record<string, string>                 // 場次授課老師（同 key → teacherId）；未存＝依配課節數自動配（順序不保證）
 }
 
 /** 科任教室顯示名稱＝名稱＋編號。 */
@@ -365,7 +366,7 @@ export function defaultScheduleConfig(): ScheduleConfig {
     personalOff: [],
     roomZones: [],
     weights: defaultScheduleWeights(),
-    nativeLang: { states: {} },
+    nativeLang: { states: {}, teachers: {} },
     foreignTeachers: [],
   }
 }
@@ -443,7 +444,9 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
       for (const [k, v] of Object.entries(n?.states ?? {})) {
         if (v === 'stream' || v === 'cancelled') states[k] = v
       }
-      return { states }
+      const teachers: Record<string, string> = {}
+      for (const [k, v] of Object.entries(n?.teachers ?? {})) if (typeof v === 'string' && v) teachers[k] = v
+      return { states, teachers }
     })(),
     foreignTeachers: Array.isArray((raw as { foreignTeachers?: unknown }).foreignTeachers)
       ? ((raw as { foreignTeachers: Partial<ForeignTeacherConfig>[] }).foreignTeachers)
@@ -531,8 +534,19 @@ export function deriveNativeSessions(opts: {
       slot: sl, course: c.lang, lang: c.lang, grade: g, teacherId: '', roomId: null,
       state: config.nativeLang.states[`${sl}|${c.lang}|${g}`] ?? 'physical',
     }))
-    let k = 0
-    for (const s of list) if (s.state === 'physical') s.teacherId = exp[k++] ?? ''
+    // 老師配給實體場次：課務組指定者優先（該師該語別該年級尚有節數才生效），其餘依剩餘節數自動配
+    const remain: Record<string, number> = {}
+    for (const tid of exp) remain[tid] = (remain[tid] ?? 0) + 1
+    const physicalList = list.filter(s => s.state === 'physical')
+    for (const s of physicalList) {
+      const want = config.nativeLang.teachers[`${s.slot}|${c.lang}|${g}`]
+      if (want && (remain[want] ?? 0) > 0) { s.teacherId = want; remain[want]-- }
+    }
+    for (const s of physicalList) {
+      if (s.teacherId) continue
+      const tid = Object.keys(remain).find(t => remain[t] > 0)
+      if (tid) { s.teacherId = tid; remain[tid]-- }
+    }
     sessions.push(...list)
     const physical = list.filter(s => s.state === 'physical').length
     if (slots.length > 0 && physical !== exp.length) {
