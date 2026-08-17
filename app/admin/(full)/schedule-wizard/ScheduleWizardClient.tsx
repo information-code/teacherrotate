@@ -99,7 +99,8 @@ export default function ScheduleWizardClient(props: Props) {
   const [probePerfect, setProbePerfect] = useState<boolean | null>(null)   // 純硬探測是否排得完（null＝未診斷）
   const [versions, setVersions] = useState<VersionRow[]>([])
   const [versionNames, setVersionNames] = useState<Record<string, string>>({})
-  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
+  const [penaltyOpen, setPenaltyOpen] = useState(false)     // 罰分明細 modal
   const lastVerSig = useRef<string | null>(null)   // 已存成版本的落點指紋，避免同一份重複存
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
@@ -446,6 +447,13 @@ export default function ScheduleWizardClient(props: Props) {
 
       {/* 執行 */}
       <div className="card p-3 flex items-center gap-3 flex-wrap">
+        {/* 版本紀錄的入口平常在「儲存課表」旁邊，但課表已發布／尚未排課時沒有結果區，
+            這裡補一個入口，免得版本紀錄變成進不去的頁面 */}
+        {!result && (
+          <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1 order-last ml-auto">
+            🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}
+          </button>
+        )}
         {planStatus === 'published' || planStatus === 'final' ? (
           <span className="text-xs text-amber-600">
             初版課表已發布（全校可見），科任課已凍結——導師正在教師端填報。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
@@ -588,6 +596,8 @@ export default function ScheduleWizardClient(props: Props) {
               {saveStatus === 'saved' && <span className="text-green-600">✓ 已儲存</span>}
               {saveStatus === 'error' && <span className="text-red-600">儲存失敗</span>}
               <button onClick={save} disabled={saveStatus === 'saving'} className="btn btn-primary text-xs py-1">💾 儲存課表</button>
+              <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分">📊 罰分明細</button>
+              <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}</button>
             </span>
           </div>
 
@@ -670,10 +680,19 @@ export default function ScheduleWizardClient(props: Props) {
               : <p className="text-sm text-zinc-400 text-center py-4">{roomList.length ? '請選擇教室。' : '教室設定中沒有綁定科目的科任教室。'}</p>)}
           </div>
 
-          {/* 罰分明細 */}
-          <div className="card p-3 space-y-2">
-            <div className="text-sm font-semibold text-zinc-700">罰分明細
-              <span className="text-xs font-normal text-zinc-400 ml-1">每條規則違反的次數與扣分；不滿意可 <Link href="/admin/schedule-config?tab=weight" className="text-sky-600 underline">調整權重</Link> 後重排</span>
+        </>
+      )}
+
+      {/* ── 罰分明細 modal ── */}
+      {penaltyOpen && result && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setPenaltyOpen(false)}>
+          <div className="bg-white rounded-md shadow-xl w-full max-w-2xl p-5 space-y-2 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-zinc-900">罰分明細</h3>
+                <p className="text-xs text-zinc-500">每條規則違反的次數與扣分；不滿意可 <Link href="/admin/schedule-config?tab=weight" className="text-sky-600 underline">調整權重</Link> 後重排</p>
+              </div>
+              <button onClick={() => setPenaltyOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
             </div>
             {result.penalties.length === 0 && <p className="text-sm text-green-600">✓ 沒有任何軟規則違反，完美！</p>}
             {result.penalties.map(p => (
@@ -689,21 +708,23 @@ export default function ScheduleWizardClient(props: Props) {
               </details>
             ))}
           </div>
-        </>
+        </div>
       )}
 
       {/* ── 排課版本紀錄 ──
           每次排課完自動留一份快照（手動微調後儲存、落點真的變過時再留一份）。
           這裡只做保存與檢視，不提供「還原成舊版本」——舊版本的留白位置與導師已填的排課對不上，
           還原會讓導師填的內容失效，風險高於效益。 */}
-      <div className="card p-0 overflow-hidden">
-        <button onClick={() => setVersionsOpen(o => !o)} className="w-full px-4 py-2 flex items-center gap-2 text-left hover:bg-zinc-50">
-          <span className="text-zinc-400">{versionsOpen ? '▾' : '▸'}</span>
-          <span className="text-sm font-semibold text-zinc-700">排課版本紀錄</span>
-          <span className="text-xs text-zinc-400">{versions.length} 份　每次排課自動保存，最多留 20 份（加 ★ 者不會被自動刪除）</span>
-        </button>
-        {versionsOpen && (
-          <div className="px-4 pb-3">
+      {versionsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setVersionsOpen(false)}>
+          <div className="bg-white rounded-md shadow-xl w-full max-w-3xl p-5 space-y-2 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-zinc-900">排課版本紀錄<span className="text-xs font-normal text-zinc-500 ml-2">{versions.length} 份</span></h3>
+                <p className="text-xs text-zinc-500">每次排課自動保存，最多留 20 份（加 ★ 者不會被自動刪除）</p>
+              </div>
+              <button onClick={() => setVersionsOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+            </div>
             {versions.length === 0
               ? <p className="text-sm text-zinc-400 py-3">還沒有版本紀錄。按「開始排課」跑完一次就會自動保存一份。</p>
               : (() => {
@@ -764,8 +785,8 @@ export default function ScheduleWizardClient(props: Props) {
               分數接近時屬於雜訊、不代表誰比較好。逐版逐格比對之後再做。
             </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
