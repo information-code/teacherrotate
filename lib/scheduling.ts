@@ -524,28 +524,25 @@ export function deriveNativeSessions(opts: {
       })
     }
     if (exp.length === 0 && c.hours === 0) continue
+    // 每個本土語時段都是一個候選場次（該時段各班選此語別的學生集合上課）；狀態由課務組定：
+    //   實體＝老師到校開課（耗 1 節配課）／直播＝共學不具名（不耗）／不開＝此時段沒有該語別學生（不耗）
     const slots = gradeSlots[g] ?? []
-    if (exp.length !== slots.length) {
-      // 各時段幾個班鎖在那裡（讓課務組看得出「兩個時段」是誰跟誰）
-      const cnt: Record<string, number> = {}
-      for (const [ck2, cells] of Object.entries(config.lockCells)) {
-        if (Number(ck2.split('-')[0]) !== g) continue
-        for (const [slot, tid] of Object.entries(cells)) if (nativeTypeIds.has(tid)) cnt[slot] = (cnt[slot] ?? 0) + 1
-      }
-      const where = slots.map(sl => { const { day, period } = parseSlotKey(sl); return `${DAY_LABEL[day]}第${period}節×${cnt[sl] ?? 0}班` }).join('、')
+    const list: DerivedNativeSession[] = slots.map(sl => ({
+      slot: sl, course: c.lang, lang: c.lang, grade: g, teacherId: '', roomId: null,
+      state: config.nativeLang.states[`${sl}|${c.lang}|${g}`] ?? 'physical',
+    }))
+    let k = 0
+    for (const s of list) if (s.state === 'physical') s.teacherId = exp[k++] ?? ''
+    sessions.push(...list)
+    const physical = list.filter(s => s.state === 'physical').length
+    if (slots.length > 0 && physical !== exp.length) {
+      const where = (st: 'physical' | 'stream' | 'cancelled') => list.filter(s => s.state === st).map(s => { const { day, period } = parseSlotKey(s.slot); return `${DAY_LABEL[day]}第${period}節` }).join('、')
       issues.push({
         level: 'warn',
-        text: `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但該年級本土語鎖在 ${slots.length} 個不同時段（${where}）——語別課場次跟著鎖課時段走，每個時段都要有 1 節才能推導；請把該語別改配 ${slots.length} 節，或把該年級本土語鎖到同一時段。`,
+        text: physical > exp.length
+          ? `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次有 ${physical} 場（${where('physical')}）——請到「5 鎖課設定 → 本土語場次」把沒有該語別學生的時段設為「不開」（或改「直播」），或補配課節數。`
+          : `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次只有 ${physical} 場——多配的節數沒有場次可上，請把某個時段改回「實體」或減少配課。`,
         tab: 'lock',
-      })
-    }
-    for (let i = 0; i < slots.length; i++) {
-      const key = `${slots[i]}|${c.lang}|${g}`
-      sessions.push({
-        slot: slots[i], course: c.lang, lang: c.lang, grade: g,
-        teacherId: exp[i] ?? '',
-        roomId: null,
-        state: config.nativeLang.states[key] ?? 'physical',
       })
     }
   }

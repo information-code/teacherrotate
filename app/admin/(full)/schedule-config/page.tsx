@@ -155,6 +155,18 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
     }
   }
 
+  // 本土語場次推導用：語別課（配課設定「設定二」）與各師語別配課節數（tid → 語別 → 年級 → 節數）
+  const extraCourses = config.extraCourses
+  const extraNames = new Set(extraCourses.map(c => c.lang).filter(Boolean))
+  const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
+  for (const a of allocs ?? []) {
+    const sgh = (a.data as TeacherAllocation | null)?.subjectGradeHours ?? {}
+    for (const [subj, byGrade] of Object.entries(sgh)) {
+      if (!extraNames.has(subj)) continue
+      ;(hoursByTeacher[a.teacher_id] ??= {})[subj] = byGrade as Record<string, number>
+    }
+  }
+
   const classCounts: Record<number, number> = {}
   const gradeSubjects: Record<number, GradeSubject[]> = {}
   for (const g of GRADES) {
@@ -177,6 +189,8 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
       needsRefs={needsRefs}
       allNames={nameMap}
       foreignProfiles={foreignProfiles}
+      extraCourses={extraCourses}
+      hoursByTeacher={hoursByTeacher}
     />
   )
 }

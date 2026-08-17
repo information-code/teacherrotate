@@ -29,6 +29,8 @@ interface Props {
   needsRefs: NeedsRef[]
   allNames: Record<string, string>   // 全教師名單（含已不具身分者）：顯示殘留指派用
   foreignProfiles: { id: string; name: string }[]   // 聘任別＝外師的帳號
+  extraCourses: { lang: string; grade: number; hours: number }[]                     // 語別課（本土語場次推導）
+  hoursByTeacher: Record<string, Record<string, Record<string, number>>>            // 各師語別配課節數
 }
 
 type TabKey = 'time' | 'homeroom' | 'subject' | 'room' | 'lock' | 'off' | 'weight' | 'foreign'
@@ -43,7 +45,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'weight', label: '8 權重設定' },
 ]
 
-export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, homeroomBreakdown, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles }: Props) {
+export default function ScheduleConfigClient({ year, initialTab, initialConfig, classCounts, gradeSubjects, homerooms, homeroomSupply, homeroomBreakdown, subjectTeachers, offTeachers, needsRefs, allNames, foreignProfiles, extraCourses, hoursByTeacher }: Props) {
   const [config, setConfig] = useState<ScheduleConfig>(initialConfig)
   const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab as TabKey : 'time')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -240,7 +242,8 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
 
       {/* ── 五、鎖課設定 ── */}
       {tab === 'lock' && (
-        <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
+        <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects}
+          extraCourses={extraCourses} hoursByTeacher={hoursByTeacher} teacherNames={allNames} />
       )}
 
       {/* ── 六、排課/不排課標記 ── */}

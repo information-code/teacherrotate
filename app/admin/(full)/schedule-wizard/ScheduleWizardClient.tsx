@@ -352,7 +352,7 @@ export default function ScheduleWizardClient(props: Props) {
         <div className="card p-3 space-y-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-semibold text-zinc-700">本土語場次
-              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×配課自動推導，全部預設實體。老師無法到校→改「直播」（共學、不具名）；該時段不開課→「取消」（學生回原班上閩南語）。</span>
+              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×語別課自動推導（設定在「排課設定 → 5 鎖課設定 → 本土語場次」）。實體＝老師到校；直播＝共學不具名；不開＝該時段沒有這個語別的學生（回原班上閩南語）。發布後臨時異動可在此改。</span>
             </div>
             <span className="text-xs">
               {nativeSaving === 'saving' && <span className="text-zinc-500">儲存中…</span>}
@@ -385,14 +385,14 @@ export default function ScheduleWizardClient(props: Props) {
                           : s.teacherId ? (teacherNames[s.teacherId] ?? '？') : <span className="text-red-500 text-xs">未配課</span>}
                       </td>
                       <td className="whitespace-nowrap text-xs">
-                        {s.state === 'cancelled' ? <span className="text-zinc-400">—（回原班上閩南語）</span>
+                        {s.state === 'cancelled' ? <span className="text-zinc-400">—（不開，回原班上閩南語）</span>
                           : s.roomId ? (nativeRoomNames[s.roomId] ?? s.roomId) : <span className="text-red-500">教室不足</span>}
                       </td>
                       <td className="text-center whitespace-nowrap">
                         <span className="inline-flex gap-1">
-                          {stateBtn('physical', '維持', 'bg-green-600 text-white border-green-600')}
+                          {stateBtn('physical', '實體', 'bg-green-600 text-white border-green-600')}
                           {stateBtn('stream', '直播', 'bg-sky-600 text-white border-sky-600')}
-                          {stateBtn('cancelled', '取消', 'bg-zinc-500 text-white border-zinc-500')}
+                          {stateBtn('cancelled', '不開', 'bg-zinc-500 text-white border-zinc-500')}
                         </span>
                       </td>
                     </tr>
