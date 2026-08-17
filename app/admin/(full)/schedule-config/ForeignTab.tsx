@@ -17,7 +17,7 @@ interface Props {
 
 const PERIODS = [1, 2, 3, 4, 5, 6, 7]
 
-/** 分頁七：外師設定（協同英語）。外師不是配課單位、不算供需——只是掛在該班該科科任課上的額外資源。
+/** 分頁八：外師設定（協同英語）。外師不是配課單位、不算供需——只是掛在該班該科科任課上的額外資源。
  *  年級規則＝主授（每班 N 節、可排除個別班）；不可到校時段＝硬規則。無基本節數、無減課、無申報對照。 */
 export default function ForeignTab({ config, setConfig, classCounts, gradeSubjects, foreignProfiles }: Props) {
   const [addSel, setAddSel] = useState('')

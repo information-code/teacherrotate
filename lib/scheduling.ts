@@ -540,9 +540,9 @@ export function deriveNativeSessions(opts: {
       issues.push({
         level: 'warn',
         text: physical > exp.length
-          ? `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次有 ${physical} 場（${where('physical')}）——請到「5 鎖課設定 → 本土語場次」把沒有該語別學生的時段設為「不開」（或改「直播」），或補配課節數。`
+          ? `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次有 ${physical} 場（${where('physical')}）——請到「6 本土語場次」把沒有該語別學生的時段設為「不開」（或改「直播」），或補配課節數。`
           : `「${c.lang}」${gradeZh[g]}年級配課 ${exp.length} 節，但實體場次只有 ${physical} 場——多配的節數沒有場次可上，請把某個時段改回「實體」或減少配課。`,
-        tab: 'lock',
+        tab: 'native',
       })
     }
   }

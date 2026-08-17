@@ -352,7 +352,7 @@ export default function ScheduleWizardClient(props: Props) {
         <div className="card p-3 space-y-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-semibold text-zinc-700">本土語場次
-              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×語別課自動推導（設定在「排課設定 → 5 鎖課設定 → 本土語場次」）。實體＝老師到校；直播＝共學不具名；不開＝該時段沒有這個語別的學生（回原班上閩南語）。發布後臨時異動可在此改。</span>
+              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×語別課自動推導（設定在「排課設定 → 6 本土語場次」）。實體＝老師到校；直播＝共學不具名；不開＝該時段沒有這個語別的學生（回原班上閩南語）。發布後臨時異動可在此改。</span>
             </div>
             <span className="text-xs">
               {nativeSaving === 'saving' && <span className="text-zinc-500">儲存中…</span>}
@@ -415,7 +415,7 @@ export default function ScheduleWizardClient(props: Props) {
                 <div className="text-xs text-red-700 space-y-1">
                   <p>純硬規則探測可以全部排入 → <b>是權重把搜尋牽住了</b>。建議降低（依影響大小排序）：</p>
                   <ul className="list-disc pl-5">{hints.map(h => <li key={h}>{h}</li>)}</ul>
-                  <p className="text-zinc-500">到「排課設定 → 8 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
+                  <p className="text-zinc-500">到「排課設定 → 9 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
                 </div>
               )}
               {probePerfect === false && (
