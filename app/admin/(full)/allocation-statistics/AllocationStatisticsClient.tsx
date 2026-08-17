@@ -42,6 +42,13 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
   const [hourlySel, setHourlySel] = useState<string | null>(null)    // 鐘點檢視：下拉選定的教師
   const [remindOpen, setRemindOpen] = useState(false)                // 未鎖定提醒訊息 modal
   const [copiedKey, setCopiedKey] = useState<string | null>(null)    // 已複製回饋（'all' | teacherId）
+  const [bookOpen, setBookOpen] = useState(false)                    // 教師用書清單（註冊組發書用）
+
+  // 列印教師用書清單時，把頁面其餘區塊藏起來（規則在 globals.css 的 @media print）
+  useEffect(() => {
+    document.body.classList.toggle('print-book', bookOpen)
+    return () => document.body.classList.remove('print-book')
+  }, [bookOpen])
 
   const teachersRef = useRef(teachers)
   useEffect(() => { teachersRef.current = teachers }, [teachers])
@@ -322,7 +329,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
     `px-3 py-1 text-sm rounded-sm border ${active ? 'bg-zinc-800 text-white border-zinc-800' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" id="alloc-stats-root">
       {/* 標題 + 階段 */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
@@ -335,6 +342,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {savingId && <span className="text-xs text-zinc-500">儲存中…</span>}
+          <button onClick={() => setBookOpen(true)} className="btn-secondary text-sm" title="以老師為單位列出授課年級與科目，供註冊組發教師用書">📄 教師用書清單</button>
           <button onClick={() => router.refresh()} className="btn-secondary text-sm" title="抓取老師最新送出的資料">重新整理</button>
           {phase === 'open'
             ? <button onClick={() => setPhase('closed')} disabled={busy} className="btn-primary text-sm">{busy ? '處理中…' : '截止配課'}</button>
@@ -467,6 +475,160 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
       {view === 'hourly' && gradeSubjectGrid(hourlyTeachers, hourlySel, setHourlySel, '鐘點', true)}
 
       {/* 本土語語別課供需已併入「📊 統計資料」矩陣（青色列），此處不再重複 */}
+
+      {/* ── 教師用書清單 modal（註冊組發書用）：以老師為單位列授課年級×科目，列印／另存 PDF ── */}
+      {bookOpen && (() => {
+        const byName = (a: TeacherStat, b: TeacherStat) => a.name.localeCompare(b.name, 'zh-Hant')
+        const gShort = (g: number) => GRADE_LABEL[g].replace('年級', '')
+        // 領域×年級配課明細（科任／行政／鐘點的來源；導師若另兼跨年級課也走這裡）
+        const detailOf = (t: TeacherStat) => gridSubjects
+          .map(subj => {
+            const gs = GRADES.map(g => ({ g, hours: Number(t.data.subjectGradeHours?.[subj]?.[String(g)]) || 0 })).filter(x => x.hours > 0)
+            return { subj, grades: gs, total: gs.reduce((s, x) => s + x.hours, 0) }
+          })
+          .filter(x => x.total > 0)
+
+        // ① 導師：依年級分節，科目取該年級「採用情境」的配課（節數 > 0）
+        const homeroomSections = GRADES.map(g => {
+          const rk = String(adoptedByGrade[g] ?? 0)
+          return {
+            g,
+            rows: teachers.filter(t => t.role === 'homeroom' && t.grade === g).sort(byName).map(t => {
+              const bd = t.data.scenarios?.[rk]?.breakdown ?? {}
+              return {
+                t,
+                subjects: (gradesMeta[g]?.subjects ?? []).map(s => ({ subj: s, hours: Number(bd[s]) || 0 })).filter(x => x.hours > 0),
+                extra: detailOf(t),   // 導師另兼的跨年級課（如支援他班）
+              }
+            }),
+          }
+        }).filter(s => s.rows.length > 0)
+
+        // ② 科任（含行政、鐘點）：以「配到最多節數的科目」為主授科目分組，同科目的老師排在一起
+        const withDetail = [...subjectTeachers, ...adminTeachers, ...hourlyTeachers].map(t => {
+          const items = detailOf(t)
+          // 平手時取 gridSubjects 較前者（嚴格大於才換），維持全表一致的領域順序
+          const primary = items.reduce<{ subj: string; total: number } | null>((best, x) => (!best || x.total > best.total ? x : best), null)
+          return { t, items, primary: primary?.subj ?? null, primaryHours: primary?.total ?? 0 }
+        })
+        const groupKeys = [
+          ...gridSubjects.filter(s => withDetail.some(x => x.primary === s)),
+          ...(withDetail.some(x => !x.primary) ? ['__none__'] : []),
+        ]
+        const subjectGroups = groupKeys.map(key => ({
+          key,
+          label: key === '__none__' ? '尚未配課' : key,
+          rows: withDetail.filter(x => (x.primary ?? '__none__') === key)
+            .sort((a, b) => b.primaryHours - a.primaryHours || byName(a.t, b.t)),
+        }))
+
+        const hrCount = homeroomSections.reduce((s, x) => s + x.rows.length, 0)
+        const undecided = GRADES.filter(g => !adoptedDecided[g] && homeroomSections.some(s => s.g === g))
+        return (
+          <div id="book-print-overlay" className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setBookOpen(false)}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-4xl p-5 space-y-4 my-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3 print:hidden">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">教師用書清單</h3>
+                  <p className="text-xs text-zinc-500">
+                    以老師為單位列出授課年級與科目，供註冊組發教師用書。導師依年級、科任（含行政、鐘點）依主授科目分組。
+                    按「列印／存成 PDF」後，於印表機選「另存為 PDF」即可。
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => window.print()} className="btn-primary text-sm">🖨 列印／存成 PDF</button>
+                  <button onClick={() => setBookOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+                </div>
+              </div>
+
+              {undecided.length > 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-3 py-1.5 print:hidden">
+                  ⚠ {undecided.map(g => GRADE_LABEL[g]).join('、')}的減課情境尚未定案，導師科目暫以推定情境列出。
+                </p>
+              )}
+
+              <div id="book-print" className="space-y-5 text-zinc-800">
+                <div className="text-center space-y-0.5">
+                  <h1 className="text-base font-bold">{year} 學年度 教師授課科目一覽</h1>
+                  <p className="text-xs text-zinc-500">教師用書配發參考　·　導師 {hrCount} 位、科任／行政／鐘點 {withDetail.length} 位</p>
+                </div>
+
+                {/* 一、導師（依年級） */}
+                <div className="space-y-3">
+                  <h2 className="text-sm font-bold border-b border-zinc-300 pb-1">一、導師</h2>
+                  {homeroomSections.length === 0 && <p className="text-xs text-zinc-400">無導師資料。</p>}
+                  {homeroomSections.map(({ g, rows }) => (
+                    <div key={g} className="book-group space-y-1">
+                      <div className="text-xs font-semibold text-zinc-600">{GRADE_LABEL[g]}（{rows.length} 位）</div>
+                      <table className="table-base no-hover">
+                        <thead><tr><th className="w-28">教師</th><th>授課科目（節數）</th></tr></thead>
+                        <tbody>
+                          {rows.map(({ t, subjects, extra }) => (
+                            <tr key={t.id}>
+                              <td className="font-medium whitespace-nowrap">{t.name}{t.isSubstitute && <span className="ml-1 text-[10px] text-zinc-500">代理</span>}</td>
+                              <td>
+                                {subjects.length === 0 && extra.length === 0
+                                  ? <span className="text-zinc-400 text-xs">尚未配課</span>
+                                  : <>
+                                      {subjects.map(x => `${x.subj}（${x.hours}）`).join('、')}
+                                      {extra.length > 0 && (
+                                        <div className="text-xs text-zinc-600 mt-0.5">
+                                          另授：{extra.map(x => `${x.subj} ${x.grades.map(y => `${gShort(y.g)}（${y.hours}）`).join('')}`).join('　')}
+                                        </div>
+                                      )}
+                                    </>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 二、科任（含行政、鐘點），依主授科目分組 */}
+                <div className="space-y-3">
+                  <h2 className="text-sm font-bold border-b border-zinc-300 pb-1">二、科任（含行政、鐘點）</h2>
+                  {subjectGroups.length === 0 && <p className="text-xs text-zinc-400">無科任資料。</p>}
+                  {subjectGroups.map(({ key, label, rows }) => (
+                    <div key={key} className="book-group space-y-1">
+                      <div className="text-xs font-semibold text-zinc-600">{label}（{rows.length} 位）</div>
+                      <table className="table-base no-hover">
+                        <thead><tr><th className="w-28">教師</th><th className="w-24">身分</th><th>授課科目 × 年級（節數）</th></tr></thead>
+                        <tbody>
+                          {rows.map(({ t, items }) => (
+                            <tr key={t.id}>
+                              <td className="font-medium whitespace-nowrap">{t.name}</td>
+                              <td className="text-xs text-zinc-600 whitespace-nowrap">{t.roleLabel}</td>
+                              <td>
+                                {items.length === 0
+                                  ? <span className="text-zinc-400 text-xs">尚未配課</span>
+                                  : <div className="space-y-0.5">
+                                      {items.map(x => (
+                                        <div key={x.subj}>
+                                          <span className="font-medium">{x.subj}</span>
+                                          <span className="ml-1 text-zinc-600">{x.grades.map(y => `${GRADE_LABEL[y.g]}（${y.hours}）`).join('、')}</span>
+                                        </div>
+                                      ))}
+                                    </div>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1 print:hidden">
+                <button onClick={() => setBookOpen(false)} className="btn-secondary text-sm">關閉</button>
+                <button onClick={() => window.print()} className="btn-primary text-sm">🖨 列印／存成 PDF</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── 統計資料 modal：兩分頁——供需總覽（差異／師資雙模式）＋減課統計 ── */}
       {overviewOpen && (

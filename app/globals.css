@@ -155,4 +155,38 @@
 
   /* 卡片盡量不要被分頁切到中間 */
   .card { break-inside: avoid; page-break-inside: avoid; }
+
+  /* ── 教師用書清單（配課統計）──
+     列印時：頁面其餘區塊隱藏，把 modal overlay 攤平回一般文件流（fixed 只會印第一頁） */
+  body.print-book #alloc-stats-root > *:not(#book-print-overlay) { display: none !important; }
+  body.print-book #book-print-overlay {
+    position: static !important;
+    display: block !important;
+    background: none !important;
+    padding: 0 !important;
+    z-index: auto !important;
+  }
+  body.print-book #book-print-overlay > div {
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+  #book-print table { width: 100%; border-collapse: collapse; }
+  #book-print th, #book-print td {
+    border: 1px solid #9ca3af !important;
+    padding: 3px 6px !important;
+    font-size: 11px !important;
+    vertical-align: top;
+  }
+  #book-print th {
+    background: #f0f0f0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #book-print tr, #book-print .book-group { break-inside: avoid; page-break-inside: avoid; }
+  @page { margin: 12mm; }
 }
