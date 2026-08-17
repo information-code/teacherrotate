@@ -59,6 +59,7 @@ export default function ScheduleWizardClient(props: Props) {
   )
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')
+  const infos = preflight.filter(p => p.level === 'info')
 
   // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
   const [nativeStates, setNativeStates] = useState<Record<string, 'stream' | 'cancelled'>>(scheduleConfig.nativeLang.states)
@@ -280,13 +281,13 @@ export default function ScheduleWizardClient(props: Props) {
       </div>
 
       {/* 前置檢查（附前往設定引導按鈕） */}
-      {(errors.length > 0 || warns.length > 0) && (
+      {(errors.length > 0 || warns.length > 0 || infos.length > 0) && (
         <div className="card p-3 space-y-1.5">
           <div className="text-sm font-semibold text-zinc-700">前置檢查</div>
-          {[...errors, ...warns].map((p, i) => (
+          {[...errors, ...warns, ...infos].map((p, i) => (
             <div key={i} className="flex items-start gap-2">
-              <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
-                {p.level === 'error' ? '✕' : '⚠'} {p.text}
+              <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : p.level === 'warn' ? 'text-amber-600' : 'text-zinc-500'}`}>
+                {p.level === 'error' ? '✕' : p.level === 'warn' ? '⚠' : 'ⓘ'} {p.text}
               </p>
               {(p.href || p.tab) && (
                 <Link href={p.href ?? `/admin/schedule-config?tab=${p.tab}`}

@@ -66,7 +66,7 @@ export interface EngineResult {
   elapsedMs: number
 }
 
-export interface PreflightIssue { level: 'error' | 'warn'; text: string; tab?: string; href?: string }   // tab＝排課設定分頁 key、href＝其他頁面完整路徑（引導按鈕用，href 優先）
+export interface PreflightIssue { level: 'error' | 'warn' | 'info'; text: string; tab?: string; href?: string }   // info＝說明性、不是問題   // tab＝排課設定分頁 key、href＝其他頁面完整路徑（引導按鈕用，href 優先）
 
 // ── 亂數（可重現） ──
 function mulberry32(seed: number) {
@@ -485,7 +485,9 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const [g, subj] = k2.split('|')
       return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
     })
-    preflight.push({ level: 'warn', text: `未手動配班、已依配課節數自動分配：${joinCap(parts)}——如需指定授課教師請至科任配班。`, tab: 'subject' })
+    // 預設就是「隨機（精靈自動分配）」，這不是問題、只是告知；配課統計配完＝供給齊了，配班是可選的固定
+    const totalAuto = Array.from(autoAgg.values()).reduce((s2, n) => s2 + n, 0)
+    preflight.push({ level: 'info', text: `${totalAuto} 個班科由精靈依配課節數自動配班（未手動指定授課老師）——這是預設行為；只有要固定某班由誰上時才需到科任配班指定。`, tab: 'subject' })
   }
   if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `留白少於導師基本授課（留白/基本）：${joinCap(agg.leftoverLow)}`, tab: 'subject' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
