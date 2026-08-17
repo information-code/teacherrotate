@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from 'react'
 import Link from 'next/link'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
@@ -169,11 +169,32 @@ export default function ScheduleWizardClient(props: Props) {
     } finally { setPhaseBusy(false) }
   }
 
+  // ── 本土語（不進引擎、鎖課時段固定）：教師課表要一併顯示 ──
+  //   閩南語原班：科任配班「本土語」指派的老師 × 該班本土語鎖課格；語別場次：實體／線上（有授課老師）
+  const nativeCellsByTeacher = useMemo(() => {
+    const m = new Map<string, { slot: string; main: string; sub: string }[]>()
+    const nativeTypeIds = new Set(scheduleConfig.lockTypes.filter(t => t.isNative).map(t => t.id))
+    for (const [ck, cells] of Object.entries(scheduleConfig.lockCells)) {
+      const [g, i] = ck.split('-').map(Number)
+      const tid = scheduleConfig.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
+      if (!tid || tid === HOMEROOM_SELF) continue
+      for (const [slot, ltid] of Object.entries(cells)) {
+        if (!nativeTypeIds.has(ltid)) continue
+        m.set(tid, [...(m.get(tid) ?? []), { slot, main: `${classLabel(g, i)} 本土語`, sub: '原班（閩南語）' }])
+      }
+    }
+    for (const sn of nativeDerived.sessions) {
+      if (sn.state === 'cancelled' || !sn.teacherId) continue
+      m.set(sn.teacherId, [...(m.get(sn.teacherId) ?? []), { slot: sn.slot, main: `本土語（${sn.lang}）`, sub: `${GRADE_LABEL[sn.grade]}${sn.state === 'stream' ? '・線上' : ''}${sn.roomId ? `・${nativeRoomNames[sn.roomId] ?? ''}` : ''}` }])
+    }
+    return m
+  }, [scheduleConfig, nativeDerived, nativeRoomNames])
+
   // ── 檢視資料索引 ──
   const teachers = useMemo(() => {
-    const ids = Array.from(new Set(input.lessons.map(l => l.teacherId)))
+    const ids = Array.from(new Set([...input.lessons.map(l => l.teacherId), ...Array.from(nativeCellsByTeacher.keys())]))
     return ids.map(id => ({ id, name: teacherNames[id] ?? '？' })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
-  }, [input, teacherNames])
+  }, [input, teacherNames, nativeCellsByTeacher])
   // 外師（協同）：另列一群，課表＝所有掛了她的課
   const foreignList = useMemo(() => {
     const ids = Array.from(new Set(input.lessons.map(l => l.coTeacherId).filter((x): x is string => Boolean(x))))
@@ -214,9 +235,10 @@ export default function ScheduleWizardClient(props: Props) {
     return m
   }
 
-  function Grid({ list, mode, classKey }: { list: PlacedResult[]; mode: ViewKey; classKey?: string }) {
+  function Grid({ list, mode, classKey, extra }: { list: PlacedResult[]; mode: ViewKey; classKey?: string; extra?: { slot: string; main: string; sub: string }[] }) {
     const cells = cellsOf(list)
     const locks = classKey ? (input.lockedCells[classKey] ?? {}) : {}
+    const extraMap = new Map((extra ?? []).map(e => [e.slot, e]))
     const avail = classKey ? new Set(input.classSlots[classKey] ?? []) : null
     const must = classKey ? new Set(input.classMustFill[classKey] ?? []) : new Set<string>()
     return (
@@ -250,6 +272,17 @@ export default function ScheduleWizardClient(props: Props) {
                 }
                 if (classKey && locks[k]) {
                   return <td key={d} className="p-0.5"><div className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 flex items-center justify-center truncate px-0.5">{locks[k]}</div></td>
+                }
+                const ex = extraMap.get(k)
+                if (ex) {
+                  return (
+                    <td key={d} className="p-0.5">
+                      <div className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center text-center">
+                        <span className="truncate w-full">{ex.main}</span>
+                        <span className="truncate w-full text-[9px] opacity-70">{ex.sub}</span>
+                      </div>
+                    </td>
+                  )
                 }
                 if (classKey && avail && !avail.has(k)) {
                   return <td key={d} className="p-0.5"><div className="h-9 rounded-sm bg-zinc-100" /></td>
@@ -536,7 +569,7 @@ export default function ScheduleWizardClient(props: Props) {
               </div>
             )}
             {view === 'teacher' && (teacherSel
-              ? <div className="max-w-md"><Grid list={byTeacher.get(teacherSel) ?? []} mode="teacher" /></div>
+              ? <div className="max-w-md"><Grid list={byTeacher.get(teacherSel) ?? []} mode="teacher" extra={nativeCellsByTeacher.get(teacherSel)} /></div>
               : <p className="text-sm text-zinc-400 text-center py-4">請選擇教師。</p>)}
             {view === 'room' && (roomSel
               ? <div className="max-w-md"><Grid list={byRoom.get(roomSel) ?? []} mode="room" /></div>
