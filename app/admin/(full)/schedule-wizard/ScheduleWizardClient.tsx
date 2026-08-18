@@ -405,7 +405,9 @@ export default function ScheduleWizardClient(props: Props) {
                     <td key={d} className="p-0.5">
                       <div className={`h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center text-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
                         <span className="truncate w-full">{text}</span>
+                        {/* 班級課表：格內已是科目 → 補授課老師；科任教室課表：格內是班級 → 補「老師・科目」 */}
                         {mode === 'class' && <span className="truncate w-full text-[9px] opacity-70">{p.teacherName}</span>}
+                        {mode === 'room' && <span className="truncate w-full text-[9px] opacity-70">{p.teacherName}{p.subject ? `・${p.subject}` : ''}</span>}
                         {p.coTeacherId && <span className="truncate w-full text-[8px] text-rose-700 font-medium">★{p.coTeacherName ?? '外師'}{mode === 'teacher' && teacherSel === p.coTeacherId ? `・${p.teacherName}` : ''}</span>}
                         {bi && <span className="text-[8px] opacity-70">{p.parity === 'odd' ? '單週' : '雙週'}</span>}
                       </div>
