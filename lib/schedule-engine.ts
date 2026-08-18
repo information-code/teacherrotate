@@ -32,7 +32,7 @@ export interface EngineLesson {
   coTeacherName?: string
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; managerId: string; zone: number; index: number; zoneSize: number; ring: boolean }
+export interface RoomInfo { id: string; label: string; subject: string; managerId: string; zone: number; index: number; zoneSize: number; ring: boolean; floor: number }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -46,7 +46,7 @@ export interface EngineInput {
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
-  classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean } | null>
+  classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null>
   weights: ScheduleWeights
   seed: number
 }
@@ -81,13 +81,34 @@ function mulberry32(seed: number) {
 
 // ══════════════════ 組裝 ══════════════════
 
+/** 區域的樓層字串 → 數字（"1"/"2"/"3"）。解析不出來回 NaN，走動成本會退回「不看樓層」的舊算法。 */
+export function floorNum(floor: string): number {
+  const n = Number(String(floor ?? '').trim())
+  return Number.isFinite(n) ? n : NaN
+}
+
+/** 兩個位置之間的走動距離。
+ *  同區＝位置差（環狀區取繞回去的較短邊）；不同區同層＝4；跨樓＝4＋3×樓層差（爬樓梯比同層走過去累得多）。
+ *  樓層解析不出來時退回 4，與未支援樓層前的行為相同。 */
+export function walkDistance(
+  a: { zone: number; index: number; zoneSize: number; ring: boolean; floor: number },
+  b: { zone: number; index: number; zoneSize: number; ring: boolean; floor: number },
+): number {
+  if (a.zone === b.zone) {
+    const raw = Math.abs(a.index - b.index)
+    return a.ring ? Math.min(raw, a.zoneSize - raw) : raw
+  }
+  const df = Math.abs(a.floor - b.floor)
+  return Number.isFinite(df) ? 4 + 3 * df : 4
+}
+
 /** 由排課設定重建科任教室清單（有綁科目者）。 */
 export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
   const rooms: RoomInfo[] = []
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) })
       }
     })
   })
@@ -470,7 +491,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'class' && r.classKey) {
-        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring }
+        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) }
       }
     })
   })
@@ -1087,7 +1108,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
 
   // 走動成本：老師連續兩節在不同位置（用實際分配到的教室）
   if (w.walkCost !== 'off') {
-    const posOf = (l: EngineLesson): RoomInfo | { zone: number; index: number; zoneSize: number; ring: boolean } | null => {
+    const posOf = (l: EngineLesson): { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null => {
       const rid = roomOf.get(l.id)
       if (rid) return roomById.get(rid)!
       return input.classRoom[l.classKey] ?? null
@@ -1101,13 +1122,13 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         const la = st.lessonById.get(idA)!, lb = st.lessonById.get(idB)!
         const pa = posOf(la), pb = posOf(lb)
         if (!pa || !pb) continue
-        let dist: number
-        if (pa.zone !== pb.zone) dist = 4
-        else {
-          const raw = Math.abs(pa.index - pb.index)
-          dist = pa.ring ? Math.min(raw, pa.zoneSize - raw) : raw
+        const dist = walkDistance(pa, pb)
+        // 上限 9（同層跨區＝3、跨一層＝6、跨兩層＝9）：舊上限 3 會讓跨樓與跨區一樣痛，樓層就白算了
+        if (dist >= 2) {
+          const df = Math.abs(pa.floor - pb.floor)
+          const floorNote = Number.isFinite(df) && df > 0 ? `、跨 ${df} 層` : ''
+          acc(map, 'walkCost', '走動成本', pen(w.walkCost) * Math.min(dist - 1, 9), `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}節跨教室（距離 ${dist}${floorNote}）`)
         }
-        if (dist >= 2) acc(map, 'walkCost', '走動成本', pen(w.walkCost) * Math.min(dist - 1, 3), `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}節跨教室（距離 ${dist}）`)
       }
     })
   }
