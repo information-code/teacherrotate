@@ -1114,20 +1114,32 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       return input.classRoom[l.classKey] ?? null
     }
     st.teacherOcc.forEach((occ, tid) => {
-      for (const d of SCHEDULE_DAYS) for (let q = 1; q <= 6; q++) {
-        const a2 = occ.get(`${d}-${q}`), b2 = occ.get(`${d}-${q + 1}`)
-        if (!a2 || !b2) continue
-        const idA = a2.w ?? a2.o ?? a2.e, idB = b2.w ?? b2.o ?? b2.e
-        if (!idA || !idB || idA === idB) continue
-        const la = st.lessonById.get(idA)!, lb = st.lessonById.get(idB)!
-        const pa = posOf(la), pb = posOf(lb)
-        if (!pa || !pb) continue
-        const dist = walkDistance(pa, pb)
-        // 上限 9（同層跨區＝3、跨一層＝6、跨兩層＝9）：舊上限 3 會讓跨樓與跨區一樣痛，樓層就白算了
-        if (dist >= 2) {
-          const df = Math.abs(pa.floor - pb.floor)
-          const floorNote = Number.isFinite(df) && df > 0 ? `、跨 ${df} 層` : ''
-          acc(map, 'walkCost', '走動成本', pen(w.walkCost) * Math.min(dist - 1, 9), `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}節跨教室（距離 ${dist}${floorNote}）`)
+      for (const d of SCHEDULE_DAYS) {
+        // 當天這位老師的課依節次排成序列（連堂只算一堂）。
+        // 比較「相鄰兩堂課」而不是「相鄰兩節」——中間隔空堂照樣要走那一趟，
+        // 舊寫法把隔空堂的移動當作沒發生，等於鼓勵引擎用空堂隔開跨樓的課來規避罰分。
+        const seq: { q: number; id: string; pos: NonNullable<ReturnType<typeof posOf>> }[] = []
+        for (let q = 1; q <= 7; q++) {
+          const cell = occ.get(`${d}-${q}`)
+          if (!cell) continue
+          const id = cell.w ?? cell.o ?? cell.e
+          if (!id || (seq.length && seq[seq.length - 1].id === id)) continue
+          const pos = posOf(st.lessonById.get(id)!)
+          if (!pos) continue
+          seq.push({ q, id, pos })
+        }
+        for (let i = 1; i < seq.length; i++) {
+          const a2 = seq[i - 1], b2 = seq[i]
+          const dist = walkDistance(a2.pos, b2.pos)
+          // 上限 9（同層跨區＝3、跨一層＝6、跨兩層＝9）：舊上限 3 會讓跨樓與跨區一樣痛，樓層就白算了
+          if (dist < 2) continue
+          // 中間有空堂、或跨午休＝有時間慢慢走，不像下課十分鐘那麼痛，罰分減半。
+          // 「趟數」照算，所以一樓→二樓→一樓仍然比一樓→二樓→二樓貴。
+          const relaxed = b2.q - a2.q > 1 || (a2.q <= MORNING_LAST && b2.q > MORNING_LAST)
+          const df = Math.abs(a2.pos.floor - b2.pos.floor)
+          const note = `${Number.isFinite(df) && df > 0 ? `、跨 ${df} 層` : ''}${relaxed ? '、有空檔' : ''}`
+          acc(map, 'walkCost', '走動成本', pen(w.walkCost) * Math.min(dist - 1, 9) * (relaxed ? 0.5 : 1),
+            `${nameOf(tid)} 週${DAY_ZH[d]}第${a2.q}→${b2.q}節跨教室（距離 ${dist}${note}）`)
         }
       }
     })
