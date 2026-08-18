@@ -202,6 +202,7 @@ export interface TemplateRule {
   periods?: number[]              // avoidPeriods：避開的節次
   fullDayOnly?: boolean           // avoidPeriods：僅整天日適用（如避第 7 節，不影響半天日第 4 節）
   pref?: 'morning' | 'afternoon'  // timePrefer：偏好時段
+  hard?: boolean                  // subjectApart：必須不同日（硬限制）。114-2 人工課表 國際教育／英語 同日 0／106，是鐵律不是偏好
 }
 
 export interface ScheduleWeights {
@@ -259,6 +260,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
       { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'high' },   // 人工課表遵守率 92%
+      // 國際教育（外師協同）與英語同班不同日：114-2 人工課表 0／106 零例外＝鐵律 → 硬限制
+      { id: 'tpl-ie-en-apart', template: 'subjectApart', subjects: ['國際教育', '英語'], grades: [3, 4, 5, 6], level: 'high', hard: true },
     ],
   }
 }
@@ -374,6 +377,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
           periods: Array.isArray(t.periods) ? t.periods.map(Number) : undefined,
           fullDayOnly: t.fullDayOnly === true ? true : undefined,
           pref: t.pref === 'morning' || t.pref === 'afternoon' ? t.pref : undefined,
+          hard: (t as { hard?: unknown }).hard === true ? true : undefined,
         }))
       : base.templates,
   }

@@ -769,6 +769,8 @@ class State {
   // 非管理教師不在這裡預約，排完之後才撿剩下的空教室（assignRooms）。
   roomOcc: Map<string, Map<string, TCell>> = new Map()         // roomId → slot → 週型占用（單雙週輪流用同一格＝可共用）
   roomPool: Map<string, RoomInfo[]> = new Map()                // lessonId → 這堂課可用的教室清單（空＝不需要教室）
+  // 科目互斥同日（硬）：subject → 與它互斥的科目集合（依年級）。如 國際教育↔英語 不得同班同日
+  apartHard: Map<string, Map<number, Set<string>>> = new Map()  // subject → grade → Set<other subjects>
   mgrRooms: Map<string, RoomInfo[]> = new Map()                // lessonId → 有管理教室者的自管教室（供排序與計分辨識）
   roomOf: Map<string, string> = new Map()                      // lessonId → 已占用的 roomId
 
@@ -785,6 +787,15 @@ class State {
       this.roomPool.set(l.id, mine.length ? mine : same)
     }
     for (const l of input.lessons) this.lessonById.set(l.id, l)
+    for (const t of input.weights.templates) {
+      if (t.template !== 'subjectApart' || !t.hard || t.subjects.length < 2) continue
+      const grades = t.grades.length ? t.grades : [1, 2, 3, 4, 5, 6]
+      for (const a of t.subjects) for (const b of t.subjects) {
+        if (a === b) continue
+        const byG = this.apartHard.get(a) ?? this.apartHard.set(a, new Map()).get(a)!
+        for (const g of grades) (byG.get(g) ?? byG.set(g, new Set()).get(g)!).add(b)
+      }
+    }
     for (const c of input.classes) this.classOcc.set(c.classKey, new Map())
     for (const l of input.lessons) if (!this.teacherOcc.has(l.teacherId)) this.teacherOcc.set(l.teacherId, new Map())
     for (const l of input.lessons) if (l.coTeacherId && !this.teacherOcc.has(l.coTeacherId)) this.teacherOcc.set(l.coTeacherId, new Map())
@@ -910,6 +921,15 @@ class State {
     if (this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
     if (this.subjectSameDayConflict(l, p)) return false
+    // 硬限制：科目互斥同日（設為「必須」的子規則，如 國際教育↔英語）——同班同日不得並存
+    const apart = this.apartHard.get(l.subject)?.get(l.grade)
+    if (apart) {
+      const cOcc = this.classOcc.get(l.classKey)!
+      for (const [slot, id] of Array.from(cOcc)) {
+        if (id === l.id || parseSlotKey(slot).day !== p.day) continue
+        if (apart.has(this.lessonById.get(id)!.subject)) return false
+      }
+    }
     // 硬限制：專科教室。所有依設定要進專科教室的課，該時段都必須有教室可用，否則不准排在這裡——
     // 管理教師只認自己管理的那間（可趕走借用者，但得幫對方換到別間）；沒有管理教室的老師則整科任一間皆可。
     // 沒教室不是回原班，是換時段；整週都塞不進才會成為未排（明著卡住，不悄悄降級）。
@@ -1191,7 +1211,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   // 母開關關閉＝該類子規則全部不計
   const tplAvoid = w.avoidPeriods === 'off' ? [] : input.weights.templates.filter(t => t.template === 'avoidPeriods' && t.level !== 'off')
   const tplTime = w.timePrefer === 'off' ? [] : input.weights.templates.filter(t => t.template === 'timePrefer' && t.level !== 'off')
-  const tplApart = w.subjectApart === 'off' ? [] : input.weights.templates.filter(t => t.template === 'subjectApart' && t.level !== 'off' && t.subjects.length >= 2)
+  const tplApart = w.subjectApart === 'off' ? [] : input.weights.templates.filter(t => t.template === 'subjectApart' && !t.hard && t.level !== 'off' && t.subjects.length >= 2)
   const matches = (t: TemplateRule, l: EngineLesson) =>
     t.subjects.includes(l.subject) && (t.grades.length === 0 || t.grades.includes(l.grade))
 

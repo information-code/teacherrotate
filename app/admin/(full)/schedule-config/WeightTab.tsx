@@ -100,7 +100,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'hourlyBalance', name: '鐘點每週分布', def: '中', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
   ] },
   { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
-    { key: 'subjectApart', name: '科目互斥同日', def: '中', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
+    { key: 'subjectApart', name: '科目互斥同日', def: '中', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組，各組可再調權重；勾「必須」則升為硬限制（絕不同日）——國際教育／英語在人工課表是 0／106 零例外，屬鐵律，預設已勾', master: 'subjectApart' },
     { key: 'avoidPeriods', name: '科目避開節次', def: '中', desc: '指定科目避開某些節次（如體育避午餐前後、考科避第 7 節）。可加多組，各組可再調權重；母開關關閉＝全部不計', master: 'avoidPeriods' },
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
@@ -266,7 +266,15 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                           </select>
                         )}
                         <span className="ml-auto flex items-center gap-2">
-                          <LevelPicker size="sm" value={t.level} onChange={l => updateTemplate(t.id, { level: l })} />
+                          {t.template === 'subjectApart' && (
+                            <label className="flex items-center gap-1 text-[11px] text-zinc-600 cursor-pointer" title="勾選＝硬限制：這幾科同班絕不同日（如國際教育／英語，114-2 人工課表 0／106 零例外）。不勾＝依右側權重盡量避免">
+                              <input type="checkbox" checked={t.hard === true} onChange={e => updateTemplate(t.id, { hard: e.target.checked ? true : undefined })} />
+                              必須
+                            </label>
+                          )}
+                          {!(t.template === 'subjectApart' && t.hard)
+                            ? <LevelPicker size="sm" value={t.level} onChange={l => updateTemplate(t.id, { level: l })} />
+                            : <span className="text-[11px] px-1.5 py-0.5 rounded-sm bg-red-50 text-red-700 border border-red-200">硬限制</span>}
                           <button onClick={() => removeTemplate(t)} className="text-red-400 hover:text-red-600" title="刪除這組">✕</button>
                         </span>
                         {t.template === 'subjectApart'
