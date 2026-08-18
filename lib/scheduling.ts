@@ -74,9 +74,9 @@ export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室'
 
 /** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）
  *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）
- *  ＋管理教師（managerId，選填）：排課時該教室優先給管理教師的課使用
+ *  ＋管理教師（managerIds，選填、可多位）：排課時該教室優先給管理教師的課使用
  *  ＋可排語別（langs，本土語言教室用）：非清單內的語別不可排；空＝任何語別皆可。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerId: string; langs: string[] }
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerIds: string[]; langs: string[] }
 
 // 本土語語別（語別課程用；閩南語走班級的本土語科目）
 export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸）', '台灣手語', '原住民族語', '新住民語', '閩東語']
@@ -227,6 +227,8 @@ export function defaultDoubleMode(): Record<string, Record<string, DoubleMode>> 
 export function defaultRoomUse(): Record<string, Record<string, RoomUse>> {
   const m: Record<string, Record<string, RoomUse>> = {}
   const set = (subj: string, grades: number[], u: RoomUse) => { for (const g of grades) (m[subj] ??= {})[String(g)] = u }
+  // 科目名以各校配課設定為準：本校配課用簡稱「自然」，人工課表 PDF 上則印全名「自然科學」，兩者都填
+  set('自然', [1, 2, 3, 4, 5, 6], 'double')
   set('自然科學', [1, 2, 3, 4, 5, 6], 'double')
   set('視覺藝術', [3], 'never')
   return m
@@ -515,7 +517,11 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                 id: String(rm.id ?? ''),
                 kind: (['class', 'subject', 'native', 'none'] as RoomKind[]).includes(rm.kind as RoomKind) ? rm.kind as RoomKind : 'class',
                 classKey: String(rm.classKey ?? ''), name: String(rm.name ?? ''), no: String(rm.no ?? ''),
-                subject: String(rm.subject ?? ''), managerId: String(rm.managerId ?? ''),
+                subject: String(rm.subject ?? ''),
+                // 舊資料是單一 managerId 字串 → 併入陣列（一間教室可有多位管理教師）
+                managerIds: Array.isArray((rm as { managerIds?: unknown }).managerIds)
+                  ? ((rm as { managerIds: unknown[] }).managerIds).map(x => String(x)).filter(Boolean)
+                  : (String((rm as { managerId?: unknown }).managerId ?? '') ? [String((rm as { managerId?: unknown }).managerId)] : []),
                 langs: Array.isArray(rm.langs) ? rm.langs.map(String) : [],
               }))
             : [],

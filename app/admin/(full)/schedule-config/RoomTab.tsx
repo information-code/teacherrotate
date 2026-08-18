@@ -17,7 +17,7 @@ interface Props {
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerId: '', langs: [] }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerIds: [], langs: [] }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
@@ -220,11 +220,25 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
                           <option value="">不綁科目</option>
                           {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
-                        <select value={r.managerId} onChange={e => updateRoom(z.id, r.id, { managerId: e.target.value })}
-                          title="管理教師：排課時此教室優先給管理教師的課使用" className="input py-0.5 text-xs w-full">
-                          <option value="">無管理教師</option>
-                          {managerOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        {/* 管理教師可多位：已選的列成標籤（點 × 移除），下拉再加人 */}
+                        <div className="space-y-1">
+                          {r.managerIds.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {r.managerIds.map(id => (
+                                <span key={id} className="inline-flex items-center gap-0.5 text-[11px] px-1 py-0.5 bg-zinc-100 border border-zinc-200 rounded-sm">
+                                  {managerOptions.find(t => t.id === id)?.name ?? id}
+                                  <button onClick={() => updateRoom(z.id, r.id, { managerIds: r.managerIds.filter(x => x !== id) })}
+                                    title="移除此管理教師" className="text-zinc-400 hover:text-red-500">×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <select value="" onChange={e => { const v = e.target.value; if (v && !r.managerIds.includes(v)) updateRoom(z.id, r.id, { managerIds: [...r.managerIds, v] }) }}
+                            title="管理教師：排課時此教室優先給管理教師的課使用；可加多位" className="input py-0.5 text-xs w-full">
+                            <option value="">{r.managerIds.length ? '＋ 再加一位管理教師' : '無管理教師'}</option>
+                            {managerOptions.filter(t => !r.managerIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                        </div>
                       </>
                     )}
                   </div>

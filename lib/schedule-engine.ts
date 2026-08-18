@@ -33,7 +33,7 @@ export interface EngineLesson {
   coTeacherName?: string
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; managerId: string; zone: number; index: number; zoneSize: number; ring: boolean; floor: number }
+export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -110,7 +110,7 @@ export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerId: r.managerId ?? '', zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) })
       }
     })
   })
@@ -128,8 +128,8 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
   const roomOf = new Map<string, string>()
   const entries = placed.filter(wants)
   entries.sort((a, b) => {
-    const am = bySubject[a.subject].some(r => r.managerId === a.teacherId) ? 0 : 1
-    const bm = bySubject[b.subject].some(r => r.managerId === b.teacherId) ? 0 : 1
+    const am = bySubject[a.subject].some(r => r.managerIds.includes(a.teacherId)) ? 0 : 1
+    const bm = bySubject[b.subject].some(r => r.managerIds.includes(b.teacherId)) ? 0 : 1
     if (am !== bm) return am - bm
     return a.id < b.id ? -1 : 1
   })
@@ -137,9 +137,9 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
     const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
     const rs = bySubject[p.subject]
     const ordered = [
-      ...rs.filter(r => r.managerId === p.teacherId),
-      ...rs.filter(r => !r.managerId),
-      ...rs.filter(r => r.managerId && r.managerId !== p.teacherId),
+      ...rs.filter(r => r.managerIds.includes(p.teacherId)),
+      ...rs.filter(r => r.managerIds.length === 0),
+      ...rs.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(p.teacherId)),
     ]
     const room = ordered.find(r => slots.every(s => !(taken.get(s)?.has(r.id))))
     if (room) {
@@ -580,7 +580,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   }
   if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `班級課表塞不下：導師要排進留白的節數多於留白格（留白/導師待排＝導師實際配課−已鎖固定格）——請於配課統計調整該班導師或科任的節數：${joinCap(agg.leftoverLow)}`, href: '/admin/allocation-statistics' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
-  const noManager = rooms.filter(r => !r.managerId).map(r => r.label)
+  const noManager = rooms.filter(r => r.managerIds.length === 0).map(r => r.label)
   if (noManager.length) preflight.push({ level: 'info', text: `未指定管理教師的科任教室（「教室管理教師優先」權重不作用於這些教室，其餘照常）：${joinCap(noManager)}`, tab: 'room' })
   // 本土語檢核
   if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
@@ -837,8 +837,8 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
     if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.grade, l.size)) entries.push({ l, p })
   })
   entries.sort((a, b) => {
-    const am = bySubject[a.l.subject].some(r => r.managerId === a.l.teacherId) ? 0 : 1
-    const bm = bySubject[b.l.subject].some(r => r.managerId === b.l.teacherId) ? 0 : 1
+    const am = bySubject[a.l.subject].some(r => r.managerIds.includes(a.l.teacherId)) ? 0 : 1
+    const bm = bySubject[b.l.subject].some(r => r.managerIds.includes(b.l.teacherId)) ? 0 : 1
     if (am !== bm) return am - bm                 // 管理教師的課先分
     return a.l.id < b.l.id ? -1 : 1
   })
@@ -847,9 +847,9 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
     const slots = st.slotsOf(l, p)
     const free = (r: RoomInfo) => slots.every(s => !(taken.get(s)?.has(r.id)))
     const ordered = [
-      ...rooms.filter(r => r.managerId === l.teacherId),   // 自己管理的教室
-      ...rooms.filter(r => !r.managerId),                  // 無管理者的教室
-      ...rooms.filter(r => r.managerId && r.managerId !== l.teacherId),
+      ...rooms.filter(r => r.managerIds.includes(l.teacherId)),   // 自己管理的教室（可有多位管理者）
+      ...rooms.filter(r => r.managerIds.length === 0),            // 無管理者的教室
+      ...rooms.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)),
     ]
     const room = ordered.find(free)
     if (!room) continue
@@ -885,7 +885,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       continue
     }
     const r = roomById.get(rid)!
-    if (w.roomManagerFirst !== 'off' && r.managerId && r.managerId !== l.teacherId) {
+    if (w.roomManagerFirst !== 'off' && r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)) {
       acc(map, 'roomManagerFirst', '教室管理教師優先', pen(w.roomManagerFirst), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 借用 ${r.label}（管理者非授課者）`)
     }
   }
