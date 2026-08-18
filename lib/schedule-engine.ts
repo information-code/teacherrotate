@@ -48,6 +48,9 @@ export interface EngineInput {
   teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
+  /** 該班該科有科任需求（每班節數 − 導師自上 > 0）卻沒有任何科任可配（供給不足或配班解不出）。
+   *  以前被靜默當成「導師自排」、精靈報未排 0——那是假的 0。現在一律列為未排，讓課務組看得到。 */
+  unassigned: { classKey: string; grade: number; classLabel: string; subject: string; hours: number }[]
   hourlyTeachers: string[]                   // 鐘點教師 id：每週分布傾向另用 hourlyBalance（多半要集中、少跑幾趟）
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null>
@@ -207,6 +210,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const classDayFull: Record<string, Record<number, boolean>> = {}
   const lockedCells: Record<string, Record<string, string>> = {}
   const homeroomLocks: Record<string, string[]> = {}
+  const unassignedList: EngineInput['unassigned'] = []
   const lessons: EngineLesson[] = []
 
   const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
@@ -277,13 +281,55 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
               continue
             }
             if (cur || !map) continue
-            // 自動配班：選剩餘容量最大且足夠者
+            // 自動配班：先由 solveAuto 對整個「年級×科目」整批求解（見下方），這裡只處理它沒解掉的殘餘（貪婪）
             let best: string | null = null, bestLeft = 0
             for (const [tid, l] of Array.from(map)) if (l >= r && l > bestLeft) { best = tid; bestLeft = l }
             if (!best) continue
             map.set(best, bestLeft - r)
             assign[k] = best
             autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + 1)
+          }
+        }
+      }
+      if (pass === 'manual') {
+        // ── 整批求解：同一年級同一科，把所有未指派的班一次分給有容量的老師 ──
+        // 逐班貪婪會把容量切碎（例：需求 4,3,3,3,4,3,3,3,4,3、供給 12/17/4，供需剛好相等，
+        // 貪婪排到最後一班時剩 2+1 湊不出 3 → 該班沒科任）；改用回溯，一人一班一科、容量不超，
+        // 找到完整解就採用；找不到才退回貪婪（供給真的不足時）
+        for (const g of [1, 2, 3, 4, 5, 6]) {
+          for (const s of (gradeSubjects[g] ?? [])) {
+            if (s.perClass <= 0) continue
+            const map = left[s.name]?.[String(g)]
+            if (!map || map.size === 0) continue
+            const todo: { i: number; k: string; r: number }[] = []
+            for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+              const k = subjectClassKey(g, i, s.name)
+              if (assign[k]) continue
+              const r = remainderOf(g, i, s)
+              if (r > 0) todo.push({ i, k, r })
+            }
+            if (!todo.length) continue
+            // 需求大的班先放（first-fit-decreasing 的回溯版）；老師依剩餘容量大到小嘗試
+            todo.sort((x, y) => y.r - x.r || x.i - y.i)
+            const cap = new Map(map)
+            const pick: string[] = new Array(todo.length)
+            let nodes = 0
+            const dfs = (idx: number): boolean => {
+              if (idx >= todo.length) return true
+              if (++nodes > 50000) return false
+              const need = todo[idx].r
+              const tids = Array.from(cap.entries()).filter(([, l]) => l >= need).sort((x, y) => y[1] - x[1]).map(([t]) => t)
+              for (const t of tids) {
+                cap.set(t, cap.get(t)! - need); pick[idx] = t
+                if (dfs(idx + 1)) return true
+                cap.set(t, cap.get(t)! + need)
+              }
+              return false
+            }
+            if (dfs(0)) {
+              todo.forEach((x, idx) => { assign[x.k] = pick[idx]; map.set(pick[idx], map.get(pick[idx])! - x.r) })
+              autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + todo.length)
+            }
           }
         }
       }
@@ -444,11 +490,14 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 
       for (const s of subjects) {
         const v = assign[subjectClassKey(g, i, s.name)] ?? ''
-        // 本土語未指派＝直播共學（另行確認），不列入未配滿警告
-        if (!v && !s.homeroom && s.name !== '本土語') {
-          const k2 = `${g}|${s.name}`
-          agg.unassigned.set(k2, (agg.unassigned.get(k2) ?? 0) + 1)
-        }
+        // 本土語未指派＝直播共學（另行確認），不列入
+        if (v || s.name === '本土語') continue
+        const r = s.perClass - (a.homeroomHours?.[key]?.[s.name] ?? 0)
+        if (r <= 0) continue   // 導師全包＝真的沒有科任需求
+        // 有科任需求卻沒人上（不論該科導師可不可配）→ 記下來，結果頁列為未排
+        const k2 = `${g}|${s.name}`
+        agg.unassigned.set(k2, (agg.unassigned.get(k2) ?? 0) + 1)
+        unassignedList.push({ classKey: key, grade: g, classLabel: classLabel(g, i), subject: s.name, hours: r })
       }
     }
   }
@@ -656,7 +705,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const [g, subj] = k2.split('|')
       return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
     })
-    preflight.push({ level: 'warn', text: `尚未配滿需求節數（未指派科任，暫視為導師自排）：${joinCap(parts)}`, tab: 'subject' })
+    preflight.push({ level: 'warn', text: `有科任需求卻沒有科任可配（供給不足，或現有供給湊不出各班的節數）：${joinCap(parts)}——這些課會列為「未排」，未排不為 0 無法發布；請於配課統計補足供給，或於科任配班手動指定。`, tab: 'subject' })
   }
   if (autoAgg.size) {
     const parts = Array.from(autoAgg.entries()).map(([k2, n]) => {
@@ -683,7 +732,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   return {
     input: {
       classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks,
-      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
+      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, unassigned: unassignedList, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
       weights: config.weights, seed: a.seed ?? 42,
     },
     preflight,
@@ -2059,7 +2108,7 @@ export class EngineRun {
     return {
       iter: this.iterations, best: this.bestTotal, softBest: this.bestSoft,
       elapsed: this.elapsed, placed: this.bestPos.size,
-      unplaced: this.input.lessons.length - this.bestPos.size,
+      unplaced: this.input.lessons.length - this.bestPos.size + (this.input.unassigned?.length ?? 0),
       sinceImproveMs: this.sinceImprove,
     }
   }
@@ -2083,6 +2132,14 @@ export class EngineRun {
     for (const l of this.input.lessons) {
       if (st.pos.has(l.id)) continue
       unplaced.push({ lesson: l, reason: unplacedReason(st, l) })
+    }
+    // 沒有科任可配的需求：不是排不進，是根本沒人上——一樣列為未排，不假報 0
+    for (const u of this.input.unassigned ?? []) {
+      unplaced.push({
+        lesson: { id: `unassigned|${u.classKey}|${u.subject}`, classKey: u.classKey, grade: u.grade, classLabel: u.classLabel, subject: u.subject,
+          teacherId: '', teacherName: '（未指派科任）', size: 1, parity: 'weekly' },
+        reason: `該班該科需科任 ${u.hours} 節，但沒有任何科任可配（供給不足，或現有供給湊不出各班節數）——請於配課統計補足供給或於科任配班手動指定`,
+      })
     }
 
     return {
