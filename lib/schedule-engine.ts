@@ -43,6 +43,8 @@ export interface EngineInput {
   classMustLeave: Record<string, string[]>   // classKey → 必留導師課的格（導師排課標記，科任課不可放）
   classDayFull: Record<string, Record<number, boolean>>  // classKey → day → 是否整天日
   lockedCells: Record<string, Record<string, string>>    // classKey → slotKey → 顯示文字（鎖課科目）
+  homeroomLocks: Record<string, string[]>                 // classKey → 由導師授課的鎖課格（種子班國數／班級活動等：科目在導師配課裡）
+                                                          // 導師規則（不連四、上午下限、每日上限）與成塊要把這些格當導師課，而非「非導師」
   teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
@@ -204,6 +206,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const classMustLeave: Record<string, string[]> = {}
   const classDayFull: Record<string, Record<number, boolean>> = {}
   const lockedCells: Record<string, Record<string, string>> = {}
+  const homeroomLocks: Record<string, string[]> = {}
   const lessons: EngineLesson[] = []
 
   const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
@@ -306,6 +309,16 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         lockDisplay[slot] = t ? (t.subject || t.label || '鎖') : '鎖'
       }
       lockedCells[key] = lockDisplay
+      // 鎖課由誰上？科目在該班導師的配課裡（或科任配班標「導師自上」）＝導師課；否則（本土語鐘點、外聘）＝非導師。
+      // 從配課推、不必另外勾選——種子班鎖課(國語/數學/班級活動/自主學習) 全命中、本土語鎖課全不命中。
+      homeroomLocks[key] = Object.entries(locks).filter(([, tid]) => {
+        const t = lockTypeMap[tid]
+        if (!t) return false
+        if (t.byHomeroom !== null && t.byHomeroom !== undefined) return t.byHomeroom   // 名目手動指定（如游泳＝否）
+        const subj = t.subject
+        if (!subj) return false
+        return (a.homeroomHours?.[key]?.[subj] ?? 0) > 0 || config.subjectClassTeacher[subjectClassKey(g, i, subj)] === HOMEROOM_SELF
+      }).map(([slot]) => slot)
       const slots: string[] = []
       const dayFull: Record<number, boolean> = {}
       for (const d of SCHEDULE_DAYS) {
@@ -572,7 +585,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     for (const l of lessons) nodesByClass[l.classKey] = (nodesByClass[l.classKey] ?? 0) + l.size
     const short: string[] = []
     if (level !== 'off') for (const c of classes) {
-      const avail = new Set(classSlots[c.classKey] ?? [])
+      // 導師每日節數＝留白＋由導師上的鎖課，兩者都算進當日格數
+      const avail = new Set([...(classSlots[c.classKey] ?? []), ...(homeroomLocks[c.classKey] ?? [])])
       let need = 0
       for (const d of SCHEDULE_DAYS) {
         const cnt = Array.from(avail).filter(s => parseSlotKey(s).day === d).length
@@ -586,6 +600,25 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       text: `導師每日節數上限 ${hrN} 節：這些班的科任課節數不足以完全達標，會殘留超標（權重＝盡量，不會卡住排課，其餘班級照樣壓到 ${hrN} 節，這幾班也會盡量壓近）：${joinCap(short)}——想完全消掉可於配課統計增加該班科任課，或調高上限。`,
     })
   }
+  // 導師鎖課本身就連上超過 N（如種子班國數鎖滿整個上午）：引擎一格也動不了，先講明白
+  {
+    const { maxRunHomeroom: hrN, homeroomRunBands } = config.weights.hardParams
+    const runBands = new Set(homeroomRunBands)
+    const hits: string[] = []
+    if (runBands.size) for (const c of classes) {
+      if (!runBands.has(bandOf(c.grade))) continue
+      const hl = new Set(homeroomLocks[c.classKey] ?? [])
+      for (const d of SCHEDULE_DAYS) {
+        let run = 0, best = 0
+        for (let q = 1; q <= 8; q++) { if (q <= 7 && hl.has(`${d}-${q}`)) { run++; continue } best = Math.max(best, run); run = 0 }
+        if (best > hrN) hits.push(`${c.label} 週${DAY_ZH[d]}（${best} 節）`)
+      }
+    }
+    if (hits.length) preflight.push({
+      level: 'warn', tab: 'lock',
+      text: `導師連上上限 ${hrN} 節：下列班日「由導師授課的鎖課」本身就連續超過 ${hrN} 節（如種子班國語／數學鎖滿整個上午），排課引擎動不了鎖課、無法補救——請確認是否接受，或調整鎖課：${joinCap(hits)}`,
+    })
+  }
   // 導師連上上限（硬限制）可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
   // 全週加總若多於該班的科任課堂數，就是怎麼排都必然違反——先在前置檢核講明白，別讓精靈白跑一輪。
   {
@@ -596,7 +629,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     const short: string[] = []
     if (runBands.size) for (const c of classes) {
       if (!runBands.has(bandOf(c.grade))) continue
-      const avail = new Set(classSlots[c.classKey] ?? [])
+      const avail = new Set([...(classSlots[c.classKey] ?? []), ...(homeroomLocks[c.classKey] ?? [])])   // 導師鎖課也是導師連上的一部分
       let need = 0
       for (const d of SCHEDULE_DAYS) {
         let run = 0
@@ -649,7 +682,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 
   return {
     input: {
-      classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells,
+      classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks,
       teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
       weights: config.weights, seed: a.seed ?? 42,
     },
@@ -1183,16 +1216,21 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
     const locks = input.lockedCells[c.classKey] ?? {}
+    const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])   // 由導師上的鎖課（種子班國數等）＝導師課
     const maxRun = input.weights.hardParams.maxRunHomeroom
     for (const d of SCHEDULE_DAYS) {
-      let run = 0, best = 0
-      for (let q = 1; q <= 7; q++) {
+      // 只罰引擎能改變的連段（段內至少有一格是留白）；整段都是導師鎖課的，引擎一格也動不了，
+      // 由前置檢核告知課務組（種子班鎖課排滿整個上午就是這種情況）
+      let run = 0, best = 0, hasBlank = false, bestHasBlank = false
+      for (let q = 1; q <= 8; q++) {
         const k = `${d}-${q}`
-        const teachable = avail.has(k) || k in locks
-        const blank = teachable && !occ.has(k) && !(k in locks)
-        run = blank ? run + 1 : 0; best = Math.max(best, run)
+        const teachable = q <= 7 && (avail.has(k) || k in locks)
+        const isHr = teachable && !occ.has(k) && (!(k in locks) || hrLock.has(k))
+        if (isHr) { run++; if (!(k in locks)) hasBlank = true; continue }
+        if (run > best || (run === best && hasBlank)) { best = run; bestHasBlank = hasBlank }
+        run = 0; hasBlank = false
       }
-      if (best > maxRun) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節（硬限制）`, MUST, `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
+      if (best > maxRun && bestHasBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節（硬限制）`, MUST, `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
     }
   }
 
@@ -1204,11 +1242,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       const occ = st.classOcc.get(c.classKey)!
       const avail = new Set(input.classSlots[c.classKey] ?? [])
       const locks = input.lockedCells[c.classKey] ?? {}
+      const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])
       for (const d of SCHEDULE_DAYS) {
         // 上午可排格數不足 N 的日子（如只開 2 格），目標降到實際格數，不能罰它做不到的事
         const morningSlots = [1, 2, 3, 4].filter(q => avail.has(`${d}-${q}`) || (`${d}-${q}` in locks))
         if (morningSlots.length === 0) continue
-        const hr = morningSlots.filter(q => !occ.has(`${d}-${q}`) && !(`${d}-${q}` in locks)).length
+        const hr = morningSlots.filter(q => !occ.has(`${d}-${q}`) && (!(`${d}-${q}` in locks) || hrLock.has(`${d}-${q}`))).length
         const want = Math.min(target, morningSlots.length)
         if (hr < want) acc(map, 'homeroomMorning', `上午導師課下限 ${target}`, pen(w.homeroomMorning.level) * (want - hr), `${c.label} 週${DAY_ZH[d]}上午只有 ${hr} 節導師課`)
       }
@@ -1220,6 +1259,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
     const locks = input.lockedCells[c.classKey] ?? {}
+    const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])
     for (const d of SCHEDULE_DAYS) {
       for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
         let blocks = 0, inBlock = false
@@ -1227,7 +1267,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           const k = `${d}-${q}`
           const teachable = avail.has(k) || k in locks
           if (!teachable) { inBlock = false; continue }
-          const taken = occ.has(k) || k in locks   // 科任課或鎖課＝非導師
+          const taken = occ.has(k) || (k in locks && !hrLock.has(k))   // 科任課或非導師鎖課＝非導師；導師上的鎖課算導師側
           if (taken) { if (!inBlock) blocks++; inBlock = true }
           else inBlock = false
         }
@@ -1247,9 +1287,11 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     for (const c of input.classes) {
       const avail = input.classSlots[c.classKey] ?? []
       const occ = st.classOcc.get(c.classKey)!
+      const hrLocks = input.homeroomLocks[c.classKey] ?? []
       for (const d of SCHEDULE_DAYS) {
         const daySlots = avail.filter(s => parseSlotKey(s).day === d)
-        const free = daySlots.filter(s => !occ.has(s)).length
+        // 導師當日節數＝留白 ＋ 由導師上的鎖課（種子班國數等）
+        const free = daySlots.filter(s => !occ.has(s)).length + hrLocks.filter(s => parseSlotKey(s).day === d).length
         const over = free - w.homeroomDailyMax.n
         if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${w.homeroomDailyMax.n}`, pen(w.homeroomDailyMax.level) * over, `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${w.homeroomDailyMax.n} 節`)
       }
@@ -1679,9 +1721,10 @@ export class EngineRun {
       const locks = this.input.lockedCells[c.classKey] ?? {}
       const avail = this.input.classSlots[c.classKey] ?? []
       const mustLeave = this.input.classMustLeave?.[c.classKey] ?? []
+      const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
       for (const d of SCHEDULE_DAYS) for (const seg of [[1, 2, 3, 4], [5, 6, 7]]) {
         const cells = seg.map(q => `${d}-${q}`).filter(k => avail.includes(k) || k in locks)
-        const taken = cells.map(k => cOcc.has(k) || k in locks)
+        const taken = cells.map(k => cOcc.has(k) || (k in locks && !hrLock.has(k)))
         const first = taken.indexOf(true), last = taken.lastIndexOf(true)
         if (first < 0) continue
         for (let i = first + 1; i < last; i++) if (!taken[i] && !mustLeave.includes(cells[i])) holes.push({ classKey: c.classKey, slot: cells[i] })
@@ -1721,13 +1764,14 @@ export class EngineRun {
       const occ = this.st.classOcc.get(c.classKey)!
       const avail = new Set(this.input.classSlots[c.classKey] ?? [])
       const locks = this.input.lockedCells[c.classKey] ?? {}
+      const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
       const mustLeave = this.input.classMustLeave?.[c.classKey] ?? []
       for (const d of SCHEDULE_DAYS) {
         let start = -1, run = 0
         for (let q = 1; q <= 8; q++) {
           const k = `${d}-${q}`
           const teachable = q <= 7 && (avail.has(k) || k in locks)
-          const blank = teachable && !occ.has(k) && !(k in locks)
+          const blank = teachable && !occ.has(k) && (!(k in locks) || hrLock.has(k))
           if (blank) { if (run === 0) start = q; run++; continue }
           // 切點＝段內第 n+1 格起、每隔 n+1 格一個（切完每截都 ≤ n）
           if (run > n) for (let q2 = start + n; q2 < start + run; q2 += n + 1) {

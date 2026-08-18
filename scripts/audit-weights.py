@@ -4,7 +4,15 @@ import json, io, os
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-cs = json.load(open(os.path.join(HERE, 'hand-114-2.json'), encoding='utf-8'))
+import sys
+SRC = sys.argv[1] if len(sys.argv) > 1 else 'hand-114-2.json'
+cs = json.load(open(os.path.join(HERE, SRC), encoding='utf-8'))
+# 系統用簡稱、人工課表 PDF 用全名 → 統一成全名再算
+ALIAS = {'自然': '自然科學', '英語': '英語文', '英語主題課': '英語主題課程', '國語': '國語文', '生活': '生活課程',
+         '智慧探究家：科技創新任務': '智慧探究家：科技創新任務課程', '綜合': '綜合活動', '本土語': '本土語文', '班級活動': '班級學年活動'}
+for _c in cs:
+    for _v in _c['cells'].values():
+        _v['subject'] = ALIAS.get(_v['subject'], _v['subject'])
 DAYS = [1, 2, 3, 4, 5]
 MORNING = [1, 2, 3, 4]
 R = []          # 報告行

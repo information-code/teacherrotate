@@ -31,8 +31,11 @@ export interface BandGrid {
 }
 
 /** 鎖課名目：名目（label）給管理者辨識、科目（subject）顯示在課表格子上。
- *  isNative＝本土語鎖課（語別場次的時段來源、班級格顯示閩南語師）——由科目＝「本土語」自動推導，無需手動勾選。 */
-export interface LockType { id: string; label: string; subject: string; color: string; isNative: boolean }
+ *  isNative＝本土語鎖課（語別場次的時段來源、班級格顯示閩南語師）——由科目＝「本土語」自動推導，無需手動勾選。
+ *  byHomeroom＝這節是不是導師在上（導師規則：不連四、上午下限、每日上限、成塊要把它當導師課）。
+ *    null＝自動：科目在該班導師的配課裡就算導師課（種子班國語／數學／班級活動全命中、本土語鐘點全不命中）；
+ *    只有像「五年級游泳」這種科目掛班級活動、實際由教練上的特例才需要手動設「否」。 */
+export interface LockType { id: string; label: string; subject: string; color: string; isNative: boolean; byHomeroom: boolean | null }
 
 // 鎖課名目可選的低彩度色票（key 存進設定，顯示時查表）
 export const LOCK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -493,6 +496,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
           color: LOCK_COLORS[String(t.color ?? '')] ? String(t.color) : LOCK_COLOR_KEYS[0],
           // 科目＝「本土語」即本土語鎖課（純推導，不看存檔旗標，避免舊勾選殘留）
           isNative: String(t.subject ?? '') === '本土語',
+          byHomeroom: typeof (t as { byHomeroom?: unknown }).byHomeroom === 'boolean' ? (t as { byHomeroom: boolean }).byHomeroom : null,
         }))
       : [],
     lockCells,

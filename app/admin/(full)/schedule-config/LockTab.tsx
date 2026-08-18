@@ -30,7 +30,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
     const usedColors = new Set(config.lockTypes.map(t => t.color))
     const color = LOCK_COLOR_KEYS.find(k => !usedColors.has(k)) ?? LOCK_COLOR_KEYS[config.lockTypes.length % LOCK_COLOR_KEYS.length]
     const id = crypto.randomUUID()
-    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color, isNative: false }] }))
+    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color, isNative: false, byHomeroom: null }] }))
     setActive(id)
   }
   function removeType(t: LockType) {
@@ -108,6 +108,18 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
                     .filter(s => s !== '本土語' || t.subject === '本土語' || !config.lockTypes.some(x => x.id !== t.id && x.subject === '本土語'))
                     .map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
+                {/* 由導師授課？影響導師規則（不連四、上午下限、每日上限、成塊）。自動＝科目在該班導師配課裡就算；
+                    只有科目掛班級活動、實際由教練上的「游泳」這類特例才需手動設否 */}
+                <label className="flex items-center gap-1 text-xs text-zinc-500 flex-shrink-0" title="這節課是不是導師本人在上。自動：科目在導師配課裡（國語、數學、班級活動…）就算導師課；游泳等由教練上的請設「否」">
+                  導師上
+                  <select value={t.byHomeroom === null ? 'auto' : t.byHomeroom ? 'yes' : 'no'}
+                    onChange={e => updateType(t.id, { byHomeroom: e.target.value === 'auto' ? null : e.target.value === 'yes' })}
+                    className="input py-0.5 text-xs w-16">
+                    <option value="auto">自動</option>
+                    <option value="yes">是</option>
+                    <option value="no">否</option>
+                  </select>
+                </label>
                 <button onClick={() => removeType(t)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
               </div>
             )
