@@ -124,11 +124,13 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
   for (const r of rooms) (bySubject[r.subject] ??= []).push(r)
   // 專科教室使用時機（自然單節留原班等）；未帶 weights 時維持舊行為＝一律使用
   const wants = (p: PlacedResult) => Boolean(bySubject[p.subject]) && (!weights || shouldUseRoom(weights, p.subject, p.grade, p.size))
-  // 有管理教師的教室只給管理教師用（預設開）：用不到就回原班，不借別人的
-  const mgrOnly = weights ? weights.hardParams.roomManagerOnly : true
+  // 固定硬限制：管理教師的課一定在自己管理的教室。手動微調重分配時同樣遵守——
+  // 管理教師只看自己的教室，非管理教師撿還空著的（優先無管理者的那些）。
   const usable = (rs: RoomInfo[], teacherId: string) =>
-    mgrOnly ? rs.filter(r => r.managerIds.length === 0 || r.managerIds.includes(teacherId)) : rs
-  const taken = new Map<string, Set<string>>()
+    rs.some(r => r.managerIds.includes(teacherId))
+      ? rs.filter(r => r.managerIds.includes(teacherId))
+      : rs
+  const taken = new Map<string, Map<string, TCell>>()   // 週型感知：單雙週輪流用同一格可共用
   const roomOf = new Map<string, string>()
   const entries = placed.filter(wants)
   entries.sort((a, b) => {
@@ -145,10 +147,17 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
       ...usable(rs, p.teacherId).filter(r => r.managerIds.length === 0),
       ...usable(rs, p.teacherId).filter(r => r.managerIds.length > 0 && !r.managerIds.includes(p.teacherId)),
     ]
-    const room = ordered.find(r => slots.every(s => !(taken.get(s)?.has(r.id))))
+    const room = ordered.find(r => slots.every(s => !roomClash(taken.get(s)?.get(r.id), p.parity)))
     if (room) {
       roomOf.set(p.id, room.id)
-      for (const s of slots) (taken.get(s) ?? taken.set(s, new Set()).get(s)!).add(room.id)
+      for (const s of slots) {
+        const m = taken.get(s) ?? taken.set(s, new Map()).get(s)!
+        const cell = m.get(room.id) ?? {}
+        if (p.parity === 'weekly') cell.w = p.id
+        else if (p.parity === 'odd') cell.o = p.id
+        else cell.e = p.id
+        m.set(room.id, cell)
+      }
     }
   }
   return placed.map(p => ({ ...p, roomId: wants(p) ? (roomOf.get(p.id) ?? null) : (bySubject[p.subject] ? null : (p.roomId ?? null)) }))
@@ -512,6 +521,49 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班。', tab: 'subject' })
   if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}`, tab: 'subject' })
   if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}`, tab: 'subject' })
+  // 專科教室容量防呆（error，擋住排課）：管理教師的課硬綁定自己的教室，
+  // 所以掛在同一間教室的管理教師，其課數不能超過該教室一週能放的量——超過就是怎麼排都不可能。
+  {
+    const roomsBySubject: Record<string, RoomInfo[]> = {}
+    for (const r of rooms) (roomsBySubject[r.subject] ??= []).push(r)
+    // 一間教室一週能放幾組連堂／幾節單節：連堂不跨午休（上午 1-4 放 2 組、下午 5-7 放 1 組）
+    const capOf = (grades: Set<number>) => {
+      let dbl = 0, single = 0
+      for (const d of SCHEDULE_DAYS) {
+        let am = 0, pm = 0
+        for (const g of grades) {
+          const grid = config.bands[bandOf(g)]
+          am = Math.max(am, [1, 2, 3, 4].filter(q => grid.teachable[`${d}-${q}`]).length)
+          pm = Math.max(pm, [5, 6, 7].filter(q => grid.teachable[`${d}-${q}`]).length)
+        }
+        dbl += Math.floor(am / 2) + Math.floor(pm / 2)
+        single += am + pm
+      }
+      return { dbl, single }
+    }
+    const over: string[] = []
+    for (const [subj, rs] of Object.entries(roomsBySubject)) {
+      for (const r of rs) {
+        if (r.managerIds.length === 0) continue
+        const mine = lessons.filter(l => l.subject === subj && r.managerIds.includes(l.teacherId)
+          && shouldUseRoom(config.weights, l.subject, l.grade, l.size))
+        if (!mine.length) continue
+        const grades = new Set(mine.map(l => l.grade))
+        const cap = capOf(grades)
+        const dbl = mine.filter(l => l.size === 2).length, single = mine.filter(l => l.size === 1).length
+        // 連堂占 2 節、單節占 1 節；以節數為總量檢核，並另外檢查連堂組數
+        const needSlots = dbl * 2 + single
+        if (dbl > cap.dbl || needSlots > cap.single) {
+          const who = r.managerIds.map(i => a.teacherNames[i] ?? i).join('、')
+          over.push(`${r.label}（管理教師 ${who}）需 ${dbl} 組連堂＋${single} 節單節＝${needSlots} 節，該教室每週最多 ${cap.dbl} 組連堂／${cap.single} 節`)
+        }
+      }
+    }
+    if (over.length) preflight.push({
+      level: 'error', tab: 'room',
+      text: `專科教室排不下：管理教師的課必須排在自己管理的教室，但下列教室的課量已超過容量，怎麼排都不可能——請增加教室、調整管理教師，或把部分班級改為不使用專科教室。${joinCap(over)}`,
+    })
+  }
   // 導師每日節數上限（權重）可行性：每天要把導師壓到 N 節，該日就得有「格數 − N」節科任課。
   // 全週加總超過該班的科任節數＝這條規則怎麼排都達不到（不會卡死，但會一直吃罰分）——先講明白。
   {
@@ -612,19 +664,113 @@ const MORNING_LAST = 4
 
 type TCell = { w?: string; o?: string; e?: string }
 
+/** 這堂課是不是該教室管理教師的課（占用優先權判斷用）。 */
+function isMgrLesson(st: State, lessonId: string, roomId: string): boolean {
+  return Boolean(st.mgrRooms.get(lessonId)?.some(r => r.id === roomId))
+}
+
+/** 教室該格是否已被此週型占用。單週課與雙週課輪流用同一格，可以共用；週課與兩者皆衝突。 */
+function roomClash(cell: TCell | undefined, parity: Parity): boolean {
+  if (!cell) return false
+  if (cell.w) return true
+  if (parity === 'weekly') return Boolean(cell.o || cell.e)
+  return parity === 'odd' ? Boolean(cell.o) : Boolean(cell.e)
+}
+
 class State {
   input: EngineInput
   pos: Map<string, Placement> = new Map()                      // lessonId → 位置
   classOcc: Map<string, Map<string, string>> = new Map()       // classKey → slot → lessonId（班級格整週占用）
   teacherOcc: Map<string, Map<string, TCell>> = new Map()      // teacherId → slot → 週型占用
   lessonById: Map<string, EngineLesson> = new Map()
+  // 管理教師的課＝硬綁定自己的專科教室，排課當下就占住（跟班級、老師同級的資源）。
+  // 非管理教師不在這裡預約，排完之後才撿剩下的空教室（assignRooms）。
+  roomOcc: Map<string, Map<string, TCell>> = new Map()         // roomId → slot → 週型占用（單雙週輪流用同一格＝可共用）
+  roomPool: Map<string, RoomInfo[]> = new Map()                // lessonId → 這堂課可用的教室清單（空＝不需要教室）
+  mgrRooms: Map<string, RoomInfo[]> = new Map()                // lessonId → 有管理教室者的自管教室（供排序與計分辨識）
+  roomOf: Map<string, string> = new Map()                      // lessonId → 已占用的 roomId
 
   constructor(input: EngineInput) {
     this.input = input
+    for (const r of input.rooms) this.roomOcc.set(r.id, new Map())
+    for (const l of input.lessons) {
+      if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue
+      const same = input.rooms.filter(r => r.subject === l.subject)
+      if (!same.length) continue
+      const mine = same.filter(r => r.managerIds.includes(l.teacherId))
+      // 有管理教室的老師只用自己那間；沒有的則整科的教室都可用（可跨間跑）
+      if (mine.length) this.mgrRooms.set(l.id, mine)
+      this.roomPool.set(l.id, mine.length ? mine : same)
+    }
     for (const l of input.lessons) this.lessonById.set(l.id, l)
     for (const c of input.classes) this.classOcc.set(c.classKey, new Map())
     for (const l of input.lessons) if (!this.teacherOcc.has(l.teacherId)) this.teacherOcc.set(l.teacherId, new Map())
     for (const l of input.lessons) if (l.coTeacherId && !this.teacherOcc.has(l.coTeacherId)) this.teacherOcc.set(l.coTeacherId, new Map())
+  }
+
+  /** 某教室某格，對這堂課而言是否「真的空著」（週型感知）。 */
+  private roomSlotFree(roomId: string, slot: string, l: EngineLesson): boolean {
+    const cell = this.roomOcc.get(roomId)!.get(slot)
+    if (!cell || !roomClash(cell, l.parity)) return true
+    return [cell.w, cell.o, cell.e].every(id => !id || id === l.id)
+  }
+  /** 這堂課若放在 p，教室 roomId 是否可用；管理教師可把「借用中的非管理教師」趕走，
+   *  但被趕的人必須換得到別間（同科、該時段空著），否則不准趕。
+   *  回傳 null＝不可用；否則回傳需要搬走的人與新教室（空陣列＝直接可用）。 */
+  private planRoom(roomId: string, l: EngineLesson, p: Placement): { id: string; to: string }[] | null {
+    const slots = this.slotsOf(l, p)
+    if (slots.every(sl => this.roomSlotFree(roomId, sl, l))) return []
+    if (!isMgrLesson(this, l.id, roomId)) return null           // 非管理教師只能用真正空的
+    // 找出擋路的人：全部得是非管理教師（管理者之間不互趕）
+    const blockers = new Set<string>()
+    for (const sl of slots) {
+      const cell = this.roomOcc.get(roomId)!.get(sl)
+      if (!cell || !roomClash(cell, l.parity)) continue
+      for (const id of [cell.w, cell.o, cell.e]) {
+        if (!id || id === l.id) continue
+        if (isMgrLesson(this, id, roomId)) return null
+        blockers.add(id)
+      }
+    }
+    // 幫每位被趕的人找新教室（同科、其時段真的空著）；多人同時換要避免搶同一間
+    const moves: { id: string; to: string }[] = []
+    const claimed = new Map<string, Set<string>>()   // newRoom → slots 已被本次搬遷預約
+    for (const id of blockers) {
+      const bl = this.lessonById.get(id)!
+      const bp = this.pos.get(id)!
+      const bslots = this.slotsOf(bl, bp)
+      const pool = (this.roomPool.get(id) ?? []).filter(r => r.id !== roomId)
+      const to = pool.find(r => bslots.every(sl => this.roomSlotFree(r.id, sl, bl) && !claimed.get(r.id)?.has(sl)))
+      if (!to) return null
+      moves.push({ id, to: to.id })
+      for (const sl of bslots) (claimed.get(to.id) ?? claimed.set(to.id, new Set()).get(to.id)!).add(sl)
+    }
+    return moves
+  }
+  private occupyRoom(lessonId: string, roomId: string, slots: string[], parity: Parity) {
+    this.roomOf.set(lessonId, roomId)
+    for (const s of slots) {
+      const cell = this.roomOcc.get(roomId)!.get(s) ?? {}
+      if (parity === 'weekly') cell.w = lessonId
+      else if (parity === 'odd') cell.o = lessonId
+      else cell.e = lessonId
+      this.roomOcc.get(roomId)!.set(s, cell)
+    }
+  }
+  private releaseRoom(lessonId: string) {
+    const rid = this.roomOf.get(lessonId)
+    const p = this.pos.get(lessonId)
+    if (!rid || !p) return
+    const l = this.lessonById.get(lessonId)!
+    for (const sl of this.slotsOf(l, p)) {
+      const cell = this.roomOcc.get(rid)!.get(sl)
+      if (!cell) continue
+      if (cell.w === lessonId) delete cell.w
+      if (cell.o === lessonId) delete cell.o
+      if (cell.e === lessonId) delete cell.e
+      if (!cell.w && !cell.o && !cell.e) this.roomOcc.get(rid)!.delete(sl)
+    }
+    this.roomOf.delete(lessonId)
   }
 
   /** 某資源（中師／外師）於該格是否已被此週型占用。 */
@@ -682,6 +828,11 @@ class State {
     if (this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
     if (this.subjectSameDayConflict(l, p)) return false
+    // 硬限制：專科教室。所有依設定要進專科教室的課，該時段都必須有教室可用，否則不准排在這裡——
+    // 管理教師只認自己管理的那間（可趕走借用者，但得幫對方換到別間）；沒有管理教室的老師則整科任一間皆可。
+    // 沒教室不是回原班，是換時段；整週都塞不進才會成為未排（明著卡住，不悄悄降級）。
+    const pool = this.roomPool.get(l.id)
+    if (pool && !pool.some(r => this.planRoom(r.id, l, p) !== null)) return false
     return true
   }
 
@@ -758,6 +909,22 @@ class State {
 
   place(l: EngineLesson, p: Placement) {
     this.pos.set(l.id, p)
+    const pool = this.roomPool.get(l.id)
+    if (pool) {
+      const slots = this.slotsOf(l, p)
+      // 直接空著的優先；沒有才動用管理者的優先權（趕走借用者並幫他換教室）
+      let chosen: RoomInfo | undefined, moves: { id: string; to: string }[] = []
+      for (const r of pool) { const m = this.planRoom(r.id, l, p); if (m && m.length === 0) { chosen = r; break } }
+      if (!chosen) for (const r of pool) { const m = this.planRoom(r.id, l, p); if (m) { chosen = r; moves = m; break } }
+      if (chosen) {
+        for (const mv of moves) {
+          const bl = this.lessonById.get(mv.id)!, bp = this.pos.get(mv.id)!
+          this.releaseRoom(mv.id)
+          this.occupyRoom(mv.id, mv.to, this.slotsOf(bl, bp), bl.parity)
+        }
+        this.occupyRoom(l.id, chosen.id, slots, l.parity)
+      }
+    }
     const cOcc = this.classOcc.get(l.classKey)!
     const occs = [this.teacherOcc.get(l.teacherId)!]
     if (l.coTeacherId) occs.push(this.teacherOcc.get(l.coTeacherId)!)
@@ -776,6 +943,7 @@ class State {
   remove(l: EngineLesson) {
     const p = this.pos.get(l.id)
     if (!p) return
+    this.releaseRoom(l.id)   // 要在 pos 刪除前釋放教室（releaseRoom 靠 pos 找時段）
     this.pos.delete(l.id)
     const cOcc = this.classOcc.get(l.classKey)!
     const occs = [this.teacherOcc.get(l.teacherId)!]
@@ -830,42 +998,50 @@ function slotZh(day: number, period: number) { return `週${DAY_ZH[day]}第${per
 
 /** 教室分配（scoreState 與 finalize 共用）：管理教師必得自己的教室；
  *  非管理者先用無管理者的教室、再用有管理者的（此時依權重扣分）。回傳 lessonId → roomId。 */
+/** 教室分配。管理教師的課在排課當下（State.place）就綁定了自己的教室，這裡照抄。
+ *  非管理教師沒有那層保護，放置當下若剛好沒空教室就會空手——但之後別人可能搬走、教室空出來，
+ *  故排完後再替所有沒拿到教室的課補撿一次（優先撿無管理者的教室，避免占用管理者的地盤）。 */
 function assignRooms(input: EngineInput, st: State): Map<string, string> {
+  const roomOf = new Map(st.roomOf)
   const bySubject: Record<string, RoomInfo[]> = {}
   for (const r of input.rooms) (bySubject[r.subject] ??= []).push(r)
-  const roomOf = new Map<string, string>()
-  const taken = new Map<string, Set<string>>()   // slotKey → roomIds
-  const entries: { l: EngineLesson; p: Placement }[] = []
+  // 目前占用：以已分配結果重建（週型感知）
+  const taken = new Map<string, Map<string, TCell>>()
+  const mark = (l: EngineLesson, p: Placement, roomId: string) => {
+    for (const sl of st.slotsOf(l, p)) {
+      const m = taken.get(sl) ?? taken.set(sl, new Map()).get(sl)!
+      const cell = m.get(roomId) ?? {}
+      if (l.parity === 'weekly') cell.w = l.id
+      else if (l.parity === 'odd') cell.o = l.id
+      else cell.e = l.id
+      m.set(roomId, cell)
+    }
+  }
+  roomOf.forEach((rid, id) => {
+    const p = st.pos.get(id)
+    if (p) mark(st.lessonById.get(id)!, p, rid)
+  })
+  // 補撿：仍未拿到教室、但依設定該進教室的課
+  const rest: { l: EngineLesson; p: Placement }[] = []
   st.pos.forEach((p, id) => {
+    if (roomOf.has(id)) return
     const l = st.lessonById.get(id)!
-    if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.grade, l.size)) entries.push({ l, p })
+    if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.grade, l.size)) rest.push({ l, p })
   })
-  entries.sort((a, b) => {
-    const am = bySubject[a.l.subject].some(r => r.managerIds.includes(a.l.teacherId)) ? 0 : 1
-    const bm = bySubject[b.l.subject].some(r => r.managerIds.includes(b.l.teacherId)) ? 0 : 1
-    if (am !== bm) return am - bm                 // 管理教師的課先分
-    return a.l.id < b.l.id ? -1 : 1
-  })
-  for (const { l, p } of entries) {
-    const rooms = bySubject[l.subject]
+  rest.sort((a, b) => (a.l.id < b.l.id ? -1 : 1))
+  for (const { l, p } of rest) {
     const slots = st.slotsOf(l, p)
-    const free = (r: RoomInfo) => slots.every(s => !(taken.get(s)?.has(r.id)))
-    // 有管理教師的教室只給管理教師用（hardParams.roomManagerOnly，預設開）→ 別人的教室直接排除、回原班
-    const pool = input.weights.hardParams.roomManagerOnly
-      ? rooms.filter(r => r.managerIds.length === 0 || r.managerIds.includes(l.teacherId))
-      : rooms
-    const ordered = [
-      ...pool.filter(r => r.managerIds.includes(l.teacherId)),   // 自己管理的教室（可有多位管理者）
-      ...pool.filter(r => r.managerIds.length === 0),            // 無管理者的教室
-      ...pool.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)),
-    ]
-    const room = ordered.find(free)
-    if (!room) continue
-    roomOf.set(l.id, room.id)
-    for (const s of slots) (taken.get(s) ?? taken.set(s, new Set()).get(s)!).add(room.id)
+    const free = (r: RoomInfo) => slots.every(sl => !roomClash(taken.get(sl)?.get(r.id), l.parity))
+    const rooms = bySubject[l.subject]
+    const room = rooms.filter(r => r.managerIds.length === 0).find(free) ?? rooms.find(free)
+    if (room) { roomOf.set(l.id, room.id); mark(l, p, room.id) }
   }
   return roomOf
 }
+
+
+
+
 
 const UNPLACED_PEN = 1e5   // 每堂未排課的罰分：低於「必須」、高於一切軟規則，確保搜尋優先塞入
 
@@ -889,13 +1065,25 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue   // 依設定本來就該留原班，不算「教室不足」
     const rid = roomOf.get(l.id)
     if (!rid) {
-      if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
+      // ×2：回原班必須比「借別的專科教室」貴，階梯才成立（借用扣 roomManagerFirst 一次）
+      if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer) * 2, `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
       continue
     }
     const r = roomById.get(rid)!
     if (w.roomManagerFirst !== 'off' && r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)) {
-      acc(map, 'roomManagerFirst', '教室管理教師優先', pen(w.roomManagerFirst), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 借用 ${r.label}（管理者非授課者）`)
+      acc(map, 'roomManagerFirst', '教室固定（借用他人教室）', pen(w.roomManagerFirst), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 借用 ${r.label}（管理者非授課者）`)
     }
+  }
+  // 同一位老師本週用了幾間教室——每多一間扣一次（使用者要求：擠不下時盡量集中在同一間）
+  if (w.roomManagerFirst !== 'off') {
+    const roomsOfTeacher = new Map<string, Set<string>>()
+    for (const { l } of placedLessons) {
+      const rid = roomOf.get(l.id)
+      if (rid) (roomsOfTeacher.get(l.teacherId) ?? roomsOfTeacher.set(l.teacherId, new Set()).get(l.teacherId)!).add(rid)
+    }
+    roomsOfTeacher.forEach((set, tid) => {
+      if (set.size > 1) acc(map, 'roomManagerFirst', '教室固定（借用他人教室）', pen(w.roomManagerFirst) * (set.size - 1), `${nameOf(tid)} 本週用了 ${set.size} 間教室`)
+    })
   }
 
   // 必排科任課覆蓋
@@ -1231,6 +1419,7 @@ export class EngineRun {
   private rnd: () => number
   private startTime = Date.now()
   private cur = 0
+  private curSoft = 0
   private bestTotal = 0
   private bestSoft = 0
   private bestPos: Map<string, Placement>
@@ -1297,6 +1486,52 @@ export class EngineRun {
       + (input.teacherMustTeach[l.teacherId]?.length ?? 0) * 3
       + (input.classMustFill[l.classKey]?.length ?? 0) * 2
       + teacherLoad[l.teacherId]
+    // ── 前置階段：先排「科任教室」，不是先排課 ──
+    // 教室數量固定、常常剛好夠用（如自然三間各 14 組對容量 14），排在後面就再也塞不進去。
+    // 因此趁課表全空時，把所有要進專科教室的課先用回溯法填進教室：
+    //   第一輪：每間教室的管理教師 → 填自己那間（依需求最滿的教室先）；
+    //   第二輪：沒有管理教室的老師 → 填整科剩下的教室格（可跨間）。
+    // 這些課之後仍可換時段（鎖的是教室歸屬，不是時段），但 canPlace 保證換到哪都有教室。
+    {
+      const fillBatch = (todo0: EngineLesson[], ok: (l: EngineLesson) => boolean) => {
+        const todo = todo0.filter(l => !this.st.pos.has(l.id))
+          .sort((x, y) => (y.size - x.size) || (classSlack(x.classKey) - classSlack(y.classKey)) || (this.rnd() - 0.5))
+        let nodes = 0
+        const dfs = (i: number): boolean => {
+          if (i >= todo.length) return true
+          if (++nodes > 20000) return false
+          const l = todo[i]
+          // 候選格子打散：前置階段若不吃種子，五個種子會排出完全相同的教室配置，多起點就失去意義
+          const cands = this.st.candidates(l)
+          for (let k = cands.length - 1; k > 0; k--) { const j = Math.floor(this.rnd() * (k + 1)); [cands[k], cands[j]] = [cands[j], cands[k]] }
+          for (const p of cands) {
+            this.st.place(l, p)
+            if (ok(l) && dfs(i + 1)) return true
+            this.st.remove(l)
+          }
+          return false
+        }
+        if (!dfs(0)) {
+          // 整批填不滿 → 保留已填且合格的（貪婪結果），其餘交給後面的一般流程（canPlace 仍會要求有教室）
+          for (const l of todo) if (this.st.pos.has(l.id) && !ok(l)) this.st.remove(l)
+        }
+      }
+      // 第一輪：管理教師 → 自己的教室
+      const roomsByTight = [...input.rooms].map(r => {
+        const ls = input.lessons.filter(l => l.subject === r.subject && r.managerIds.includes(l.teacherId)
+          && shouldUseRoom(input.weights, l.subject, l.grade, l.size))
+        return { r, ls }
+      }).filter(x => x.ls.length > 0)
+        .sort((x, y) => (y.ls.length - x.ls.length) || (this.rnd() - 0.5))   // 需求最滿的教室先；同樣滿的隨機
+      for (const { r, ls } of roomsByTight) fillBatch(ls, l => this.st.roomOf.get(l.id) === r.id)
+      // 第二輪：沒有管理教室但要進專科教室的老師 → 整科剩下的格子
+      const subjects = Array.from(new Set(input.rooms.map(r => r.subject)))
+      for (const subj of subjects.sort(() => this.rnd() - 0.5)) {
+        const ls = input.lessons.filter(l => l.subject === subj && this.st.roomPool.has(l.id) && !this.st.mgrRooms.has(l.id))
+        if (ls.length) fillBatch(ls, l => this.st.roomOf.has(l.id))
+      }
+    }
+
     // 錨定老師先用回溯法整批落位（她的課彼此牽制：連堂＋單節＋同科不隔天＋不排課，貪婪一步選錯就把自己堵死，
     // 人工排課會先把這幾位的整週想清楚再排別人）。失敗者退回下方貪婪流程。
     {
@@ -1371,9 +1606,14 @@ export class EngineRun {
       }
     }
 
-    // 錨定課最先（整批、跨班），其餘依 班級餘裕 → 老師負載比 → 課本身難度
+    // 專科教室優先序：0＝有管理教室者（鎖進自己那間，容錯空間最小，必須先排）
+    //                 1＝要用專科教室但沒有管理教室者（撿剩下的，仍比一般課優先）
+    //                 2＝其餘。教室數量固定且常常剛好夠用，排在後面就再也塞不進去了。
+    const roomRank = (l: EngineLesson) => this.st.mgrRooms.has(l.id) ? 0 : this.st.roomPool.has(l.id) ? 1 : 2
+    // 錨定課最先（整批、跨班），接著專科教室課，其餘依 班級餘裕 → 老師負載比 → 課本身難度
     const ordered = [...input.lessons].filter(l => !this.st.pos.has(l.id)).sort((a, b) =>
       (Number(this.anchored.has(b.id)) - Number(this.anchored.has(a.id)))
+      || (roomRank(a) - roomRank(b))
       || (classSlack(a.classKey) - classSlack(b.classKey))
       || (teacherRatio(b.teacherId) - teacherRatio(a.teacherId))
       || (difficulty(b) - difficulty(a)))
@@ -1400,6 +1640,7 @@ export class EngineRun {
 
     const s0 = scoreState(this.st)
     this.cur = s0.total
+    this.curSoft = s0.soft
     this.bestTotal = s0.total
     this.bestSoft = s0.soft
     this.bestPos = new Map(this.st.pos)
@@ -1408,6 +1649,19 @@ export class EngineRun {
     for (let k = 0; k < this.mustTargets.length * 2; k++) this.tryCoverMustFill()
     // 連上修補在建構後多跑幾輪：科任課的「哪一天」在建構期就定調，越早切開越不必後面大搬風
     for (let k = 0; k < this.input.classes.length * 3; k++) this.tryFixHomeroomRun()
+  }
+
+  /** 還有未排課時，接受條件只看「未排＋必須級」、忽略軟分。
+   *  要把最後幾堂塞進去往往得先把別的課挪開，而挪動當下只讓軟分變差、沒有立即好處，
+   *  用總分比較會把這種過渡步驟全部擋掉（純硬探測之所以幾秒就填滿，就是因為軟分為 0 可自由遊走）。
+   *  填滿之後恢復用總分比較，才開始計較軟分。 */
+  private stuck() { return this.bestTotal >= UNPLACED_PEN }
+  private accept(sc: { total: number; soft: number }): boolean {
+    return this.stuck() ? (sc.total - sc.soft) <= (this.cur - this.curSoft) : sc.total <= this.cur
+  }
+  private take(sc: { total: number; soft: number }) {
+    this.cur = sc.total; this.curSoft = sc.soft
+    this.snapshotIfBest(sc.total, sc.soft)
   }
 
   private snapshotIfBest(total: number, soft: number) {
@@ -1452,7 +1706,7 @@ export class EngineRun {
       if (this.st.canPlace(l, p)) {
         this.st.place(l, p)
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        if (this.accept(sc)) { this.take(sc); return }
         this.st.remove(l)
       }
       this.st.place(l, from)
@@ -1491,7 +1745,7 @@ export class EngineRun {
     if (!targets.length) return
     const t = targets[Math.floor(this.rnd() * targets.length)]
     const mustSet = this.mustSetByClass.get(t.classKey) ?? new Set<string>()
-    const lessons = this.lessonsByClass.get(t.classKey) ?? []
+    const lessons = (this.lessonsByClass.get(t.classKey) ?? [])
     if (!lessons.length) return
     const off = Math.floor(this.rnd() * lessons.length)
     for (let j = 0; j < lessons.length; j++) {
@@ -1509,7 +1763,7 @@ export class EngineRun {
       }
       if (ok) {
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        if (this.accept(sc)) { this.take(sc); return }
         this.st.remove(l)
       }
       if (oldP) this.st.place(l, oldP)
@@ -1530,7 +1784,7 @@ export class EngineRun {
       if (!occ || occ.has(t.slot)) continue
       const { day, period } = parseSlotKey(t.slot)
       const mustSet = this.mustSetByClass.get(t.classKey)!
-      const lessons = this.lessonsByClass.get(t.classKey) ?? []
+      const lessons = (this.lessonsByClass.get(t.classKey) ?? [])
       const off = Math.floor(this.rnd() * Math.max(1, lessons.length))
       for (let j = 0; j < lessons.length; j++) {
         const l = lessons[(off + j) % lessons.length]
@@ -1547,11 +1801,7 @@ export class EngineRun {
         }
         if (placedAt) {
           const sc = scoreState(this.st)
-          if (sc.total <= this.cur) {
-            this.cur = sc.total
-            this.snapshotIfBest(sc.total, sc.soft)
-            return
-          }
+          if (this.accept(sc)) { this.take(sc); return }
           this.st.remove(l)
         }
         if (oldP) this.st.place(l, oldP)
@@ -1615,11 +1865,7 @@ export class EngineRun {
         if (!fail && this.st.canPlace(l, p)) {
           this.st.place(l, p)
           const sc = scoreState(this.st)
-          if (sc.total <= this.cur) {
-            this.cur = sc.total
-            this.snapshotIfBest(sc.total, sc.soft)
-            return true
-          }
+          if (this.accept(sc)) { this.take(sc); return true }
           this.st.remove(l)
         }
         // 還原被逐出的課與本班課
@@ -1653,8 +1899,9 @@ export class EngineRun {
         const p = cands[Math.floor(this.rnd() * cands.length)]
         this.st.place(l, p)
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur || this.rnd() < 0.02) {
+        if (this.accept(sc) || this.rnd() < 0.02) {
           this.cur = sc.total
+          this.curSoft = sc.soft
           moved = true
           this.snapshotIfBest(sc.total, sc.soft)
         } else this.st.remove(l)
@@ -1686,7 +1933,7 @@ export class EngineRun {
       if (this.st.canPlace(l2, p1)) {
         this.st.place(l2, p1)
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); done = true }
+        if (this.accept(sc)) { this.take(sc); done = true }
         else this.st.remove(l2)
       }
       if (!done) this.st.remove(l1)
@@ -1716,7 +1963,7 @@ export class EngineRun {
       if (slots.every(x => !cOcc.has(x)) && this.st.canPlace(l, p)) {
         this.st.place(l, p)
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        if (this.accept(sc)) { this.take(sc); return }
         this.st.remove(l)
         continue
       }
@@ -1752,7 +1999,7 @@ export class EngineRun {
       if (!fail && this.st.canPlace(l, p)) {
         this.st.place(l, p)
         const sc = scoreState(this.st)
-        if (sc.total <= this.cur) { this.cur = sc.total; this.snapshotIfBest(sc.total, sc.soft); return }
+        if (this.accept(sc)) { this.take(sc); return }
         this.st.remove(l)
       }
       for (const m of moved.reverse()) {

@@ -93,7 +93,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomPrefer', name: '專科教室優先', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班（人工課表：自然連堂 42 組全進自然教室、單節 42 堂全回原班）' },
-    { key: 'roomManagerFirst', name: '教室管理教師優先', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
+    { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '老師盡量固定在同一間教室：①管理教師沒用到自己管理的教室 ②同一位老師本週用了多間教室（每多一間扣一次）。教室分配四階：管理教師用自己的→擠不下的管理教師借別間（盡量集中同一間）→無管理教室的老師撿空檔→都滿才回原班；回原班的罰分是借用的兩倍，階梯才成立', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
   ] },
@@ -437,17 +437,6 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                   ? <span className="text-amber-600">未選任何年段＝此限制停用</span>
                   : <span className="text-zinc-400">避免導師整個上午連上、中間沒有一節可喘息／改作業</span>}
               </div>
-            </li>
-            <li className="flex items-center gap-2 flex-wrap">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input type="checkbox" checked={w.hardParams.roomManagerOnly}
-                  onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, roomManagerOnly: e.target.checked } }))} />
-                <span>有設管理教師的專科教室，<b>只有管理教師能用</b></span>
-              </label>
-              <span className="text-zinc-400">
-                用不到就回原班，不借別人的教室；沒設管理教師的教室仍開放給所有人。
-                {!w.hardParams.roomManagerOnly && <span className="text-amber-600 ml-1">關閉時：借別人的教室（扣「教室管理教師優先」）永遠比回原班（扣「專科教室優先」）便宜，老師會在各教室間跑來跑去</span>}
-              </span>
             </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>

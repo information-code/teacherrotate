@@ -154,13 +154,8 @@ export interface HardParams {
   maxRunHomeroom: number      // 導師連上絕對上限（預設 3＝不連四）：班級同日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開。
                               // 目的＝導師不會整個上午連四節都是自己的課（中間要有科任課能喘口氣、改作業）
   homeroomRunBands: Band[]    // 上一條適用的年段（預設全年段；清空＝停用）
-  // 有設管理教師的專科教室，只有管理教師能用（預設開）。關掉＝別人也能借。
-  // 開著時「寧可回原班，也不去別人的教室」——不開的話，借別人的教室(roomManagerFirst 3 分)
-  // 永遠比回原班(roomPrefer 9 分)便宜，老師就會在各教室之間跑來跑去。
-  // 沒設管理教師的教室不受影響，仍然開放給所有人。
-  roomManagerOnly: boolean
 }
-export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], roomManagerOnly: true }
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS] }
 
 /** 專科教室使用時機（結構設定，非權重）。依 114-2 人工課表：
  *  自然科學＝連堂 42 組 100% 進自然教室、單節 42 堂 0% 進（實驗課進教室、講述課留原班，零例外）；
@@ -250,7 +245,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       batchType: 'high',
       walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomPrefer: 'high',
-      roomManagerFirst: 'mid',
+      roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       homeroomMorning: { level: 'mid', n: 2 },
       homeroomDailyMax: { level: 'high', n: 3 },
       avoidPeriods: 'mid',
@@ -326,7 +321,6 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         maxRunTeacher: clamp(hp.maxRunTeacher, DEFAULT_HARD_PARAMS.maxRunTeacher),
         maxRunHomeroom: clamp(rawHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom),
         homeroomRunBands: bands,
-        roomManagerOnly: typeof hp.roomManagerOnly === 'boolean' ? hp.roomManagerOnly : DEFAULT_HARD_PARAMS.roomManagerOnly,
       }
     })(),
     roomUse: (() => {
