@@ -73,9 +73,9 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 }
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
-type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax'
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
-type SpreadKey = 'homeroomBalance' | 'dayBalance' | 'hourlyBalance'
+type SpreadKey = 'dayBalance' | 'hourlyBalance'
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; spread?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
@@ -83,9 +83,8 @@ interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?
 // 鐘點教師在引擎裡沒有專屬規則（受的是與科任、行政完全相同的那一組），故三者合併為一組。
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
-    { key: 'homeroomMorning', name: '上午留白給導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午（人工課表：上午格 46% 是科任、下午 60%，有偏好但不絕對）' },
-    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）。另有固定硬限制「導師連上上限」＝不連四' },
-    { key: 'homeroomBalance', name: '導師每週分布', def: '低', spread: true, desc: '導師每天的課量（＝班級留白）要平均分散，還是集中在少數幾天。分散與集中是同一條軸的兩端，用左側切換' },
+    { key: 'homeroomMorning', name: '上午導師課下限', def: '中', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「不連四」硬限制' },
+    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。導師一週僅 14~15 節，N=3 等於強制用滿五天、形狀只剩 3/3/3/3/2——「每週平均分散」由這條涵蓋，不另設規則。另有固定硬限制「導師連上上限」＝不連四' },
     { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
   ] },
   { title: '科任・行政', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動', rows: [
@@ -108,8 +107,8 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
-const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax'
-const isSpread = (k: RuleKey): k is SpreadKey => k === 'homeroomBalance' || k === 'dayBalance' || k === 'hourlyBalance'
+const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning'
+const isSpread = (k: RuleKey): k is SpreadKey => k === 'dayBalance' || k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']
 const MODE_CLS: Record<DoubleMode, string> = {

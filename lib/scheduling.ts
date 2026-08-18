@@ -138,8 +138,10 @@ export interface BuiltinRules {
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   roomManagerFirst: WeightLevel                   // 教室管理教師優先：管理者必得自己的教室（結構保證）；非管理者用到有管理者的教室時扣分
-  homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
-  homeroomBalance: DaySpread                      // 導師每週分布傾向（以班級留白計）
+  // 上午導師課下限：每天上午（1~4 節）至少 N 節是導師課。刻意做成「下限」而非「越多越好」——
+  // 單調版本會把科任課全擠到下午、讓上午 4 格全是導師課而撞上「不連四」硬限制。
+  homeroomMorning: { level: WeightLevel; n: number }
+  // 導師每週分布已刪除：每日上限 N 一設，14 節÷N 就強制用滿 5 天且只剩一種形狀，分散是必然結果
   homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
@@ -215,9 +217,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomPrefer: 'high',
       roomManagerFirst: 'mid',
-      homeroomMorning: 'mid',
-      homeroomBalance: { level: 'low', mode: 'spread', days: 3 },
-      homeroomDailyMax: { level: 'high', n: 5 },
+      homeroomMorning: { level: 'mid', n: 2 },
+      homeroomDailyMax: { level: 'high', n: 3 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'high',
@@ -269,8 +270,10 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
-      homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
-      homeroomBalance: normSpread(b.homeroomBalance, db.homeroomBalance),
+      // 舊資料的 homeroomMorning 是純字串（單調版）→ 補成下限 N；homeroomBalance 直接丟棄
+      homeroomMorning: typeof b.homeroomMorning === 'string'
+        ? { level: normLevel(b.homeroomMorning, db.homeroomMorning.level), n: db.homeroomMorning.n }
+        : { level: normLevel(b.homeroomMorning?.level, db.homeroomMorning.level), n: Number(b.homeroomMorning?.n ?? db.homeroomMorning.n) },
       homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),

@@ -507,6 +507,28 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (lessons.length === 0) preflight.push({ level: 'error', text: '沒有任何科任課可排：請先完成科任配班。', tab: 'subject' })
   if (agg.overCap.length) preflight.push({ level: 'error', text: `科任課超過可排格數（節數/格數）：${joinCap(agg.overCap)}`, tab: 'subject' })
   if (agg.mustOver.length) preflight.push({ level: 'error', text: `導師不排課時段多於科任課、無法全部覆蓋：${joinCap(agg.mustOver)}`, tab: 'subject' })
+  // 導師每日節數上限（權重）可行性：每天要把導師壓到 N 節，該日就得有「格數 − N」節科任課。
+  // 全週加總超過該班的科任節數＝這條規則怎麼排都達不到（不會卡死，但會一直吃罰分）——先講明白。
+  {
+    const { level, n: hrN } = config.weights.builtin.homeroomDailyMax
+    const nodesByClass: Record<string, number> = {}
+    for (const l of lessons) nodesByClass[l.classKey] = (nodesByClass[l.classKey] ?? 0) + l.size
+    const short: string[] = []
+    if (level !== 'off') for (const c of classes) {
+      const avail = new Set(classSlots[c.classKey] ?? [])
+      let need = 0
+      for (const d of SCHEDULE_DAYS) {
+        const cnt = Array.from(avail).filter(s => parseSlotKey(s).day === d).length
+        need += Math.max(0, cnt - hrN)
+      }
+      const have = nodesByClass[c.classKey] ?? 0
+      if (have < need) short.push(`${c.label}（需 ${need} 節／科任課僅 ${have} 節）`)
+    }
+    if (short.length) preflight.push({
+      level: 'warn', tab: 'weight',
+      text: `導師每日節數上限 ${hrN} 節：這些班的科任課節數不足以把導師壓到每日 ${hrN} 節，必然超標並持續吃罰分（不會卡住排課）：${joinCap(short)}——可調高上限，或於配課統計增加該班科任課。`,
+    })
+  }
   // 導師連上上限（硬限制）可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
   // 全週加總若多於該班的科任課堂數，就是怎麼排都必然違反——先在前置檢核講明白，別讓精靈白跑一輪。
   {
@@ -922,12 +944,6 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
     }
     // 上午留白給導師：科任課占上午且該班當日下午仍有空格
-    if (w.homeroomMorning !== 'off' && p.period <= 4 && input.classDayFull[l.classKey]?.[p.day]) {
-      const occ = st.classOcc.get(l.classKey)!
-      const avail = input.classSlots[l.classKey] ?? []
-      const freeAfternoon = [5, 6, 7].some(q => avail.includes(`${p.day}-${q}`) && !occ.has(`${p.day}-${q}`))
-      if (freeAfternoon) acc(map, 'homeroomMorning', '上午留白給導師', pen(w.homeroomMorning), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)}（下午尚有空格）`)
-    }
   }
 
   byClassSubject.forEach((arr, k) => {
@@ -994,6 +1010,25 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
+  // 上午導師課下限：每天上午（1~4 節）至少 N 節導師課，不足才罰。
+  // 是「下限」不是「越多越好」——到達門檻就收手，才不會跟成塊、不連四無限拉扯。
+  if (w.homeroomMorning.level !== 'off') {
+    const target = Math.max(1, w.homeroomMorning.n)
+    for (const c of input.classes) {
+      const occ = st.classOcc.get(c.classKey)!
+      const avail = new Set(input.classSlots[c.classKey] ?? [])
+      const locks = input.lockedCells[c.classKey] ?? {}
+      for (const d of SCHEDULE_DAYS) {
+        // 上午可排格數不足 N 的日子（如只開 2 格），目標降到實際格數，不能罰它做不到的事
+        const morningSlots = [1, 2, 3, 4].filter(q => avail.has(`${d}-${q}`) || (`${d}-${q}` in locks))
+        if (morningSlots.length === 0) continue
+        const hr = morningSlots.filter(q => !occ.has(`${d}-${q}`) && !(`${d}-${q}` in locks)).length
+        const want = Math.min(target, morningSlots.length)
+        if (hr < want) acc(map, 'homeroomMorning', `上午導師課下限 ${target}`, pen(w.homeroomMorning.level) * (want - hr), `${c.label} 週${DAY_ZH[d]}上午只有 ${hr} 節導師課`)
+      }
+    }
+  }
+
   // 科任課同日成塊（權重）——同班同日（上、下午各自計）科任課＋鎖課連成一塊，每多一塊扣一次
   if (w.classCohesion !== 'off') for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
@@ -1019,14 +1054,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   }
 
   // 留白每日平衡（班級的科任課分布＝導師的每日負擔平衡）
-  {
-    const cfg = w.homeroomBalance
-    for (const c of input.classes) {
-      const counts = SCHEDULE_DAYS.map(d => byClassDayCount.get(`${c.classKey}|${d}`) ?? 0)
-      const r = spreadOver(cfg, counts, 2)
-      if (r) acc(map, 'homeroomBalance', `導師每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${c.label} 科任課${r.why}`)
-    }
-  }
+
 
   // 導師每日節數上限：每班每日留白（可排格−科任課）≤ N
   if (w.homeroomDailyMax.level !== 'off') {
