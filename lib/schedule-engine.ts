@@ -525,8 +525,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       if (have < need) short.push(`${c.label}（需 ${need} 節／科任課僅 ${have} 節）`)
     }
     if (short.length) preflight.push({
-      level: 'warn', tab: 'weight',
-      text: `導師每日節數上限 ${hrN} 節：這些班的科任課節數不足以把導師壓到每日 ${hrN} 節，必然超標並持續吃罰分（不會卡住排課）：${joinCap(short)}——可調高上限，或於配課統計增加該班科任課。`,
+      level: 'info', tab: 'weight',
+      text: `導師每日節數上限 ${hrN} 節：這些班的科任課節數不足以完全達標，會殘留超標（權重＝盡量，不會卡住排課，其餘班級照樣壓到 ${hrN} 節，這幾班也會盡量壓近）：${joinCap(short)}——想完全消掉可於配課統計增加該班科任課，或調高上限。`,
     })
   }
   // 導師連上上限（硬限制）可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
