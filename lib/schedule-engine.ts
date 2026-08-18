@@ -124,6 +124,10 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
   for (const r of rooms) (bySubject[r.subject] ??= []).push(r)
   // 專科教室使用時機（自然單節留原班等）；未帶 weights 時維持舊行為＝一律使用
   const wants = (p: PlacedResult) => Boolean(bySubject[p.subject]) && (!weights || shouldUseRoom(weights, p.subject, p.grade, p.size))
+  // 有管理教師的教室只給管理教師用（預設開）：用不到就回原班，不借別人的
+  const mgrOnly = weights ? weights.hardParams.roomManagerOnly : true
+  const usable = (rs: RoomInfo[], teacherId: string) =>
+    mgrOnly ? rs.filter(r => r.managerIds.length === 0 || r.managerIds.includes(teacherId)) : rs
   const taken = new Map<string, Set<string>>()
   const roomOf = new Map<string, string>()
   const entries = placed.filter(wants)
@@ -137,9 +141,9 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
     const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
     const rs = bySubject[p.subject]
     const ordered = [
-      ...rs.filter(r => r.managerIds.includes(p.teacherId)),
-      ...rs.filter(r => r.managerIds.length === 0),
-      ...rs.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(p.teacherId)),
+      ...usable(rs, p.teacherId).filter(r => r.managerIds.includes(p.teacherId)),
+      ...usable(rs, p.teacherId).filter(r => r.managerIds.length === 0),
+      ...usable(rs, p.teacherId).filter(r => r.managerIds.length > 0 && !r.managerIds.includes(p.teacherId)),
     ]
     const room = ordered.find(r => slots.every(s => !(taken.get(s)?.has(r.id))))
     if (room) {
@@ -846,10 +850,14 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
     const rooms = bySubject[l.subject]
     const slots = st.slotsOf(l, p)
     const free = (r: RoomInfo) => slots.every(s => !(taken.get(s)?.has(r.id)))
+    // 有管理教師的教室只給管理教師用（hardParams.roomManagerOnly，預設開）→ 別人的教室直接排除、回原班
+    const pool = input.weights.hardParams.roomManagerOnly
+      ? rooms.filter(r => r.managerIds.length === 0 || r.managerIds.includes(l.teacherId))
+      : rooms
     const ordered = [
-      ...rooms.filter(r => r.managerIds.includes(l.teacherId)),   // 自己管理的教室（可有多位管理者）
-      ...rooms.filter(r => r.managerIds.length === 0),            // 無管理者的教室
-      ...rooms.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)),
+      ...pool.filter(r => r.managerIds.includes(l.teacherId)),   // 自己管理的教室（可有多位管理者）
+      ...pool.filter(r => r.managerIds.length === 0),            // 無管理者的教室
+      ...pool.filter(r => r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)),
     ]
     const room = ordered.find(free)
     if (!room) continue

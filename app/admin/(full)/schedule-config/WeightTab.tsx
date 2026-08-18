@@ -438,6 +438,17 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                   : <span className="text-zinc-400">避免導師整個上午連上、中間沒有一節可喘息／改作業</span>}
               </div>
             </li>
+            <li className="flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={w.hardParams.roomManagerOnly}
+                  onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, roomManagerOnly: e.target.checked } }))} />
+                <span>有設管理教師的專科教室，<b>只有管理教師能用</b></span>
+              </label>
+              <span className="text-zinc-400">
+                用不到就回原班，不借別人的教室；沒設管理教師的教室仍開放給所有人。
+                {!w.hardParams.roomManagerOnly && <span className="text-amber-600 ml-1">關閉時：借別人的教室（扣「教室管理教師優先」）永遠比回原班（扣「專科教室優先」）便宜，老師會在各教室間跑來跑去</span>}
+              </span>
+            </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>
             <li>連堂 2 節成對永不拆散、且不跨午休（不由第 4 節起始）；視藝單雙週固定兩格輪替（單週組起始 1/3/5、雙週組 2/4/6）</li>
