@@ -133,6 +133,8 @@ export interface BuiltinRules {
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
   hourlyBalance: DaySpread                        // 鐘點的每週分布傾向（多半要「集中」——少跑幾趟學校）
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
+  bandAdjacent: WeightLevel                       // 全單節老師相鄰兩堂同年級：課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同年級，
+                                                  //   免得一下四年級一下六年級（跨年級＝換教材換進度）。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%）→ 權重
   batchType: WeightLevel                          // 同型態同日：老師同日不混排連堂與單節。114-2 人工課表 14/235 組混排，且成因結構性
                                                   //（同一師兼教連堂科目與單節科目；自然/社會 3 節＝連堂＋單節，單科內就會混）→ 權重非硬限制
   // 固定硬限制（人工課表 0 違反，維持）：同時段唯一、永不連 7、同科同日、連堂不拆、連堂不跨午休、科任老師上空上空
@@ -149,6 +151,8 @@ export interface BuiltinRules {
   avoidPeriods: WeightLevel
   timePrefer: WeightLevel
   subjectApart: WeightLevel                       // 科目互斥同日（母開關）：子規則列的幾科同班不同天出現，預設高
+  teacherApart: WeightLevel                       // 老師同日不混科目（母開關）：子規則列的幾科，同一位老師同一天只上其中一種。
+                                                  //   英語老師：週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%）→ 權重高
 }
 
 /** 固定硬限制的參數（不是權重、只是數字；引擎絕不違反）。 */
@@ -157,8 +161,11 @@ export interface HardParams {
   maxRunHomeroom: number      // 導師連上絕對上限（預設 3＝不連四）：班級同日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開。
                               // 目的＝導師不會整個上午連四節都是自己的課（中間要有科任課能喘口氣、改作業）
   homeroomRunBands: Band[]    // 上一條適用的年段（預設全年段；清空＝停用）
+  // 連堂後不緊接單節（同一位老師、同一個半天）：連堂結束要收器材，緊接著跑班來不及。
+  // 單節後接連堂可以。114-2 人工課表自然 42 組連堂 0 例外 → 硬限制。列出的科目為「連堂的科目」
+  noSingleAfterDouble: string[]
 }
-export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS] }
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], noSingleAfterDouble: ['自然', '自然科學'] }
 
 /** 專科教室使用時機（結構設定，非權重）。依 114-2 人工課表：
  *  自然科學＝連堂 42 組 100% 進自然教室、單節 42 堂 0% 進（實驗課進教室、講述課留原班，零例外）；
@@ -190,9 +197,9 @@ export function doubleModeOf(w: ScheduleWeights, subject: string, grade: number)
 }
 
 /** 模板規則：管理者可無限新增實例，引擎實作模板計分邏輯。（doublePeriod／noConsecDays 為舊資料，normalize 時遷移／剔除） */
-export type RuleTemplate = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
+export type RuleTemplate = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 export const RULE_TEMPLATE_LABEL: Record<RuleTemplate, string> = {
-  avoidPeriods: '科目避開節次', timePrefer: '科目時段偏好', subjectApart: '科目互斥同日',
+  avoidPeriods: '科目避開節次', timePrefer: '科目時段偏好', subjectApart: '科目互斥同日', teacherApart: '老師同日不混科目',
 }
 export interface TemplateRule {
   id: string
@@ -247,6 +254,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       hourlyBalance: { level: 'mid', mode: 'concentrate', days: 2 },
       classCohesion: 'high',   // 114-2 人工課表遵守率 91%（43/463 半天被切開）
       batchType: 'high',
+      bandAdjacent: 'mid',
       walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       homeroomMorning: { level: 'mid', n: 2 },
@@ -254,6 +262,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
+      teacherApart: 'high',
     },
     doubleMode: defaultDoubleMode(),
     roomUse: defaultRoomUse(),
@@ -263,6 +272,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'high' },   // 人工課表遵守率 92%
       // 國際教育（外師協同）與英語同班不同日：114-2 人工課表 0／106 零例外＝鐵律 → 硬限制
       { id: 'tpl-ie-en-apart', template: 'subjectApart', subjects: ['國際教育', '英語'], grades: [3, 4, 5, 6], level: 'high', hard: true },
+      // 英語老師同一天只上國際教育或只上英語，不穿插：114-2 人工課表 30 人日混排 2（7%）
+      { id: 'tpl-ie-en-teacher', template: 'teacherApart', subjects: ['國際教育', '英語'], grades: [], level: 'high' },
     ],
   }
 }
@@ -300,6 +311,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       hourlyBalance: normSpread(b.hourlyBalance, db.hourlyBalance),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
+      bandAdjacent: normLevel(b.bandAdjacent, db.bandAdjacent),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
       // 舊資料的 homeroomMorning 是純字串（單調版）→ 補成下限 N；homeroomBalance 直接丟棄
@@ -310,6 +322,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),
       subjectApart: normLevel(b.subjectApart, db.subjectApart),
+      teacherApart: normLevel(b.teacherApart, db.teacherApart),
     },
     hardParams: (() => {
       const hp = (r as { hardParams?: Partial<HardParams> }).hardParams ?? {}
@@ -325,6 +338,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         maxRunTeacher: clamp(hp.maxRunTeacher, DEFAULT_HARD_PARAMS.maxRunTeacher),
         maxRunHomeroom: clamp(rawHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom),
         homeroomRunBands: bands,
+        noSingleAfterDouble: Array.isArray(hp.noSingleAfterDouble) ? (hp.noSingleAfterDouble as unknown[]).map(String).filter(Boolean) : [...DEFAULT_HARD_PARAMS.noSingleAfterDouble],
       }
     })(),
     roomUse: (() => {
@@ -368,7 +382,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       return out
     })(),
     templates: Array.isArray(r.templates)
-      ? r.templates.filter(t => (['avoidPeriods', 'timePrefer', 'subjectApart'] as string[]).includes(t.template as string))   // doublePeriod 已遷移為連堂矩陣、noConsecDays 已為內建權重
+      ? r.templates.filter(t => (['avoidPeriods', 'timePrefer', 'subjectApart', 'teacherApart'] as string[]).includes(t.template as string))   // doublePeriod 已遷移為連堂矩陣、noConsecDays 已為內建權重
         .map(t => ({
           id: String(t.id ?? ''),
           template: t.template as RuleTemplate,

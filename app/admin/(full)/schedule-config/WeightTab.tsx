@@ -75,7 +75,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
 type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning'
-type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
+type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey
@@ -93,6 +93,8 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
+    { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '中', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%），故為權重' },
+    { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
   ] },
@@ -149,7 +151,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
     const t: TemplateRule = {
       id: crypto.randomUUID(), template, subjects: [], grades: [], level: master === 'off' ? 'mid' : master,
       ...(template === 'avoidPeriods' ? { periods: [] } : {}),
-      ...(template === 'timePrefer' ? { pref: 'morning' as const } : {}),   // subjectApart：只用 subjects/grades
+      ...(template === 'timePrefer' ? { pref: 'morning' as const } : {}),   // subjectApart／teacherApart：只用 subjects/grades
     }
     setWeights(x => ({ ...x, templates: [...x.templates, t] }))
   }
@@ -277,8 +279,8 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                             : <span className="text-[11px] px-1.5 py-0.5 rounded-sm bg-red-50 text-red-700 border border-red-200">硬限制</span>}
                           <button onClick={() => removeTemplate(t)} className="text-red-400 hover:text-red-600" title="刪除這組">✕</button>
                         </span>
-                        {t.template === 'subjectApart'
-                          ? t.subjects.length < 2 && <span className="w-full text-[11px] text-amber-600">互斥至少要選兩科</span>
+                        {t.template === 'subjectApart' || t.template === 'teacherApart'
+                          ? t.subjects.length < 2 && <span className="w-full text-[11px] text-amber-600">至少要選兩科</span>
                           : t.subjects.length === 0 && <span className="w-full text-[11px] text-amber-600">未選科目＝此組不作用</span>}
                       </div>
                     ))}
@@ -449,6 +451,13 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                   ? <span className="text-amber-600">未選任何年段＝此限制停用</span>
                   : <span className="text-zinc-400">避免導師整個上午連上、中間沒有一節可喘息／改作業</span>}
               </div>
+            </li>
+            <li className="flex items-center gap-2 flex-wrap">
+              <span><b>連堂後不緊接單節</b>（同一位老師、同半天；午休隔開不算）——連堂結束要收器材，緊接著跑班來不及；單節後接連堂可以。適用科目：</span>
+              <input value={w.hardParams.noSingleAfterDouble.join('、')}
+                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, noSingleAfterDouble: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
+                placeholder="自然" className="input py-0.5 text-xs w-40" />
+              <span className="text-zinc-400">114-2 人工課表自然 42 組連堂 0 例外</span>
             </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>

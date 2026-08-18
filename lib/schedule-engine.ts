@@ -921,6 +921,9 @@ class State {
     }
     // 連續授課絕對上限（預設 6＝永不連 7）：模擬放置後檢查該日連續數
     if (this.teacherRunAfter(l, p) > this.input.weights.hardParams.maxRunTeacher) return false
+    // 硬限制：連堂後不緊接單節（同一位老師、同半天）——連堂結束要收器材，緊接著跑班來不及；單節後接連堂可以。
+    // 114-2 人工課表自然 42 組連堂 0 例外。列在 hardParams.noSingleAfterDouble 的科目為「連堂的科目」
+    if (this.doubleThenSingle(l, p)) return false
     // 硬限制：單日課間空堂最多一段（禁止「上、空、上、空」交錯）
     if (this.teacherGapSegsAfter(l, p) > 1) return false
     // 硬限制：同班同科同日禁止（連堂自身除外）；相鄰日為權重「同科不隔天」
@@ -992,6 +995,35 @@ class State {
       worst = Math.max(worst, segs)
     }
     return worst
+  }
+
+  /** 放 l 在 p 之後，這位老師是否出現「連堂（指定科目）→ 緊接單節」。午休隔開不算（4→5）。 */
+  private doubleThenSingle(l: EngineLesson, p: Placement): boolean {
+    const subjSet = this.input.weights.hardParams.noSingleAfterDouble
+    if (!subjSet.length) return false
+    const tOcc = this.teacherOcc.get(l.teacherId)
+    if (!tOcc) return false
+    const lessonAt = (q: number): EngineLesson | null => {
+      const cell = tOcc.get(`${p.day}-${q}`)
+      const id = cell?.w ?? (l.parity !== 'even' ? cell?.o : undefined) ?? (l.parity !== 'odd' ? cell?.e : undefined)
+      return id && id !== l.id ? this.lessonById.get(id)! : null
+    }
+    if (l.size === 1) {
+      // 我是單節：前一格若是某連堂的第二節（連堂起於 p-2）且不跨午休 → 違反
+      if (p.period === MORNING_LAST + 1) return false
+      const prev = lessonAt(p.period - 1)
+      if (prev && prev.size === 2 && subjSet.includes(prev.subject)) {
+        const pp = this.pos.get(prev.id)
+        if (pp && pp.period === p.period - 2) return true
+      }
+      return false
+    }
+    // 我是連堂（指定科目）：結束的下一格若是單節且不跨午休 → 違反
+    if (!subjSet.includes(l.subject)) return false
+    const endQ = p.period + 1
+    if (endQ === MORNING_LAST) return false
+    const next = lessonAt(endQ + 1)
+    return Boolean(next && next.size === 1)
   }
 
   private teacherRunAfter(l: EngineLesson, p: Placement, rid: string = l.teacherId): number {
@@ -1425,6 +1457,52 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
     }
   })
+
+  // 全單節老師相鄰兩堂同年級（權重）：課全是一節一節的老師，相鄰兩堂不同年級扣一次
+  // （跨年級就是不同教材、不同進度，五→六一樣要換，不只跨年段才算）
+  if (w.bandAdjacent !== 'off') {
+    const sizeByTeacher = new Map<string, boolean>()   // 有無連堂
+    for (const l of input.lessons) if (l.size === 2) sizeByTeacher.set(l.teacherId, true)
+    st.teacherOcc.forEach((occ, tid) => {
+      if (sizeByTeacher.get(tid)) return
+      for (const d of SCHEDULE_DAYS) {
+        let prev: EngineLesson | null = null, prevQ = 0
+        for (let q = 1; q <= 7; q++) {
+          const cell = occ.get(`${d}-${q}`)
+          const id = cell?.w ?? cell?.o ?? cell?.e
+          const cur = id ? st.lessonById.get(id)! : null
+          if (cur && prev && q === prevQ + 1 && cur.grade !== prev.grade) {
+            acc(map, 'bandAdjacent', '全單節老師相鄰同年級', pen(w.bandAdjacent), `${nameOf(tid)} 週${DAY_ZH[d]}第${prevQ}→${q}節 ${prev.classLabel}→${cur.classLabel}（跨年級）`)
+          }
+          if (cur) { prev = cur; prevQ = q }
+        }
+      }
+    })
+  }
+
+  // 老師同日不混科目（權重，母開關＋子規則）：子規則列的幾科，同一位老師同一天只上其中一種
+  if (w.teacherApart !== 'off') {
+    const tpls = input.weights.templates.filter(t => t.template === 'teacherApart' && t.level !== 'off' && t.subjects.length >= 2)
+    if (tpls.length) {
+      const byTeacherDay = new Map<string, Map<string, number>>()   // `${tid}|${d}` → subject → 節數
+      for (const { l, p } of placedLessons) {
+        const k = `${l.teacherId}|${p.day}`
+        const m = byTeacherDay.get(k) ?? byTeacherDay.set(k, new Map()).get(k)!
+        m.set(l.subject, (m.get(l.subject) ?? 0) + l.size)
+      }
+      byTeacherDay.forEach((subs, k) => {
+        const [tid, d] = k.split('|')
+        for (const t of tpls) {
+          const hit = t.subjects.filter(sb => subs.has(sb))
+          if (hit.length < 2) continue
+          // 以「較少那一邊」的節數計次（同「同型態同日」）：混 3＋1 扣 1 次、混 3＋3 扣 3 次——一天只扣一次的話牽引力太弱
+          const counts = hit.map(sb => subs.get(sb)!).sort((x, y) => x - y)
+          const times = counts.slice(0, -1).reduce((x, y) => x + y, 0)
+          acc(map, `tpl-tapart-${t.id}`, `老師同日不混科目：${t.subjects.join('／')}`, pen(t.level) * times, `${nameOf(tid)} 週${DAY_ZH[Number(d)]} ${hit.map(sb => `${sb}${subs.get(sb)}`).join('＋')}`)
+        }
+      })
+    }
+  }
 
   // 同型態同日（權重）：老師當日連堂/單節不混。混得越兇扣越多——以「較少的那一邊」計次，
   // 兼教兩種型態科目的老師（如社會連堂＋數學單節）不會因為 1 堂單節就被重罰。
@@ -2003,6 +2081,7 @@ export class EngineRun {
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
       if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
       if (this.iterations % 8 === 4) { this.tryPlaceUnplacedWithEject(); continue }
+      if (this.iterations % 64 === 13 && this.st.pos.size < this.input.lessons.length) { this.tryResolveTeacher(); continue }   // 13 % 8 = 5：不被上面 %8 的分支攔走
       if (this.rnd() < 0.3) { this.trySwap(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
       const oldP = this.st.pos.get(l.id) ?? null
@@ -2056,6 +2135,42 @@ export class EngineRun {
   }
 
   /** 未排課逐出安插：把擋住老師的別班課搬走後放入未排課。 */
+  /** 未排課的老師整批重解：把該老師所有的課拿起來，回溯法一次重新落位（同建構期錨定老師的做法）。
+   *  針對「班級還有格、但都被老師自己的其他課擋住」——單堂搬動挪不出相鄰兩格，整批重排才有機會。
+   *  全部放得下且（未排＋必須級）不變差才採用，否則原樣放回。 */
+  private tryResolveTeacher() {
+    const unplaced = this.input.lessons.filter(l => !this.st.pos.has(l.id))
+    if (!unplaced.length) return
+    const l0 = unplaced[Math.floor(this.rnd() * unplaced.length)]
+    const ls = this.input.lessons.filter(l => l.teacherId === l0.teacherId)
+    const before = new Map<string, Placement>()
+    for (const l of ls) { const p = this.st.pos.get(l.id); if (p) before.set(l.id, p) }
+    for (const l of ls) this.st.remove(l)
+    const order = [...ls].sort((a, b) => (b.size - a.size) || (this.rnd() - 0.5))
+    let nodes = 0
+    const dfs = (i: number): boolean => {
+      if (i >= order.length) return true
+      if (++nodes > 30000) return false
+      const l = order[i]
+      const cands = this.st.candidates(l)
+      for (let k = cands.length - 1; k > 0; k--) { const j = Math.floor(this.rnd() * (k + 1)); [cands[k], cands[j]] = [cands[j], cands[k]] }
+      for (const p of cands) {
+        this.st.place(l, p)
+        if (dfs(i + 1)) return true
+        this.st.remove(l)
+      }
+      return false
+    }
+    if (dfs(0)) {
+      const sc = scoreState(this.st)
+      if (this.accept(sc)) { this.take(sc); return }
+    }
+    // 失敗或變差 → 原樣放回
+    for (const l of order) if (this.st.pos.has(l.id)) this.st.remove(l)
+    before.forEach((p, id) => this.st.place(this.st.lessonById.get(id)!, p))
+    const sc = scoreState(this.st); this.cur = sc.total; this.curSoft = sc.soft
+  }
+
   private tryPlaceUnplacedWithEject() {
     const unplaced = this.input.lessons.filter(l => !this.st.pos.has(l.id))
     if (!unplaced.length) return

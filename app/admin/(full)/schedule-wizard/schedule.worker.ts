@@ -12,6 +12,10 @@ const SEEDS = [42, 7, 17, 63, 3]
 const BUDGET = { converge: 20000, cap: 90000 }        // 尚未有完整解：每種子收斂/上限
 const BUDGET_MORE = { converge: 12000, cap: 60000 }   // 已有完整解：其餘種子只為多起點比軟分
 const PROBE_MS = 20000
+const RESCUE_SEEDS = [101, 202, 303]
+const RESCUE_FIX = { converge: 20000, cap: 30000 }    // 從最佳解熱啟動純硬補完：實測幾秒
+const RESCUE_HARD = { converge: 25000, cap: 90000 }   // 從零純硬：約半數種子 30～60s 排完
+const RESCUE_SOFT = { converge: 15000, cap: 60000 }   // 從可行解出發做加權優化
 
 let stopRequested = false
 
@@ -26,7 +30,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         dailyMax: { ...b.dailyMax, level: 'off' },
         consecMax: { ...b.consecMax, level: 'off' },
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
-        compact: 'off', classCohesion: 'off', batchType: 'off',
+        compact: 'off', classCohesion: 'off', batchType: 'off', bandAdjacent: 'off', teacherApart: 'off',
         hourlyBalance: { ...b.hourlyBalance, level: 'off' },
         walkCost: 'off', roomManagerFirst: 'off', homeroomMorning: { ...b.homeroomMorning, level: 'off' },
         avoidPeriods: 'off', timePrefer: 'off', subjectApart: 'off',
@@ -107,6 +111,34 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
     if (stopRequested) break
   }
   if (!best) return
+
+  // ── 保底：加權搜尋沒排完 ──
+  // 加權最佳解通常只差一兩堂：先從它熱啟動「純硬」補完（實測幾秒），再從補完的解熱啟動加權優化
+  // （優化不會弄掉課：未排／必須級一動就是天價罰分，一律拒絕）。都不行才從零純硬多試幾個種子。
+  if (!isPerfect(best) && !stopRequested) {
+    const polish = async (feasible: EngineResult, seed: number, label: string) => {
+      const polished = await runOne({ ...input, seed }, {
+        label, budget: RESCUE_SOFT,
+        initial: feasible.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+      })
+      const cand = isPerfect(polished) ? polished : feasible
+      if (betterThan(cand, best!)) { best = cand; bestSeed = seed }
+    }
+    // ① 從最佳解熱啟動純硬
+    const fixed = await runOne({ ...hardOnlyInput(input), seed: bestSeed }, {
+      label: '保底：從最佳解補完（純硬）', budget: RESCUE_FIX, perfectExit: true,
+      initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+    })
+    if (isPerfect(fixed)) await polish(fixed, bestSeed, '保底：加權優化')
+    // ② 仍不完整 → 從零純硬多試幾個種子
+    for (let k = 0; k < RESCUE_SEEDS.length && !isPerfect(best) && !stopRequested; k++) {
+      const seed = RESCUE_SEEDS[k]
+      const feasible = await runOne({ ...hardOnlyInput(input), seed }, {
+        label: `保底 ${k + 1}/${RESCUE_SEEDS.length}：純硬從零`, budget: RESCUE_HARD, perfectExit: true,
+      })
+      if (isPerfect(feasible)) await polish(feasible, seed, `保底 ${k + 1}/${RESCUE_SEEDS.length}：加權優化`)
+    }
+  }
 
   if (isPerfect(best) || stopRequested) {
     self.postMessage({ type: 'done', result: best, stopped: stopRequested, failed: !isPerfect(best), hints: [], probePerfect: null, meta: { seed: bestSeed } })
