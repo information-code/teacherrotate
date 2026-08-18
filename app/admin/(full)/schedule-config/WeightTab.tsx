@@ -341,33 +341,52 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
         </p>
       </div>
 
-      {/* 二之二、專科教室使用時機（結構設定） */}
+      {/* 二之二、專科教室使用時機矩陣（結構設定，科目 × 年級） */}
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-2 border-b border-zinc-100">
           <span className="text-sm font-semibold text-zinc-700">專科教室使用時機</span>
-          <span className="text-xs text-zinc-400 ml-2">哪些課要進專科教室。依 114-2 人工課表：自然科學連堂 42 組全進自然教室、單節 42 堂全留原班（零例外）；音樂、表演藝術全為單節但一律進；智慧探究家全連堂全進</span>
+          <span className="text-xs text-zinc-400 ml-2">哪些課要進專科教室。點格子循環切換：一律使用／只有連堂／不使用</span>
         </div>
-        <div className="px-4 py-3 flex flex-wrap gap-x-6 gap-y-2">
-          {roomSubjects.length === 0 && <span className="text-xs text-zinc-400">「4 教室設定」裡還沒有綁定科目的專科教室。</span>}
-          {roomSubjects.map(subj => {
-            const u = roomUseOf(w, subj)
-            return (
-              <label key={subj} className="flex items-center gap-2 text-sm text-zinc-700">
-                <span className="min-w-[5rem]">{shortName(subj)}</span>
-                <span className="inline-flex border border-zinc-200 rounded-full overflow-hidden text-[11px]">
-                  {ROOM_USES.map(m => (
-                    <button key={m} onClick={() => setWeights(x => ({ ...x, roomUse: { ...x.roomUse, [subj]: m } }))}
-                      className={`px-2.5 py-0.5 ${u === m ? 'bg-zinc-200 text-zinc-800 font-medium' : 'bg-white text-zinc-400 hover:text-zinc-600'}`}>
-                      {ROOM_USE_LABEL[m]}
-                    </button>
+        {roomSubjects.length === 0
+          ? <p className="px-4 py-3 text-xs text-zinc-400">「4 教室設定」裡還沒有綁定科目的專科教室。</p>
+          : <div className="overflow-x-auto">
+              <table className="table-base no-hover">
+                <thead><tr><th className="min-w-[7rem]">科目</th>{GRADES.map(g => <th key={g} className="text-center w-20">{GRADE_LABEL[g]}</th>)}</tr></thead>
+                <tbody>
+                  {roomSubjects.map(subj => (
+                    <tr key={subj}>
+                      <td className="font-medium whitespace-nowrap">{shortName(subj)}</td>
+                      {GRADES.map(g => {
+                        const u = roomUseOf(w, subj, g)
+                        const nextU = ROOM_USES[(ROOM_USES.indexOf(u) + 1) % ROOM_USES.length]
+                        return (
+                          <td key={g} className="text-center">
+                            <button
+                              onClick={() => setWeights(x => {
+                                const ru = { ...x.roomUse, [subj]: { ...(x.roomUse[subj] ?? {}) } }
+                                if (nextU === 'always') delete ru[subj][String(g)]
+                                else ru[subj][String(g)] = nextU
+                                return { ...x, roomUse: ru }
+                              })}
+                              title={`點擊改為「${ROOM_USE_LABEL[nextU]}」`}
+                              className={`w-full px-1 py-0.5 text-[11px] rounded-sm border ${
+                                u === 'always' ? 'bg-white text-zinc-400 border-zinc-200 hover:border-zinc-400'
+                                : u === 'double' ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                : 'bg-zinc-100 text-zinc-600 border-zinc-300'}`}>
+                              {ROOM_USE_LABEL[u]}
+                            </button>
+                          </td>
+                        )
+                      })}
+                    </tr>
                   ))}
-                </span>
-              </label>
-            )
-          })}
-        </div>
-        <p className="px-4 pb-3 text-[11px] text-zinc-400">
-          「只有連堂」＝單節留在原班上，不占專科教室、也不扣「專科教室優先」的分；「不使用」＝該科完全不進專科教室。
+                </tbody>
+              </table>
+            </div>}
+        <p className="px-4 py-2 text-[11px] text-zinc-400">
+          「只有連堂」＝單節留在原班上，不占專科教室、也不扣「專科教室優先」的分。依 114-2 人工課表逐年級核對（零例外）：
+          自然科學連堂 42 組全進自然教室、單節 42 堂全留原班；視覺藝術三年級連堂與單節全留原班、四～六年級全進手作教室；
+          音樂 42 堂、表演藝術 21 堂、智慧探究家 42 組皆 100% 進專科教室。
         </p>
       </div>
 

@@ -164,13 +164,14 @@ export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroo
 export type RoomUse = 'always' | 'double' | 'never'
 export const ROOM_USES: RoomUse[] = ['always', 'double', 'never']
 export const ROOM_USE_LABEL: Record<RoomUse, string> = { always: '一律使用', double: '只有連堂', never: '不使用' }
-/** 取某科的專科教室使用時機（未設＝一律使用，與舊行為相同）。 */
-export function roomUseOf(w: ScheduleWeights, subject: string): RoomUse {
-  return w.roomUse?.[subject] ?? 'always'
+/** 取某科某年級的專科教室使用時機（未設＝一律使用，與舊行為相同）。
+ *  需要年級維度是因為視覺藝術：三年級連堂 5 組、單節 10 堂全部留原班，四～六年級 100% 進手作教室。 */
+export function roomUseOf(w: ScheduleWeights, subject: string, grade: number): RoomUse {
+  return w.roomUse?.[subject]?.[String(grade)] ?? 'always'
 }
 /** 依使用時機判斷這一堂該不該進專科教室（size 2＝連堂）。 */
-export function shouldUseRoom(w: ScheduleWeights, subject: string, size: number): boolean {
-  const u = roomUseOf(w, subject)
+export function shouldUseRoom(w: ScheduleWeights, subject: string, grade: number, size: number): boolean {
+  const u = roomUseOf(w, subject, grade)
   return u === 'always' || (u === 'double' && size === 2)
 }
 
@@ -205,7 +206,7 @@ export interface ScheduleWeights {
   builtin: BuiltinRules
   templates: TemplateRule[]
   doubleMode: Record<string, Record<string, DoubleMode>>   // 科目 → 年級("1"~"6") → 連堂模式（未設＝auto）
-  roomUse: Record<string, RoomUse>                        // 科目 → 專科教室使用時機（未設＝一律使用）
+  roomUse: Record<string, Record<string, RoomUse>>        // 科目 → 年級("1"~"6") → 專科教室使用時機（未設＝一律使用）
   hardParams: HardParams                                    // 固定硬限制參數
 }
 
@@ -216,6 +217,18 @@ export function defaultDoubleMode(): Record<string, Record<string, DoubleMode>> 
   set('自然', [1, 2, 3, 4, 5, 6], 'double'); set('社會', [1, 2, 3, 4, 5, 6], 'double')
   set('生活', [1, 2], 'double'); set('智慧探究家：科技創新任務', [3, 4, 5, 6], 'double')
   set('視覺藝術', [3, 5], 'double'); set('視覺藝術', [4, 6], 'biweekly')
+  return m
+}
+
+/** 預設專科教室使用時機（依 114-2 人工課表，各年級逐一核對、零例外）：
+ *  自然科學＝只有連堂（連堂 42 組 100% 進、單節 42 堂 0% 進，四個年級都一致）；
+ *  視覺藝術＝三年級不使用（連堂 5 組、單節 10 堂全留原班），四～六年級一律使用；
+ *  音樂、表演藝術、智慧探究家＝一律使用（100%）。 */
+export function defaultRoomUse(): Record<string, Record<string, RoomUse>> {
+  const m: Record<string, Record<string, RoomUse>> = {}
+  const set = (subj: string, grades: number[], u: RoomUse) => { for (const g of grades) (m[subj] ??= {})[String(g)] = u }
+  set('自然科學', [1, 2, 3, 4, 5, 6], 'double')
+  set('視覺藝術', [3], 'never')
   return m
 }
 
@@ -238,7 +251,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
     },
     doubleMode: defaultDoubleMode(),
-    roomUse: { '自然科學': 'double' },   // 依人工課表：自然單節留原班；其餘科目一律使用
+    roomUse: defaultRoomUse(),
     hardParams: { ...DEFAULT_HARD_PARAMS },
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
@@ -310,9 +323,19 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
     })(),
     roomUse: (() => {
       const raw = (r as { roomUse?: unknown }).roomUse
-      if (!raw || typeof raw !== 'object') return { ...base.roomUse }
-      const out: Record<string, RoomUse> = {}
-      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (ROOM_USES.includes(v as RoomUse)) out[k] = v as RoomUse
+      if (!raw || typeof raw !== 'object') return defaultRoomUse()
+      const out: Record<string, Record<string, RoomUse>> = {}
+      for (const [subj, v] of Object.entries(raw as Record<string, unknown>)) {
+        // 舊資料是「科目 → 使用時機」的扁平形式 → 展開成全年級
+        if (typeof v === 'string') {
+          if (ROOM_USES.includes(v as RoomUse) && v !== 'always') for (const g of [1, 2, 3, 4, 5, 6]) (out[subj] ??= {})[String(g)] = v as RoomUse
+          continue
+        }
+        if (!v || typeof v !== 'object') continue
+        for (const [g, u] of Object.entries(v as Record<string, unknown>)) {
+          if (ROOM_USES.includes(u as RoomUse) && u !== 'always') (out[subj] ??= {})[g] = u as RoomUse
+        }
+      }
       return out
     })(),
     // 連堂矩陣：新資料直接讀；舊資料由 doublePeriod 模板＋builtin.artBiweekly 遷移；皆無＝預設矩陣

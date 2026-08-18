@@ -123,7 +123,7 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
   const bySubject: Record<string, RoomInfo[]> = {}
   for (const r of rooms) (bySubject[r.subject] ??= []).push(r)
   // 專科教室使用時機（自然單節留原班等）；未帶 weights 時維持舊行為＝一律使用
-  const wants = (p: PlacedResult) => Boolean(bySubject[p.subject]) && (!weights || shouldUseRoom(weights, p.subject, p.size))
+  const wants = (p: PlacedResult) => Boolean(bySubject[p.subject]) && (!weights || shouldUseRoom(weights, p.subject, p.grade, p.size))
   const taken = new Map<string, Set<string>>()
   const roomOf = new Map<string, string>()
   const entries = placed.filter(wants)
@@ -834,7 +834,7 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
   const entries: { l: EngineLesson; p: Placement }[] = []
   st.pos.forEach((p, id) => {
     const l = st.lessonById.get(id)!
-    if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.size)) entries.push({ l, p })
+    if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.grade, l.size)) entries.push({ l, p })
   })
   entries.sort((a, b) => {
     const am = bySubject[a.l.subject].some(r => r.managerId === a.l.teacherId) ? 0 : 1
@@ -878,7 +878,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const roomById = new Map(input.rooms.map(r => [r.id, r]))
   for (const { l, p } of placedLessons) {
     if (!subjectHasRooms.has(l.subject)) continue
-    if (!shouldUseRoom(input.weights, l.subject, l.size)) continue   // 依設定本來就該留原班，不算「教室不足」
+    if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue   // 依設定本來就該留原班，不算「教室不足」
     const rid = roomOf.get(l.id)
     if (!rid) {
       if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
