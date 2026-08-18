@@ -303,7 +303,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     pushUndo()
     const adj: Adjustment = { at: new Date().toISOString(), desc, ...(note.trim() ? { note: note.trim() } : {}) }
     const nextAdj = [...adjustments, adj]
-    const withRooms = reassignRooms(nextPlaced, rooms)
+    const withRooms = reassignRooms(nextPlaced, rooms, config.weights)
     setPlaced(withRooms)
     setHr(nextHr)
     setAdjustments(nextAdj)

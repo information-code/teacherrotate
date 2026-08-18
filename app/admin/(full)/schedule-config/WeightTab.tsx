@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, type Dispatch, type SetStateAction } from 
 import Link from 'next/link'
 import {
   WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights, doubleModeOf, DOUBLE_MODE_LABEL, BANDS, BAND_LABEL, DAY_MODES, DAY_MODE_LABEL,
+  ROOM_USES, ROOM_USE_LABEL, roomUseOf, type RoomUse,
   type ScheduleConfig, type ScheduleWeights, type BuiltinRules, type WeightLevel,
   type RuleTemplate, type TemplateRule, type DoubleMode, type DaySpread, type DayMode,
 } from '@/lib/scheduling'
@@ -75,7 +76,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
 type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
-type SpreadKey = 'dayBalance' | 'hourlyBalance'
+type SpreadKey = 'hourlyBalance'
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; spread?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
@@ -85,7 +86,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
     { key: 'homeroomMorning', name: '上午導師課下限', def: '中', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「不連四」硬限制' },
     { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。導師一週僅 14~15 節，N=3 等於強制用滿五天、形狀只剩 3/3/3/3/2——「每週平均分散」由這條涵蓋，不另設規則。另有固定硬限制「導師連上上限」＝不連四' },
-    { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
+    { key: 'classCohesion', name: '科任課同日成塊', def: '高', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
   ] },
   { title: '科任・行政', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動', rows: [
     { key: 'dailyMax', name: '每日節數上限', def: '高', hasN: true, nHint: '一天最多 N 節', desc: '114-2 人工課表實測最大值恰為 6、0 筆超標' },
@@ -95,20 +96,18 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'roomManagerFirst', name: '教室管理教師優先', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
-    { key: 'dayBalance', name: '每週分布', def: '低', spread: true, desc: '課量平均分散到每一天，還是集中在少數幾天（行政若希望空出完整的辦公日，可改成集中）' },
   ] },
   { title: '鐘點', note: '鐘點老師多半希望少跑幾趟學校。上面「科任・行政」那組的規則同樣作用在鐘點身上，這裡只放身分專屬的', rows: [
     { key: 'hourlyBalance', name: '鐘點每週分布', def: '中', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
   ] },
   { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
-    { key: 'subjectSpread', name: '同科不隔天', def: '中', desc: '同班同科盡量不排相鄰兩天（同科同日仍為固定硬限制）。114-2 人工課表 48 班有違反、一週 ≥4 節的科目結構上無解，故為權重' },
-    { key: 'subjectApart', name: '科目互斥同日', def: '高', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
+    { key: 'subjectApart', name: '科目互斥同日', def: '中', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
     { key: 'avoidPeriods', name: '科目避開節次', def: '中', desc: '指定科目避開某些節次（如體育避午餐前後、考科避第 7 節）。可加多組，各組可再調權重；母開關關閉＝全部不計', master: 'avoidPeriods' },
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
 const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning'
-const isSpread = (k: RuleKey): k is SpreadKey => k === 'dayBalance' || k === 'hourlyBalance'
+const isSpread = (k: RuleKey): k is SpreadKey => k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']
 const MODE_CLS: Record<DoubleMode, string> = {
@@ -130,6 +129,8 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   const offered = (subj: string, g: number) => (gradeSubjects[g] ?? []).some(s => s.name === subj && s.perClass > 0)
   const perClassOf = (subj: string, g: number) => (gradeSubjects[g] ?? []).find(s => s.name === subj)?.perClass ?? 0
 
+  // 有綁定科目的專科教室 → 這些科目才需要設定使用時機
+  const roomSubjects = Array.from(new Set(config.roomZones.flatMap(z => z.rooms.filter(r => r.kind === 'subject' && r.subject).map(r => r.subject))))
   function setWeights(fn: (w: ScheduleWeights) => ScheduleWeights) { setConfig(c => ({ ...c, weights: fn(c.weights) })) }
   function setBuiltin(patch: Partial<BuiltinRules>) { setWeights(x => ({ ...x, builtin: { ...x.builtin, ...patch } })) }
   const levelOf = (key: RuleKey): WeightLevel =>
@@ -337,6 +338,36 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
         </div>
         <p className="px-4 py-2 text-[11px] text-zinc-400">
           「連堂」不跨午休（固定硬限制）；「都可以」的自然成對同樣不跨午休、且視為一組連堂計入「同型態同日」。單雙週僅視藝：占固定兩格、單週組／雙週組輪替、另一格由導師填課。
+        </p>
+      </div>
+
+      {/* 二之二、專科教室使用時機（結構設定） */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-2 border-b border-zinc-100">
+          <span className="text-sm font-semibold text-zinc-700">專科教室使用時機</span>
+          <span className="text-xs text-zinc-400 ml-2">哪些課要進專科教室。依 114-2 人工課表：自然科學連堂 42 組全進自然教室、單節 42 堂全留原班（零例外）；音樂、表演藝術全為單節但一律進；智慧探究家全連堂全進</span>
+        </div>
+        <div className="px-4 py-3 flex flex-wrap gap-x-6 gap-y-2">
+          {roomSubjects.length === 0 && <span className="text-xs text-zinc-400">「4 教室設定」裡還沒有綁定科目的專科教室。</span>}
+          {roomSubjects.map(subj => {
+            const u = roomUseOf(w, subj)
+            return (
+              <label key={subj} className="flex items-center gap-2 text-sm text-zinc-700">
+                <span className="min-w-[5rem]">{shortName(subj)}</span>
+                <span className="inline-flex border border-zinc-200 rounded-full overflow-hidden text-[11px]">
+                  {ROOM_USES.map(m => (
+                    <button key={m} onClick={() => setWeights(x => ({ ...x, roomUse: { ...x.roomUse, [subj]: m } }))}
+                      className={`px-2.5 py-0.5 ${u === m ? 'bg-zinc-200 text-zinc-800 font-medium' : 'bg-white text-zinc-400 hover:text-zinc-600'}`}>
+                      {ROOM_USE_LABEL[m]}
+                    </button>
+                  ))}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+        <p className="px-4 pb-3 text-[11px] text-zinc-400">
+          「只有連堂」＝單節留在原班上，不占專科教室、也不扣「專科教室優先」的分；「不使用」＝該科完全不進專科教室。
         </p>
       </div>
 

@@ -127,9 +127,7 @@ export interface BuiltinRules {
   dailyMax: { level: WeightLevel; n: number }     // 科任每日節數上限 N
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
-  dayBalance: DaySpread                           // 科任・行政的每週分布傾向
   hourlyBalance: DaySpread                        // 鐘點的每週分布傾向（多半要「集中」——少跑幾趟學校）
-  subjectSpread: WeightLevel                      // 同科不隔天：同班同科不排相鄰兩天（2026-08 依人工課表檢核自硬限制降為權重；同科同日仍為硬限制）
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   batchType: WeightLevel                          // 同型態同日：老師同日不混排連堂與單節。114-2 人工課表 14/235 組混排，且成因結構性
                                                   //（同一師兼教連堂科目與單節科目；自然/社會 3 節＝連堂＋單節，單科內就會混）→ 權重非硬限制
@@ -158,6 +156,23 @@ export interface HardParams {
   homeroomRunBands: Band[]    // 上一條適用的年段（預設全年段；清空＝停用）
 }
 export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS] }
+
+/** 專科教室使用時機（結構設定，非權重）。依 114-2 人工課表：
+ *  自然科學＝連堂 42 組 100% 進自然教室、單節 42 堂 0% 進（實驗課進教室、講述課留原班，零例外）；
+ *  音樂 42 堂、表演藝術 21 堂全為單節且 100% 進專科教室；智慧探究家全連堂 100% 進。
+ *  所以不是一條「連堂才進專科教室」的全域規則，而是每個科目各有慣例。 */
+export type RoomUse = 'always' | 'double' | 'never'
+export const ROOM_USES: RoomUse[] = ['always', 'double', 'never']
+export const ROOM_USE_LABEL: Record<RoomUse, string> = { always: '一律使用', double: '只有連堂', never: '不使用' }
+/** 取某科的專科教室使用時機（未設＝一律使用，與舊行為相同）。 */
+export function roomUseOf(w: ScheduleWeights, subject: string): RoomUse {
+  return w.roomUse?.[subject] ?? 'always'
+}
+/** 依使用時機判斷這一堂該不該進專科教室（size 2＝連堂）。 */
+export function shouldUseRoom(w: ScheduleWeights, subject: string, size: number): boolean {
+  const u = roomUseOf(w, subject)
+  return u === 'always' || (u === 'double' && size === 2)
+}
 
 /** 科目連堂模式（結構設定，非權重；影響第一階段可行性）：
  *  auto＝都可以（單節排、允許同科同日相鄰兩節自然成對，不跨午休）；double＝連堂（每 2 節綁一組永不拆）；
@@ -190,6 +205,7 @@ export interface ScheduleWeights {
   builtin: BuiltinRules
   templates: TemplateRule[]
   doubleMode: Record<string, Record<string, DoubleMode>>   // 科目 → 年級("1"~"6") → 連堂模式（未設＝auto）
+  roomUse: Record<string, RoomUse>                        // 科目 → 專科教室使用時機（未設＝一律使用）
   hardParams: HardParams                                    // 固定硬限制參數
 }
 
@@ -209,10 +225,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
       consecMax: { level: 'high', n: 5 },     // N=3 時人工課表 110 筆超標（最長 6 連）→ 放寬至 5
       compact: 'low',
-      dayBalance: { level: 'low', mode: 'spread', days: 3 },
       hourlyBalance: { level: 'mid', mode: 'concentrate', days: 2 },
-      subjectSpread: 'mid',
-      classCohesion: 'mid',
+      classCohesion: 'high',   // 114-2 人工課表遵守率 91%（43/463 半天被切開）
       batchType: 'high',
       walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomPrefer: 'high',
@@ -221,13 +235,14 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomDailyMax: { level: 'high', n: 3 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
-      subjectApart: 'high',
+      subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
     },
     doubleMode: defaultDoubleMode(),
+    roomUse: { '自然科學': 'double' },   // 依人工課表：自然單節留原班；其餘科目一律使用
     hardParams: { ...DEFAULT_HARD_PARAMS },
     templates: [
       { id: 'tpl-pe-lunch', template: 'avoidPeriods', subjects: ['體育'], grades: [], periods: [4, 5], level: 'mid' },
-      { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'mid' },
+      { id: 'tpl-exam-last', template: 'avoidPeriods', subjects: ['社會', '自然', '英語'], grades: [], periods: [7], fullDayOnly: true, level: 'high' },   // 人工課表遵守率 92%
     ],
   }
 }
@@ -238,7 +253,7 @@ function normLevel(v: unknown, fallback: WeightLevel): WeightLevel {
   return WEIGHT_LEVEL_SET.has(String(v)) ? v as WeightLevel : fallback
 }
 
-/** 舊資料的 dayBalance／homeroomBalance 是單純的 WeightLevel 字串 → 補成「分散」傾向。 */
+/** 舊資料的 homeroomBalance 是單純的 WeightLevel 字串 → 補成「分散」傾向。 */
 function normSpread(v: unknown, fallback: DaySpread): DaySpread {
   if (typeof v === 'string') return { level: normLevel(v, fallback.level), mode: 'spread', days: fallback.days }
   if (!v || typeof v !== 'object') return { ...fallback }
@@ -262,9 +277,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       dailyMax: { level: normLevel(b.dailyMax?.level, db.dailyMax.level), n: Number(b.dailyMax?.n ?? db.dailyMax.n) },
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
-      dayBalance: normSpread(b.dayBalance, db.dayBalance),
       hourlyBalance: normSpread(b.hourlyBalance, db.hourlyBalance),
-      subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
       walkCost: normLevel(b.walkCost, db.walkCost),
@@ -294,6 +307,13 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         maxRunHomeroom: clamp(rawHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom),
         homeroomRunBands: bands,
       }
+    })(),
+    roomUse: (() => {
+      const raw = (r as { roomUse?: unknown }).roomUse
+      if (!raw || typeof raw !== 'object') return { ...base.roomUse }
+      const out: Record<string, RoomUse> = {}
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (ROOM_USES.includes(v as RoomUse)) out[k] = v as RoomUse
+      return out
     })(),
     // 連堂矩陣：新資料直接讀；舊資料由 doublePeriod 模板＋builtin.artBiweekly 遷移；皆無＝預設矩陣
     doubleMode: (() => {

@@ -10,7 +10,7 @@
 
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
-  bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf,
+  bandOf, shouldUseRoom, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf,
   DAY_MODE_LABEL,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule, type DaySpread,
 } from './scheduling'
@@ -119,12 +119,14 @@ export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
 
 /** 手動調整後重新分配教室（與排課時同邏輯：管理教師必得自己的教室、
  *  非管理者先用無管理者教室）。失去教室的課 roomId=null＝回原班，零警告。 */
-export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[]): PlacedResult[] {
+export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights?: ScheduleWeights): PlacedResult[] {
   const bySubject: Record<string, RoomInfo[]> = {}
   for (const r of rooms) (bySubject[r.subject] ??= []).push(r)
+  // 專科教室使用時機（自然單節留原班等）；未帶 weights 時維持舊行為＝一律使用
+  const wants = (p: PlacedResult) => Boolean(bySubject[p.subject]) && (!weights || shouldUseRoom(weights, p.subject, p.size))
   const taken = new Map<string, Set<string>>()
   const roomOf = new Map<string, string>()
-  const entries = placed.filter(p => bySubject[p.subject])
+  const entries = placed.filter(wants)
   entries.sort((a, b) => {
     const am = bySubject[a.subject].some(r => r.managerId === a.teacherId) ? 0 : 1
     const bm = bySubject[b.subject].some(r => r.managerId === b.teacherId) ? 0 : 1
@@ -145,7 +147,7 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[]): Placed
       for (const s of slots) (taken.get(s) ?? taken.set(s, new Set()).get(s)!).add(room.id)
     }
   }
-  return placed.map(p => ({ ...p, roomId: bySubject[p.subject] ? (roomOf.get(p.id) ?? null) : (p.roomId ?? null) }))
+  return placed.map(p => ({ ...p, roomId: wants(p) ? (roomOf.get(p.id) ?? null) : (bySubject[p.subject] ? null : (p.roomId ?? null)) }))
 }
 
 export interface AssembleArgs {
@@ -379,7 +381,6 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         }
         // 落點數（連堂組數＋單節數；「都可以」以可成對的最少落點估）> 3 即無法同時滿足「同科不隔天」（權重）——提醒但不擋
         const spots = d2 + (pairable ? Math.ceil(hours / 2) : hours)
-        if (spots > 3 && config.weights.builtin.subjectSpread !== 'off') preflight.push({ level: 'warn', text: `${classLabel(g, i)} ${s.name} 每週至少 ${spots} 個落點，超過「同科不隔天」可容納的 3 個（一三五），必有相鄰兩天，將計入權重扣分。` })
         while (hours > 0) {
           lessons.push({
             id: `${key}|${s.name}|s${n++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
@@ -833,7 +834,7 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
   const entries: { l: EngineLesson; p: Placement }[] = []
   st.pos.forEach((p, id) => {
     const l = st.lessonById.get(id)!
-    if (bySubject[l.subject]) entries.push({ l, p })
+    if (bySubject[l.subject] && shouldUseRoom(input.weights, l.subject, l.size)) entries.push({ l, p })
   })
   entries.sort((a, b) => {
     const am = bySubject[a.l.subject].some(r => r.managerId === a.l.teacherId) ? 0 : 1
@@ -877,6 +878,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const roomById = new Map(input.rooms.map(r => [r.id, r]))
   for (const { l, p } of placedLessons) {
     if (!subjectHasRooms.has(l.subject)) continue
+    if (!shouldUseRoom(input.weights, l.subject, l.size)) continue   // 依設定本來就該留原班，不算「教室不足」
     const rid = roomOf.get(l.id)
     if (!rid) {
       if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
@@ -959,14 +961,6 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
     }
     // 同科不隔天（權重）：相鄰兩日各扣一次
-    if (w.subjectSpread !== 'off') {
-      const uniq = Array.from(new Set(days)).sort()
-      for (let i = 1; i < uniq.length; i++) {
-        if (uniq[i] - uniq[i - 1] === 1) {
-          acc(map, 'subjectSpread', '同科不隔天', pen(w.subjectSpread), `${labelOf(key2)} ${subject} 週${DAY_ZH[uniq[i - 1]]}、週${DAY_ZH[uniq[i]]}連續兩天`)
-        }
-      }
-    }
   })
 
   // 科目互斥同日（權重）：子規則列的幾科，同班同一天出現超過一科即扣（每多一科扣一次）
@@ -1107,11 +1101,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
     // 每日負擔平衡
     {
-      // 鐘點另用 hourlyBalance：他們多半希望壓在少數幾天、少跑幾趟學校，與科任/行政的「分散」相反
-      const isHourly = hourlySet.has(tid)
-      const cfg = isHourly ? w.hourlyBalance : w.dayBalance
-      const key = isHourly ? 'hourlyBalance' : 'dayBalance'
-      const who = isHourly ? '鐘點' : '科任・行政'
+      // 只有鐘點有每週分布規則（科任・行政的「分散」依 114-2 人工課表刪除：
+      // 最重日與最輕日差 4 節最常見，學校根本沒在平均分配）
+      const cfg = w.hourlyBalance
+      const key = 'hourlyBalance'
+      const who = '鐘點'
+      if (!hourlySet.has(tid)) { /* 非鐘點不計 */ } else {
       const loads = SCHEDULE_DAYS.map(d => {
         let n = 0
         for (let q = 1; q <= 7; q++) { const cell = occ.get(`${d}-${q}`); if (cell && (cell.w || cell.o || cell.e)) n++ }
@@ -1119,6 +1114,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       })
       const r = spreadOver(cfg, loads, 3)
       if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${nameOf(tid)} ${r.why}`)
+      }
     }
   })
 
