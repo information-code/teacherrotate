@@ -524,6 +524,39 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
 
         const hrCount = homeroomSections.reduce((s, x) => s + x.rows.length, 0)
         const undecided = GRADES.filter(g => !adoptedDecided[g] && homeroomSections.some(s => s.g === g))
+
+        // ── CSV：攤平成一列一個「教師×年級×科目」，方便註冊組在 Excel 排序、篩選、加總本數 ──
+        function downloadCsv() {
+          const esc = (v: string | number) => {
+            const s = String(v ?? '')
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+          }
+          const rows: (string | number)[][] = [['類別', '分組', '教師', '身分', '授課年級', '科目', '節數']]
+          for (const { g, rows: list } of homeroomSections) {
+            for (const { t, subjects, extra } of list) {
+              for (const x of subjects) rows.push(['導師', GRADE_LABEL[g], t.name, t.roleLabel, GRADE_LABEL[g], x.subj, x.hours])
+              // 導師另兼的跨年級課：年級以實際授課年級為準，分組仍掛在其本班年級
+              for (const x of extra) for (const y of x.grades) rows.push(['導師', GRADE_LABEL[g], t.name, t.roleLabel, GRADE_LABEL[y.g], x.subj, y.hours])
+              if (subjects.length === 0 && extra.length === 0) rows.push(['導師', GRADE_LABEL[g], t.name, t.roleLabel, '', '（尚未配課）', 0])
+            }
+          }
+          for (const { label, rows: list } of subjectGroups) {
+            for (const { t, items } of list) {
+              for (const x of items) for (const y of x.grades) rows.push(['科任', label, t.name, t.roleLabel, GRADE_LABEL[y.g], x.subj, y.hours])
+              if (items.length === 0) rows.push(['科任', label, t.name, t.roleLabel, '', '（尚未配課）', 0])
+            }
+          }
+          // ﻿＝UTF-8 BOM：沒有它 Excel 會把中文開成亂碼
+          const csv = '﻿' + rows.map(r => r.map(esc).join(',')).join('\r\n')
+          const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${year}學年度_教師授課科目一覽.csv`
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+          URL.revokeObjectURL(url)
+        }
         return (
           <div id="book-print-overlay" className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setBookOpen(false)}>
             <div className="bg-white rounded-md shadow-xl w-full max-w-4xl p-5 space-y-4 my-4" onClick={e => e.stopPropagation()}>
@@ -532,10 +565,11 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
                   <h3 className="font-semibold text-zinc-900">教師用書清單</h3>
                   <p className="text-xs text-zinc-500">
                     以老師為單位列出授課年級與科目，供註冊組發教師用書。導師依年級、科任（含行政、鐘點）依主授科目分組。
-                    按「列印／存成 PDF」後，於印表機選「另存為 PDF」即可。
+                    按「列印／存成 PDF」後，於印表機選「另存為 PDF」即可；CSV 為一列一個「教師×年級×科目」的明細表。
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={downloadCsv} className="btn-secondary text-sm" title="攤平成一列一個「教師×年級×科目」，可在 Excel 排序、篩選、加總">⬇ 下載 CSV</button>
                   <button onClick={() => window.print()} className="btn-primary text-sm">🖨 列印／存成 PDF</button>
                   <button onClick={() => setBookOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
                 </div>
@@ -623,6 +657,7 @@ export default function AllocationStatisticsClient({ year, phase, teachers: init
 
               <div className="flex justify-end gap-2 pt-1 print:hidden">
                 <button onClick={() => setBookOpen(false)} className="btn-secondary text-sm">關閉</button>
+                <button onClick={downloadCsv} className="btn-secondary text-sm" title="攤平成一列一個「教師×年級×科目」，可在 Excel 排序、篩選、加總">⬇ 下載 CSV</button>
                 <button onClick={() => window.print()} className="btn-primary text-sm">🖨 列印／存成 PDF</button>
               </div>
             </div>
