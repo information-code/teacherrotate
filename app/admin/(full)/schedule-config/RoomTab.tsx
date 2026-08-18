@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useState, useRef, type Dispatch, type SetStateAction } from 'react'
 import {
-  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, NATIVE_LANGS, classLabel, roomLabel,
+  ROOM_KIND_LABEL, SUBJECT_ROOM_PRESETS, NATIVE_LANGS, classLabel, roomLabel, SCHEDULE_DAYS, DAY_LABEL, BANDS,
   type ScheduleConfig, type RoomZone, type Room, type RoomKind,
 } from '@/lib/scheduling'
 import { GRADES, orderSubjectNames } from '@/lib/allocation'
@@ -17,7 +17,7 @@ interface Props {
 }
 
 function newRoom(): Room {
-  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerIds: [], langs: [] }
+  return { id: crypto.randomUUID(), kind: 'class', classKey: '', name: '', no: '', subject: '', managerIds: [], langs: [], offSlots: [], offNote: '' }
 }
 
 /** 分頁四：教室設定。設定樓層×區域×相鄰教室（環狀/直排），教室填入班級或科任教室名稱。
@@ -29,6 +29,8 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
   const sortedZones = [...zones].sort((a, b) =>
     `${a.area}${a.floor}`.localeCompare(`${b.area}${b.floor}`, 'zh-Hant', { numeric: true }))
   const [dragging, setDragging] = useState<{ zid: string; rid: string } | null>(null)
+  const [offEdit, setOffEdit] = useState<{ zid: string; rid: string } | null>(null)   // 科任教室不排課時段 modal
+  const paint = useRef<boolean | null>(null)   // 拖曳塗抹：true＝標成不排課、false＝清除
   const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
 
   // 全部班級與已被指派的班級（跨全部區域，擋重複）
@@ -162,6 +164,13 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
                       className="flex items-center text-[10px] text-zinc-400 cursor-grab active:cursor-grabbing select-none"
                       title="拖曳調整順序">
                       <span className="mr-1">⠿</span>教室 {i + 1}
+                      {r.kind === 'subject' && (
+                        <button draggable={false} onClick={e => { e.stopPropagation(); setOffEdit({ zid: z.id, rid: r.id }) }}
+                          title="科任教室不排課時段：該時段教室另有用途（收器材、收筆電、借給生活老師…），排課不使用此教室"
+                          className={`ml-1 px-1 rounded-sm text-[11px] leading-none ${r.offSlots.length ? 'text-rose-600 hover:text-rose-700' : 'text-zinc-400 hover:text-zinc-700'}`}>
+                          ⚙{r.offSlots.length > 0 && <span className="ml-0.5">{r.offSlots.length}</span>}
+                        </button>
+                      )}
                       <span className="ml-auto flex gap-0.5">
                         <button draggable={false} onClick={e => { e.stopPropagation(); moveRoom(z.id, i, i - 1) }} disabled={i === 0}
                           className="px-0.5 text-zinc-300 hover:text-zinc-600 disabled:opacity-30" title="往前移">◀</button>
@@ -258,6 +267,84 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
       <datalist id="subject-room-presets">
         {SUBJECT_ROOM_PRESETS.map(s => <option key={s} value={s} />)}
       </datalist>
+
+      {/* ── 科任教室不排課時段 modal ── */}
+      {offEdit && (() => {
+        const z = zones.find(x => x.id === offEdit.zid); const r = z?.rooms.find(x => x.id === offEdit.rid)
+        if (!z || !r) return null
+        // 全年段皆不可排的格（如週三下午）灰掉不能點
+        const teachable = (d: number, q: number) => BANDS.some(b => config.bands[b].teachable[`${d}-${q}`])
+        const off = new Set(r.offSlots)
+        const setSlots = (next: Set<string>) => updateRoom(z.id, r.id, { offSlots: Array.from(next).sort() })
+        const toggle = (k: string, force?: boolean) => {
+          const next = new Set(off)
+          const on = force ?? !next.has(k)
+          if (on) next.add(k); else next.delete(k)
+          setSlots(next)
+        }
+        const close = () => { setOffEdit(null); paint.current = null }
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={close} onMouseUp={() => { paint.current = null }}>
+            <div className="bg-white rounded-md shadow-xl w-full max-w-lg p-5 space-y-3" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-zinc-900">{roomLabel(r) || '科任教室'} · 不排課時段
+                    {r.subject && <span className="ml-2 text-xs font-normal text-zinc-500">{r.subject}</span>}
+                  </h3>
+                  <p className="text-xs text-zinc-500">點格子標記「不排課」（可按住拖曳連續標記）。該時段教室另有用途，排課引擎視為教室不存在、不會排任何課進來。</p>
+                </div>
+                <button onClick={close} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+              </div>
+              <table className="w-full table-fixed border-collapse text-xs select-none">
+                <thead>
+                  <tr>
+                    <th className="w-8 text-zinc-400 font-normal"></th>
+                    {SCHEDULE_DAYS.map(d => <th key={d} className="py-1 text-zinc-500 font-normal">{DAY_LABEL[d].slice(1)}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3, 4, 5, 6, 7].map(q => (
+                    <tr key={q}>
+                      <th className="text-zinc-400 font-normal">{q}</th>
+                      {SCHEDULE_DAYS.map(d => {
+                        const k = `${d}-${q}`
+                        const can = teachable(d, q)
+                        const on = off.has(k)
+                        return (
+                          <td key={d} className="p-0.5">
+                            <div
+                              onMouseDown={() => { if (!can) return; paint.current = !on; toggle(k, !on) }}
+                              onMouseEnter={() => { if (!can || paint.current === null) return; if (off.has(k) !== paint.current) toggle(k, paint.current) }}
+                              title={!can ? '全年段皆非可排課時段' : on ? '不排課（點擊取消）' : '可排（點擊標記為不排課）'}
+                              className={`h-8 rounded-sm border flex items-center justify-center ${
+                                !can ? 'bg-zinc-100 border-zinc-200 text-zinc-300 cursor-not-allowed'
+                                : on ? 'bg-rose-100 border-rose-300 text-rose-700 cursor-pointer'
+                                : 'bg-white border-zinc-200 hover:border-zinc-400 cursor-pointer'}`}>
+                              {!can ? '' : on ? '不排' : ''}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500 whitespace-nowrap">備註</span>
+                <input value={r.offNote} onChange={e => updateRoom(z.id, r.id, { offNote: e.target.value })}
+                  placeholder="例：第 4、7 節收器材；週三下午借給生活老師" className="input py-1 text-xs flex-1" />
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-zinc-500">已標記 <b className="text-zinc-800">{off.size}</b> 格</span>
+                <span className="flex gap-2">
+                  <button onClick={() => setSlots(new Set())} disabled={!off.size} className="btn-secondary text-xs disabled:opacity-40">清除全部</button>
+                  <button onClick={close} className="btn-primary text-xs">完成</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -377,7 +377,7 @@ export default function ScheduleWizardClient(props: Props) {
     return m
   }
 
-  function Grid({ list, mode, classKey, extra }: { list: PlacedResult[]; mode: ViewKey; classKey?: string; extra?: { slot: string; main: string; sub: string }[] }) {
+  function Grid({ list, mode, classKey, extra, roomOff }: { list: PlacedResult[]; mode: ViewKey; classKey?: string; extra?: { slot: string; main: string; sub: string }[]; roomOff?: { slots: Set<string>; note: string } }) {
     const cells = cellsOf(list)
     const locks = classKey ? (input.lockedCells[classKey] ?? {}) : {}
     const extraMap = new Map((extra ?? []).map(e => [e.slot, e]))
@@ -430,6 +430,10 @@ export default function ScheduleWizardClient(props: Props) {
                 }
                 if (classKey && avail && !avail.has(k)) {
                   return <td key={d} className="p-0.5"><div className="h-9 rounded-sm bg-zinc-100" /></td>
+                }
+                if (roomOff?.slots.has(k)) {
+                  // 科任教室不排課時段（教室設定 ⚙）：該時段教室另有用途
+                  return <td key={d} className="p-0.5"><div title={roomOff.note || '不排課時段'} className="h-9 rounded-sm border bg-rose-50 border-rose-200 text-rose-500 flex items-center justify-center text-[10px] truncate px-0.5">{roomOff.note ? roomOff.note.slice(0, 6) : '不排課'}</div></td>
                 }
                 return (
                   <td key={d} className="p-0.5">
@@ -728,7 +732,7 @@ export default function ScheduleWizardClient(props: Props) {
               ? <div className="max-w-md"><Grid list={byTeacher.get(teacherSel) ?? []} mode="teacher" extra={nativeCellsByTeacher.get(teacherSel)} /></div>
               : <p className="text-sm text-zinc-400 text-center py-4">請選擇教師。</p>)}
             {view === 'room' && (roomSel
-              ? <div className="max-w-md"><Grid list={byRoom.get(roomSel) ?? []} mode="room" /></div>
+              ? <div className="max-w-md"><Grid list={byRoom.get(roomSel) ?? []} mode="room" roomOff={(() => { const r = roomList.find(x => x.id === roomSel); return r ? { slots: new Set(r.offSlots), note: r.offNote } : undefined })()} /></div>
               : <p className="text-sm text-zinc-400 text-center py-4">{roomList.length ? '請選擇教室。' : '教室設定中沒有綁定科目的科任教室。'}</p>)}
           </div>
 

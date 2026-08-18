@@ -33,7 +33,7 @@ export interface EngineLesson {
   coTeacherName?: string
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number }
+export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; offSlots: string[]; offNote: string }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -115,7 +115,7 @@ export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), offSlots: r.offSlots ?? [], offNote: r.offNote ?? '' })
       }
     })
   })
@@ -136,6 +136,7 @@ export function reassignRooms(placed: PlacedResult[], rooms: RoomInfo[], weights
       ? rs.filter(r => r.managerIds.includes(teacherId))
       : rs
   const taken = new Map<string, Map<string, TCell>>()   // 週型感知：單雙週輪流用同一格可共用
+  for (const r of rooms) for (const sl of r.offSlots ?? []) { const m = taken.get(sl) ?? taken.set(sl, new Map()).get(sl)!; m.set(r.id, { w: ROOM_OFF }) }
   const roomOf = new Map<string, string>()
   const entries = placed.filter(wants)
   entries.sort((a, b) => {
@@ -589,17 +590,13 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     const roomsBySubject: Record<string, RoomInfo[]> = {}
     for (const r of rooms) (roomsBySubject[r.subject] ??= []).push(r)
     // 一間教室一週能放幾組連堂／幾節單節：連堂不跨午休（上午 1-4 放 2 組、下午 5-7 放 1 組）
-    const capOf = (grades: Set<number>) => {
+    // 容量＝該教室一週可用的格（年段可排 ∩ 教室未設不排課）；連堂組數以「相鄰兩格皆可用且不跨午休」計
+    const capOf = (grades: Set<number>, off: Set<string>) => {
       let dbl = 0, single = 0
       for (const d of SCHEDULE_DAYS) {
-        let am = 0, pm = 0
-        for (const g of grades) {
-          const grid = config.bands[bandOf(g)]
-          am = Math.max(am, [1, 2, 3, 4].filter(q => grid.teachable[`${d}-${q}`]).length)
-          pm = Math.max(pm, [5, 6, 7].filter(q => grid.teachable[`${d}-${q}`]).length)
-        }
-        dbl += Math.floor(am / 2) + Math.floor(pm / 2)
-        single += am + pm
+        const ok = (q: number) => !off.has(`${d}-${q}`) && Array.from(grades).some(g => config.bands[bandOf(g)].teachable[`${d}-${q}`])
+        for (let q = 1; q <= 7; q++) if (ok(q)) single++
+        for (const [a, b] of [[1, 2], [3, 4], [5, 6]]) if (ok(a) && ok(b)) dbl++
       }
       return { dbl, single }
     }
@@ -611,7 +608,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           && shouldUseRoom(config.weights, l.subject, l.grade, l.size))
         if (!mine.length) continue
         const grades = new Set(mine.map(l => l.grade))
-        const cap = capOf(grades)
+        const cap = capOf(grades, new Set(r.offSlots))
         const dbl = mine.filter(l => l.size === 2).length, single = mine.filter(l => l.size === 1).length
         // 連堂占 2 節、單節占 1 節；以節數為總量檢核，並另外檢查連堂組數
         const needSlots = dbl * 2 + single
@@ -746,6 +743,9 @@ const MORNING_LAST = 4
 
 type TCell = { w?: string; o?: string; e?: string }
 
+/** 教室不排課時段的占位 lessonId：任何週型都撞、任何人都趕不走。 */
+const ROOM_OFF = '__room_off__'
+
 /** 這堂課是不是該教室管理教師的課（占用優先權判斷用）。 */
 function isMgrLesson(st: State, lessonId: string, roomId: string): boolean {
   return Boolean(st.mgrRooms.get(lessonId)?.some(r => r.id === roomId))
@@ -776,7 +776,11 @@ class State {
 
   constructor(input: EngineInput) {
     this.input = input
-    for (const r of input.rooms) this.roomOcc.set(r.id, new Map())
+    for (const r of input.rooms) {
+      const m = new Map<string, TCell>()
+      for (const sl of r.offSlots) m.set(sl, { w: ROOM_OFF })   // 教室不排課時段：整週占住、誰都趕不走
+      this.roomOcc.set(r.id, m)
+    }
     for (const l of input.lessons) {
       if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue
       const same = input.rooms.filter(r => r.subject === l.subject)
@@ -821,7 +825,7 @@ class State {
       if (!cell || !roomClash(cell, l.parity)) continue
       for (const id of [cell.w, cell.o, cell.e]) {
         if (!id || id === l.id) continue
-        if (isMgrLesson(this, id, roomId)) return null
+        if (id === ROOM_OFF || isMgrLesson(this, id, roomId)) return null   // 教室不排課／管理者的課：不可趕
         blockers.add(id)
       }
     }
@@ -1119,6 +1123,7 @@ function assignRooms(input: EngineInput, st: State): Map<string, string> {
       m.set(roomId, cell)
     }
   }
+  for (const r of input.rooms) for (const sl of r.offSlots) { const m = taken.get(sl) ?? taken.set(sl, new Map()).get(sl)!; m.set(r.id, { w: ROOM_OFF }) }
   roomOf.forEach((rid, id) => {
     const p = st.pos.get(id)
     if (p) mark(st.lessonById.get(id)!, p, rid)

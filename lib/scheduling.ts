@@ -78,8 +78,9 @@ export const ROOM_KIND_LABEL: Record<RoomKind, string> = { class: '一般教室'
 /** 一間教室：一般教室填班級（classKey）、科任教室填名稱＋選填編號（同名多間，如自然教室一、二）
  *  ＋對應科目（排課據此計算教室衝突與走動成本；空＝不綁科目）
  *  ＋管理教師（managerIds，選填、可多位）：排課時該教室優先給管理教師的課使用
- *  ＋可排語別（langs，本土語言教室用）：非清單內的語別不可排；空＝任何語別皆可。 */
-export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerIds: string[]; langs: string[] }
+ *  ＋可排語別（langs，本土語言教室用）：非清單內的語別不可排；空＝任何語別皆可
+ *  ＋不排課時段（offSlots，科任教室用）：該時段教室另有用途（收器材、收筆電、借給生活老師…），排課引擎視為教室不存在（硬限制）。 */
+export interface Room { id: string; kind: RoomKind; classKey: string; name: string; no: string; subject: string; managerIds: string[]; langs: string[]; offSlots: string[]; offNote: string }
 
 // 本土語語別（語別課程用；閩南語走班級的本土語科目）
 export const NATIVE_LANGS = ['閩南語', '客語（四縣）', '客語（海陸）', '台灣手語', '原住民族語', '新住民語', '閩東語']
@@ -528,6 +529,8 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
                   ? ((rm as { managerIds: unknown[] }).managerIds).map(x => String(x)).filter(Boolean)
                   : (String((rm as { managerId?: unknown }).managerId ?? '') ? [String((rm as { managerId?: unknown }).managerId)] : []),
                 langs: Array.isArray(rm.langs) ? rm.langs.map(String) : [],
+                offSlots: Array.isArray((rm as { offSlots?: unknown }).offSlots) ? ((rm as { offSlots: unknown[] }).offSlots).map(String).filter(x => /^[1-5]-[1-7]$/.test(x)) : [],
+                offNote: String((rm as { offNote?: unknown }).offNote ?? ''),
               }))
             : [],
         }))
