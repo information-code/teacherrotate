@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect, type Dispatch, type SetStateAction } from 'react'
 import Link from 'next/link'
 import {
-  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights, doubleModeOf, DOUBLE_MODE_LABEL, BANDS, BAND_LABEL,
+  WEIGHT_LEVELS, WEIGHT_LEVEL_LABEL, defaultScheduleWeights, doubleModeOf, DOUBLE_MODE_LABEL, BANDS, BAND_LABEL, DAY_MODES, DAY_MODE_LABEL,
   type ScheduleConfig, type ScheduleWeights, type BuiltinRules, type WeightLevel,
-  type RuleTemplate, type TemplateRule, type DoubleMode,
+  type RuleTemplate, type TemplateRule, type DoubleMode, type DaySpread, type DayMode,
 } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, orderSubjectNames } from '@/lib/allocation'
 import type { GradeSubject } from './page'
@@ -75,19 +75,20 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
 type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
-type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey>
-type RuleKey = SimpleKey | ParamKey | MasterKey
-interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
+type SpreadKey = 'homeroomBalance' | 'dayBalance' | 'hourlyBalance'
+type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey>
+type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey
+interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; spread?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
 // 規則依「為誰而設」分組——每一條權重都是因為某個人的處境才存在，依作用對象分組比依技術面向直覺。
 // 鐘點教師在引擎裡沒有專屬規則（受的是與科任、行政完全相同的那一組），故三者合併為一組。
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
     { key: 'homeroomMorning', name: '上午留白給導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午（人工課表：上午格 46% 是科任、下午 60%，有偏好但不絕對）' },
     { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）。另有固定硬限制「導師連上上限」＝不連四' },
-    { key: 'homeroomBalance', name: '導師每日負擔平衡', def: '低', desc: '班級的科任課每日平均分布＝導師每天的課量平均' },
+    { key: 'homeroomBalance', name: '導師每週分布', def: '低', spread: true, desc: '導師每天的課量（＝班級留白）要平均分散，還是集中在少數幾天。分散與集中是同一條軸的兩端，用左側切換' },
     { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
   ] },
-  { title: '科任・行政・鐘點', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動。三種身分受同一組規則約束', rows: [
+  { title: '科任・行政', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動', rows: [
     { key: 'dailyMax', name: '每日節數上限', def: '高', hasN: true, nHint: '一天最多 N 節', desc: '114-2 人工課表實測最大值恰為 6、0 筆超標' },
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
@@ -95,7 +96,10 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'roomManagerFirst', name: '教室管理教師優先', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
-    { key: 'dayBalance', name: '每日負擔平衡', def: '低', desc: '避免某天塞滿、某天全空' },
+    { key: 'dayBalance', name: '每週分布', def: '低', spread: true, desc: '課量平均分散到每一天，還是集中在少數幾天（行政若希望空出完整的辦公日，可改成集中）' },
+  ] },
+  { title: '鐘點', note: '鐘點老師多半希望少跑幾趟學校。上面「科任・行政」那組的規則同樣作用在鐘點身上，這裡只放身分專屬的', rows: [
+    { key: 'hourlyBalance', name: '鐘點每週分布', def: '中', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
   ] },
   { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
     { key: 'subjectSpread', name: '同科不隔天', def: '中', desc: '同班同科盡量不排相鄰兩天（同科同日仍為固定硬限制）。114-2 人工課表 48 班有違反、一週 ≥4 節的科目結構上無解，故為權重' },
@@ -105,6 +109,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   ] },
 ]
 const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax'
+const isSpread = (k: RuleKey): k is SpreadKey => k === 'homeroomBalance' || k === 'dayBalance' || k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']
 const MODE_CLS: Record<DoubleMode, string> = {
@@ -128,11 +133,15 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
 
   function setWeights(fn: (w: ScheduleWeights) => ScheduleWeights) { setConfig(c => ({ ...c, weights: fn(c.weights) })) }
   function setBuiltin(patch: Partial<BuiltinRules>) { setWeights(x => ({ ...x, builtin: { ...x.builtin, ...patch } })) }
-  const levelOf = (key: RuleKey): WeightLevel => isParam(key) ? w.builtin[key].level : w.builtin[key]
+  const levelOf = (key: RuleKey): WeightLevel =>
+    isParam(key) || isSpread(key) ? (w.builtin[key] as { level: WeightLevel }).level : w.builtin[key] as WeightLevel
   const setLevel = (key: RuleKey, l: WeightLevel) => {
-    if (isParam(key)) setBuiltin({ [key]: { ...w.builtin[key], level: l } } as Partial<BuiltinRules>)
+    if (isParam(key) || isSpread(key)) setBuiltin({ [key]: { ...(w.builtin[key] as object), level: l } } as Partial<BuiltinRules>)
     else setBuiltin({ [key]: l } as Partial<BuiltinRules>)
   }
+  const spreadOf = (key: SpreadKey) => w.builtin[key]
+  const setSpread = (key: SpreadKey, patch: Partial<DaySpread>) =>
+    setBuiltin({ [key]: { ...w.builtin[key], ...patch } } as Partial<BuiltinRules>)
   function updateTemplate(id: string, patch: Partial<TemplateRule>) {
     setWeights(x => ({ ...x, templates: x.templates.map(t => t.id === id ? { ...t, ...patch } : t) }))
   }
@@ -213,6 +222,28 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                         className="input w-14 text-center py-0.5 text-xs" />
                     </label>
                   )}
+                  {isSpread(r.key) && on && (() => {
+                    const sp = spreadOf(r.key)
+                    return (
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 flex-shrink-0 self-center">
+                        <span className="inline-flex border border-zinc-200 rounded-full overflow-hidden text-[11px]">
+                          {DAY_MODES.map(m => (
+                            <button key={m} onClick={() => setSpread(r.key as SpreadKey, { mode: m })}
+                              className={`px-2 py-0.5 ${sp.mode === m ? 'bg-zinc-200 text-zinc-800 font-medium' : 'bg-white text-zinc-400 hover:text-zinc-600'}`}>
+                              {DAY_MODE_LABEL[m]}
+                            </button>
+                          ))}
+                        </span>
+                        {sp.mode === 'concentrate' && (
+                          <label className="flex items-center gap-1">壓在
+                            <input type="number" min={1} max={5} value={sp.days}
+                              onChange={e => setSpread(r.key as SpreadKey, { days: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })}
+                              className="input w-12 text-center py-0.5 text-xs" />天內
+                          </label>
+                        )}
+                      </div>
+                    )
+                  })()}
                   <div className="self-center"><LevelPicker value={lvl} onChange={l => setLevel(r.key, l)} /></div>
                 </div>
 

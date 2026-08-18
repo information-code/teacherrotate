@@ -114,12 +114,21 @@ export const WEIGHT_LEVELS: WeightLevel[] = ['off', 'low', 'mid', 'high']
 export const WEIGHT_LEVEL_LABEL: Record<WeightLevel, string> = { off: '關閉', low: '低', mid: '中', high: '高', must: '必須' }
 export const WEIGHT_PENALTY: Record<WeightLevel, number> = { off: 0, low: 1, mid: 3, high: 9, must: Infinity }
 
+/** 每週分布傾向：分散與集中是同一條軸的兩端，不是兩條互相打架的規則，
+ *  故做成「傾向＋強度」而非兩個權重；每種對象（導師／科任・行政／鐘點）可以有不同傾向。
+ *  spread＝各日課量盡量平均；concentrate＝盡量壓在 days 天之內；off＝不管。 */
+export type DayMode = 'spread' | 'off' | 'concentrate'
+export const DAY_MODES: DayMode[] = ['spread', 'off', 'concentrate']
+export const DAY_MODE_LABEL: Record<DayMode, string> = { spread: '分散', off: '不拘', concentrate: '集中' }
+export interface DaySpread { level: WeightLevel; mode: DayMode; days: number }   // days 僅在 concentrate 時使用＝目標天數
+
 /** 內建規則（只能調權重與參數，不能增刪）。 */
 export interface BuiltinRules {
   dailyMax: { level: WeightLevel; n: number }     // 科任每日節數上限 N
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
-  dayBalance: WeightLevel                         // 教師每日負擔平衡
+  dayBalance: DaySpread                           // 科任・行政的每週分布傾向
+  hourlyBalance: DaySpread                        // 鐘點的每週分布傾向（多半要「集中」——少跑幾趟學校）
   subjectSpread: WeightLevel                      // 同科不隔天：同班同科不排相鄰兩天（2026-08 依人工課表檢核自硬限制降為權重；同科同日仍為硬限制）
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   batchType: WeightLevel                          // 同型態同日：老師同日不混排連堂與單節。114-2 人工課表 14/235 組混排，且成因結構性
@@ -130,7 +139,7 @@ export interface BuiltinRules {
   roomPrefer: WeightLevel                         // 專科教室優先（不夠時回原班）
   roomManagerFirst: WeightLevel                   // 教室管理教師優先：管理者必得自己的教室（結構保證）；非管理者用到有管理者的教室時扣分
   homeroomMorning: WeightLevel                    // 科任課讓出上午（導師留白集中上午，利於導師排國數）
-  homeroomBalance: WeightLevel                    // 班級科任課每日平衡＝導師的每日負擔平衡（留白分散）
+  homeroomBalance: DaySpread                      // 導師每週分布傾向（以班級留白計）
   homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
@@ -198,7 +207,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
       consecMax: { level: 'high', n: 5 },     // N=3 時人工課表 110 筆超標（最長 6 連）→ 放寬至 5
       compact: 'low',
-      dayBalance: 'low',
+      dayBalance: { level: 'low', mode: 'spread', days: 3 },
+      hourlyBalance: { level: 'mid', mode: 'concentrate', days: 2 },
       subjectSpread: 'mid',
       classCohesion: 'mid',
       batchType: 'high',
@@ -206,7 +216,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomPrefer: 'high',
       roomManagerFirst: 'mid',
       homeroomMorning: 'mid',
-      homeroomBalance: 'low',
+      homeroomBalance: { level: 'low', mode: 'spread', days: 3 },
       homeroomDailyMax: { level: 'high', n: 5 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
@@ -227,6 +237,19 @@ function normLevel(v: unknown, fallback: WeightLevel): WeightLevel {
   return WEIGHT_LEVEL_SET.has(String(v)) ? v as WeightLevel : fallback
 }
 
+/** 舊資料的 dayBalance／homeroomBalance 是單純的 WeightLevel 字串 → 補成「分散」傾向。 */
+function normSpread(v: unknown, fallback: DaySpread): DaySpread {
+  if (typeof v === 'string') return { level: normLevel(v, fallback.level), mode: 'spread', days: fallback.days }
+  if (!v || typeof v !== 'object') return { ...fallback }
+  const o = v as Partial<DaySpread>
+  const days = Number(o.days)
+  return {
+    level: normLevel(o.level, fallback.level),
+    mode: DAY_MODES.includes(o.mode as DayMode) ? o.mode as DayMode : fallback.mode,
+    days: Number.isInteger(days) && days >= 1 && days <= 5 ? days : fallback.days,
+  }
+}
+
 export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
   const base = defaultScheduleWeights()
   if (!raw || typeof raw !== 'object') return base
@@ -238,7 +261,8 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       dailyMax: { level: normLevel(b.dailyMax?.level, db.dailyMax.level), n: Number(b.dailyMax?.n ?? db.dailyMax.n) },
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
-      dayBalance: normLevel(b.dayBalance, db.dayBalance),
+      dayBalance: normSpread(b.dayBalance, db.dayBalance),
+      hourlyBalance: normSpread(b.hourlyBalance, db.hourlyBalance),
       subjectSpread: normLevel(b.subjectSpread, db.subjectSpread),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
@@ -246,7 +270,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       roomPrefer: normLevel(b.roomPrefer, db.roomPrefer),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
       homeroomMorning: normLevel(b.homeroomMorning, db.homeroomMorning),
-      homeroomBalance: normLevel(b.homeroomBalance, db.homeroomBalance),
+      homeroomBalance: normSpread(b.homeroomBalance, db.homeroomBalance),
       homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),

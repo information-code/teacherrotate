@@ -17,6 +17,7 @@ interface Props {
   gradeSubjects: Record<number, GradeSubject[]>
   gradeHomeroomBase: Record<number, number>
   teacherNames: Record<string, string>
+  hourlyTeacherIds: string[]
   homeroomHours: Record<string, Record<string, number>>
   extraCourses: ExtraCourse[]
   hoursByTeacher: Record<string, Record<string, Record<string, number>>>
@@ -69,7 +70,7 @@ function summaryOf(r: EngineResult) {
 
 export default function ScheduleWizardClient(props: Props) {
   const router = useRouter()
-  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
+  const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, hourlyTeacherIds, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
   // 草稿階段沒有「正式課表」這回事：畫面上顯示的一律是某一個版本快照。
@@ -99,8 +100,8 @@ export default function ScheduleWizardClient(props: Props) {
   useUnsavedGuard(running, '排課仍在進行，離開將中斷本次排課。確定要離開嗎？')
 
   const { input, preflight } = useMemo(
-    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher }),
-    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher],
+    () => assembleEngineInput({ config: scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, hourlyTeacherIds, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher }),
+    [scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, hourlyTeacherIds, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher],
   )
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')

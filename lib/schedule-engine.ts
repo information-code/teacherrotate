@@ -11,7 +11,8 @@
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
   bandOf, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf,
-  type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule,
+  DAY_MODE_LABEL,
+  type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule, type DaySpread,
 } from './scheduling'
 import { GRADE_LABEL, type ExtraCourse } from './allocation'
 
@@ -45,6 +46,7 @@ export interface EngineInput {
   teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
+  hourlyTeachers: string[]                   // 鐘點教師 id：每週分布傾向另用 hourlyBalance（多半要集中、少跑幾趟）
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null>
   weights: ScheduleWeights
@@ -152,6 +154,8 @@ export interface AssembleArgs {
   gradeSubjects: Record<number, { name: string; perClass: number; homeroom: boolean }[]>
   gradeHomeroomBase: Record<number, number>
   teacherNames: Record<string, string>
+  /** 鐘點教師 id 清單（聘任別 hourly）：供「鐘點每週分布傾向」辨識對象。 */
+  hourlyTeacherIds?: string[]
   /** 導師自上節數（同科分擔用）：classKey → 科目 → 節數。
    *  科目有指派科任時，科任只排「每班節數 − 鎖課 − 導師分擔」的剩餘節數（如生活 6＝導師 3＋科任 3）。 */
   homeroomHours?: Record<string, Record<string, number>>
@@ -567,7 +571,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   return {
     input: {
       classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells,
-      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, rooms, classRoom,
+      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
       weights: config.weights, seed: a.seed ?? 42,
     },
     preflight,
@@ -1015,11 +1019,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   }
 
   // 留白每日平衡（班級的科任課分布＝導師的每日負擔平衡）
-  if (w.homeroomBalance !== 'off') {
+  {
+    const cfg = w.homeroomBalance
     for (const c of input.classes) {
       const counts = SCHEDULE_DAYS.map(d => byClassDayCount.get(`${c.classKey}|${d}`) ?? 0)
-      const diff = Math.max(...counts) - Math.min(...counts)
-      if (diff > 2) acc(map, 'homeroomBalance', '留白每日平衡', pen(w.homeroomBalance) * (diff - 2), `${c.label} 科任課最多日與最少日差 ${diff} 節`)
+      const r = spreadOver(cfg, counts, 2)
+      if (r) acc(map, 'homeroomBalance', `導師每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${c.label} 科任課${r.why}`)
     }
   }
 
@@ -1038,6 +1043,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   }
 
   // ── 教師面 ──
+  const hourlySet = new Set(input.hourlyTeachers ?? [])
   st.teacherOcc.forEach((occ, tid) => {
     if (occ.size === 0) return
     for (const par of ['o', 'e'] as const) {
@@ -1072,14 +1078,19 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
     }
     // 每日負擔平衡
-    if (w.dayBalance !== 'off') {
+    {
+      // 鐘點另用 hourlyBalance：他們多半希望壓在少數幾天、少跑幾趟學校，與科任/行政的「分散」相反
+      const isHourly = hourlySet.has(tid)
+      const cfg = isHourly ? w.hourlyBalance : w.dayBalance
+      const key = isHourly ? 'hourlyBalance' : 'dayBalance'
+      const who = isHourly ? '鐘點' : '科任・行政'
       const loads = SCHEDULE_DAYS.map(d => {
         let n = 0
         for (let q = 1; q <= 7; q++) { const cell = occ.get(`${d}-${q}`); if (cell && (cell.w || cell.o || cell.e)) n++ }
         return n
       })
-      const diff = Math.max(...loads) - Math.min(...loads)
-      if (diff > 3) acc(map, 'dayBalance', '每日負擔平衡', pen(w.dayBalance) * (diff - 3), `${nameOf(tid)} 最重日與最輕日差 ${diff} 節`)
+      const r = spreadOver(cfg, loads, 3)
+      if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${nameOf(tid)} ${r.why}`)
     }
   })
 
@@ -1159,6 +1170,20 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   })
   penalties.sort((x, y) => y.points - x.points)
   return { total, soft, penalties, uncovered }
+}
+
+/** 每週分布傾向計分。spread＝各日課量極差超過門檻；concentrate＝授課天數超過目標天數。
+ *  分散與集中是同一條軸的兩端，同一條規則用 mode 切換，不會互相打架。 */
+function spreadOver(cfg: DaySpread, loads: number[], spreadTolerance: number): { over: number; why: string } | null {
+  if (cfg.level === 'off' || cfg.mode === 'off') return null
+  if (cfg.mode === 'concentrate') {
+    const used = loads.filter(n => n > 0).length
+    const over = used - Math.max(1, cfg.days)
+    return over > 0 ? { over, why: `分散在 ${used} 天（目標 ${cfg.days} 天內）` } : null
+  }
+  const diff = Math.max(...loads) - Math.min(...loads)
+  const over = diff - spreadTolerance
+  return over > 0 ? { over, why: `最重日與最輕日差 ${diff} 節` } : null
 }
 
 // ══════════════════ 建構＋局部搜尋 ══════════════════

@@ -16,7 +16,7 @@ export default async function ScheduleWizardPage() {
   const [{ data: cfgRow }, { data: schRow }, { data: profiles }, { data: planRow }, { data: allocs }, { data: hrRows }] = await Promise.all([
     admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
     admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
-    admin.from('profiles').select('id, name').neq('status', 'inactive'),
+    admin.from('profiles').select('id, name, employment_type').neq('status', 'inactive'),
     admin.from('schedule_plan').select('generated_at, plan').eq('year', year).maybeSingle(),
     admin.from('allocation').select('teacher_id, data').eq('year', year),
     admin.from('schedule_homeroom').select('class_key, teacher_id, cells, confirmed_at').eq('year', year),
@@ -24,6 +24,8 @@ export default async function ScheduleWizardPage() {
   const allocConfig = normalizeConfig(cfgRow?.config)
   const scheduleConfig = normalizeScheduleConfig(schRow?.config)
   const teacherNames = Object.fromEntries((profiles ?? []).map(p => [p.id, p.name ?? '']))
+  // 鐘點教師 id：引擎的「鐘點每週分布」需要辨識身分（其餘規則三種身分共用）
+  const hourlyTeacherIds = (profiles ?? []).filter(p => p.employment_type === 'hourly').map(p => p.id)
 
   // 導師自上節數（同科分擔）：由導師配班對應的配課 breakdown 帶出。
   // 情境依「該班年級的採用情境」（各年級可不同，如一年級減1、二～四減2）；退而求其次情境0、第一個方案。
@@ -75,6 +77,7 @@ export default async function ScheduleWizardPage() {
       gradeSubjects={gradeSubjects}
       gradeHomeroomBase={gradeHomeroomBase}
       teacherNames={teacherNames}
+      hourlyTeacherIds={hourlyTeacherIds}
       homeroomHours={homeroomHours}
       extraCourses={extraCourses}
       hoursByTeacher={hoursByTeacher}
