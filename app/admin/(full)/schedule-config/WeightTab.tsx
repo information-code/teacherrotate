@@ -92,8 +92,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'dailyMax', name: '每日節數上限', def: '高', hasN: true, nHint: '一天最多 N 節', desc: '114-2 人工課表實測最大值恰為 6、0 筆超標' },
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
-    { key: 'roomPrefer', name: '專科教室優先', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班（人工課表：自然連堂 42 組全進自然教室、單節 42 堂全回原班）' },
-    { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '老師盡量固定在同一間教室：①管理教師沒用到自己管理的教室 ②同一位老師本週用了多間教室（每多一間扣一次）。教室分配四階：管理教師用自己的→擠不下的管理教師借別間（盡量集中同一間）→無管理教室的老師撿空檔→都滿才回原班；回原班的罰分是借用的兩倍，階梯才成立', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
+    { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
   ] },
@@ -401,6 +400,11 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
           <ul className="text-xs text-zinc-500 list-disc pl-9 pr-4 pb-3 space-y-0.5">
             <li>同班／同師／同教室同時段只有一堂課；只用年段可排課時段；避開鎖課格</li>
             <li>不排課標記：導師被標 → 班級課表該格必排科任課；科任被標 → 該格不排其課</li>
+            <li>
+              <b>專科教室是排課時的資源</b>——先排科任教室再排課。依「專科教室使用時機」該進教室的課，一定要有教室：
+              有管理教師的老師只用自己管理的那間（絕對優先，可把借用者換到別間）；沒有管理教室的老師用該科任一間（一間不夠就兩間）。
+              該時段沒教室就改排別的時段，整週都塞不進才成為未排——<b>不會回原班</b>。管理教師在「4 教室設定」設定，一間可設多位。
+            </li>
             <li className="flex items-center gap-2 flex-wrap">
               <span>老師連續授課絕對上限</span>
               <input type="number" min={2} max={6} value={w.hardParams.maxRunTeacher}

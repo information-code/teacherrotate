@@ -1053,7 +1053,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const nameOf = (id: string) => input.teacherNames[id] ?? '？'
   const labelOf = (key2: string) => input.classes.find(c => c.classKey === key2)?.label ?? key2
 
-  // 教室分配：管理教師優先（結構）；roomPrefer＝分不到教室、roomManagerFirst＝借用他人管理的教室
+  // 教室分配：排課當下已依硬限制決定（見 State.planRoom）；這裡只計「教室固定」權重＝借用者本週用了幾間
   const placedLessons: { l: EngineLesson; p: Placement }[] = []
   st.pos.forEach((p, id) => placedLessons.push({ l: st.lessonById.get(id)!, p }))
   placedLessons.sort((a2, b2) => a2.l.id < b2.l.id ? -1 : 1)
@@ -1064,11 +1064,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     if (!subjectHasRooms.has(l.subject)) continue
     if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue   // 依設定本來就該留原班，不算「教室不足」
     const rid = roomOf.get(l.id)
-    if (!rid) {
-      // ×2：回原班必須比「借別的專科教室」貴，階梯才成立（借用扣 roomManagerFirst 一次）
-      if (w.roomPrefer !== 'off') acc(map, 'roomPrefer', '專科教室優先', pen(w.roomPrefer) * 2, `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 教室不足，回原班`)
-      continue
-    }
+    if (!rid) continue   // 依設定該進教室的課，canPlace 已保證一定有教室；沒有 roomId 的只會是設定為不使用教室者
     const r = roomById.get(rid)!
     if (w.roomManagerFirst !== 'off' && r.managerIds.length > 0 && !r.managerIds.includes(l.teacherId)) {
       acc(map, 'roomManagerFirst', '教室固定（借用他人教室）', pen(w.roomManagerFirst), `${l.classLabel} ${l.subject} ${slotZh(p.day, p.period)} 借用 ${r.label}（管理者非授課者）`)
