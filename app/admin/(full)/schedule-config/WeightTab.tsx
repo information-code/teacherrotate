@@ -78,28 +78,30 @@ type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart'
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
+// 規則依「為誰而設」分組——每一條權重都是因為某個人的處境才存在，依作用對象分組比依技術面向直覺。
+// 鐘點教師在引擎裡沒有專屬規則（受的是與科任、行政完全相同的那一組），故三者合併為一組。
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
-  { title: '班級', note: '作用在同一班的科任課落點', rows: [
-    { key: 'subjectSpread', name: '同科不隔天', def: '中', desc: '同班同科盡量不排相鄰兩天（同科同日仍為固定硬限制）。114-2 人工課表 48 班有違反、一週 ≥4 節的科目結構上無解，故為權重' },
-    { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
-    { key: 'avoidPeriods', name: '科目避開節次', def: '中', desc: '指定科目避開某些節次（如體育避午餐前後、考科避第 7 節）。可加多組，各組可再調權重；母開關關閉＝全部不計', master: 'avoidPeriods' },
-    { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
-    { key: 'subjectApart', name: '科目互斥同日', def: '高', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
+  { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
     { key: 'homeroomMorning', name: '上午留白給導師', def: '中', desc: '科任課盡量往下午排，讓導師能把國數等考科排上午（人工課表：上午格 46% 是科任、下午 60%，有偏好但不絕對）' },
+    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）。另有固定硬限制「導師連上上限」＝不連四' },
     { key: 'homeroomBalance', name: '導師每日負擔平衡', def: '低', desc: '班級的科任課每日平均分布＝導師每天的課量平均' },
-    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '避免導師單日上課超過 N 節（低年級科任課少，整天日常態超標屬正常）' },
+    { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
   ] },
-  { title: '科任老師', note: '作用在同一位老師的一週課表', rows: [
+  { title: '科任・行政・鐘點', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動。三種身分受同一組規則約束', rows: [
     { key: 'dailyMax', name: '每日節數上限', def: '高', hasN: true, nHint: '一天最多 N 節', desc: '114-2 人工課表實測最大值恰為 6、0 筆超標' },
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
+    { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
+    { key: 'roomPrefer', name: '專科教室優先', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班（人工課表：自然連堂 42 組全進自然教室、單節 42 堂全回原班）' },
+    { key: 'roomManagerFirst', name: '教室管理教師優先', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
     { key: 'dayBalance', name: '每日負擔平衡', def: '低', desc: '避免某天塞滿、某天全空' },
-    { key: 'walkCost', name: '走動成本', def: '高', desc: '連續兩節跨教室，距離越遠扣越多。人工課表 943 組相接中僅 12 組跨專科教室（1.3%）', link: { href: '/admin/schedule-config?tab=room', label: '相鄰關係在「4 教室設定」' } },
   ] },
-  { title: '教室', note: '作用在專科教室的分配', rows: [
-    { key: 'roomPrefer', name: '專科教室優先', def: '高', desc: '有對應教室的科目盡量排進專科教室，同時段教室不夠時回原班（人工課表：自然連堂 42 組全進自然教室、單節 42 堂全回原班）' },
-    { key: 'roomManagerFirst', name: '教室管理教師優先', def: '中', desc: '只作用於「有設管理教師」的教室：管理教師的課必分到自己的教室（結構保證）、其他老師借用時扣分', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
+  { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
+    { key: 'subjectSpread', name: '同科不隔天', def: '中', desc: '同班同科盡量不排相鄰兩天（同科同日仍為固定硬限制）。114-2 人工課表 48 班有違反、一週 ≥4 節的科目結構上無解，故為權重' },
+    { key: 'subjectApart', name: '科目互斥同日', def: '高', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組；權重而非硬限制——排不開時寧可有一天並存也不要排不出來', master: 'subjectApart' },
+    { key: 'avoidPeriods', name: '科目避開節次', def: '中', desc: '指定科目避開某些節次（如體育避午餐前後、考科避第 7 節）。可加多組，各組可再調權重；母開關關閉＝全部不計', master: 'avoidPeriods' },
+    { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
 const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax'
