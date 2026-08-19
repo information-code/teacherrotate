@@ -3,7 +3,10 @@
 import io, json, os, re
 from pypdf import PdfReader
 
-SRC = r"C:\Users\黃政昱老師\Downloads\114學年度第2學期課表.pdf"
+import sys
+# 用法：python parse-hand-timetable.py <PDF> <輸出 json 檔名>；預設 114-2
+SRC = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\黃政昱老師\Downloads\114學年度第2學期課表.pdf"
+OUT = sys.argv[2] if len(sys.argv) > 2 else 'hand-114-2.json'
 CJK = re.compile(r'[\u3400-\u9fff\uf900-\ufaff：]')
 
 def center(x, size, s):
@@ -108,7 +111,7 @@ for i, pg in enumerate(r.pages):
         print(f'⚠ 第 {i+1} 頁解析失敗')
         continue
     classes.append(c)
-io.open(__file__.rsplit('\',1)[0].rsplit('/',1)[0] + '/hand-114-2.json', 'w', encoding='utf-8').write(json.dumps(classes, ensure_ascii=False, indent=1))
+io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), OUT), 'w', encoding='utf-8').write(json.dumps(classes, ensure_ascii=False, indent=1))
 print(f'班級 {len(classes)}　總格數 {sum(len(c["cells"]) for c in classes)}')
 for c in classes[:1] + classes[20:21]:
     print(f'--- {c["grade"]}年{c["index"]}班 {len(c["cells"])} 格 ---')
