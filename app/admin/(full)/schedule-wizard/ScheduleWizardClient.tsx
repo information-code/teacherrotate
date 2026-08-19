@@ -784,6 +784,7 @@ export default function ScheduleWizardClient(props: Props) {
                 teacherNames={teacherNames}
                 onPlacedChange={placed => setResult(r => r ? { ...r, placed } : r)}
                 onPersisted={() => setDraftDirty(true)}
+                onGradeChange={g => { setGradeSel(g); setView('class') }}
               />
             )}
             {view === 'class' && (planStatus === 'published' || planStatus === 'final' || !draftPlanObj) && (

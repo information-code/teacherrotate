@@ -871,6 +871,14 @@ class State {
       this.roomOcc.get(roomId)!.set(s, cell)
     }
   }
+  /** 外部指定教室（調課查詢器把 UI 的 reassignRooms 結果同步進來，讓計分基準與畫面一致）。 */
+  setRoom(lessonId: string, roomId: string | null) {
+    const l = this.lessonById.get(lessonId), p = this.pos.get(lessonId)
+    if (!l || !p || !this.roomPool.has(lessonId)) return
+    if ((this.roomOf.get(lessonId) ?? null) === roomId) return
+    this.releaseRoom(lessonId)
+    if (roomId && this.roomPool.get(lessonId)!.some(r => r.id === roomId)) this.occupyRoom(lessonId, roomId, this.slotsOf(l, p), l.parity)
+  }
   private releaseRoom(lessonId: string) {
     const rid = this.roomOf.get(lessonId)
     const p = this.pos.get(lessonId)
@@ -3078,6 +3086,7 @@ export interface RunOptions { timeMs: number; onProgress?: (p: RunProgress) => v
 // 導師已填的格當作「必留導師格」（科任課不得放入）。每個選項附軟分變化（引擎同一套計分），讓課務組挑最不傷的。
 export interface SwapMove { id: string; day: number; period: number }
 export interface SwapOption {
+  lessonId: string                  // 被點的那堂課
   kind: 'move' | 'swap2' | 'swap3' | 'chain'
   moves: SwapMove[]                 // 全部一起套用才合法
   softDelta: number                 // 軟分變化（負＝變好）
@@ -3117,7 +3126,12 @@ export class SwapFinder {
     this.st = new State(this.input)
     // 依原位落下（不驗證：既有課表就是事實；之後每一步查詢才用 canPlace）
     for (const p of placed) { const l = this.byId.get(p.id); if (l) this.st.place(l, { day: p.day, period: p.period }) }
+    this.syncRooms(placed)
     this.baseSoft = scoreState(this.st).soft
+  }
+  /** 教室以畫面上（reassignRooms）的為準：State.place 自己挑的教室是路徑相依的，不同步的話「原地不動」也會算出分數差。 */
+  private syncRooms(placed: PlacedResult[]) {
+    for (const p of placed) if (p.roomId !== undefined) this.st.setRoom(p.id, p.roomId)
   }
 
   /** 目前課表（含教室分配）。 */
@@ -3165,7 +3179,7 @@ export class SwapFinder {
   }
 
   /** 被點的課的所有合法調法。 */
-  query(lessonId: string, opts: { maxThree?: number; timeMs?: number } = {}): SwapQuery {
+  query(lessonId: string, opts: { maxThree?: number; timeMs?: number; noMove?: boolean } = {}): SwapQuery {
     const l = this.byId.get(lessonId)
     const from = l ? this.st.pos.get(l.id) : undefined
     if (!l || !from) return { options: [], why: {}, baseSoft: this.baseSoft }
@@ -3174,7 +3188,9 @@ export class SwapFinder {
     const why: Record<string, string> = {}
     const name = (x: EngineLesson) => `${x.classLabel} ${x.subject}（${x.teacherName}）`
     const slotZhLocal = (p: Placement, x: EngineLesson = l) => `週${DAY_ZH[p.day]}第${p.period}節${x.size === 2 ? '–' + (p.period + 1) : ''}`
-    const delta = () => Math.round(scoreState(this.st).soft - this.baseSoft)
+    const base0 = scoreState(this.st).soft   // 每次查詢重新量基準（查詢中途的教室挪動會讓快取的 baseSoft 漂）
+    const delta = () => Math.round(scoreState(this.st).soft - base0)
+    const sameLesson = (a: EngineLesson, b: EngineLesson) => a.classKey === b.classKey && a.subject === b.subject && a.teacherId === b.teacherId && a.size === b.size && a.parity === b.parity && (a.coTeacherId ?? '') === (b.coTeacherId ?? '')
     const grid = this.input.classSlots[l.classKey] ?? []
     const candidates = Array.from(new Set(grid.map(s => { const { day, period } = parseSlotKey(s); return `${day}-${period}` })))
     // ① 直接搬
@@ -3186,12 +3202,12 @@ export class SwapFinder {
       const reason = this.explain(l, p)
       if (reason) { why[sk] = reason; continue }
       this.st.place(l, p)
-      options.push({ kind: 'move', moves: [{ id: l.id, day: p.day, period: p.period }], softDelta: delta(), desc: `${name(l)} ${slotZhLocal(from)} → ${slotZhLocal(p)}`, targetSlot: sk, partnerIds: [] })
+      options.push({ lessonId: l.id, kind: 'move', moves: [{ id: l.id, day: p.day, period: p.period }], softDelta: delta(), desc: `${name(l)} ${slotZhLocal(from)} → ${slotZhLocal(p)}`, targetSlot: sk, partnerIds: [] })
       this.st.remove(l)
     }
     this.st.place(l, from)
     // ② 兩角：夥伴＝同班的課 ∪ 同師（含外師）的課
-    const partners = this.partnersOf(l)
+    const partners = this.partnersOf(l).filter(m => !sameLesson(l, m))   // 同班同科同師同型態互換＝原地不動，略過
     for (const m of partners) {
       const pm = this.st.pos.get(m.id)!
       this.st.remove(l); this.st.remove(m)
@@ -3200,7 +3216,7 @@ export class SwapFinder {
         this.st.place(l, pm)
         if (this.st.canPlace(m, from)) {
           this.st.place(m, from); ok = true
-          options.push({ kind: 'swap2', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: from.day, period: from.period }], softDelta: delta(),
+          options.push({ lessonId: l.id, kind: 'swap2', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: from.day, period: from.period }], softDelta: delta(),
             desc: `${name(l)} ↔ ${name(m)}（${slotZhLocal(from)} ↔ ${slotZhLocal(pm, m)}）`, targetSlot: this.slotKey(pm), partnerIds: [m.id] })
           this.st.remove(m)
         }
@@ -3217,7 +3233,7 @@ export class SwapFinder {
     }
     // ③ 三角：L→M 格、M→N 格、N→L 格
     let tried = 0
-    outer: for (const m of partners) {
+    outer: for (const m of (maxThree > 0 ? partners : [])) {
       const pm = this.st.pos.get(m.id)!
       const partnersM = this.partnersOf(m).filter(n => n.id !== l.id && n.id !== m.id)
       for (const n of partnersM) {
@@ -3230,7 +3246,7 @@ export class SwapFinder {
             this.st.place(m, pn)
             if (this.st.canPlace(n, from)) {
               this.st.place(n, from)
-              options.push({ kind: 'swap3', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: pn.day, period: pn.period }, { id: n.id, day: from.day, period: from.period }],
+              options.push({ lessonId: l.id, kind: 'swap3', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: pn.day, period: pn.period }, { id: n.id, day: from.day, period: from.period }],
                 softDelta: delta(), desc: `${name(l)} → ${slotZhLocal(pm)}；${name(m)} → ${slotZhLocal(pn, m)}；${name(n)} → ${slotZhLocal(from, n)}`, targetSlot: this.slotKey(pm), partnerIds: [m.id, n.id] })
               this.st.remove(n)
             }
@@ -3306,7 +3322,7 @@ export class SwapFinder {
     let out: SwapOption | null = null
     if (ok) {
       const softDelta = Math.round(scoreState(this.st).soft - this.baseSoft)
-      out = { kind: 'chain', moves: [...moves], softDelta, desc: moves.map(mv => { const x = this.byId.get(mv.id)!; return `${x.classLabel} ${x.subject}（${x.teacherName}）→ 週${DAY_ZH[mv.day]}第${mv.period}節` }).join('；'), targetSlot: `${moves[0].day}-${moves[0].period}`, partnerIds: moves.slice(1).map(m => m.id) }
+      out = { lessonId: l.id, kind: 'chain', moves: [...moves], softDelta, desc: moves.map(mv => { const x = this.byId.get(mv.id)!; return `${x.classLabel} ${x.subject}（${x.teacherName}）→ 週${DAY_ZH[mv.day]}第${mv.period}節` }).join('；'), targetSlot: `${moves[0].day}-${moves[0].period}`, partnerIds: moves.slice(1).map(m => m.id) }
     }
     // 還原：所有動過的課回原位
     for (const id of touched) if (this.st.pos.has(id)) this.st.remove(this.byId.get(id)!)
@@ -3343,8 +3359,11 @@ export class SwapFinder {
       }
       this.st.place(l, p)
     }
+    // 教室用畫面同一套 reassignRooms 重配並同步回 State，回傳的就是最終版
+    const out = reassignRooms(this.snapshot(), this.input.rooms, this.input.weights)
+    this.syncRooms(out)
     this.baseSoft = scoreState(this.st).soft
-    return { ok: true, placed: this.snapshot() }
+    return { ok: true, placed: out }
   }
 
   get soft() { return this.baseSoft }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
@@ -28,6 +28,7 @@ interface Props {
   focusId?: string
   onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
   onPersisted?: () => void                             // 第一次成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
+  onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
 }
 
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
@@ -40,7 +41,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, onPlacedChange, onPersisted }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, onPlacedChange, onPersisted, onGradeChange }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -171,6 +172,47 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     for (const o of swapQ?.options ?? []) if (o.softDelta > 0 && !m.has(o.targetSlot)) m.set(o.targetSlot, `可調但會變差（罰分 +${o.softDelta}）——打開「顯示會變差的方案」才可用`)
     return m
   }, [swapQ, showWorse])
+
+  // ── 全校掃描：每堂科任課都查一次，只收「比現在更好」（罰分 < 0）的方案 ──
+  //   引擎停在它自己那幾種搬法的局部最佳；這裡用兩角／三角再掃一遍常常還撈得到。分批跑（setTimeout）不卡畫面。
+  const [scan, setScan] = useState<{ running: boolean; done: number; total: number; results: SwapOption[]; withThree: boolean; stale: boolean } | null>(null)
+  const scanToken = useRef(0)
+  function runScan(withThree: boolean) {
+    if (!finder) return
+    const f = finder
+    const token = ++scanToken.current
+    const ids = placed.map(p => p.id)
+    const found = new Map<string, SwapOption>()
+    setScan({ running: true, done: 0, total: ids.length, results: [], withThree, stale: false })
+    let i = 0
+    const step = () => {
+      if (scanToken.current !== token) return   // 課表變了／重新開始：作廢
+      const t0 = Date.now()
+      while (i < ids.length && Date.now() - t0 < 60) {
+        const q = f.query(ids[i++], { maxThree: withThree ? 120 : 0, timeMs: withThree ? 250 : 80 })
+        for (const o of q.options) {
+          if (o.softDelta >= 0) continue
+          const key = o.moves.map(m => `${m.id}@${m.day}-${m.period}`).sort().join('|')   // 同一組搬動（A↔B 從 A 或 B 點都會出現）只留一筆
+          const prev = found.get(key)
+          if (!prev || o.moves.length < prev.moves.length) found.set(key, o)
+        }
+      }
+      const results = Array.from(found.values()).sort((a, b) => a.softDelta - b.softDelta || a.moves.length - b.moves.length).slice(0, 200)
+      setScan({ running: i < ids.length, done: i, total: ids.length, results, withThree, stale: false })
+      if (i < ids.length) setTimeout(step, 0)
+    }
+    setTimeout(step, 0)
+  }
+  // 課表一變，掃描結果的分數就不準了：標為過期（按「重新掃描」）
+  useEffect(() => { scanToken.current++; setScan(sc => sc && !sc.running ? { ...sc, stale: true } : sc && sc.running ? null : sc) }, [placed])
+  /** 定位：選取該堂課並切到它的年級（班級檢視） */
+  function locate(o: SwapOption) {
+    const l = lessonById.get(o.lessonId); if (!l) return
+    setSel({ type: 'lesson', id: l.id })
+    if (modeProp === undefined) setModeState('class')
+    if (gradeSelProp === undefined) setGradeSel(l.grade); else onGradeChange?.(l.grade)
+    setHoverOpt(o)
+  }
   const [hoverOpt, setHoverOpt] = useState<SwapOption | null>(null)
   const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
   const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
@@ -430,7 +472,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (!finder) return
     const r = finder.apply(opt.moves)
     if (!r.ok) { alert(r.error ?? '此調法已不合法'); return }
-    const sl = sel?.type === 'lesson' ? lessonById.get(sel.id) : null
+    const sl = lessonById.get(opt.lessonId) ?? (sel?.type === 'lesson' ? lessonById.get(sel.id) : null)
     const head = sl ? `${sl.classLabel}：` : ''
     applyAdjust(r.placed, hr, `${head}${KIND_ZH[opt.kind]}｜${opt.desc}｜${deltaZh(opt.softDelta)}`, [])
     setHoverOpt(null); setChain(null)
@@ -592,6 +634,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               className="btn btn-secondary text-xs py-0.5">📌 存為版本</button>
           )}
           {undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
+          {finder && !(fillOpen) && (
+            <button onClick={() => runScan(false)} disabled={scan?.running} className="btn btn-secondary text-xs py-0.5"
+              title="每堂科任課都查一次直接搬／兩角互換，列出所有「比現在更好」的調法（約十幾秒）">
+              {scan?.running ? `🔍 掃描中 ${scan.done}/${scan.total}…` : '🔍 全校找更好的調法'}
+            </button>
+          )}
           {!embedded && planStatus === 'published' && (
             <button onClick={toggleFill} disabled={fillBusy} className={`btn text-xs py-0.5 ${fillOpenState ? 'btn-secondary' : 'btn-primary'}`}
               title={fillOpenState ? '收回後導師端唯讀，課務組可自由調課（搬進空格、與導師課互換）' : '重新開放導師填課；開放期間課務組只能科任課互換'}>
@@ -649,6 +697,42 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           )}
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="協調備註（選填，隨下一步調整記錄）"
             className="input py-0.5 text-xs w-56 ml-auto" />
+        </div>
+      )}
+
+      {scan && (
+        <div className="card p-2 text-xs space-y-1 border-emerald-200">
+          <div className="flex items-center gap-2 flex-wrap text-zinc-600">
+            {scan.running
+              ? <span>🔍 掃描中… {scan.done}/{scan.total} 堂
+                  <span className="inline-block w-32 h-1.5 bg-zinc-200 rounded-full overflow-hidden align-middle ml-2"><span className="block h-full bg-emerald-500 rounded-full" style={{ width: `${Math.round(scan.done / Math.max(1, scan.total) * 100)}%` }} /></span>
+                </span>
+              : scan.results.length
+                ? <span className="px-1.5 py-0.5 rounded-sm bg-emerald-600 text-white font-medium">✨ 全校共 {scan.results.length} 種排法比現在更好</span>
+                : <span className="text-zinc-500">✓ 全校掃完：{scan.withThree ? '直接搬／兩角／三角' : '直接搬／兩角'}都沒有更好的排法了</span>}
+            {scan.stale && <span className="text-amber-700">課表已變動，分數可能不準——請重新掃描</span>}
+            <span className="ml-auto flex items-center gap-2">
+              {!scan.running && !scan.withThree && <button onClick={() => runScan(true)} className="btn btn-secondary text-xs py-0.5" title="加上三角互調再掃一次（較久、約一分鐘）">含三角再掃</button>}
+              {!scan.running && <button onClick={() => runScan(scan.withThree)} className="btn btn-secondary text-xs py-0.5">重新掃描</button>}
+              <button onClick={() => { scanToken.current++; setScan(null) }} className="text-zinc-400 hover:text-zinc-600">✕</button>
+            </span>
+          </div>
+          {scan.results.length > 0 && (
+            <ul className="grid gap-1 md:grid-cols-2 max-h-64 overflow-y-auto">
+              {scan.results.map((o, i) => (
+                <li key={i} onMouseEnter={() => setHoverOpt(o)} onMouseLeave={() => setHoverOpt(null)}
+                  className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 px-1.5 py-1">
+                  <span className={`shrink-0 px-1 rounded-sm text-white ${o.kind === 'move' ? 'bg-emerald-500' : o.kind === 'swap2' ? 'bg-sky-500' : 'bg-amber-500'}`}>{KIND_ZH[o.kind]}</span>
+                  <span className="shrink-0 font-mono text-emerald-700 font-semibold">更好 {o.softDelta}</span>
+                  <span className="text-zinc-600 truncate" title={o.desc}>{o.desc}</span>
+                  <span className="ml-auto shrink-0 flex gap-1">
+                    <button onClick={() => locate(o)} className="btn btn-secondary text-xs py-0" title="在課表上選取這堂課、看上色">定位</button>
+                    <button onClick={() => applyOption(o)} disabled={scan.stale} className="btn btn-primary text-xs py-0">套用</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
