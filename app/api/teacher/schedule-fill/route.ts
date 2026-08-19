@@ -24,12 +24,15 @@ export async function PUT(request: NextRequest) {
     supabaseAdmin.from('allocation_config').select('config').eq('year', Number(year)).maybeSingle(),
   ])
   const config = normalizeScheduleConfig(schRow?.config)
-  const plan = (planRow?.plan ?? null) as { status?: string; placed?: { classKey: string; day: number; period: number; size: number; parity?: string }[] } | null
+  const plan = (planRow?.plan ?? null) as { status?: string; fillOpen?: boolean; placed?: { classKey: string; day: number; period: number; size: number; parity?: string }[] } | null
 
   const classKey = Object.entries(config.classTeacher).find(([, tid]) => tid === user.id)?.[0]
   if (!classKey) return NextResponse.json({ error: '您不是任何班級的導師' }, { status: 403 })
   if (!plan || plan.status !== 'published') {
     return NextResponse.json({ error: plan?.status === 'final' ? '課表已定案，如需調整請洽教務處' : '導師排課尚未發布' }, { status: 403 })
+  }
+  if (plan.fillOpen === false) {
+    return NextResponse.json({ error: '課務組已收回填課權限（正在調課），如需調整請洽教務處' }, { status: 403 })
   }
 
   const { data: existing } = await supabaseAdmin

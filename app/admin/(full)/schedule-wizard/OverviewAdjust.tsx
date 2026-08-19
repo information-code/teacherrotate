@@ -18,7 +18,6 @@ interface Props {
   teacherNames: Record<string, string>
   baseHash: string          // 版本快照用：課的組成／可排格／鎖課指紋
   engineInput: EngineInput  // 調課查詢器用：硬規則沿用引擎（鎖課、教室、不回頭、連 7…）
-  fillOpen?: boolean        // 導師填課開放中：科任課只能跟科任課互換，不可搬進空格／導師格
 }
 
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
@@ -31,8 +30,26 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, fillOpen = false }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput }: Props) {
   const [placed, setPlaced] = useState<PlacedResult[]>(() => (savedPlan.placed as PlacedResult[] | undefined) ?? [])
+  // 導師填課開關（只在「已發布、未定案」有意義）：開著＝導師在填，課務組只能科任課互換；收回＝可自由調課
+  const [fillOpenState, setFillOpenState] = useState<boolean>(() => savedPlan.fillOpen !== false)
+  const fillOpen = planStatus === 'published' && fillOpenState
+  const [fillBusy, setFillBusy] = useState(false)
+  async function toggleFill() {
+    const next = !fillOpenState
+    const msg = next
+      ? '重新開放導師填課？開放期間課務組只能做科任課之間的互換（不可搬進空格／與導師課互換），避免撞到導師剛填的格。'
+      : '收回導師填課權限？導師端將變成唯讀，課務組可自由調課；調完可再開放。'
+    if (!confirm(msg)) return
+    setFillBusy(true)
+    try {
+      const res = await fetch('/api/admin/schedule-plan', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, action: next ? 'fillOpen' : 'fillClose' }) })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? '操作失敗'); return }
+      setFillOpenState(data.fillOpen !== false); savedPlan.fillOpen = data.fillOpen !== false
+    } finally { setFillBusy(false) }
+  }
   const [hr, setHr] = useState<Record<string, HomeroomRow>>(() => Object.fromEntries(homeroomRows.map(r => [r.class_key, { ...r, cells: { ...r.cells } }])))
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => (savedPlan.adjustments as Adjustment[] | undefined) ?? [])
   const [undoStack, setUndoStack] = useState<{ placed: PlacedResult[]; hr: Record<string, HomeroomRow>; adjustments: Adjustment[] }[]>([])
@@ -500,7 +517,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="text-sm font-semibold text-zinc-700">年級總覽與調整
-          <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>
+          {planStatus === 'draft'
+            ? <span className="text-xs font-normal text-amber-600 ml-2">草稿微調中（尚未發布；每一步都已存進草稿，按上方「初版課表發布」才對外）</span>
+            : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>}
+          {planStatus === 'published' && (
+            fillOpen
+              ? <span className="text-[10px] ml-2 px-1 py-0 rounded-sm bg-emerald-50 text-emerald-700 border border-emerald-200">導師填課開放中</span>
+              : <span className="text-[10px] ml-2 px-1 py-0 rounded-sm bg-amber-50 text-amber-700 border border-amber-200">填課已收回・課務組調課中</span>
+          )}
         </div>
         <span className="ml-auto flex items-center gap-2 flex-wrap">
           {saveState === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
@@ -517,6 +541,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             className={`btn text-xs py-0.5 ${adjustMode ? 'btn-primary' : 'btn-secondary'}`}>
             {adjustMode ? '✓ 調整模式（點課→點目標格）' : '✎ 進入調整模式'}
           </button>
+          {planStatus === 'published' && (
+            <button onClick={toggleFill} disabled={fillBusy} className={`btn text-xs py-0.5 ${fillOpenState ? 'btn-secondary' : 'btn-primary'}`}
+              title={fillOpenState ? '收回後導師端唯讀，課務組可自由調課（搬進空格、與導師課互換）' : '重新開放導師填課；開放期間課務組只能科任課互換'}>
+              {fillOpenState ? '🔒 收回導師填課' : '🔓 開放導師填課'}
+            </button>
+          )}
           {planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5">🏁 定案發布課表</button>}
           {planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5">取消定案</button>}
         </span>

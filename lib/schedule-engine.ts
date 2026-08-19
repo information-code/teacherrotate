@@ -3353,6 +3353,8 @@ export class SwapFinder {
     const out = new Map<string, EngineLesson>()
     for (const x of this.lessons) {
       if (x.id === l.id || !this.st.pos.has(x.id)) continue
+      // 導師填課開放中：只能同班科任課互換（跨班互換會讓某一班的科任課落進原本空著／導師要填的格）
+      if (this.lockTargets) { if (x.classKey === l.classKey) out.set(x.id, x); continue }
       if (x.classKey === l.classKey || x.teacherId === l.teacherId || (l.coTeacherId && (x.teacherId === l.coTeacherId || x.coTeacherId === l.coTeacherId)) || (x.coTeacherId && x.coTeacherId === l.teacherId)) out.set(x.id, x)
     }
     return Array.from(out.values())

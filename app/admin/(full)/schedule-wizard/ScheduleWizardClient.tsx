@@ -81,6 +81,10 @@ export default function ScheduleWizardClient(props: Props) {
   const [teacherSel, setTeacherSel] = useState('')
   const [roomSel, setRoomSel] = useState('')
   const [planStatus, setPlanStatus] = useState<string | null>(props.initialPlanStatus)
+  /** 草稿微調：發布前課務組也能用「年級總覽與調整」那套 UI 手動調課。
+   *  進入＝把目前預覽的這份寫進 schedule_plan（status draft），之後每一步都直接存進草稿；發布時就發布草稿（不再用 result 覆蓋）。 */
+  const [draftPlan, setDraftPlan] = useState<Record<string, unknown> | null>(null)
+  const [draftBusy, setDraftBusy] = useState(false)
   const [phaseBusy, setPhaseBusy] = useState(false)
   const [runFailed, setRunFailed] = useState(false)          // 全部種子跑完仍有未排／必須級違反
   const [hints, setHints] = useState<string[]>([])           // 未排診斷：建議降低的權重
@@ -196,7 +200,7 @@ export default function ScheduleWizardClient(props: Props) {
 
   function run() {
     workerRef.current?.terminate()
-    setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null)
+    setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null); setDraftPlan(null)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
@@ -248,7 +252,7 @@ export default function ScheduleWizardClient(props: Props) {
         }).catch(() => { /* 留存失敗不擋撤回 */ })
       }
     }
-    if (action === 'publish') {
+    if (action === 'publish' && !draftPlan) {
       if (!result) { alert('沒有可發布的課表：請先按「開始排課」，或到版本紀錄挑一份預覽。'); return }
       // 正式課表若有手動微調紀錄，發布別份會把它們蓋掉——講明白再做
       const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
@@ -256,7 +260,7 @@ export default function ScheduleWizardClient(props: Props) {
     }
     setPhaseBusy(true)
     try {
-      if (action === 'publish') {
+      if (action === 'publish' && !draftPlan) {
         // ① 寫入正式課表（草稿）
         const put = await fetch('/api/admin/schedule-plan', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -283,13 +287,53 @@ export default function ScheduleWizardClient(props: Props) {
       const data = await res.json()
       if (!res.ok) { alert(data.error ?? '操作失敗'); return }
       setPlanStatus(data.status)
-      if (action === 'publish') { router.refresh() }
+      if (action === 'publish') { setDraftPlan(null); router.refresh() }
     } finally { setPhaseBusy(false) }
+  }
+
+  /** 進入草稿微調：把目前預覽的這份寫進草稿（或接續上次存的草稿），下面就會出現年級總覽與調整。 */
+  async function enterDraftEdit(resume: boolean) {
+    if (resume) {
+      const sp = props.savedPlan
+      if (!sp || !Array.isArray(sp.placed)) return
+      const p = sp as Record<string, unknown> & { placed: PlacedResult[] }
+      const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
+      setResult({
+        placed: p.placed, unplaced: Array.isArray(p.unplaced) ? p.unplaced as EngineResult['unplaced'] : [],
+        penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
+        totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
+        uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
+        iterations: 0, elapsedMs: 0,
+      })
+      lastVerSig.current = sigOfPlaced(p.placed)
+      setPreviewVersionId(null)
+      setDraftPlan(sp)
+      return
+    }
+    if (!result) return
+    const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
+    if (adj > 0 && props.savedPlan?.status === 'draft' && !confirm(`已儲存的草稿有 ${adj} 筆手動微調。\n以目前預覽的這份開始新的微調會覆蓋那份草稿。確定？`)) return
+    setDraftBusy(true)
+    try {
+      const plan = {
+        status: 'draft',
+        totalPenalty: result.totalPenalty, softPenalty: result.softPenalty,
+        placed: result.placed, unplaced: result.unplaced,
+        penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+        uncoveredMustFill: result.uncoveredMustFill,
+        adjustments: [] as unknown[],
+      }
+      const put = await fetch('/api/admin/schedule-plan', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, plan }) })
+      if (!put.ok) { alert('寫入草稿失敗，請稍後再試。'); return }
+      setPlanStatus('draft')
+      setDraftPlan(plan as Record<string, unknown>)
+    } finally { setDraftBusy(false) }
   }
 
   /** 從版本紀錄挑一份來預覽（不會動到正式課表，要按發布才算數）。 */
   async function previewVersion(v: VersionRow) {
     setVersionBusy(v.id)
+    setDraftPlan(null)   // 換一份預覽＝離開草稿微調（草稿仍留在資料庫，可再「接續」）
     try {
       const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
       if (!res.ok) { alert('載入版本失敗'); return }
@@ -465,10 +509,22 @@ export default function ScheduleWizardClient(props: Props) {
           <p className="text-xs text-zinc-400">一鍵排出科任教師與科任教室課表；班級課表留白＝導師自排空間。{(planStatus === 'published' || planStatus === 'final') && props.lastGeneratedAt && `正式課表更新於 ${new Date(props.lastGeneratedAt).toLocaleString('zh-TW')}`}</p>
         </div>
         <span className="flex gap-2 flex-shrink-0">
-          {planStatus !== 'published' && planStatus !== 'final' && result !== null && (
+          {planStatus !== 'published' && planStatus !== 'final' && result !== null && !draftPlan && (
+            <button onClick={() => enterDraftEdit(false)} disabled={draftBusy || running} className="btn btn-secondary text-sm py-1"
+              title="發布前先由課務組手動微調：以目前預覽的這份為底，點課上色、互換、找鏈；每一步自動存進草稿">
+              ✎ 草稿微調
+            </button>
+          )}
+          {planStatus !== 'published' && planStatus !== 'final' && !draftPlan && props.savedPlan?.status === 'draft' && Array.isArray(props.savedPlan.placed) && (
+            <button onClick={() => enterDraftEdit(true)} disabled={draftBusy || running} className="btn btn-secondary text-sm py-1"
+              title="接續上次存在資料庫的草稿（含手動微調紀錄）">
+              ↩ 接續上次草稿{Array.isArray(props.savedPlan.adjustments) && (props.savedPlan.adjustments as unknown[]).length > 0 ? `（${(props.savedPlan.adjustments as unknown[]).length} 筆微調）` : ''}
+            </button>
+          )}
+          {planStatus !== 'published' && planStatus !== 'final' && (result !== null || draftPlan) && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
-              title="發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結">
-              📢 初版課表發布
+              title={draftPlan ? '發布目前微調後的草稿：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課' : '發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結'}>
+              📢 初版課表發布{draftPlan ? '（微調後草稿）' : ''}
             </button>
           )}
           {planStatus === 'published' && (
@@ -539,12 +595,13 @@ export default function ScheduleWizardClient(props: Props) {
       </div>
 
       {/* 發布後：年級總覽與調整模式 */}
-      {(planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed) && (
+      {((planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed)) || (planStatus === 'draft' && draftPlan) ? (
         <OverviewAdjust
+          key={draftPlan ? 'draft' : planStatus ?? ''}
           year={year}
-          planStatus={planStatus}
+          planStatus={planStatus ?? 'draft'}
           setPlanStatus={setPlanStatus}
-          savedPlan={props.savedPlan}
+          savedPlan={(draftPlan && planStatus === 'draft' ? draftPlan : props.savedPlan)!}
           homeroomRows={props.homeroomRows}
           baseHash={curBaseHash}
           engineInput={input}
@@ -552,7 +609,7 @@ export default function ScheduleWizardClient(props: Props) {
           classCounts={classCounts}
           teacherNames={teacherNames}
         />
-      )}
+      ) : null}
 
       {/* 發布後：本土語場次（自動推導；管理者依實際情況切換狀態） */}
       {(planStatus === 'published' || planStatus === 'final') && nativeDerived.sessions.length > 0 && (

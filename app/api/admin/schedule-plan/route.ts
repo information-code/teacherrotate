@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(data ?? {})
 }
 
-/** 發布／撤回導師排課。body: { year, action: 'publish' | 'unpublish' }
+/** 發布／撤回導師排課。body: { year, action: 'publish' | 'unpublish' | 'finalize' | 'unfinalize' | 'fillOpen' | 'fillClose' }
  *  發布門檻：未排清單與必排未覆蓋都必須為 0——所有需求配課都要排入。 */
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient()
@@ -56,6 +56,11 @@ export async function PATCH(request: NextRequest) {
     }
     plan.status = 'published'
     plan.publishedAt = new Date().toISOString()
+    plan.fillOpen = true   // 發布即開放導師填課；課務組可隨時收回（fillClose）再調課
+  } else if (action === 'fillClose' || action === 'fillOpen') {
+    // 導師填課權限開關：開著時課務組只能做科任課之間的互換；收回後可自由調課（含搬進空格／與導師課互換）
+    if (plan.status !== 'published') return NextResponse.json({ error: '僅發布中（未定案）的課表可切換導師填課' }, { status: 400 })
+    plan.fillOpen = action === 'fillOpen'
   } else if (action === 'unpublish') {
     if (plan.status === 'final') return NextResponse.json({ error: '已定案，無法撤回發布' }, { status: 400 })
     plan.status = 'draft'
@@ -77,7 +82,7 @@ export async function PATCH(request: NextRequest) {
     .update({ plan: plan as never })
     .eq('year', Number(year))
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true, status: plan.status })
+  return NextResponse.json({ ok: true, status: plan.status, fillOpen: plan.fillOpen !== false })
 }
 
 /** 儲存某年度排課結果。body: { year, plan } */

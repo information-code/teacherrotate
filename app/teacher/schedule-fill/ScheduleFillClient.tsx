@@ -17,10 +17,11 @@ interface Props {
   initialCells: Record<string, string>    // slotKey → 科目
   confirmedAt: string | null
   finalized: boolean
+  lockMessage?: string
 }
 
 /** 教師端：導師排課選填。把自己的配課填入班級課表留白格，全部填完後確認送出。 */
-export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized }: Props) {
+export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized, lockMessage }: Props) {
   const [cells, setCells] = useState<Record<string, string>>(initialCells)
   const [selected, setSelected] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<boolean>(Boolean(confirmedAt))
@@ -106,6 +107,9 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
         <div className="card bg-green-50 border-green-200 text-sm text-green-700 py-3">
           ✓ 已確認送出{confirmedAt ? `（${new Date(confirmedAt).toLocaleString('zh-TW')}）` : ''}。如需修改請洽教務處。
         </div>
+      )}
+      {!confirmed && finalized && lockMessage && (
+        <div className="card bg-amber-50 border-amber-200 text-sm text-amber-700 py-3">🔒 {lockMessage}</div>
       )}
 
       {/* 科目籤 */}
