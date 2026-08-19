@@ -122,6 +122,7 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
         initial: feasible.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
       })
       const cand = isPerfect(polished) ? polished : feasible
+      if (!cand.notes?.length && best?.notes?.length) cand.notes = best.notes   // 熱啟動不會重跑教室優先求解，說明沿用原種子的
       if (betterThan(cand, best!)) { best = cand; bestSeed = seed }
     }
     // ① 從最佳解熱啟動純硬

@@ -461,6 +461,12 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
               <span className="text-zinc-400">114-2 人工課表自然 42 組連堂 0 例外</span>
             </li>
             <li className="flex items-center gap-2 flex-wrap">
+              <span><b>自然／科技教室優先排</b>——課表全空時先為這些教室做精確搜尋：每位管理者一週只占一個連續區塊、不交錯（甲＝一二三、乙＝三四五，邊界日共用）；同一位老師區塊裡年級也連續（六年級全上完才換四年級，跨天也算）。放不下會自動降級（先放寬年級連續、再放寬不交錯）並在排課結果說明。鎖課永遠優先。適用教室科目（順序＝優先序）：</span>
+              <input value={w.hardParams.roomBlockSubjects.join('、')}
+                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, roomBlockSubjects: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
+                placeholder="自然、智慧探究家：科技創新任務" className="input py-0.5 text-xs w-72" />
+            </li>
+            <li className="flex items-center gap-2 flex-wrap">
               <span><b>專科教室老師不回頭</b>（同一間專科教室、同一天）——老師走了不能再回來（甲 1-2／乙 3-4／甲 5-6 ✗），收了實驗器材又要回來擺。適用教室科目：</span>
               <input value={w.hardParams.noReturnSubjects.join('、')}
                 onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, noReturnSubjects: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
