@@ -6,6 +6,9 @@ import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
 
 export interface HomeroomRow { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }
+/** 不進引擎的固定課（本土語原班／語別場次）：教師／教室檢視要一併顯示，唯讀 */
+export interface ExtraCell { slot: string; main: string; sub: string }
+export interface AdjustExtras { teacher: Map<string, ExtraCell[]>; room: Map<string, ExtraCell[]>; roomNames: Record<string, string> }
 
 interface Props {
   year: number
@@ -26,6 +29,7 @@ interface Props {
    *  內嵌時由外層控制；獨立（發布後）時自己有切換列。 */
   mode?: 'class' | 'teacher' | 'room'
   focusId?: string
+  extras?: AdjustExtras     // 本土語（原班、語別場次）：教師／教室檢視顯示為灰格、不可調
   onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
   onPersisted?: () => void                             // 第一次成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
@@ -42,7 +46,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, onPlacedChange, onPersisted, onGradeChange, onDiscard }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -118,8 +122,16 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (!m.has(p.teacherId)) m.set(p.teacherId, { id: p.teacherId, name: p.teacherName, co: false })
       if (p.coTeacherId && !m.has(p.coTeacherId)) m.set(p.coTeacherId, { id: p.coTeacherId, name: p.coTeacherName ?? '外師', co: true })
     }
+    for (const tid of Array.from(extras?.teacher.keys() ?? [])) if (!m.has(tid)) m.set(tid, { id: tid, name: teacherNames[tid] ?? '？', co: false })
     return Array.from(m.values()).sort((a, b) => Number(a.co) - Number(b.co) || a.name.localeCompare(b.name, 'zh-Hant'))
-  }, [placed])
+  }, [placed, extras, teacherNames])
+  const extraCells = useMemo(() => {
+    const m = new Map<string, ExtraCell[]>()
+    if (!focusId || mode === 'class') return m
+    const list = mode === 'teacher' ? extras?.teacher.get(focusId) : extras?.room.get(focusId)
+    for (const e of list ?? []) m.set(e.slot, [...(m.get(e.slot) ?? []), e])
+    return m
+  }, [extras, mode, focusId])
   /** 教師／教室檢視：一張以時段為格的週課表（同一格可能有單週＋雙週兩堂） */
   const focusCells = useMemo(() => {
     const m = new Map<string, PlacedResult[]>()
@@ -638,6 +650,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             <select value={roomSelState} onChange={e => setRoomSel(e.target.value)} className="input py-0.5 text-xs w-44">
               <option value="">選擇教室…</option>
               {rooms.filter(r => r.subject).map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+              {Object.entries(extras?.roomNames ?? {}).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
           )}
         </div>
@@ -736,8 +749,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       {mode !== 'class' && focusId && (
         <div className="card p-3 max-w-md space-y-1">
           <div className="text-sm font-semibold text-zinc-700">
-            {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? '教室')}
-            <span className="text-xs font-normal text-zinc-400 ml-2">{mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段（本土語、鎖課不在此列）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）'}</span>
+            {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
+            <span className="text-xs font-normal text-zinc-400 ml-2">{mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
           </div>
           <table className="w-full table-fixed border-collapse text-[10px]">
             <thead>
@@ -752,6 +765,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                   {SCHEDULE_DAYS.map(d => {
                     const k = `${d}-${q}`
                     const ls = focusCells.get(k) ?? []
+                    const ex = extraCells.get(k) ?? []
                     const off = focusOff.has(k)
                     const opt = sel?.type === 'lesson' ? optByCell.get(k) : undefined
                     const why = sel?.type === 'lesson' && !opt && swapQ ? (hiddenWhy.get(k) ?? swapQ.why[k]) : undefined
@@ -771,9 +785,15 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     return (
                       <td key={d} className="p-0.5">
                         <button onClick={onClick} title={title} {...hoverProps}
-                          className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
+                          className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700' : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
-                          {ls.length === 0 && off && <span className="text-[8px]">—</span>}
+                          {ls.length === 0 && ex.length === 0 && off && <span className="text-[8px]">—</span>}
+                          {ls.length === 0 && ex.slice(0, 2).map((e, i) => (
+                            <span key={i} className="truncate w-full">
+                              <span className="font-medium">{e.main}</span>
+                              <span className="text-[8px] opacity-70"> {e.sub}</span>
+                            </span>
+                          ))}
                           {ls.slice(0, 2).map(x => (
                             <span key={x.id} className="truncate w-full">
                               <span className="font-medium">{x.classLabel}</span>

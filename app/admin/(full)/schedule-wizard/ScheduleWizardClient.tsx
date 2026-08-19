@@ -7,7 +7,7 @@ import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
-import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
+import OverviewAdjust, { type HomeroomRow, type AdjustExtras } from './OverviewAdjust'
 import { buildExportSheets, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
@@ -438,6 +438,16 @@ export default function ScheduleWizardClient(props: Props) {
     return m
   }, [scheduleConfig, nativeDerived, nativeRoomNames])
 
+  // 調整畫面用：本土語（原班＋語別場次）依老師／教室，唯讀灰格
+  const adjustExtras = useMemo<AdjustExtras>(() => {
+    const room = new Map<string, { slot: string; main: string; sub: string }[]>()
+    for (const sn of nativeDerived.sessions) {
+      if (sn.state !== 'physical' || !sn.roomId) continue
+      room.set(sn.roomId, [...(room.get(sn.roomId) ?? []), { slot: sn.slot, main: `本土語（${sn.lang}）`, sub: `${GRADE_LABEL[sn.grade]}・${teacherNames[sn.teacherId] ?? ''}` }])
+    }
+    return { teacher: nativeCellsByTeacher, room, roomNames: nativeRoomNames }
+  }, [nativeDerived, nativeCellsByTeacher, nativeRoomNames, teacherNames])
+
   // ── 檢視資料索引 ──
   const teachers = useMemo(() => {
     const ids = Array.from(new Set([...input.lessons.map(l => l.teacherId), ...Array.from(nativeCellsByTeacher.keys())]))
@@ -666,6 +676,7 @@ export default function ScheduleWizardClient(props: Props) {
           planStatus={planStatus}
           setPlanStatus={setPlanStatus}
           savedPlan={props.savedPlan}
+          extras={adjustExtras}
           homeroomRows={props.homeroomRows}
           baseHash={curBaseHash}
           engineInput={input}
@@ -851,6 +862,7 @@ export default function ScheduleWizardClient(props: Props) {
                 gradeSel={gradeSel}
                 mode={view}
                 focusId={view === 'teacher' ? teacherSel : view === 'room' ? roomSel : undefined}
+                extras={adjustExtras}
                 year={year}
                 planStatus="draft"
                 setPlanStatus={setPlanStatus}
