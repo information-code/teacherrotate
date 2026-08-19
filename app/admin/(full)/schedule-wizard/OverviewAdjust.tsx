@@ -162,7 +162,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [hoverOpt, setHoverOpt] = useState<SwapOption | null>(null)
   const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
   const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
-  const deltaZh = (d: number) => d === 0 ? '軟分不變' : d < 0 ? `軟分 −${Math.abs(d)}（變好）` : `軟分 +${d}（變差）`
+  const deltaZh = (d: number) => d === 0 ? '罰分不變' : d < 0 ? `罰分 −${Math.abs(d)}（變好）` : `罰分 +${d}（變差，越少越好）`
 
   // 老師占用（週型感知）：teacherId → slot → { w/o/e: lessonId }
   const teacherOcc = useMemo(() => {
@@ -623,7 +623,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400 align-middle mx-0.5 ml-2" />兩角互換
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400 align-middle mx-0.5 ml-2" />三角互調
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400 align-middle mx-0.5 ml-2" />與導師課互換
-                    ；灰格滑過看卡在哪條硬規則；滑過彩格會標出牽動到的課（虛線框）{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
+                    ；灰格滑過看卡在哪條硬規則；滑過彩格會標出牽動到的課（虛線框）；格角數字＝罰分變化，<b>越低越好</b>（負＝變好、正＝變差）{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
           </span>
@@ -645,7 +645,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           <div className="flex items-center gap-2 flex-wrap text-zinc-500">
             <span>合法調法 <b className="text-zinc-700">{swapQ.options.length}</b> 種
               （直接搬 {swapQ.options.filter(o => o.kind === 'move').length}、兩角 {swapQ.options.filter(o => o.kind === 'swap2').length}、三角 {swapQ.options.filter(o => o.kind === 'swap3').length}）
-              ，依軟分變化排序，前 12 種：</span>
+              ，依罰分變化排序（越低越好），前 12 種：</span>
             {chain === 'none' && <span className="text-amber-700">找不到四層內的多角鏈（可能教室全滿或被鎖課卡死）</span>}
           </div>
           {chain && chain !== 'none' && chain !== 'busy' && (
