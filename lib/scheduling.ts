@@ -141,8 +141,9 @@ export interface BuiltinRules {
   // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomManagerFirst: WeightLevel                   // 教室管理教師優先：管理者必得自己的教室（結構保證）；非管理者用到有管理者的教室時扣分
-  roomHalfDay: WeightLevel                        // 專科教室同半天同老師：同一間專科教室上午（1~4）／下午（5~7）盡量同一位老師——自然老師收實驗器材來不及換班。
-                                                  //   114-1 人工課表自然教室 27 個半天只有 1 個換老師（4%）、科技教室 3 個（11%）→ 高權重
+  roomHalfDay: WeightLevel                        // 專科教室同日老師成塊：同一間專科教室同一天每位老師的課連成一塊、走了不回頭（翁1-2／陳3-4／翁5-6 ✗），
+                                                  //   最好上午／下午各一位（翁1-4／陳5-6 ✓）——自然老師收實驗器材來不及換班。回頭扣 1、半天兩位扣 ½。
+                                                  //   114-1 人工課表自然教室 27 個教室日 0 次回頭；科技／音樂／律動共 4 次 → 高權重
   // 上午導師課下限：每天上午（1~4 節）至少 N 節是導師課。刻意做成「下限」而非「越多越好」——
   // 單調版本會把科任課全擠到下午、讓上午 4 格全是導師課而撞上「不連四」硬限制。
   homeroomMorning: { level: WeightLevel; n: number }
@@ -166,8 +167,11 @@ export interface HardParams {
   // 連堂後不緊接單節（同一位老師、同一個半天）：連堂結束要收器材，緊接著跑班來不及。
   // 單節後接連堂可以。114-2 人工課表自然 42 組連堂 0 例外 → 硬限制。列出的科目為「連堂的科目」
   noSingleAfterDouble: string[]
+  // 專科教室老師不回頭：同一間專科教室同一天，老師走了不能再回來（翁 1-2／陳 3-4／翁 5-6 ✗）——收了實驗器材又要回來擺。
+  // 114-1 人工課表自然教室 27 個教室日 0 次回頭 → 硬限制。列出的是「教室的科目」；其他科目由權重「專科教室同日老師成塊」管
+  noReturnSubjects: string[]
 }
-export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], noSingleAfterDouble: ['自然', '自然科學'] }
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], noSingleAfterDouble: ['自然', '自然科學'], noReturnSubjects: ['自然', '自然科學'] }
 
 /** 專科教室使用時機（結構設定，非權重）。依 114-2 人工課表：
  *  自然科學＝連堂 42 組 100% 進自然教室、單節 42 堂 0% 進（實驗課進教室、講述課留原班，零例外）；
@@ -343,6 +347,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         maxRunHomeroom: clamp(rawHomeroom, DEFAULT_HARD_PARAMS.maxRunHomeroom),
         homeroomRunBands: bands,
         noSingleAfterDouble: Array.isArray(hp.noSingleAfterDouble) ? (hp.noSingleAfterDouble as unknown[]).map(String).filter(Boolean) : [...DEFAULT_HARD_PARAMS.noSingleAfterDouble],
+        noReturnSubjects: Array.isArray(hp.noReturnSubjects) ? (hp.noReturnSubjects as unknown[]).map(String).filter(Boolean) : [...DEFAULT_HARD_PARAMS.noReturnSubjects],
       }
     })(),
     roomUse: (() => {

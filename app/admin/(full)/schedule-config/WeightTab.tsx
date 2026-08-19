@@ -93,7 +93,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
-    { key: 'roomHalfDay', name: '專科教室同半天同老師', def: '高', desc: '同一間專科教室上午（1~4 節）盡量同一位老師、下午（5~7 節）盡量同一位老師——自然老師收實驗器材來不及換班。以「較少那一邊」計次：上午 甲2＋乙2 扣 2 次。114-1 人工課表自然教室 27 個半天只換老師 1 次（4%），故為高權重', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
+    { key: 'roomHalfDay', name: '專科教室同日老師成塊', def: '高', desc: '同一間專科教室同一天，每位老師的課連成一塊、走了不再回來（甲 1-2／乙 3-4／甲 5-6 ✗），最好上午一位、下午一位（甲 1-4／乙 5-6 ✓）——自然老師收實驗器材來不及換班。回頭一次扣 1 次、同半天兩位老師扣 ½ 次。114-1 人工課表自然教室 27 個教室日 0 次回頭、科技／音樂／律動共 4 次，故為高權重', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
     { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '中', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%），故為權重' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
@@ -459,6 +459,13 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                 onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, noSingleAfterDouble: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
                 placeholder="自然" className="input py-0.5 text-xs w-40" />
               <span className="text-zinc-400">114-2 人工課表自然 42 組連堂 0 例外</span>
+            </li>
+            <li className="flex items-center gap-2 flex-wrap">
+              <span><b>專科教室老師不回頭</b>（同一間專科教室、同一天）——老師走了不能再回來（甲 1-2／乙 3-4／甲 5-6 ✗），收了實驗器材又要回來擺。適用教室科目：</span>
+              <input value={w.hardParams.noReturnSubjects.join('、')}
+                onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, noReturnSubjects: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
+                placeholder="自然" className="input py-0.5 text-xs w-40" />
+              <span className="text-zinc-400">114-1 人工課表自然教室 27 個教室日 0 次回頭；其他科目由權重「專科教室同日老師成塊」管</span>
             </li>
             <li>科任老師單日課間空堂最多一段——絕不出現「上、空、上、空」交錯（單一空堂可以；導師不在此限）</li>
             <li>同科同日：同班同科一天最多一次（連堂本身、「都可以」的自然成對不算）</li>

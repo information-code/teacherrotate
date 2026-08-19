@@ -941,8 +941,29 @@ class State {
     // 管理教師只認自己管理的那間（可趕走借用者，但得幫對方換到別間）；沒有管理教室的老師則整科任一間皆可。
     // 沒教室不是回原班，是換時段；整週都塞不進才會成為未排（明著卡住，不悄悄降級）。
     const pool = this.roomPool.get(l.id)
-    if (pool && !pool.some(r => this.planRoom(r.id, l, p) !== null)) return false
+    if (pool && !pool.some(r => this.planRoom(r.id, l, p) !== null && !this.roomReturnAfter(r.id, l, p))) return false
     return true
+  }
+
+  /** 硬限制（hardParams.noReturnSubjects 列的科目，預設自然）：同一間專科教室同一天，老師走了不能再回來——
+   *  翁 1-2／陳 3-4／翁 5-6 ✗。收了實驗器材又要回來擺，來不及。114-1 人工課表自然教室 27 個教室日 0 次回頭。
+   *  模擬把 l 放進 roomId 之後，該日這間教室依節次的老師序列裡是否有人出現兩塊以上。 */
+  private roomReturnAfter(roomId: string, l: EngineLesson, p: Placement): boolean {
+    if (!this.input.weights.hardParams.noReturnSubjects.includes(l.subject)) return false
+    const occ = this.roomOcc.get(roomId)
+    const mine = new Set(this.slotsOf(l, p).map(s => Number(s.split('-')[1])))
+    const blocks: string[] = []
+    for (let q = 1; q <= 7; q++) {
+      let tid: string | undefined
+      if (mine.has(q)) tid = l.teacherId
+      else {
+        const cell = occ?.get(`${p.day}-${q}`)
+        const id = cell?.w ?? (l.parity !== 'even' ? cell?.o : undefined) ?? (l.parity !== 'odd' ? cell?.e : undefined)
+        if (id && id !== ROOM_OFF && id !== l.id) tid = this.lessonById.get(id)?.teacherId
+      }
+      if (tid && blocks[blocks.length - 1] !== tid) blocks.push(tid)
+    }
+    return new Set(blocks).size !== blocks.length
   }
 
   /** 同班同科已排在同日？（連堂模式「都可以」的兩堂單節相鄰、不跨午休＝自然成對，放行；第三堂同日仍禁） */
@@ -1221,26 +1242,37 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 專科教室同半天同老師（權重）：同一間教室 上午 1~4／下午 5~7 盡量同一位老師（自然老師收實驗器材來不及換班）。
-  // 以「較少那一邊」計次：上午 翁2＋陳2 扣 2、翁3＋陳1 扣 1
-  if (w.roomHalfDay !== 'off') {
-    const byRoomHalf = new Map<string, Map<string, number>>()   // `${rid}|${d}|${am/pm}` → tid → 節數
+  // 專科教室同日老師成塊（權重）：同一間教室同一天，每位老師的課連成一塊，走了不要再回來（翁1-2／陳3-4／翁5-6 ✗）。
+  // 課務組真正在意的是「收了器材又要回來」；上午 1~4／下午 5~7 各自同一位老師是更好的形狀（翁1-4／陳5-6 ✓）。
+  // 計分：老師同日在同教室「回頭」一次扣 1 次（每多一塊算一次）；同一個半天被兩位老師分掉但沒回頭（翁1-2／陳3-4）扣 ½ 次。
+  // 114-1 人工課表：自然教室 27 個教室日 0 次回頭、1 個半天分掉；科技／音樂／律動教室共 4 次回頭 → 高權重、非硬
+  if (w.roomHalfDay !== 'off' || input.weights.hardParams.noReturnSubjects.length) {
+    const byRoomDay = new Map<string, Map<number, string>>()   // `${rid}|${d}` → period → tid
     for (const { l, p } of placedLessons) {
       const rid = roomOf.get(l.id)
       if (!rid) continue
-      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) {
-        const k = `${rid}|${p.day}|${q <= MORNING_LAST ? 'am' : 'pm'}`
-        const m = byRoomHalf.get(k) ?? byRoomHalf.set(k, new Map()).get(k)!
-        m.set(l.teacherId, (m.get(l.teacherId) ?? 0) + 1)
-      }
+      const k = `${rid}|${p.day}`
+      const m = byRoomDay.get(k) ?? byRoomDay.set(k, new Map()).get(k)!
+      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) m.set(q, l.teacherId)
     }
-    byRoomHalf.forEach((m, k) => {
-      if (m.size < 2) return
-      const [rid, d, half] = k.split('|')
-      const counts = Array.from(m.values()).sort((x, y) => y - x)
-      const times = counts.slice(1).reduce((x, y) => x + y, 0)
-      acc(map, 'roomHalfDay', '專科教室同半天同老師', pen(w.roomHalfDay) * times,
-        `${roomById.get(rid)?.label ?? rid} 週${DAY_ZH[Number(d)]}${half === 'am' ? '上午' : '下午'} ${Array.from(m.entries()).map(([tid, n]) => `${nameOf(tid)}${n}`).join('＋')}`)
+    byRoomDay.forEach((m, k) => {
+      const [rid, d] = k.split('|')
+      const label = `${roomById.get(rid)?.label ?? rid} 週${DAY_ZH[Number(d)]}`
+      // 回頭：依節次走一遍，每位老師第二塊以後每塊扣 1
+      const blocks: string[] = []
+      for (let q = 1; q <= 7; q++) { const t = m.get(q); if (t && blocks[blocks.length - 1] !== t) blocks.push(t) }
+      const seenT = new Set<string>(); let returns = 0
+      for (const t of blocks) { if (seenT.has(t)) returns++; seenT.add(t) }
+      if (returns) {
+        const subj = roomById.get(rid)?.subject ?? ''
+        const hard = input.weights.hardParams.noReturnSubjects.includes(subj)
+        acc(map, hard ? 'roomNoReturn' : 'roomHalfDay', hard ? '專科教室老師不回頭（硬限制）' : '專科教室同日老師成塊', (hard ? MUST : pen(w.roomHalfDay)) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+      }
+      // 半天分掉（沒回頭）：上午／下午各看，出現兩位以上老師扣 ½
+      if (w.roomHalfDay !== 'off') for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
+        const ts = new Set(qs.map(q => m.get(q)).filter(Boolean) as string[])
+        if (ts.size > 1) acc(map, 'roomHalfDay', '專科教室同日老師成塊', pen(w.roomHalfDay) * 0.5, `${label}${half} ${Array.from(ts).map(t => nameOf(t)).join('＋')}（半天兩位老師）`)
+      }
     })
   }
 
@@ -2166,8 +2198,8 @@ export class EngineRun {
     })
   }
 
-  /** 專科教室同半天同老師定向修補（權重）：找一個「同一間教室同半天有兩位老師」的格局，把少數那位的一堂課
-   *  搬到她自己教室「那半天沒有別人」的格子。只處理有管理教室者（教室確定）。 */
+  /** 專科教室同日老師成塊定向修補（權重）：找「同一間教室同一天老師走了又回來」或「同半天兩位老師」的格局，
+   *  把回頭那一小塊／少數那位的一堂課搬到她自己教室「那半天沒有別人」的格子。只處理有管理教室者（教室確定）。 */
   private tryFixRoomHalf() {
     if (this.input.weights.builtin.roomHalfDay === 'off') return
     const byRoomHalf = new Map<string, Map<string, EngineLesson[]>>()
@@ -2186,6 +2218,32 @@ export class EngineRun {
       const minority = sorted[0][1].filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
       if (minority.length) bad.push({ rid: k.split('|')[0], minority })
     })
+    // 走了又回來（翁／陳／翁）：回頭那位老師較小的那一塊也是候選——優先處理，因為這才是課務組最在意的
+    const byRoomDay = new Map<string, Map<number, EngineLesson>>()
+    this.st.pos.forEach((p, id) => {
+      const rid = this.st.roomOf.get(id); if (!rid) return
+      const l = this.st.lessonById.get(id)!
+      const m = byRoomDay.get(`${rid}|${p.day}`) ?? byRoomDay.set(`${rid}|${p.day}`, new Map()).get(`${rid}|${p.day}`)!
+      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) m.set(q, l)
+    })
+    const returns: { rid: string; minority: EngineLesson[] }[] = []
+    byRoomDay.forEach((m, k) => {
+      const blocks: { tid: string; ls: EngineLesson[] }[] = []
+      for (let q = 1; q <= 7; q++) {
+        const l = m.get(q); if (!l) continue
+        const last = blocks[blocks.length - 1]
+        if (last && last.tid === l.teacherId) { if (!last.ls.includes(l)) last.ls.push(l) } else blocks.push({ tid: l.teacherId, ls: [l] })
+      }
+      const byT = new Map<string, typeof blocks>()
+      for (const b of blocks) (byT.get(b.tid) ?? byT.set(b.tid, []).get(b.tid)!).push(b)
+      byT.forEach(bs => {
+        if (bs.length < 2) return
+        const smallest = bs.slice().sort((a, b) => a.ls.length - b.ls.length)[0]
+        const ls = smallest.ls.filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
+        if (ls.length) returns.push({ rid: k.split('|')[0], minority: ls })
+      })
+    })
+    if (returns.length && (this.rnd() < 0.7 || !bad.length)) { bad.length = 0; bad.push(...returns) }
     if (!bad.length) return
     const b = bad[Math.floor(this.rnd() * bad.length)]
     const l = b.minority[Math.floor(this.rnd() * b.minority.length)]
