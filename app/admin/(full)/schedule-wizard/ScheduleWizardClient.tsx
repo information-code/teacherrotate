@@ -8,6 +8,7 @@ import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
+import { buildExportSheets, sheetsToCsv, sheetsToDocHtml, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -392,6 +393,30 @@ export default function ScheduleWizardClient(props: Props) {
     } finally { setVersionBusy(null) }
   }
 
+  // ── 匯出整份課表（班級＋科任教師＋科任教室）：PDF／Word／CSV ──
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportStatus, setExportStatus] = useState<string | null>(null)
+  const exportPlaced: PlacedResult[] | null = (planStatus === 'published' || planStatus === 'final') && Array.isArray(props.savedPlan?.placed)
+    ? (props.savedPlan!.placed as PlacedResult[])
+    : result?.placed ?? null
+  async function doExport(kind: 'pdf' | 'doc' | 'csv') {
+    setExportOpen(false)
+    if (!exportPlaced) return
+    const hrCells: Record<string, Record<string, string>> = {}
+    for (const r of props.homeroomRows) if (r.cells && Object.keys(r.cells).length) hrCells[r.class_key] = r.cells
+    const sheets = buildExportSheets({ year, placed: exportPlaced, config: scheduleConfig, input, teacherNames, classCounts, hrCells, nativeSessions: nativeDerived.sessions, nativeRoomNames })
+    const base = `${year}學年度課表（班級＋科任教師＋科任教室）`
+    try {
+      if (kind === 'csv') { saveBlob(new Blob([sheetsToCsv(sheets)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
+      if (kind === 'doc') { saveBlob(new Blob([sheetsToDocHtml(sheets, year)], { type: 'application/msword;charset=utf-8' }), `${base}.doc`); return }
+      setExportStatus('準備中…')
+      const blob = await sheetsToPdf(sheets, s => setExportStatus(s))
+      saveBlob(blob, `${base}.pdf`)
+    } catch (e) {
+      alert(`匯出失敗：${e instanceof Error ? e.message : String(e)}`)
+    } finally { setExportStatus(null) }
+  }
+
   // ── 本土語（不進引擎、鎖課時段固定）：教師課表要一併顯示 ──
   //   閩南語原班：科任配班「本土語」指派的老師 × 該班本土語鎖課格；語別場次：實體／線上（有授課老師）
   const nativeCellsByTeacher = useMemo(() => {
@@ -556,6 +581,20 @@ export default function ScheduleWizardClient(props: Props) {
             <button onClick={() => setPhase('unpublish')} disabled={phaseBusy} className="btn btn-danger text-sm py-1">撤回發布</button>
           )}
           <Link href="/admin/schedule-config?tab=weight" className="btn btn-secondary text-sm py-1">⚙ 調整權重設定</Link>
+          <span className="relative">
+            <button onClick={() => setExportOpen(o => !o)} disabled={!exportPlaced || exportStatus !== null} className="btn btn-secondary text-sm py-1"
+              title={exportPlaced ? '下載整份課表：班級＋科任教師＋科任教室，一頁一張（版面同人工課表）' : '先排課或挑一份版本預覽'}>
+              {exportStatus ?? '⬇ 下載課表 ▾'}
+            </button>
+            {exportOpen && (
+              <span className="absolute right-0 top-full mt-1 z-20 w-64 bg-white border border-zinc-200 rounded-md shadow-lg py-1 text-sm" onMouseLeave={() => setExportOpen(false)}>
+                <button onClick={() => doExport('pdf')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 font-medium text-zinc-800">📄 PDF（整份）</button>
+                <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.doc）</button>
+                <button onClick={() => doExport('csv')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📊 CSV（一列一格，Excel 用）</button>
+                <div className="px-3 pt-1 text-[11px] text-zinc-400 border-t border-zinc-100 mt-1">{(planStatus === 'published' || planStatus === 'final') ? '內容＝已發布的正式課表（含微調與導師已填）' : '內容＝目前預覽的這份（含微調）'}</div>
+              </span>
+            )}
+          </span>
         </span>
       </div>
 
