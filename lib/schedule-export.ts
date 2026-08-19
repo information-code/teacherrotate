@@ -12,6 +12,8 @@ export const PERIOD_TIMES: Record<number, [string, string]> = {
   5: ['13:30', '14:10'], 6: ['14:20', '15:00'], 7: ['15:15', '15:55'],
 }
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
+/** 校名（標題用：「新竹市關埔國小 115學年度 四年2班 班級課表」） */
+export const SCHOOL_NAME = '新竹市關埔國小'
 
 export interface ExportCell { lines: string[]; subject?: string; teacher?: string; cls?: string; room?: string; note?: string }
 export interface ExportSheet {
@@ -92,7 +94,7 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
         const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
         for (const s of slots) cells[s] = { lines: [p.subject, p.teacherName, room, co].filter(Boolean), subject: p.subject, teacher: p.teacherName, room, note: co }
       }
-      sheets.push({ section: '班級', title: `${year} 學年度 ${classZh(g, i)} 功課表`, subtitle: homeroom ? `導師: ${homeroom}` : undefined, name: classLabel(g, i), periods, cells })
+      sheets.push({ section: '班級', title: `${SCHOOL_NAME} ${year}學年度 ${classZh(g, i)} 班級課表`, subtitle: homeroom ? `導師: ${homeroom}` : undefined, name: classLabel(g, i), periods, cells })
     }
   }
 
@@ -129,7 +131,7 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
   const tids = Array.from(tcells.keys()).sort((x, y) => nameOf(x).localeCompare(nameOf(y), 'zh-Hant'))
   for (const tid of tids) {
     const name = nameOf(tid) || placed.find(p => p.coTeacherId === tid)?.coTeacherName || '？'
-    sheets.push({ section: '教師', title: `${year} 學年度 ${name} 教師課表`, name, periods: 7, cells: tcells.get(tid)! })
+    sheets.push({ section: '教師', title: `${SCHOOL_NAME} ${year}學年度 ${name} 教師課表`, name, periods: 7, cells: tcells.get(tid)! })
   }
 
   // ── 科任教室（＋有場次的本土語言教室）──
@@ -154,7 +156,7 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
     seen.add(r.id)
     const cells = rcells.get(r.id)
     if (!cells || !Object.keys(cells).length) continue
-    sheets.push({ section: '教室', title: `${year} 學年度 ${r.label} 教室課表`, name: r.label, periods: 7, cells })
+    sheets.push({ section: '教室', title: `${SCHOOL_NAME} ${year}學年度 ${r.label} 教室課表`, name: r.label, periods: 7, cells })
   }
   return sheets
 }
@@ -174,31 +176,47 @@ export function sheetsToCsv(sheets: ExportSheet[]): string {
   return '﻿' + rows.map(r => r.map(esc).join(',')).join('\r\n')
 }
 
-// ───────────── Word（HTML .doc）─────────────
-export function sheetsToDocHtml(sheets: ExportSheet[], year: number): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const cell = (c?: ExportCell) => c ? c.lines.map(esc).join('<br>') : ''
-  const parts: string[] = []
+// ───────────── Word（真正的 .docx；docx 套件）─────────────
+// 一張課表一頁（分頁符號）、表格 7 欄：節次／時間／星期一～五；標楷體；版面同 PDF。
+export async function sheetsToDocx(sheets: ExportSheet[]): Promise<Blob> {
+  const d = await import('docx')
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, VerticalAlign, BorderStyle, PageBreak } = d
+  const FONT = '標楷體'
+  const border = { style: BorderStyle.SINGLE, size: 6, color: '000000' }
+  const borders = { top: border, bottom: border, left: border, right: border }
+  // A4 11906 twips 寬、左右邊界各 850 → 內容 10206；節次 700、時間 1000、五天各 1701
+  const W = { p: 700, t: 1000, d: 1701 }
+  const colWidths = [W.p, W.t, W.d, W.d, W.d, W.d, W.d]
+  const run = (text: string, opts: { size?: number; bold?: boolean } = {}) => new TextRun({ text, font: FONT, size: opts.size ?? 21, bold: opts.bold })
+  const para = (lines: string[], opts: { size?: number; bold?: boolean } = {}) =>
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0, line: 276 },
+      children: lines.flatMap((ln, i) => i === 0 ? [run(ln, opts)] : [new TextRun({ text: ln, font: FONT, size: opts.size ?? 21, bold: opts.bold, break: 1 })]) })
+  const cell = (lines: string[], width: number, opts: { size?: number; colSpan?: number } = {}) =>
+    new TableCell({ width: { size: width, type: WidthType.DXA }, columnSpan: opts.colSpan, verticalAlign: VerticalAlign.CENTER, borders,
+      margins: { top: 40, bottom: 40, left: 40, right: 40 }, children: [para(lines.length ? lines : [''], { size: opts.size })] })
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = []
   sheets.forEach((sh, idx) => {
-    const rows: string[] = []
+    const rowH = sh.periods >= 7 ? 1460 : 1680   // twips：7 節一頁剛好
+    const rows: InstanceType<typeof TableRow>[] = []
+    rows.push(new TableRow({ tableHeader: true, height: { value: 440, rule: 'exact' }, children: [cell([''], W.p), cell([''], W.t), ...SCHEDULE_DAYS.map(dd => cell([`星期${DAY_ZH[dd]}`], W.d))] }))
     for (let q = 1; q <= sh.periods; q++) {
-      if (q === 5) rows.push(`<tr><td colspan="6" style="height:28pt;text-align:center;letter-spacing:1em">午休</td></tr>`)
+      if (q === 5) rows.push(new TableRow({ height: { value: 440, rule: 'exact' }, children: [cell(['午　　休'], W.p + W.t + W.d * 5, { colSpan: 7 })] }))
       const t = PERIOD_TIMES[q]
-      rows.push(`<tr><td style="width:54pt;text-align:center">${q}<br>${t ? `${t[0]}<br>${t[1]}` : ''}</td>${SCHEDULE_DAYS.map(d => `<td style="height:58pt;text-align:center;vertical-align:middle">${cell(sh.cells[`${d}-${q}`])}</td>`).join('')}</tr>`)
+      rows.push(new TableRow({ height: { value: rowH, rule: 'exact' }, children: [
+        cell([String(q)], W.p),
+        cell(t ? [t[0], t[1]] : [''], W.t, { size: 18 }),
+        ...SCHEDULE_DAYS.map(dd => cell(sh.cells[`${dd}-${q}`]?.lines ?? [], W.d)),
+      ] }))
     }
-    parts.push(`<div style="${idx < sheets.length - 1 ? 'page-break-after:always;' : ''}">
-<p style="text-align:center;font-size:16pt;font-weight:bold;margin:0 0 4pt">${esc(sh.title)}</p>
-<p style="text-align:right;font-size:10.5pt;margin:0 0 6pt">${esc(sh.subtitle ?? '')}&nbsp;</p>
-<table border="1" cellspacing="0" cellpadding="3" style="border-collapse:collapse;width:100%;font-size:10.5pt;font-family:'標楷體','DFKai-SB','Noto Sans TC',serif">
-<tr><th style="width:54pt"></th>${SCHEDULE_DAYS.map(d => `<th style="height:22pt">星期${DAY_ZH[d]}</th>`).join('')}</tr>
-${rows.join('\n')}
-</table></div>`)
+    children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 60 }, children: [...(idx > 0 ? [new PageBreak()] : []), run(sh.title, { size: 32, bold: true })] }))
+    children.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 80 }, children: [run(sh.subtitle ?? ' ', { size: 21 })] }))
+    children.push(new Table({ width: { size: W.p + W.t + W.d * 5, type: WidthType.DXA }, columnWidths: colWidths, rows }))
   })
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${year} 學年度 課表</title>
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
-<style>@page { size: A4; margin: 18mm 15mm; } body { font-family: '標楷體','DFKai-SB','Noto Sans TC',serif; } td, th { border: 1px solid #000; }</style>
-</head><body>${parts.join('\n')}</body></html>`
+  const doc = new Document({
+    styles: { default: { document: { run: { font: FONT, size: 21 } } } },
+    sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1020, bottom: 800, left: 850, right: 850 } } }, children }],
+  })
+  return Packer.toBlob(doc)
 }
 
 // ───────────── PDF（jsPDF）─────────────
@@ -234,19 +252,19 @@ export async function sheetsToPdf(sheets: ExportSheet[], onStatus?: (s: string) 
     if (sh.subtitle) doc.text(sh.subtitle, 196, 26, { align: 'right' })
     const body: (string | { content: string; colSpan?: number; styles?: Record<string, unknown> })[][] = []
     for (let q = 1; q <= sh.periods; q++) {
-      if (q === 5) body.push([{ content: '午　休', colSpan: 6, styles: { minCellHeight: 8, fontSize: 10 } }])
+      if (q === 5) body.push([{ content: '午　休', colSpan: 7, styles: { minCellHeight: 8, fontSize: 10 } }])
       const t = PERIOD_TIMES[q]
-      body.push([`${q}\n${t ? `${t[0]}\n${t[1]}` : ''}`, ...SCHEDULE_DAYS.map(d => (sh.cells[`${d}-${q}`]?.lines ?? []).join('\n'))])
+      body.push([String(q), t ? `${t[0]}\n${t[1]}` : '', ...SCHEDULE_DAYS.map(d => (sh.cells[`${d}-${q}`]?.lines ?? []).join('\n'))])
     }
     const rowH = sh.periods >= 7 ? 26 : 30
     autoTable(doc, {
       startY: 30, margin: { left: 14, right: 14 },
-      head: [['', '星期一', '星期二', '星期三', '星期四', '星期五']],
+      head: [['', '', '星期一', '星期二', '星期三', '星期四', '星期五']],
       body,
       theme: 'grid',
       styles: { font: 'NotoSansTC', fontStyle: 'normal', fontSize: 9.5, halign: 'center', valign: 'middle', cellPadding: 1.2, lineColor: 30, lineWidth: 0.25, textColor: 10, minCellHeight: rowH, overflow: 'linebreak' },
       headStyles: { fillColor: [255, 255, 255], textColor: 10, fontStyle: 'normal', minCellHeight: 9, lineWidth: 0.25, lineColor: 30 },
-      columnStyles: { 0: { cellWidth: 20, fontSize: 9 }, 1: { cellWidth: 32.4 }, 2: { cellWidth: 32.4 }, 3: { cellWidth: 32.4 }, 4: { cellWidth: 32.4 }, 5: { cellWidth: 32.4 } },
+      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16, fontSize: 9 }, 2: { cellWidth: 31.2 }, 3: { cellWidth: 31.2 }, 4: { cellWidth: 31.2 }, 5: { cellWidth: 31.2 }, 6: { cellWidth: 31.2 } },
     })
   })
   return doc.output('blob')

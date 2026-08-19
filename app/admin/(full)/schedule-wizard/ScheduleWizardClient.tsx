@@ -8,7 +8,7 @@ import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow } from './OverviewAdjust'
-import { buildExportSheets, sheetsToCsv, sheetsToDocHtml, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
+import { buildExportSheets, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -408,7 +408,7 @@ export default function ScheduleWizardClient(props: Props) {
     const base = `${year}學年度課表（班級＋科任教師＋科任教室）`
     try {
       if (kind === 'csv') { saveBlob(new Blob([sheetsToCsv(sheets)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
-      if (kind === 'doc') { saveBlob(new Blob([sheetsToDocHtml(sheets, year)], { type: 'application/msword;charset=utf-8' }), `${base}.doc`); return }
+      if (kind === 'doc') { setExportStatus('產生 Word 中…'); const blob = await sheetsToDocx(sheets); saveBlob(blob, `${base}.docx`); return }
       setExportStatus('準備中…')
       const blob = await sheetsToPdf(sheets, s => setExportStatus(s))
       saveBlob(blob, `${base}.pdf`)
@@ -589,7 +589,7 @@ export default function ScheduleWizardClient(props: Props) {
             {exportOpen && (
               <span className="absolute right-0 top-full mt-1 z-20 w-64 bg-white border border-zinc-200 rounded-md shadow-lg py-1 text-sm" onMouseLeave={() => setExportOpen(false)}>
                 <button onClick={() => doExport('pdf')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 font-medium text-zinc-800">📄 PDF（整份）</button>
-                <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.doc）</button>
+                <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.docx）</button>
                 <button onClick={() => doExport('csv')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📊 CSV（一列一格，Excel 用）</button>
                 <div className="px-3 pt-1 text-[11px] text-zinc-400 border-t border-zinc-100 mt-1">{(planStatus === 'published' || planStatus === 'final') ? '內容＝已發布的正式課表（含微調與導師已填）' : '內容＝目前預覽的這份（含微調）'}</div>
               </span>
