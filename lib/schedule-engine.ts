@@ -3070,6 +3070,295 @@ export class EngineRun {
 export interface RunOptions { timeMs: number; onProgress?: (p: RunProgress) => void }
 
 /** 一次跑完（固定時間預算）。分段執行請直接用 EngineRun。 */
+
+// ══════════════════ 調課查詢器（課務組手動微調用） ══════════════════
+// 以既有課表（已發布或草稿）為起點，點一堂科任課 → 找出所有**不違反硬規則**的調法：
+//   move＝直接搬到空格、swap2＝兩角互換、swap3＝三角互調（A→B 格、B→C 格、C→A 格）。
+// 硬規則全部沿用引擎的 State.canPlace（鎖課、同時段唯一、不排課、連 7、連堂不跨午休、上空上空、教室、外師、不回頭…），
+// 導師已填的格當作「必留導師格」（科任課不得放入）。每個選項附軟分變化（引擎同一套計分），讓課務組挑最不傷的。
+export interface SwapMove { id: string; day: number; period: number }
+export interface SwapOption {
+  kind: 'move' | 'swap2' | 'swap3' | 'chain'
+  moves: SwapMove[]                 // 全部一起套用才合法
+  softDelta: number                 // 軟分變化（負＝變好）
+  desc: string                      // 人看的描述
+  targetSlot: string                // 被點的那堂課最後落在哪一格（上色用）
+  partnerIds: string[]              // 牽動到的其他課 id（上色用）
+}
+export interface SwapQuery {
+  options: SwapOption[]
+  why: Record<string, string>       // 被點的課所在班級每一格 → 為什麼不能直接搬（灰格提示）
+  baseSoft: number
+}
+
+export class SwapFinder {
+  private st: State
+  private input: EngineInput
+  private lessons: EngineLesson[]
+  private byId: Map<string, EngineLesson>
+  private baseSoft: number
+
+  /** @param hrCells classKey → slot → 導師已填科目（這些格科任課不得放入）
+   *  @param lockTargets true＝導師填課開放中：科任課只能跟科任課互換，不可搬進空格／導師格（避免撞到導師剛填的） */
+  constructor(input: EngineInput, placed: PlacedResult[], hrCells: Record<string, Record<string, string>> = {}, private lockTargets = false) {
+    const lessons: EngineLesson[] = placed.map(p => {
+      const { day: _d, period: _p, roomId: _r, ...l } = p as PlacedResult & { day: number; period: number; roomId: string | null }
+      return { ...l }
+    })
+    const mustLeave: Record<string, string[]> = { ...input.classMustLeave }
+    for (const [ck, cells] of Object.entries(hrCells)) {
+      const set = new Set(mustLeave[ck] ?? [])
+      for (const sl of Object.keys(cells)) set.add(sl)
+      mustLeave[ck] = Array.from(set)
+    }
+    this.input = { ...input, lessons, classMustLeave: mustLeave, seed: input.seed ?? 1 }
+    this.lessons = lessons
+    this.byId = new Map(lessons.map(l => [l.id, l]))
+    this.st = new State(this.input)
+    // 依原位落下（不驗證：既有課表就是事實；之後每一步查詢才用 canPlace）
+    for (const p of placed) { const l = this.byId.get(p.id); if (l) this.st.place(l, { day: p.day, period: p.period }) }
+    this.baseSoft = scoreState(this.st).soft
+  }
+
+  /** 目前課表（含教室分配）。 */
+  snapshot(): PlacedResult[] {
+    const out: PlacedResult[] = []
+    this.st.pos.forEach((p, id) => { const l = this.byId.get(id)!; out.push({ ...l, day: p.day, period: p.period, roomId: this.st.roomOf.get(id) ?? null }) })
+    return out
+  }
+
+  private slotKey(p: Placement) { return `${p.day}-${p.period}` }
+  private lessonAt(classKey: string, slot: string): EngineLesson | null {
+    const id = this.st.classOcc.get(classKey)?.get(slot); return id ? this.byId.get(id) ?? null : null
+  }
+  private targetOccupiedByLesson(l: EngineLesson, p: Placement): boolean {
+    return this.st.slotsOf(l, p).every(sl => this.st.classOcc.get(l.classKey)?.has(sl))
+  }
+
+  /** 為什麼 l 不能直接放在 p（第一條卡住的硬規則；供灰格提示）。 */
+  explain(l: EngineLesson, p: Placement): string | null {
+    const slots = this.st.slotsOf(l, p)
+    const avail = this.input.classSlots[l.classKey] ?? []
+    const locks = this.input.lockedCells[l.classKey] ?? {}
+    const mustLeave = this.input.classMustLeave[l.classKey] ?? []
+    const blocked = this.input.teacherBlocked[l.teacherId] ?? []
+    if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) return '單雙週連堂區塊起始限 1/3/5 節'
+    if (l.size === 2 && p.period === MORNING_LAST) return '連堂不跨午休'
+    for (const sl of slots) {
+      if (locks[sl]) return `鎖課格（${locks[sl]}）`
+      if (!avail.includes(sl)) return '非可排課時段'
+      if (mustLeave.includes(sl)) return '導師課／導師排課標記格'
+      const occ = this.st.classOcc.get(l.classKey)?.get(sl)
+      if (occ && occ !== l.id) { const o = this.byId.get(occ); return `該格已有 ${o?.subject ?? '課'}（${o?.teacherName ?? ''}）——可互換` }
+      if (blocked.includes(sl)) return `${l.teacherName} 該時段不排課`
+      const cell = this.st.teacherOcc.get(l.teacherId)?.get(sl)
+      const busy = cell && [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined].some(id => id && id !== l.id)
+      if (busy) { const id = cell!.w ?? cell!.o ?? cell!.e; const o = id ? this.byId.get(id) : null; return `${l.teacherName} 該時段已有課（${o?.classLabel ?? ''}）——可互換` }
+      if (l.coTeacherId) {
+        if ((this.input.teacherBlocked[l.coTeacherId] ?? []).includes(sl)) return `外師 ${l.coTeacherName ?? ''} 不可到校`
+        const cc = this.st.teacherOcc.get(l.coTeacherId)?.get(sl)
+        if (cc && [cc.w, l.parity !== 'even' ? cc.o : undefined, l.parity !== 'odd' ? cc.e : undefined].some(id => id && id !== l.id)) return `外師 ${l.coTeacherName ?? ''} 已在別班`
+      }
+    }
+    if (!this.st.canPlace(l, p)) return '其他硬規則（連 7／上空上空／同科同日／教室／不回頭…）'
+    return null
+  }
+
+  /** 被點的課的所有合法調法。 */
+  query(lessonId: string, opts: { maxThree?: number; timeMs?: number } = {}): SwapQuery {
+    const l = this.byId.get(lessonId)
+    const from = l ? this.st.pos.get(l.id) : undefined
+    if (!l || !from) return { options: [], why: {}, baseSoft: this.baseSoft }
+    const maxThree = opts.maxThree ?? 400, t0 = Date.now(), timeMs = opts.timeMs ?? 800
+    const options: SwapOption[] = []
+    const why: Record<string, string> = {}
+    const name = (x: EngineLesson) => `${x.classLabel} ${x.subject}（${x.teacherName}）`
+    const slotZhLocal = (p: Placement, x: EngineLesson = l) => `週${DAY_ZH[p.day]}第${p.period}節${x.size === 2 ? '–' + (p.period + 1) : ''}`
+    const delta = () => Math.round(scoreState(this.st).soft - this.baseSoft)
+    const grid = this.input.classSlots[l.classKey] ?? []
+    const candidates = Array.from(new Set(grid.map(s => { const { day, period } = parseSlotKey(s); return `${day}-${period}` })))
+    // ① 直接搬
+    this.st.remove(l)
+    for (const sk of candidates) {
+      const p = parseSlotKey(sk)
+      if (p.day === from.day && p.period === from.period) continue
+      if (this.lockTargets) { why[sk] = '導師填課開放中：只能與科任課互換'; continue }
+      const reason = this.explain(l, p)
+      if (reason) { why[sk] = reason; continue }
+      this.st.place(l, p)
+      options.push({ kind: 'move', moves: [{ id: l.id, day: p.day, period: p.period }], softDelta: delta(), desc: `${name(l)} ${slotZhLocal(from)} → ${slotZhLocal(p)}`, targetSlot: sk, partnerIds: [] })
+      this.st.remove(l)
+    }
+    this.st.place(l, from)
+    // ② 兩角：夥伴＝同班的課 ∪ 同師（含外師）的課
+    const partners = this.partnersOf(l)
+    for (const m of partners) {
+      const pm = this.st.pos.get(m.id)!
+      this.st.remove(l); this.st.remove(m)
+      let ok = false
+      if (this.st.canPlace(l, pm)) {
+        this.st.place(l, pm)
+        if (this.st.canPlace(m, from)) {
+          this.st.place(m, from); ok = true
+          options.push({ kind: 'swap2', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: from.day, period: from.period }], softDelta: delta(),
+            desc: `${name(l)} ↔ ${name(m)}（${slotZhLocal(from)} ↔ ${slotZhLocal(pm, m)}）`, targetSlot: this.slotKey(pm), partnerIds: [m.id] })
+          this.st.remove(m)
+        }
+        this.st.remove(l)
+      }
+      if (!ok && m.classKey === l.classKey) {
+        // 同班互換失敗：說清楚卡在哪一步（l 過去不行？還是 m 過來不行？）
+        const r1 = this.explain(l, pm)
+        let r2: string | null = null
+        if (!r1) { this.st.place(l, pm); r2 = this.explain(m, from); this.st.remove(l) }
+        why[this.slotKey(pm)] = r1 ? `與 ${m.subject}（${m.teacherName}）互換：${r1}` : `與 ${m.subject}（${m.teacherName}）互換：對方過來 ${r2 ?? '不合法'}`
+      }
+      this.st.place(l, from); this.st.place(m, pm)
+    }
+    // ③ 三角：L→M 格、M→N 格、N→L 格
+    let tried = 0
+    outer: for (const m of partners) {
+      const pm = this.st.pos.get(m.id)!
+      const partnersM = this.partnersOf(m).filter(n => n.id !== l.id && n.id !== m.id)
+      for (const n of partnersM) {
+        if (++tried > maxThree || Date.now() - t0 > timeMs) break outer
+        const pn = this.st.pos.get(n.id)!
+        this.st.remove(l); this.st.remove(m); this.st.remove(n)
+        if (this.st.canPlace(l, pm)) {
+          this.st.place(l, pm)
+          if (this.st.canPlace(m, pn)) {
+            this.st.place(m, pn)
+            if (this.st.canPlace(n, from)) {
+              this.st.place(n, from)
+              options.push({ kind: 'swap3', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: pn.day, period: pn.period }, { id: n.id, day: from.day, period: from.period }],
+                softDelta: delta(), desc: `${name(l)} → ${slotZhLocal(pm)}；${name(m)} → ${slotZhLocal(pn, m)}；${name(n)} → ${slotZhLocal(from, n)}`, targetSlot: this.slotKey(pm), partnerIds: [m.id, n.id] })
+              this.st.remove(n)
+            }
+            this.st.remove(m)
+          }
+          this.st.remove(l)
+        }
+        this.st.place(l, from); this.st.place(m, pm); this.st.place(n, pn)
+      }
+    }
+    options.sort((a, b) => a.softDelta - b.softDelta || a.moves.length - b.moves.length)
+    return { options, why, baseSoft: this.baseSoft }
+  }
+
+  /** 找一條更長的鏈（最多 depth 層）：L 搬去某格，把擋路的課（同班那格的課、同師同時段的課，最多兩堂）逐出，
+   *  再為被逐出的課各找位子（可落進空格、L 的原格、或再逐出別人）……直到全部落地。深度優先、時間上限內找到第一條就回。 */
+  findChain(lessonId: string, depth = 4, timeMs = 1500): SwapOption | null {
+    const l = this.byId.get(lessonId); const from = l ? this.st.pos.get(l.id) : undefined
+    if (!l || !from) return null
+    const t0 = Date.now()
+    const moves: SwapMove[] = []
+    const origin = new Map<string, Placement>([[l.id, from]])
+    const touched = new Set<string>([l.id])
+    const gridOf = (x: EngineLesson) => Array.from(new Set((this.input.classSlots[x.classKey] ?? []).map(s => { const q = parseSlotKey(s); return `${q.day}-${q.period}` }))).map(s => parseSlotKey(s))
+    const blockersOf = (x: EngineLesson, p: Placement): string[] | null => {
+      const set = new Set<string>()
+      for (const sl of this.st.slotsOf(x, p)) {
+        const c = this.st.classOcc.get(x.classKey)?.get(sl); if (c && c !== x.id) set.add(c)
+        for (const tid of [x.teacherId, x.coTeacherId]) {
+          if (!tid) continue
+          const cell = this.st.teacherOcc.get(tid)?.get(sl)
+          for (const id of [cell?.w, x.parity !== 'even' ? cell?.o : undefined, x.parity !== 'odd' ? cell?.e : undefined]) if (id && id !== x.id) set.add(id)
+        }
+      }
+      if (!set.size || set.size > 2) return null
+      for (const id of set) if (touched.has(id)) return null
+      return Array.from(set)
+    }
+    // queue 裡的課目前都「拿在手上」（已 remove）
+    const solve = (queue: EngineLesson[], d: number): boolean => {
+      if (!queue.length) return true
+      if (Date.now() - t0 > timeMs) return false
+      const [x, ...rest] = queue
+      const xo = origin.get(x.id)!
+      const order = gridOf(x).filter(p => !(p.day === xo.day && p.period === xo.period))
+      // ① 直接落地（空格、或 L 空出來的原格）
+      for (const p of order) {
+        if (this.lockTargets && !this.targetOccupiedByLesson(x, p) && !(x.classKey === l.classKey && p.day === from.day && p.period === from.period)) continue
+        if (!this.st.canPlace(x, p)) continue
+        this.st.place(x, p); moves.push({ id: x.id, day: p.day, period: p.period })
+        if (solve(rest, d)) return true
+        this.st.remove(x); moves.pop()
+      }
+      if (d <= 0) return false
+      // ② 逐出擋路者再落地
+      for (const p of order) {
+        const bl = blockersOf(x, p); if (!bl) continue
+        const bs = bl.map(id => this.byId.get(id)!)
+        const bpos = bs.map(b => this.st.pos.get(b.id)!)
+        bs.forEach(b => this.st.remove(b))
+        if (!this.st.canPlace(x, p)) { bs.forEach((b, i) => this.st.place(b, bpos[i])); continue }
+        this.st.place(x, p); moves.push({ id: x.id, day: p.day, period: p.period })
+        bs.forEach((b, i) => { touched.add(b.id); origin.set(b.id, bpos[i]) })
+        if (solve([...bs, ...rest], d - 1)) return true
+        bs.forEach(b => { touched.delete(b.id); origin.delete(b.id) })
+        this.st.remove(x); moves.pop()
+        bs.forEach((b, i) => this.st.place(b, bpos[i]))
+      }
+      return false
+    }
+    this.st.remove(l)
+    const ok = solve([l], depth)
+    let out: SwapOption | null = null
+    if (ok) {
+      const softDelta = Math.round(scoreState(this.st).soft - this.baseSoft)
+      out = { kind: 'chain', moves: [...moves], softDelta, desc: moves.map(mv => { const x = this.byId.get(mv.id)!; return `${x.classLabel} ${x.subject}（${x.teacherName}）→ 週${DAY_ZH[mv.day]}第${mv.period}節` }).join('；'), targetSlot: `${moves[0].day}-${moves[0].period}`, partnerIds: moves.slice(1).map(m => m.id) }
+    }
+    // 還原：所有動過的課回原位
+    for (const id of touched) if (this.st.pos.has(id)) this.st.remove(this.byId.get(id)!)
+    for (const id of touched) this.st.place(this.byId.get(id)!, origin.get(id)!)
+    return out
+  }
+
+  /** 科任↔導師互換用：假設導師把 p 這格讓出來（該格暫時不算必留導師格），這堂科任課搬過去是否合法、軟分變化多少。 */
+  checkMoveFreeingHr(lessonId: string, p: Placement): { reason: string | null; softDelta: number } {
+    const l = this.byId.get(lessonId); const from = l ? this.st.pos.get(l.id) : undefined
+    if (!l || !from) return { reason: '找不到課', softDelta: 0 }
+    const arr = this.input.classMustLeave[l.classKey] ?? []
+    const slots = this.st.slotsOf(l, p)
+    this.input.classMustLeave[l.classKey] = arr.filter(s => !slots.includes(s))
+    this.st.remove(l)
+    const reason = this.explain(l, p)
+    let softDelta = 0
+    if (!reason) { this.st.place(l, p); softDelta = Math.round(scoreState(this.st).soft - this.baseSoft); this.st.remove(l) }
+    this.st.place(l, from)
+    this.input.classMustLeave[l.classKey] = arr
+    return { reason, softDelta }
+  }
+
+  /** 套用一組搬動（全部合法才套；回傳新課表含教室）。 */
+  apply(moves: SwapMove[]): { ok: boolean; placed: PlacedResult[]; error?: string } {
+    const journal: { l: EngineLesson; from: Placement }[] = []
+    for (const mv of moves) { const l = this.byId.get(mv.id); const from = l && this.st.pos.get(l.id); if (!l || !from) return { ok: false, placed: this.snapshot(), error: '找不到課' }; journal.push({ l, from }); this.st.remove(l) }
+    for (const mv of moves) {
+      const l = this.byId.get(mv.id)!; const p = { day: mv.day, period: mv.period }
+      if (!this.st.canPlace(l, p)) {
+        for (const j of journal) if (this.st.pos.has(j.l.id)) this.st.remove(j.l)
+        for (const j of journal) this.st.place(j.l, j.from)
+        return { ok: false, placed: this.snapshot(), error: `${l.classLabel} ${l.subject} 無法放到週${DAY_ZH[p.day]}第${p.period}節：${this.explain(l, p) ?? '硬規則'}` }
+      }
+      this.st.place(l, p)
+    }
+    this.baseSoft = scoreState(this.st).soft
+    return { ok: true, placed: this.snapshot() }
+  }
+
+  get soft() { return this.baseSoft }
+
+  private partnersOf(l: EngineLesson): EngineLesson[] {
+    const out = new Map<string, EngineLesson>()
+    for (const x of this.lessons) {
+      if (x.id === l.id || !this.st.pos.has(x.id)) continue
+      if (x.classKey === l.classKey || x.teacherId === l.teacherId || (l.coTeacherId && (x.teacherId === l.coTeacherId || x.coTeacherId === l.coTeacherId)) || (x.coTeacherId && x.coTeacherId === l.teacherId)) out.set(x.id, x)
+    }
+    return Array.from(out.values())
+  }
+}
+
 export function runEngine(input: EngineInput, opts: RunOptions): EngineResult {
   const run = new EngineRun(input)
   while (run.elapsed < opts.timeMs) {

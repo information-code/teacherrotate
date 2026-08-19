@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
-import { roomsFromConfig, reassignRooms, type PlacedResult } from '@/lib/schedule-engine'
+import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
 
 export interface HomeroomRow { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }
 
@@ -17,6 +17,8 @@ interface Props {
   classCounts: Record<number, number>
   teacherNames: Record<string, string>
   baseHash: string          // 版本快照用：課的組成／可排格／鎖課指紋
+  engineInput: EngineInput  // 調課查詢器用：硬規則沿用引擎（鎖課、教室、不回頭、連 7…）
+  fillOpen?: boolean        // 導師填課開放中：科任課只能跟科任課互換，不可搬進空格／導師格
 }
 
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
@@ -29,7 +31,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, fillOpen = false }: Props) {
   const [placed, setPlaced] = useState<PlacedResult[]>(() => (savedPlan.placed as PlacedResult[] | undefined) ?? [])
   const [hr, setHr] = useState<Record<string, HomeroomRow>>(() => Object.fromEntries(homeroomRows.map(r => [r.class_key, { ...r, cells: { ...r.cells } }])))
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => (savedPlan.adjustments as Adjustment[] | undefined) ?? [])
@@ -85,6 +87,24 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     }
     return m
   }, [placed])
+  // ── 調課查詢器：以目前課表為起點，硬規則全部沿用引擎（鎖課、同時段唯一、不排課、連 7、教室、不回頭…）──
+  const finder = useMemo(() => {
+    const hrCells: Record<string, Record<string, string>> = {}
+    for (const [ck2, row] of Object.entries(hr)) if (row?.cells && Object.keys(row.cells).length) hrCells[ck2] = row.cells
+    try { return new SwapFinder(engineInput, placed, hrCells, fillOpen) } catch { return null }
+  }, [engineInput, placed, hr, fillOpen])
+  const swapQ = useMemo(() => (sel?.type === 'lesson' && finder) ? finder.query(sel.id) : null, [sel, finder])
+  /** 被點的課所在班級：每格最好的調法（已依軟分排序，取第一個） */
+  const optByCell = useMemo(() => {
+    const m = new Map<string, SwapOption>()
+    for (const o of swapQ?.options ?? []) if (!m.has(o.targetSlot)) m.set(o.targetSlot, o)
+    return m
+  }, [swapQ])
+  const [hoverOpt, setHoverOpt] = useState<SwapOption | null>(null)
+  const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
+  const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
+  const deltaZh = (d: number) => d === 0 ? '軟分不變' : d < 0 ? `軟分 −${Math.abs(d)}（變好）` : `軟分 +${d}（變差）`
+
   // 老師占用（週型感知）：teacherId → slot → { w/o/e: lessonId }
   const teacherOcc = useMemo(() => {
     const m = new Map<string, Map<string, { w?: string; o?: string; e?: string }>>()
@@ -227,6 +247,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       const occ = cellsByClass.get(classKey)?.get(slot)
       const hrSubject = hr[classKey]?.cells?.[slot]
       if (occ && occ.id === l.id) return null   // 自己
+      if (swapQ) {
+        // 查詢器有答案：科任格／空格一律以引擎硬規則為準（鎖課、教室、不回頭、連 7 都擋）
+        const o = optByCell.get(slot)
+        if (o) return { ok: true, why: `${KIND_ZH[o.kind]}・${deltaZh(o.softDelta)}${o.kind !== 'move' ? '：' + o.desc : ''}` }
+        if (!hrSubject) return { ok: false, why: swapQ.why[slot] ?? '不合法' }
+        if (fillOpen) return { ok: false, why: '導師填課開放中：不可與導師課互換' }
+        // 導師課格：沿用下面的 科任↔導師 互換檢查
+      }
       if (occ) {
         // 科任↔科任互換（限同型態同週型）
         if (occ.size !== l.size || occ.parity !== l.parity) return { ok: false, why: '型態不同（連堂/單節/週型），無法互換' }
@@ -245,6 +273,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         if (!a.ok) return a
         const oldSlot = `${l.day}-${l.period}`
         if (mustFillOf[classKey]?.has(oldSlot)) return { ok: false, why: '科任原時段是導師不排課格，導師課不可換入' }
+        if (finder) {
+          // 引擎硬規則也要過（教室、不回頭、連 7…），並給軟分變化
+          const r = finder.checkMoveFreeingHr(l.id, { day: Number(slot.split('-')[0]), period: Number(slot.split('-')[1]) })
+          if (r.reason) return { ok: false, why: r.reason }
+          return { ok: true, why: `與導師課「${hrSubject}」互換・${deltaZh(r.softDelta)}` }
+        }
         return { ok: true }
       }
       // 空格：移動
@@ -262,8 +296,15 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (!a.ok) return { ok: false, why: `${occ.teacherName}：${a.why}` }
       const b = hrCanGo(classKey, slot, ig)
       if (!b.ok) return b
+      if (fillOpen) return { ok: false, why: '導師填課開放中：課務組不動導師課' }
+      if (finder) {
+        const r = finder.checkMoveFreeingHr(occ.id, { day: Number(sel.slot.split('-')[0]), period: Number(sel.slot.split('-')[1]) })
+        if (r.reason) return { ok: false, why: `${occ.teacherName}：${r.reason}` }
+        return { ok: true, why: `與 ${occ.subject}（${occ.teacherName}）互換・${deltaZh(r.softDelta)}` }
+      }
       return { ok: true }
     }
+    if (fillOpen) return { ok: false, why: '導師填課開放中：課務組不動導師課' }
     return hrCanGo(classKey, slot, new Set([srcId]))
   }
 
@@ -312,6 +353,28 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     void persist(withRooms, nextHr, nextAdj, changedHrClasses)
   }
 
+  /** 套用查詢器給的一組搬動（直接搬／兩角／三角／多角鏈）：全部合法才套，教室由引擎狀態重配。 */
+  function applyOption(opt: SwapOption) {
+    if (!finder) return
+    const r = finder.apply(opt.moves)
+    if (!r.ok) { alert(r.error ?? '此調法已不合法'); return }
+    const sl = sel?.type === 'lesson' ? lessonById.get(sel.id) : null
+    const head = sl ? `${sl.classLabel}：` : ''
+    applyAdjust(r.placed, hr, `${head}${KIND_ZH[opt.kind]}｜${opt.desc}｜${deltaZh(opt.softDelta)}`, [])
+    setHoverOpt(null); setChain(null)
+  }
+  function runFindChain() {
+    if (!finder || sel?.type !== 'lesson') return
+    setChain('busy')
+    const id = sel.id
+    setTimeout(() => {
+      // 先找短鏈、找不到再加深（最短的最好懂）
+      let found: SwapOption | null = null
+      for (let d = 1; d <= 4 && !found; d++) found = finder.findChain(id, d, 700)
+      setChain(found ?? 'none')
+    }, 10)
+  }
+
   function clickCell(classKey: string, slot: string) {
     if (!adjustMode) return
     const occ = cellsByClass.get(classKey)?.get(slot)
@@ -330,6 +393,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (sel.type === 'lesson') {
       const l = lessonById.get(sel.id)!
       const [d, p] = slot.split('-').map(Number)
+      const opt = l.classKey === classKey ? optByCell.get(slot) : undefined
+      if (opt) { applyOption(opt); return }
       if (occ) {
         const next = placed.map(x => x.id === l.id ? { ...x, day: occ.day, period: occ.period } : x.id === occ.id ? { ...x, day: l.day, period: l.period } : x)
         applyAdjust(next, hr, `${l.classLabel}：${l.subject}（${l.teacherName}）${slotZh(`${l.day}-${l.period}`)} ↔ ${occ.subject}（${occ.teacherName}）${slotZh(slot)}`, [])
@@ -462,15 +527,56 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           <span>
             {sel
               ? sel.type === 'lesson'
-                ? <>已選：<b className="text-zinc-700">{selLesson?.classLabel} {selLesson?.subject}（{selLesson?.teacherName}）</b>——綠格可放，灰格滑過看原因</>
+                ? <>已選：<b className="text-zinc-700">{selLesson?.classLabel} {selLesson?.subject}（{selLesson?.teacherName}）</b>——
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-400 align-middle mx-0.5" />直接搬
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400 align-middle mx-0.5 ml-2" />兩角互換
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400 align-middle mx-0.5 ml-2" />三角互調
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400 align-middle mx-0.5 ml-2" />與導師課互換
+                    ；灰格滑過看卡在哪條硬規則；滑過彩格會標出牽動到的課（虛線框）{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : '點選一堂課（科任或導師課）開始；教室會自動重新分配、無需擔心。'}
           </span>
           {selLesson?.size === 2 && selLesson.parity === 'weekly' && (
             <button onClick={splitDouble} className="btn btn-secondary text-xs py-0.5">✂ 拆為兩個單節</button>
           )}
+          {selLesson && finder && (
+            <button onClick={runFindChain} disabled={chain === 'busy'} className="btn btn-secondary text-xs py-0.5" title="三角以上的多角鏈：把擋路的課逐出、再幫它們找位子，最多四層">
+              {chain === 'busy' ? '搜尋中…' : '🔗 幫我找一條鏈'}
+            </button>
+          )}
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="協調備註（選填，隨下一步調整記錄）"
             className="input py-0.5 text-xs w-56 ml-auto" />
+        </div>
+      )}
+
+      {adjustMode && selLesson && swapQ && (
+        <div className="card p-2 text-xs space-y-1">
+          <div className="flex items-center gap-2 flex-wrap text-zinc-500">
+            <span>合法調法 <b className="text-zinc-700">{swapQ.options.length}</b> 種
+              （直接搬 {swapQ.options.filter(o => o.kind === 'move').length}、兩角 {swapQ.options.filter(o => o.kind === 'swap2').length}、三角 {swapQ.options.filter(o => o.kind === 'swap3').length}）
+              ，依軟分變化排序，前 12 種：</span>
+            {chain === 'none' && <span className="text-amber-700">找不到四層內的多角鏈（可能教室全滿或被鎖課卡死）</span>}
+          </div>
+          {chain && chain !== 'none' && chain !== 'busy' && (
+            <div className="flex items-center gap-2 border border-amber-300 bg-amber-50 rounded-sm p-1.5"
+              onMouseEnter={() => setHoverOpt(chain)} onMouseLeave={() => setHoverOpt(null)}>
+              <span className="text-amber-800">🔗 多角鏈（{chain.moves.length} 堂）・{deltaZh(chain.softDelta)}：{chain.desc}</span>
+              <button onClick={() => applyOption(chain)} className="btn btn-primary text-xs py-0.5 ml-auto shrink-0">套用</button>
+            </div>
+          )}
+          {swapQ.options.length > 0 && (
+            <ul className="grid gap-1 md:grid-cols-2">
+              {swapQ.options.slice(0, 12).map((o, i) => (
+                <li key={i} onMouseEnter={() => setHoverOpt(o)} onMouseLeave={() => setHoverOpt(null)}
+                  className={`flex items-center gap-2 rounded-sm border px-1.5 py-1 ${o.kind === 'move' ? 'border-emerald-200 bg-emerald-50/50' : o.kind === 'swap2' ? 'border-sky-200 bg-sky-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+                  <span className={`shrink-0 px-1 rounded-sm text-white ${o.kind === 'move' ? 'bg-emerald-500' : o.kind === 'swap2' ? 'bg-sky-500' : 'bg-amber-500'}`}>{KIND_ZH[o.kind]}</span>
+                  <span className={`shrink-0 font-mono ${o.softDelta < 0 ? 'text-emerald-700' : o.softDelta > 0 ? 'text-red-600' : 'text-zinc-500'}`}>{o.softDelta > 0 ? '+' : ''}{o.softDelta}</span>
+                  <span className="text-zinc-600 truncate" title={o.desc}>{o.desc}</span>
+                  <button onClick={() => applyOption(o)} className="btn btn-secondary text-xs py-0 ml-auto shrink-0">套用</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -525,9 +631,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const hrSubj = hrRow?.cells?.[k]
                         const isSelSrc = (sel?.type === 'lesson' && occ?.id === sel.id) || (sel?.type === 'hr' && sel.classKey === ck && sel.slot === k)
                         const st = adjustMode && sel && !isSelSrc ? targetState(ck, k) : null
-                        const ring = isSelSrc ? 'ring-2 ring-zinc-700' : st?.ok ? 'ring-2 ring-emerald-400' : ''
-                        const dim = adjustMode && sel && !isSelSrc && st && !st.ok ? 'opacity-40' : ''
-                        const title = st && !st.ok ? st.why : undefined
+                        const opt = sel?.type === 'lesson' && selLesson?.classKey === ck ? optByCell.get(k) : undefined
+                        const isPartner = !!(hoverOpt && occ && hoverOpt.partnerIds.includes(occ.id))
+                        const ringKind = opt ? (opt.kind === 'move' ? 'ring-2 ring-emerald-400' : opt.kind === 'swap2' ? 'ring-2 ring-sky-400' : 'ring-2 ring-amber-400') : st?.ok ? (hrSubj && sel?.type === 'lesson' ? 'ring-2 ring-violet-400' : 'ring-2 ring-emerald-400') : ''
+                        const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
+                        const dim = adjustMode && sel && !isSelSrc && !isPartner && st && !st.ok ? 'opacity-40' : ''
+                        const title = st ? st.why : undefined
+                        const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
                         if (occ) {
                           const bi = occ.parity !== 'weekly'
                           const dispSlot = bi ? `${occ.day}-${occ.parity === 'odd' ? occ.period : occ.period + 1}` : k
@@ -547,8 +657,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                           }
                           return (
                             <td key={d} className="p-0.5">
-                              <button onClick={() => clickCell(ck, k)} title={title}
-                                className={`w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                              <button onClick={() => clickCell(ck, k)} title={title} {...hoverProps}
+                                className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                                {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
                                 <span className="truncate w-full font-medium">{occ.subject}{occ.coTeacherId && <span className="text-rose-700">★</span>}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}{occ.coTeacherId && `＋${occ.coTeacherName ?? '外師'}`}</span>
                                 {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週' : '雙週'}</span>}
@@ -569,8 +680,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const must = mustFillOf[ck]?.has(k)
                         return (
                           <td key={d} className="p-0.5">
-                            <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)}
-                              className={`w-full h-9 rounded-sm border border-dashed ${must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${st?.ok ? 'ring-2 ring-emerald-400' : ''} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                            <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
+                              className={`relative w-full h-9 rounded-sm border border-dashed ${must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                              {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
                               {must ? '需科任' : ''}
                             </button>
                           </td>

@@ -547,6 +547,7 @@ export default function ScheduleWizardClient(props: Props) {
           savedPlan={props.savedPlan}
           homeroomRows={props.homeroomRows}
           baseHash={curBaseHash}
+          engineInput={input}
           config={scheduleConfig}
           classCounts={classCounts}
           teacherNames={teacherNames}
