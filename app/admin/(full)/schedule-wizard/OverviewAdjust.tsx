@@ -18,6 +18,12 @@ interface Props {
   teacherNames: Record<string, string>
   baseHash: string          // 版本快照用：課的組成／可排格／鎖課指紋
   engineInput: EngineInput  // 調課查詢器用：硬規則沿用引擎（鎖課、教室、不回頭、連 7…）
+  /** 內嵌在排課精靈的「班級課表」預覽裡（草稿階段）：不顯示標題／導師確認／定案列，年級由外面控制；
+   *  第一次調動才把課表存成草稿（persist 本來就是整份 PUT）。 */
+  embedded?: boolean
+  gradeSel?: number
+  onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
+  onPersisted?: () => void                             // 第一次成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
 }
 
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
@@ -30,7 +36,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, onPlacedChange, onPersisted }: Props) {
   const [placed, setPlaced] = useState<PlacedResult[]>(() => (savedPlan.placed as PlacedResult[] | undefined) ?? [])
   // 導師填課開關（只在「已發布、未定案」有意義）：開著＝導師在填，課務組只能科任課互換；收回＝可自由調課
   const [fillOpenState, setFillOpenState] = useState<boolean>(() => savedPlan.fillOpen !== false)
@@ -54,8 +60,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => (savedPlan.adjustments as Adjustment[] | undefined) ?? [])
   const [undoStack, setUndoStack] = useState<{ placed: PlacedResult[]; hr: Record<string, HomeroomRow>; adjustments: Adjustment[] }[]>([])
   const [sel, setSel] = useState<Sel>(null)
-  const [gradeSel, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
-  const [adjustMode, setAdjustMode] = useState(false)
+  const [gradeSelState, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
+  const gradeSel = gradeSelProp ?? gradeSelState
+  const adjustMode = true   // 點課即調：不再有「進入調整模式」這一層（選一堂課→點彩格才會動，誤觸風險低、且有復原）
   const [note, setNote] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [snapState, setSnapState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -354,6 +361,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       savedPlan.placed = nextPlaced
       savedPlan.adjustments = nextAdj
       setSaveState('saved')
+      onPersisted?.()
     } catch { setSaveState('error') }
   }
 
@@ -362,7 +370,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     const adj: Adjustment = { at: new Date().toISOString(), desc, ...(note.trim() ? { note: note.trim() } : {}) }
     const nextAdj = [...adjustments, adj]
     const withRooms = reassignRooms(nextPlaced, rooms, config.weights)
-    setPlaced(withRooms)
+    setPlaced(withRooms); onPlacedChange?.(withRooms)
     setHr(nextHr)
     setAdjustments(nextAdj)
     setSel(null)
@@ -453,7 +461,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     ])
     const adj: Adjustment = { at: new Date().toISOString(), desc: `${l.classLabel}：${l.subject} 連堂拆為兩個單節` }
     const nextAdj = [...adjustments, adj]
-    setPlaced(next); setAdjustments(nextAdj); setSel(null)
+    setPlaced(next); onPlacedChange?.(next); setAdjustments(nextAdj); setSel(null)
     void persist(next, hr, nextAdj, [])
   }
 
@@ -461,7 +469,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     const last = undoStack[undoStack.length - 1]
     if (!last) return
     setUndoStack(prev => prev.slice(0, -1))
-    setPlaced(last.placed)
+    setPlaced(last.placed); onPlacedChange?.(last.placed)
     setHr(last.hr)
     setAdjustments(last.adjustments)
     setSel(null)
@@ -516,10 +524,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-zinc-700">年級總覽與調整
-          {planStatus === 'draft'
-            ? <span className="text-xs font-normal text-amber-600 ml-2">草稿微調中（尚未發布；每一步都已存進草稿，按上方「初版課表發布」才對外）</span>
-            : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>}
+        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">點一堂課就能調（會上色）；調動自動存成草稿，發布時就發布調整後的這份</span> : '年級總覽與調整'}
+          {!embedded && (planStatus === 'draft'
+            ? <span className="text-xs font-normal text-amber-600 ml-2">草稿（尚未發布）</span>
+            : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>)}
           {planStatus === 'published' && (
             fillOpen
               ? <span className="text-[10px] ml-2 px-1 py-0 rounded-sm bg-emerald-50 text-emerald-700 border border-emerald-200">導師填課開放中</span>
@@ -536,23 +544,19 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             <button onClick={snapshot} disabled={snapState === 'saving'} title="把目前微調後的課表另存成一份版本，之後可在版本紀錄找回"
               className="btn btn-secondary text-xs py-0.5">📌 存為版本</button>
           )}
-          {adjustMode && undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
-          <button onClick={() => { setAdjustMode(m => !m); setSel(null) }}
-            className={`btn text-xs py-0.5 ${adjustMode ? 'btn-primary' : 'btn-secondary'}`}>
-            {adjustMode ? '✓ 調整模式（點課→點目標格）' : '✎ 進入調整模式'}
-          </button>
-          {planStatus === 'published' && (
+          {undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
+          {!embedded && planStatus === 'published' && (
             <button onClick={toggleFill} disabled={fillBusy} className={`btn text-xs py-0.5 ${fillOpenState ? 'btn-secondary' : 'btn-primary'}`}
               title={fillOpenState ? '收回後導師端唯讀，課務組可自由調課（搬進空格、與導師課互換）' : '重新開放導師填課；開放期間課務組只能科任課互換'}>
               {fillOpenState ? '🔒 收回導師填課' : '🔓 開放導師填課'}
             </button>
           )}
-          {planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5">🏁 定案發布課表</button>}
-          {planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5">取消定案</button>}
+          {!embedded && planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5">🏁 定案發布課表</button>}
+          {!embedded && planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5">取消定案</button>}
         </span>
       </div>
 
-      {adjustMode && (
+      {(sel || !embedded) && (
         <div className="card p-2 text-xs text-zinc-500 flex items-center gap-3 flex-wrap">
           <span>
             {sel
@@ -564,7 +568,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400 align-middle mx-0.5 ml-2" />與導師課互換
                     ；灰格滑過看卡在哪條硬規則；滑過彩格會標出牽動到的課（虛線框）{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
-              : '點選一堂課（科任或導師課）開始；教室會自動重新分配、無需擔心。'}
+              : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
           </span>
           {selLesson?.size === 2 && selLesson.parity === 'weekly' && (
             <button onClick={splitDouble} className="btn btn-secondary text-xs py-0.5">✂ 拆為兩個單節</button>
@@ -610,14 +614,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         </div>
       )}
 
-      <div className="flex gap-1 flex-wrap">
+      {!embedded && <div className="flex gap-1 flex-wrap">
         {GRADES.filter(g => (classCounts[g] ?? 0) > 0).map(g => (
           <button key={g} onClick={() => setGradeSel(g)}
             className={`text-xs px-2 py-1 rounded-sm border ${gradeSel === g ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-500 border-zinc-200'}`}>
             {GRADE_LABEL[g]}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {gradeClasses.map(ck => {
@@ -632,10 +636,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-zinc-700">{classLabelOf(ck)}</span>
                 <span className="text-[10px] text-zinc-400">{nameOf(config.classTeacher[ck] ?? '')}</span>
-                {hrRow?.confirmed_at
+                {!embedded && (hrRow?.confirmed_at
                   ? <span className="text-[10px] px-1 py-0 rounded-sm bg-green-100 text-green-700 border border-green-200">✓ 已確認</span>
-                  : <span className="text-[10px] px-1 py-0 rounded-sm bg-amber-50 text-amber-600 border border-amber-200">填 {filledOf(ck)} 節</span>}
-                {hrRow?.confirmed_at && (
+                  : <span className="text-[10px] px-1 py-0 rounded-sm bg-amber-50 text-amber-600 border border-amber-200">填 {filledOf(ck)} 節</span>)}
+                {!embedded && hrRow?.confirmed_at && (
                   <button onClick={() => unconfirmClass(ck)} className="text-[10px] text-zinc-400 hover:text-red-600 ml-auto">退回確認</button>
                 )}
               </div>

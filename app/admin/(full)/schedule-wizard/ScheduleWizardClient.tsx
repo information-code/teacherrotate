@@ -81,10 +81,23 @@ export default function ScheduleWizardClient(props: Props) {
   const [teacherSel, setTeacherSel] = useState('')
   const [roomSel, setRoomSel] = useState('')
   const [planStatus, setPlanStatus] = useState<string | null>(props.initialPlanStatus)
-  /** 草稿微調：發布前課務組也能用「年級總覽與調整」那套 UI 手動調課。
-   *  進入＝把目前預覽的這份寫進 schedule_plan（status draft），之後每一步都直接存進草稿；發布時就發布草稿（不再用 result 覆蓋）。 */
-  const [draftPlan, setDraftPlan] = useState<Record<string, unknown> | null>(null)
-  const [draftBusy, setDraftBusy] = useState(false)
+  /** 草稿微調：發布前「班級課表」預覽本身就是可點的調整畫面（內嵌 OverviewAdjust）。
+   *  第一次調動時 OverviewAdjust 會整份 PUT 成草稿（status draft）→ draftDirty=true，之後發布就直接發布資料庫那份草稿（不再用 result 覆蓋）。
+   *  重跑／換版本預覽＝新的一份，draftDirty 歸零、內嵌元件重掛（adjustSession）。 */
+  const [draftDirty, setDraftDirty] = useState(false)
+  const [adjustSession, setAdjustSession] = useState(0)
+  const [resumedAdjustments, setResumedAdjustments] = useState<unknown[] | null>(null)   // 接續草稿時帶回的微調紀錄
+  const draftPlanObj = useMemo<Record<string, unknown> | null>(() => {
+    if (!result) return null
+    return {
+      status: 'draft', totalPenalty: result.totalPenalty, softPenalty: result.softPenalty,
+      placed: result.placed, unplaced: result.unplaced,
+      penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+      uncoveredMustFill: result.uncoveredMustFill, adjustments: [] as unknown[],
+    }
+    // 只在換一份（adjustSession）時重建：微調回報的 placed 變動不該讓內嵌元件重掛而失去復原堆疊
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjustSession, result !== null])
   const [phaseBusy, setPhaseBusy] = useState(false)
   const [runFailed, setRunFailed] = useState(false)          // 全部種子跑完仍有未排／必須級違反
   const [hints, setHints] = useState<string[]>([])           // 未排診斷：建議降低的權重
@@ -200,7 +213,7 @@ export default function ScheduleWizardClient(props: Props) {
 
   function run() {
     workerRef.current?.terminate()
-    setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null); setDraftPlan(null)
+    setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null); setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
@@ -252,7 +265,7 @@ export default function ScheduleWizardClient(props: Props) {
         }).catch(() => { /* 留存失敗不擋撤回 */ })
       }
     }
-    if (action === 'publish' && !draftPlan) {
+    if (action === 'publish' && !draftDirty) {
       if (!result) { alert('沒有可發布的課表：請先按「開始排課」，或到版本紀錄挑一份預覽。'); return }
       // 正式課表若有手動微調紀錄，發布別份會把它們蓋掉——講明白再做
       const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
@@ -260,7 +273,7 @@ export default function ScheduleWizardClient(props: Props) {
     }
     setPhaseBusy(true)
     try {
-      if (action === 'publish' && !draftPlan) {
+      if (action === 'publish' && !draftDirty) {
         // ① 寫入正式課表（草稿）
         const put = await fetch('/api/admin/schedule-plan', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -287,53 +300,31 @@ export default function ScheduleWizardClient(props: Props) {
       const data = await res.json()
       if (!res.ok) { alert(data.error ?? '操作失敗'); return }
       setPlanStatus(data.status)
-      if (action === 'publish') { setDraftPlan(null); router.refresh() }
+      if (action === 'publish') { setDraftDirty(false); router.refresh() }
     } finally { setPhaseBusy(false) }
   }
 
-  /** 進入草稿微調：把目前預覽的這份寫進草稿（或接續上次存的草稿），下面就會出現年級總覽與調整。 */
-  async function enterDraftEdit(resume: boolean) {
-    if (resume) {
-      const sp = props.savedPlan
-      if (!sp || !Array.isArray(sp.placed)) return
-      const p = sp as Record<string, unknown> & { placed: PlacedResult[] }
-      const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
-      setResult({
-        placed: p.placed, unplaced: Array.isArray(p.unplaced) ? p.unplaced as EngineResult['unplaced'] : [],
-        penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
-        totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
-        uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
-        iterations: 0, elapsedMs: 0,
-      })
-      lastVerSig.current = sigOfPlaced(p.placed)
-      setPreviewVersionId(null)
-      setDraftPlan(sp)
-      return
-    }
-    if (!result) return
-    const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
-    if (adj > 0 && props.savedPlan?.status === 'draft' && !confirm(`已儲存的草稿有 ${adj} 筆手動微調。\n以目前預覽的這份開始新的微調會覆蓋那份草稿。確定？`)) return
-    setDraftBusy(true)
-    try {
-      const plan = {
-        status: 'draft',
-        totalPenalty: result.totalPenalty, softPenalty: result.softPenalty,
-        placed: result.placed, unplaced: result.unplaced,
-        penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
-        uncoveredMustFill: result.uncoveredMustFill,
-        adjustments: [] as unknown[],
-      }
-      const put = await fetch('/api/admin/schedule-plan', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, plan }) })
-      if (!put.ok) { alert('寫入草稿失敗，請稍後再試。'); return }
-      setPlanStatus('draft')
-      setDraftPlan(plan as Record<string, unknown>)
-    } finally { setDraftBusy(false) }
+  /** 接續上次存在資料庫的草稿（含手動微調紀錄）：載回來當預覽，內嵌調整直接續調；發布就發布它。 */
+  function resumeDraft() {
+    const sp = props.savedPlan
+    if (!sp || !Array.isArray(sp.placed)) return
+    const p = sp as Record<string, unknown> & { placed: PlacedResult[] }
+    const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
+    setResult({
+      placed: p.placed, unplaced: Array.isArray(p.unplaced) ? p.unplaced as EngineResult['unplaced'] : [],
+      penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
+      totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
+      uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
+      iterations: 0, elapsedMs: 0,
+    })
+    lastVerSig.current = sigOfPlaced(p.placed)
+    setPreviewVersionId(null)
+    setDraftDirty(true); setAdjustSession(n => n + 1); setResumedAdjustments(Array.isArray(sp.adjustments) ? sp.adjustments as unknown[] : [])
   }
-
   /** 從版本紀錄挑一份來預覽（不會動到正式課表，要按發布才算數）。 */
   async function previewVersion(v: VersionRow) {
     setVersionBusy(v.id)
-    setDraftPlan(null)   // 換一份預覽＝離開草稿微調（草稿仍留在資料庫，可再「接續」）
+    setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
     try {
       const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
       if (!res.ok) { alert('載入版本失敗'); return }
@@ -509,22 +500,16 @@ export default function ScheduleWizardClient(props: Props) {
           <p className="text-xs text-zinc-400">一鍵排出科任教師與科任教室課表；班級課表留白＝導師自排空間。{(planStatus === 'published' || planStatus === 'final') && props.lastGeneratedAt && `正式課表更新於 ${new Date(props.lastGeneratedAt).toLocaleString('zh-TW')}`}</p>
         </div>
         <span className="flex gap-2 flex-shrink-0">
-          {planStatus !== 'published' && planStatus !== 'final' && result !== null && !draftPlan && (
-            <button onClick={() => enterDraftEdit(false)} disabled={draftBusy || running} className="btn btn-secondary text-sm py-1"
-              title="發布前先由課務組手動微調：以目前預覽的這份為底，點課上色、互換、找鏈；每一步自動存進草稿">
-              ✎ 草稿微調
+          {planStatus !== 'published' && planStatus !== 'final' && !draftDirty && props.savedPlan?.status === 'draft' && Array.isArray(props.savedPlan.placed) && Array.isArray(props.savedPlan.adjustments) && (props.savedPlan.adjustments as unknown[]).length > 0 && (
+            <button onClick={resumeDraft} disabled={running} className="btn btn-secondary text-sm py-1"
+              title="接續上次存在資料庫、已手動微調過的草稿">
+              ↩ 接續上次微調的草稿（{(props.savedPlan.adjustments as unknown[]).length} 筆）
             </button>
           )}
-          {planStatus !== 'published' && planStatus !== 'final' && !draftPlan && props.savedPlan?.status === 'draft' && Array.isArray(props.savedPlan.placed) && (
-            <button onClick={() => enterDraftEdit(true)} disabled={draftBusy || running} className="btn btn-secondary text-sm py-1"
-              title="接續上次存在資料庫的草稿（含手動微調紀錄）">
-              ↩ 接續上次草稿{Array.isArray(props.savedPlan.adjustments) && (props.savedPlan.adjustments as unknown[]).length > 0 ? `（${(props.savedPlan.adjustments as unknown[]).length} 筆微調）` : ''}
-            </button>
-          )}
-          {planStatus !== 'published' && planStatus !== 'final' && (result !== null || draftPlan) && (
+          {planStatus !== 'published' && planStatus !== 'final' && result !== null && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
-              title={draftPlan ? '發布目前微調後的草稿：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課' : '發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結'}>
-              📢 初版課表發布{draftPlan ? '（微調後草稿）' : ''}
+              title={draftDirty ? '發布目前微調後的課表：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課' : '發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結'}>
+              📢 初版課表發布{draftDirty ? '（含微調）' : ''}
             </button>
           )}
           {planStatus === 'published' && (
@@ -595,13 +580,13 @@ export default function ScheduleWizardClient(props: Props) {
       </div>
 
       {/* 發布後：年級總覽與調整模式 */}
-      {((planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed)) || (planStatus === 'draft' && draftPlan) ? (
+      {(planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed) ? (
         <OverviewAdjust
-          key={draftPlan ? 'draft' : planStatus ?? ''}
+          key={planStatus}
           year={year}
-          planStatus={planStatus ?? 'draft'}
+          planStatus={planStatus}
           setPlanStatus={setPlanStatus}
-          savedPlan={(draftPlan && planStatus === 'draft' ? draftPlan : props.savedPlan)!}
+          savedPlan={props.savedPlan}
           homeroomRows={props.homeroomRows}
           baseHash={curBaseHash}
           engineInput={input}
@@ -780,7 +765,26 @@ export default function ScheduleWizardClient(props: Props) {
               藍格＝科任課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節；區塊的另一格由導師填課、同科兩節）、深灰格＝鎖課、虛線格＝導師自排留白、紅虛線＝導師不排課但未排入科任課。
             </p>
 
-            {view === 'class' && (
+            {view === 'class' && planStatus !== 'published' && planStatus !== 'final' && draftPlanObj && (
+              <OverviewAdjust
+                key={`embed-${adjustSession}`}
+                embedded
+                gradeSel={gradeSel}
+                year={year}
+                planStatus="draft"
+                setPlanStatus={setPlanStatus}
+                savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
+                homeroomRows={props.homeroomRows}
+                baseHash={curBaseHash}
+                engineInput={input}
+                config={scheduleConfig}
+                classCounts={classCounts}
+                teacherNames={teacherNames}
+                onPlacedChange={placed => setResult(r => r ? { ...r, placed } : r)}
+                onPersisted={() => setDraftDirty(true)}
+              />
+            )}
+            {view === 'class' && (planStatus === 'published' || planStatus === 'final' || !draftPlanObj) && (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {input.classes.filter(c => c.grade === gradeSel).map(c => (
                   <div key={c.classKey} className="space-y-1">
