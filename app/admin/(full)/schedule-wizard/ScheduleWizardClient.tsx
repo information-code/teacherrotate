@@ -87,13 +87,21 @@ export default function ScheduleWizardClient(props: Props) {
   const [draftDirty, setDraftDirty] = useState(false)
   const [adjustSession, setAdjustSession] = useState(0)
   const [resumedAdjustments, setResumedAdjustments] = useState<unknown[] | null>(null)   // 接續草稿時帶回的微調紀錄
+  const sessionBase = useRef<EngineResult | null>(null)   // 這一輪微調的起點（放棄微調要回到這裡）
+  const resumeBase = useRef<EngineResult | null>(null)    // 接續草稿時從草稿裡帶回的起點（草稿存了 base）
   const draftPlanObj = useMemo<Record<string, unknown> | null>(() => {
     if (!result) return null
+    const base = resumeBase.current ?? result
+    resumeBase.current = null
+    sessionBase.current = base
+    const slim = (r: EngineResult) => ({
+      totalPenalty: r.totalPenalty, softPenalty: r.softPenalty, placed: r.placed, unplaced: r.unplaced,
+      penalties: r.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+      uncoveredMustFill: r.uncoveredMustFill,
+    })
     return {
-      status: 'draft', totalPenalty: result.totalPenalty, softPenalty: result.softPenalty,
-      placed: result.placed, unplaced: result.unplaced,
-      penalties: result.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
-      uncoveredMustFill: result.uncoveredMustFill, adjustments: [] as unknown[],
+      status: 'draft', ...slim(result), adjustments: [] as unknown[],
+      base: slim(base),   // 微調前的起點：重新整理後「放棄全部微調」還回得去
     }
     // 只在換一份（adjustSession）時重建：微調回報的 placed 變動不該讓內嵌元件重掛而失去復原堆疊
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,6 +170,17 @@ export default function ScheduleWizardClient(props: Props) {
   // 版本清單載入後自動帶入最新的一份：草稿階段畫面上顯示的一律是某個版本，
   // 使用者不必先開 modal 挑一次才看得到課表。只做一次，之後由使用者自己切換。
   const autoPreviewed = useRef(false)
+  // 資料庫裡有微調過的草稿 → 開頁直接接續它（上次調到哪就從哪繼續），不另外挑版本
+  useEffect(() => {
+    if (autoPreviewed.current || running || result) return
+    if (planStatus === 'published' || planStatus === 'final') return
+    const sp = props.savedPlan
+    if (sp?.status === 'draft' && Array.isArray(sp.placed) && Array.isArray(sp.adjustments) && (sp.adjustments as unknown[]).length > 0) {
+      autoPreviewed.current = true
+      resumeDraft()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     if (autoPreviewed.current || running || result || versions.length === 0) return
     if (planStatus === 'published' || planStatus === 'final') return
@@ -319,8 +338,35 @@ export default function ScheduleWizardClient(props: Props) {
     })
     lastVerSig.current = sigOfPlaced(p.placed)
     setPreviewVersionId(null)
+    const b = sp.base as Record<string, unknown> | undefined
+    if (b && Array.isArray(b.placed)) {
+      const bp = (Array.isArray(b.penalties) ? b.penalties : []) as EngineResult['penalties']
+      resumeBase.current = {
+        placed: b.placed as PlacedResult[], unplaced: Array.isArray(b.unplaced) ? b.unplaced as EngineResult['unplaced'] : [],
+        penalties: bp.map(x => ({ ...x, items: x.items ?? [] })),
+        totalPenalty: Number(b.totalPenalty ?? 0), softPenalty: Number(b.softPenalty ?? 0),
+        uncoveredMustFill: Array.isArray(b.uncoveredMustFill) ? b.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
+        iterations: 0, elapsedMs: 0,
+      }
+    }
     setDraftDirty(true); setAdjustSession(n => n + 1); setResumedAdjustments(Array.isArray(sp.adjustments) ? sp.adjustments as unknown[] : [])
   }
+  /** 放棄這一輪全部微調：回到起點那份、清掉資料庫裡的草稿微調。 */
+  async function discardDraft() {
+    const base = sessionBase.current
+    if (!base) return
+    if (!confirm('放棄這一輪全部微調，回到微調前的課表？（資料庫裡的草稿微調也會清掉）')) return
+    const plan = {
+      status: 'draft', totalPenalty: base.totalPenalty, softPenalty: base.softPenalty,
+      placed: base.placed, unplaced: base.unplaced,
+      penalties: base.penalties.map(p => ({ key: p.key, label: p.label, count: p.count, points: p.points, items: p.items.slice(0, 60) })),
+      uncoveredMustFill: base.uncoveredMustFill, adjustments: [] as unknown[],
+    }
+    await fetch('/api/admin/schedule-plan', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, plan }) }).catch(() => { /* 清不掉也先回畫面 */ })
+    if (props.savedPlan) { props.savedPlan.adjustments = []; props.savedPlan.placed = base.placed }
+    setResult(base); setDraftDirty(false); setResumedAdjustments(null); setAdjustSession(n => n + 1)
+  }
+
   /** 從版本紀錄挑一份來預覽（不會動到正式課表，要按發布才算數）。 */
   async function previewVersion(v: VersionRow) {
     setVersionBusy(v.id)
@@ -500,12 +546,6 @@ export default function ScheduleWizardClient(props: Props) {
           <p className="text-xs text-zinc-400">一鍵排出科任教師與科任教室課表；班級課表留白＝導師自排空間。{(planStatus === 'published' || planStatus === 'final') && props.lastGeneratedAt && `正式課表更新於 ${new Date(props.lastGeneratedAt).toLocaleString('zh-TW')}`}</p>
         </div>
         <span className="flex gap-2 flex-shrink-0">
-          {planStatus !== 'published' && planStatus !== 'final' && !draftDirty && props.savedPlan?.status === 'draft' && Array.isArray(props.savedPlan.placed) && Array.isArray(props.savedPlan.adjustments) && (props.savedPlan.adjustments as unknown[]).length > 0 && (
-            <button onClick={resumeDraft} disabled={running} className="btn btn-secondary text-sm py-1"
-              title="接續上次存在資料庫、已手動微調過的草稿">
-              ↩ 接續上次微調的草稿（{(props.savedPlan.adjustments as unknown[]).length} 筆）
-            </button>
-          )}
           {planStatus !== 'published' && planStatus !== 'final' && result !== null && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
               title={draftDirty ? '發布目前微調後的課表：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課' : '發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結'}>
@@ -785,6 +825,7 @@ export default function ScheduleWizardClient(props: Props) {
                 onPlacedChange={placed => setResult(r => r ? { ...r, placed } : r)}
                 onPersisted={() => setDraftDirty(true)}
                 onGradeChange={g => { setGradeSel(g); setView('class') }}
+                onDiscard={discardDraft}
               />
             )}
             {view === 'class' && (planStatus === 'published' || planStatus === 'final' || !draftPlanObj) && (
