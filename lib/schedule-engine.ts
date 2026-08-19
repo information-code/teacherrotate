@@ -3147,7 +3147,8 @@ export interface SwapOption {
   lessonId: string                  // 被點的那堂課
   kind: 'move' | 'swap2' | 'swap3' | 'chain'
   moves: SwapMove[]                 // 全部一起套用才合法
-  softDelta: number                 // 軟分變化（負＝變好）
+  softDelta: number                 // 罰分變化（負＝變好；含必須級 1e6 量級）
+  breakdown?: { label: string; delta: number }[]   // 哪條規則各變多少（|Δ|大的在前）
   desc: string                      // 人看的描述
   targetSlot: string                // 被點的那堂課最後落在哪一格（上色用）
   partnerIds: string[]              // 牽動到的其他課 id（上色用）
@@ -3246,8 +3247,20 @@ export class SwapFinder {
     const why: Record<string, string> = {}
     const name = (x: EngineLesson) => `${x.classLabel} ${x.subject}（${x.teacherName}）`
     const slotZhLocal = (p: Placement, x: EngineLesson = l) => `週${DAY_ZH[p.day]}第${p.period}節${x.size === 2 ? '–' + (p.period + 1) : ''}`
-    const base0 = scoreState(this.st).total   // 每次查詢重新量基準（查詢中途的教室挪動會讓快取的 baseSoft 漂）
-    const delta = () => Math.round(scoreState(this.st).total - base0)
+    const base = scoreState(this.st)          // 每次查詢重新量基準（查詢中途的教室挪動會讓快取的 baseSoft 漂）
+    const base0 = base.total
+    const basePens = new Map(base.penalties.map(x => [x.label, x.points]))
+    let lastBd: { label: string; delta: number }[] = []
+    const delta = () => {
+      const sc = scoreState(this.st)
+      const bd: { label: string; delta: number }[] = []
+      const labels = new Set<string>([...Array.from(basePens.keys()), ...sc.penalties.map(x => x.label)])
+      const cur = new Map(sc.penalties.map(x => [x.label, x.points]))
+      for (const lb of labels) { const d = Math.round((cur.get(lb) ?? 0) - (basePens.get(lb) ?? 0)); if (d !== 0) bd.push({ label: lb, delta: d }) }
+      bd.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      lastBd = bd
+      return Math.round(sc.total - base0)
+    }
     const sameLesson = (a: EngineLesson, b: EngineLesson) => a.classKey === b.classKey && a.subject === b.subject && a.teacherId === b.teacherId && a.size === b.size && a.parity === b.parity && (a.coTeacherId ?? '') === (b.coTeacherId ?? '')
     const grid = this.input.classSlots[l.classKey] ?? []
     const candidates = Array.from(new Set(grid.map(s => { const { day, period } = parseSlotKey(s); return `${day}-${period}` })))
@@ -3260,7 +3273,7 @@ export class SwapFinder {
       const reason = this.explain(l, p)
       if (reason) { why[sk] = reason; continue }
       this.st.place(l, p)
-      options.push({ lessonId: l.id, kind: 'move', moves: [{ id: l.id, day: p.day, period: p.period }], softDelta: delta(), desc: `${name(l)} ${slotZhLocal(from)} → ${slotZhLocal(p)}`, targetSlot: sk, partnerIds: [] })
+      options.push({ lessonId: l.id, kind: 'move', moves: [{ id: l.id, day: p.day, period: p.period }], softDelta: delta(), breakdown: lastBd, desc: `${name(l)} ${slotZhLocal(from)} → ${slotZhLocal(p)}`, targetSlot: sk, partnerIds: [] })
       this.st.remove(l)
     }
     this.st.place(l, from)
@@ -3274,7 +3287,7 @@ export class SwapFinder {
         this.st.place(l, pm)
         if (this.st.canPlace(m, from)) {
           this.st.place(m, from); ok = true
-          options.push({ lessonId: l.id, kind: 'swap2', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: from.day, period: from.period }], softDelta: delta(),
+          options.push({ lessonId: l.id, kind: 'swap2', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: from.day, period: from.period }], softDelta: delta(), breakdown: lastBd,
             desc: `${name(l)} ↔ ${name(m)}（${slotZhLocal(from)} ↔ ${slotZhLocal(pm, m)}）`, targetSlot: this.slotKey(pm), partnerIds: [m.id] })
           this.st.remove(m)
         }
@@ -3305,7 +3318,7 @@ export class SwapFinder {
             if (this.st.canPlace(n, from)) {
               this.st.place(n, from)
               options.push({ lessonId: l.id, kind: 'swap3', moves: [{ id: l.id, day: pm.day, period: pm.period }, { id: m.id, day: pn.day, period: pn.period }, { id: n.id, day: from.day, period: from.period }],
-                softDelta: delta(), desc: `${name(l)} → ${slotZhLocal(pm)}；${name(m)} → ${slotZhLocal(pn, m)}；${name(n)} → ${slotZhLocal(from, n)}`, targetSlot: this.slotKey(pm), partnerIds: [m.id, n.id] })
+                softDelta: delta(), breakdown: lastBd, desc: `${name(l)} → ${slotZhLocal(pm)}；${name(m)} → ${slotZhLocal(pn, m)}；${name(n)} → ${slotZhLocal(from, n)}`, targetSlot: this.slotKey(pm), partnerIds: [m.id, n.id] })
               this.st.remove(n)
             }
             this.st.remove(m)

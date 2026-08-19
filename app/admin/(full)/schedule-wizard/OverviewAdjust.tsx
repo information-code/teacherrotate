@@ -157,10 +157,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const swapQ = useMemo(() => (sel?.type === 'lesson' && finder) ? finder.query(sel.id) : null, [sel, finder])
   /** 會變差（罰分 > 0）的方案預設不顯示：課務組要的微調是「不影響分數」的 0 分方案；負分＝有更好的排法，醒目提醒。 */
   const [showWorse, setShowWorse] = useState(false)
-  const visibleOptions = useMemo(() => (swapQ?.options ?? []).filter(o => showWorse || o.softDelta <= 0), [swapQ, showWorse])
-  const betterCount = swapQ?.options.filter(o => o.softDelta < 0).length ?? 0
-  const zeroCount = swapQ?.options.filter(o => o.softDelta === 0).length ?? 0
-  const worseCount = swapQ?.options.filter(o => o.softDelta > 0).length ?? 0
+  // 會造成必須級違反（罰分 +10 萬以上）的方案一律不給，勾了「顯示會變差」也不給
+  const MUST = 1e5
+  const legalOptions = useMemo(() => (swapQ?.options ?? []).filter(o => o.softDelta < MUST), [swapQ])
+  const visibleOptions = useMemo(() => legalOptions.filter(o => showWorse || o.softDelta <= 0), [legalOptions, showWorse])
+  const betterCount = legalOptions.filter(o => o.softDelta < 0).length
+  const zeroCount = legalOptions.filter(o => o.softDelta === 0).length
+  const worseCount = legalOptions.filter(o => o.softDelta > 0).length
   /** 被點的課所在班級：每格最好的調法（已依罰分排序，取第一個）；被藏起來的正分方案給灰格原因 */
   const optByCell = useMemo(() => {
     const m = new Map<string, SwapOption>()
@@ -169,8 +172,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   }, [visibleOptions])
   const hiddenWhy = useMemo(() => {
     const m = new Map<string, string>()
-    if (showWorse) return m
-    for (const o of swapQ?.options ?? []) if (o.softDelta > 0 && !m.has(o.targetSlot)) m.set(o.targetSlot, `可調但會變差（罰分 +${o.softDelta}）——打開「顯示會變差的方案」才可用`)
+    for (const o of swapQ?.options ?? []) {
+      if (m.has(o.targetSlot)) continue
+      if (o.softDelta >= MUST) m.set(o.targetSlot, `會造成必須級違反（${(o.breakdown ?? []).filter(b => b.delta >= MUST).map(b => b.label).join('、') || '必須級規則'}）——不提供`)
+      else if (o.softDelta > 0 && !showWorse) m.set(o.targetSlot, `可調但會變差（罰分 +${o.softDelta}）——打開「顯示會變差的方案」才可用`)
+    }
     return m
   }, [swapQ, showWorse])
 
@@ -178,10 +184,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
   const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
   // 必須級規則（必排未覆蓋、上空上空、導師連四…）在引擎裡是 1e6 級計分：變化量破十萬就是在修／破必須級，不是軟分
-  const MUST = 1e5
   const deltaZh = (d: number) => Math.abs(d) >= MUST
     ? (d < 0 ? `修正必須級違反（目前課表在現在的設定下有必須級違反，這一步能修掉）` : `會造成必須級違反`)
     : d === 0 ? '罰分不變' : d < 0 ? `罰分 −${Math.abs(d)}（變好）` : `罰分 +${d}（變差，越少越好）`
+  const bdZh = (o: SwapOption) => (o.breakdown ?? []).filter(b => Math.abs(b.delta) < MUST).slice(0, 4).map(b => `${b.label} ${b.delta > 0 ? '+' : ''}${b.delta}`).join('・')
   const deltaBadge = (d: number) => Math.abs(d) >= MUST ? (d < 0 ? '修必須級' : '違反必須級') : d < 0 ? `更好 ${d}` : `+${d}`
 
   // 老師占用（週型感知）：teacherId → slot → { w/o/e: lessonId }
@@ -329,7 +335,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (swapQ) {
         // 查詢器有答案：科任格／空格一律以引擎硬規則為準（鎖課、教室、不回頭、連 7 都擋）
         const o = optByCell.get(slot)
-        if (o) return { ok: true, why: `${KIND_ZH[o.kind]}・${deltaZh(o.softDelta)}${o.kind !== 'move' ? '：' + o.desc : ''}` }
+        if (o) return { ok: true, why: `${KIND_ZH[o.kind]}・${deltaZh(o.softDelta)}${bdZh(o) ? `（${bdZh(o)}）` : ''}${o.kind !== 'move' ? '：' + o.desc : ''}` }
         if (!hrSubject) return { ok: false, why: hiddenWhy.get(slot) ?? swapQ.why[slot] ?? '不合法' }
         if (fillOpen) return { ok: false, why: '導師填課開放中：不可與導師課互換' }
         // 導師課格：沿用下面的 科任↔導師 互換檢查
@@ -650,6 +656,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
           </span>
+          {sel && hoverOpt && (
+            <span className="basis-full text-zinc-600">
+              滑過：<b className={hoverOpt.softDelta < 0 ? 'text-emerald-700' : hoverOpt.softDelta > 0 ? 'text-red-600' : 'text-zinc-700'}>{KIND_ZH[hoverOpt.kind]} {hoverOpt.softDelta === 0 ? '罰分不變' : deltaBadge(hoverOpt.softDelta)}</b>
+              {bdZh(hoverOpt) && <> ＝ {bdZh(hoverOpt)}</>}
+              {hoverOpt.kind !== 'move' && <span className="text-zinc-400">　{hoverOpt.desc}</span>}
+            </span>
+          )}
           {selLesson?.size === 2 && selLesson.parity === 'weekly' && (
             <button onClick={splitDouble} className="btn btn-secondary text-xs py-0.5">✂ 拆為兩個單節</button>
           )}
@@ -741,7 +754,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
                     const dim = sel && !isSelSrc && !isPartner && !opt ? 'opacity-40' : ''
                     const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
-                    const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? '不排課時段' : '教室不開放') : undefined)
+                    const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${bdZh(opt) ? `（${bdZh(opt)}）` : ''}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? '不排課時段' : '教室不開放') : undefined)
                     const onClick = () => {
                       if (opt) { applyOption(opt); return }
                       if (isSelSrc) { setSel(null); return }
