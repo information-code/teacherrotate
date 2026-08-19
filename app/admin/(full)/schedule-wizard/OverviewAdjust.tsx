@@ -205,6 +205,23 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   }
   // 課表一變，掃描結果的分數就不準了：標為過期（按「重新掃描」）
   useEffect(() => { scanToken.current++; setScan(sc => sc && !sc.running ? { ...sc, stale: true } : sc && sc.running ? null : sc) }, [placed])
+  /** 全部套用：照清單順序逐筆「真的變好才留」，最後一次寫入（一筆調整紀錄）。 */
+  function applyAllScan() {
+    if (!finder || !scan || scan.running || !scan.results.length) return
+    const soft0 = finder.soft
+    let last: PlacedResult[] | null = null
+    const done: string[] = []
+    let skipped = 0
+    for (const o of scan.results) {
+      const r = finder.applyIfBetter(o.moves)
+      if (r.applied) { last = r.placed; done.push(`${o.desc}（${r.delta}）`) } else skipped++
+    }
+    if (!last || !done.length) { alert('沒有可套用的方案（前面的調動已讓它們失效或不再變好）。'); return }
+    const total = Math.round(finder.soft - soft0)
+    applyAdjust(last, hr, `一鍵套用 ${done.length} 筆更好的調法（罰分 ${total}；略過 ${skipped} 筆已失效）：${done.slice(0, 6).join('；')}${done.length > 6 ? '…' : ''}`, [])
+    setHoverOpt(null)
+    scanToken.current++; setScan(null)
+  }
   /** 定位：選取該堂課並切到它的年級（班級檢視） */
   function locate(o: SwapOption) {
     const l = lessonById.get(o.lessonId); if (!l) return
@@ -712,6 +729,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 : <span className="text-zinc-500">✓ 全校掃完：{scan.withThree ? '直接搬／兩角／三角' : '直接搬／兩角'}都沒有更好的排法了</span>}
             {scan.stale && <span className="text-amber-700">課表已變動，分數可能不準——請重新掃描</span>}
             <span className="ml-auto flex items-center gap-2">
+              {!scan.running && !scan.stale && scan.results.length > 0 && (
+                <button onClick={applyAllScan} className="btn btn-primary text-xs py-0.5"
+                  title="照順序逐筆套用；每筆套之前都重量一次，已失效或不再變好的自動略過；一筆調整紀錄、可一次復原">
+                  ⚡ 全部套用（{scan.results.length}）
+                </button>
+              )}
               {!scan.running && !scan.withThree && <button onClick={() => runScan(true)} className="btn btn-secondary text-xs py-0.5" title="加上三角互調再掃一次（較久、約一分鐘）">含三角再掃</button>}
               {!scan.running && <button onClick={() => runScan(scan.withThree)} className="btn btn-secondary text-xs py-0.5">重新掃描</button>}
               <button onClick={() => { scanToken.current++; setScan(null) }} className="text-zinc-400 hover:text-zinc-600">✕</button>

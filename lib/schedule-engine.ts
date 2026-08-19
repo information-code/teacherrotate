@@ -3366,6 +3366,25 @@ export class SwapFinder {
     return { ok: true, placed: out }
   }
 
+  /** 套用但只有真的變好才留：全部合法→套→重量罰分；沒變好（或不合法）就整組還原。回傳實際變化量（null＝未套）。
+   *  「全部套用」用：前面的調動會讓後面的分數變、甚至變成不合法，所以每筆都要在當下重量一次。 */
+  applyIfBetter(moves: SwapMove[]): { applied: boolean; delta: number; placed: PlacedResult[] } {
+    const before = this.snapshot()
+    const soft0 = this.baseSoft
+    const origins = new Map<string, Placement>()
+    for (const mv of moves) { const p = this.st.pos.get(mv.id); if (!p) return { applied: false, delta: 0, placed: before }; origins.set(mv.id, p) }
+    const r = this.apply(moves)
+    if (!r.ok) return { applied: false, delta: 0, placed: before }
+    const delta = Math.round(this.baseSoft - soft0)
+    if (delta < 0) return { applied: true, delta, placed: r.placed }
+    // 還原
+    for (const id of origins.keys()) this.st.remove(this.byId.get(id)!)
+    origins.forEach((p, id) => this.st.place(this.byId.get(id)!, p))
+    this.syncRooms(before)
+    this.baseSoft = soft0
+    return { applied: false, delta, placed: before }
+  }
+
   get soft() { return this.baseSoft }
 
   private partnersOf(l: EngineLesson): EngineLesson[] {
