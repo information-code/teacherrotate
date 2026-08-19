@@ -1242,9 +1242,9 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 專科教室同日老師成塊（權重）：同一間教室同一天，每位老師的課連成一塊，走了不要再回來（翁1-2／陳3-4／翁5-6 ✗）。
-  // 課務組真正在意的是「收了器材又要回來」；上午 1~4／下午 5~7 各自同一位老師是更好的形狀（翁1-4／陳5-6 ✓）。
-  // 計分：老師同日在同教室「回頭」一次扣 1 次（每多一塊算一次）；同一個半天被兩位老師分掉但沒回頭（翁1-2／陳3-4）扣 ½ 次。
+  // 專科教室老師集中（權重）：每位老師在同一間專科教室的課盡量集中在少數幾天——一天一位老師，不用每天收實驗器材；
+  // 老師課數排不滿一天時，剩下的那天按上午／下午切（翁1-4／陳5-6 ✓）；走了不要再回來（翁1-2／陳3-4／翁5-6 ✗，自然＝硬限制）。
+  // 計分：同一天每多一位老師扣 1；回頭一次扣 1（自然為 MUST）；同一個半天被兩位老師分掉但沒回頭扣 ½。
   // 114-1 人工課表：自然教室 27 個教室日 0 次回頭、1 個半天分掉；科技／音樂／律動教室共 4 次回頭 → 高權重、非硬
   if (w.roomHalfDay !== 'off' || input.weights.hardParams.noReturnSubjects.length) {
     const byRoomDay = new Map<string, Map<number, string>>()   // `${rid}|${d}` → period → tid
@@ -1266,12 +1266,17 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       if (returns) {
         const subj = roomById.get(rid)?.subject ?? ''
         const hard = input.weights.hardParams.noReturnSubjects.includes(subj)
-        acc(map, hard ? 'roomNoReturn' : 'roomHalfDay', hard ? '專科教室老師不回頭（硬限制）' : '專科教室同日老師成塊', (hard ? MUST : pen(w.roomHalfDay)) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+        acc(map, hard ? 'roomNoReturn' : 'roomHalfDay', hard ? '專科教室老師不回頭（硬限制）' : '專科教室老師集中', (hard ? MUST : pen(w.roomHalfDay)) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
       }
-      // 半天分掉（沒回頭）：上午／下午各看，出現兩位以上老師扣 ½
-      if (w.roomHalfDay !== 'off') for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
-        const ts = new Set(qs.map(q => m.get(q)).filter(Boolean) as string[])
-        if (ts.size > 1) acc(map, 'roomHalfDay', '專科教室同日老師成塊', pen(w.roomHalfDay) * 0.5, `${label}${half} ${Array.from(ts).map(t => nameOf(t)).join('＋')}（半天兩位老師）`)
+      if (w.roomHalfDay !== 'off') {
+        // 一天多位老師：每多一位扣 1（一天一位老師，不用每天收器材；老師課數排不滿一天時才會出現第二位）
+        const dayTs = new Set(Array.from(m.values()))
+        if (dayTs.size > 1) acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * (dayTs.size - 1), `${label} ${Array.from(dayTs).map(t => nameOf(t)).join('＋')}（同一天 ${dayTs.size} 位老師）`)
+        // 半天分掉（沒回頭）：上午／下午各看，出現兩位以上老師扣 ½——同一天真的得兩位時，寧可上午一位下午一位
+        for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
+          const ts = new Set(qs.map(q => m.get(q)).filter(Boolean) as string[])
+          if (ts.size > 1) acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * 0.5, `${label}${half} ${Array.from(ts).map(t => nameOf(t)).join('＋')}（半天兩位老師）`)
+        }
       }
     })
   }
@@ -1790,20 +1795,24 @@ export class EngineRun {
           else if (daySubjects.has(l.subject)) pen -= 1
         }
       }
-      // ③ 專科教室同半天同老師（只看有管理教室者：她的教室是確定的）：那間教室這半天已有別人的課 → 罰；已有自己的 → 小獎勵
+      // ③ 專科教室老師集中（只看有管理教室者：她的教室是確定的）：
+      //    這間教室今天已有別人 → 罰（一天一位老師，不用每天收器材）；今天已有自己 → 獎勵（把這一天填滿）；
+      //    今天沒人 → 小罰（開新的一天）；同半天已有別人再加罰（排不滿一天時，剩的按上午／下午切）
       if (roomHalfPen) {
         const mine = this.st.mgrRooms.get(l.id)
         if (mine && mine.length === 1) {
           const occ = this.st.roomOcc.get(mine[0].id)
           const half = p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7]
-          let other = 0, same = 0
-          for (const q of half) {
+          let otherDay = 0, sameDay = 0, otherHalf = 0
+          for (let q = 1; q <= 7; q++) {
             const cell = occ?.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
             if (!id || id === ROOM_OFF) continue
-            if (this.st.lessonById.get(id)!.teacherId === l.teacherId) same++; else other++
+            if (this.st.lessonById.get(id)!.teacherId === l.teacherId) sameDay++
+            else { otherDay++; if (half.includes(q)) otherHalf++ }
           }
-          if (other) pen += roomHalfPen * 2
-          else if (same) pen -= roomHalfPen   // 已開了這半天就把它填滿——獎勵要夠大才蓋得過「低節次優先」的 +5
+          if (otherDay) pen += roomHalfPen * 2 + (otherHalf ? roomHalfPen : 0)
+          else if (sameDay) pen -= roomHalfPen * 2   // 已開了這一天就把它填滿——獎勵要夠大才蓋得過「低節次優先」的 +5
+          else pen += roomHalfPen                     // 開新的一天：比接著填舊的一天差
         }
       }
       // ② 全單節老師相鄰同年級：前後相鄰那格若是別的年級 → 罰
@@ -2243,15 +2252,26 @@ export class EngineRun {
         if (ls.length) returns.push({ rid: k.split('|')[0], minority: ls })
       })
     })
+    // 同一天多位老師：少數那位的課也是候選（集中到她自己的日子）
+    const multi: { rid: string; minority: EngineLesson[] }[] = []
+    byRoomDay.forEach((m, k) => {
+      const byT = new Map<string, EngineLesson[]>()
+      m.forEach(l => { const a = byT.get(l.teacherId) ?? byT.set(l.teacherId, []).get(l.teacherId)!; if (!a.includes(l)) a.push(l) })
+      if (byT.size < 2) return
+      const minority = Array.from(byT.values()).sort((a, b) => a.length - b.length)[0].filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
+      if (minority.length) multi.push({ rid: k.split('|')[0], minority })
+    })
+    const dayMode = multi.length > 0 && this.rnd() < 0.5
     if (returns.length && (this.rnd() < 0.7 || !bad.length)) { bad.length = 0; bad.push(...returns) }
+    else if (dayMode) { bad.length = 0; bad.push(...multi) }
     if (!bad.length) return
     const b = bad[Math.floor(this.rnd() * bad.length)]
     const l = b.minority[Math.floor(this.rnd() * b.minority.length)]
     const from = this.st.pos.get(l.id)!
     const occ = this.st.roomOcc.get(b.rid)!
     this.directedMove(l, p => {
-      const half = p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7]
-      if (p.day === from.day && (from.period <= MORNING_LAST) === (p.period <= MORNING_LAST)) return false
+      const half = dayMode ? [1, 2, 3, 4, 5, 6, 7] : (p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7])
+      if (dayMode ? p.day === from.day : (p.day === from.day && (from.period <= MORNING_LAST) === (p.period <= MORNING_LAST))) return false
       for (const q of half) {
         const cell = occ.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
         if (id && id !== ROOM_OFF && id !== l.id && this.st.lessonById.get(id)!.teacherId !== l.teacherId) return false
