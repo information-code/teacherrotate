@@ -461,7 +461,7 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
               <span className="text-zinc-400">114-2 人工課表自然 42 組連堂 0 例外</span>
             </li>
             <li className="flex items-center gap-2 flex-wrap">
-              <span><b>自然／科技教室優先排</b>——課表全空時先為這些教室做精確搜尋：每位管理者一週只占一個連續區塊、不交錯（甲＝一二三、乙＝三四五，邊界日共用）；同一位老師區塊裡年級也連續（六年級全上完才換四年級，跨天也算）。放不下會自動降級（先放寬年級連續、再放寬不交錯）並在排課結果說明。鎖課永遠優先。適用教室科目（順序＝優先序）：</span>
+              <span><b>自然／科技教室優先排</b>——課表全空時先為這些教室做精確搜尋：每位管理者一週只占一個連續區塊、不交錯（甲＝一二三、乙＝三四五，邊界日共用）；同一位老師區塊裡年級也連續（六年級全上完才換四年級，跨天也算）。放不下會自動降級（先放寬年級連續、再放寬不交錯）並在排課結果說明；精靈也會在需要時把「自動配班」的班在同科同年級老師間對調（手動指定的不動）。鎖課永遠優先。<b>預設關閉</b>（115 實測只有一間自然教室放得進規則，且可行性變差）；要啟用請填教室科目（順序＝優先序）：</span>
               <input value={w.hardParams.roomBlockSubjects.join('、')}
                 onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, roomBlockSubjects: e.target.value.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean) } }))}
                 placeholder="自然、智慧探究家：科技創新任務" className="input py-0.5 text-xs w-72" />

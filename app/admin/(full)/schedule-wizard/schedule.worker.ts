@@ -38,7 +38,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
       templates: input.weights.templates.map(t => ({ ...t, level: 'off' as const })),
       doubleMode: input.weights.doubleMode,
       roomUse: input.weights.roomUse,
-      hardParams: input.weights.hardParams,
+      hardParams: { ...input.weights.hardParams, roomBlockSubjects: [] },   // 保底＝純可行性：自然／科技教室優先求解也放棄（降級的最後一層）
     },
   }
 }
@@ -76,11 +76,11 @@ async function runOne(
 async function diagnose(input: EngineInput, best: EngineResult, seed: number): Promise<{ probePerfect: boolean; hints: string[] }> {
   const probe = await runOne({ ...hardOnlyInput(input), seed }, {
     label: '診斷：純硬探測', budget: { converge: PROBE_MS, cap: PROBE_MS }, perfectExit: true,
-    initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+    initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
   })
   if (!isPerfect(probe)) return { probePerfect: false, hints: [] }
   // 探測解在「完整權重」下的罰分 → 與最佳解比對，哪些規則多了違反＝搜尋為了守它們而放棄排入
-  const scored = new EngineRun({ ...input, seed }, probe.placed.map(p => ({ id: p.id, day: p.day, period: p.period }))).finalize()
+  const scored = new EngineRun({ ...input, seed }, probe.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName }))).finalize()
   const before = new Map(best.penalties.map(p => [p.label, p.count]))
   const hints = scored.penalties
     .filter(p => p.points > 0 && p.points < 1e6)
@@ -119,16 +119,25 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
     const polish = async (feasible: EngineResult, seed: number, label: string) => {
       const polished = await runOne({ ...input, seed }, {
         label, budget: RESCUE_SOFT,
-        initial: feasible.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+        initial: feasible.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
       })
       const cand = isPerfect(polished) ? polished : feasible
       if (!cand.notes?.length && best?.notes?.length) cand.notes = best.notes   // 熱啟動不會重跑教室優先求解，說明沿用原種子的
       if (betterThan(cand, best!)) { best = cand; bestSeed = seed }
     }
+    // ⓪ 先退一層：不做「自然／科技教室優先求解」、權重全開再試兩個種子（教室結構交給權重，這是最接近原本的降級）
+    const noBlock: EngineInput = { ...input, weights: { ...input.weights, hardParams: { ...input.weights.hardParams, roomBlockSubjects: [] } } }
+    for (const seed of RESCUE_SEEDS.slice(0, 2)) {
+      if (isPerfect(best!) || stopRequested) break
+      const r = await runOne({ ...noBlock, seed }, { label: '保底：不做教室優先求解（權重全開）', budget: BUDGET })
+      if (r.notes) r.notes = [...(best.notes ?? []), '整份排不完 → 改為不做自然／科技教室優先求解，教室結構交給權重']
+      else r.notes = [...(best.notes ?? []), '整份排不完 → 改為不做自然／科技教室優先求解，教室結構交給權重']
+      if (betterThan(r, best)) { best = r; bestSeed = seed }
+    }
     // ① 從最佳解熱啟動純硬
     const fixed = await runOne({ ...hardOnlyInput(input), seed: bestSeed }, {
       label: '保底：從最佳解補完（純硬）', budget: RESCUE_FIX, perfectExit: true,
-      initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period })),
+      initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
     })
     if (isPerfect(fixed)) await polish(fixed, bestSeed, '保底：加權優化')
     // ② 仍不完整 → 從零純硬多試幾個種子

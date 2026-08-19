@@ -173,7 +173,7 @@ export interface HardParams {
   // 每位管理者一週只占一個連續區塊不交錯、區塊裡年級連續（六年級全上完才換四年級）；放不下自動降級並在結果說明
   roomBlockSubjects: string[]
 }
-export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], noSingleAfterDouble: ['自然', '自然科學'], noReturnSubjects: ['自然', '自然科學'], roomBlockSubjects: ['自然', '自然科學', '智慧探究家：科技創新任務'] }
+export const DEFAULT_HARD_PARAMS: HardParams = { maxRunTeacher: 6, maxRunHomeroom: 3, homeroomRunBands: [...BANDS], noSingleAfterDouble: ['自然', '自然科學'], noReturnSubjects: ['自然', '自然科學'], roomBlockSubjects: [] }   // 教室優先求解預設關閉：115 實測只有一間自然教室放得進規則，且會讓五個種子都剩幾堂排不完；輸入改了（鎖課／不排課）再開
 
 /** 專科教室使用時機（結構設定，非權重）。依 114-2 人工課表：
  *  自然科學＝連堂 42 組 100% 進自然教室、單節 42 堂 0% 進（實驗課進教室、講述課留原班，零例外）；

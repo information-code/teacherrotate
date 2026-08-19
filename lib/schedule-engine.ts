@@ -31,6 +31,7 @@ export interface EngineLesson {
   pairable?: boolean       // 連堂模式「都可以」的單節：允許同科同日相鄰兩節自然成對（不跨午休）——人工排課「塞得順就連」
   coTeacherId?: string     // 外師（協同）：掛在此課上的外師——同時段唯一、不可用時段、連 7 皆為硬規則
   coTeacherName?: string
+  autoAssigned?: boolean   // 這班這科的授課老師是精靈自動配的（非手動指定）→ 排課時可與同科同年級另一位老師的自動配班對調
 }
 
 export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; offSlots: string[]; offNote: string }
@@ -251,6 +252,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   // 配到假師/虛擬帳號的班，之後由管理者視情況改直播共學即可。
   const assign: Record<string, string> = { ...config.subjectClassTeacher }
   const autoAgg = new Map<string, number>()   // `${grade}|${subject}` → 自動配班班數
+  const autoKeys = new Set<string>()          // 自動配班的 subjectClassKey（排課時可對調）
   if (a.supplyByTeacher) {
     // 剩餘容量：科目 → 年級 → tid → 節數
     const left: Record<string, Record<string, Map<string, number>>> = {}
@@ -288,7 +290,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
             for (const [tid, l] of Array.from(map)) if (l >= r && l > bestLeft) { best = tid; bestLeft = l }
             if (!best) continue
             map.set(best, bestLeft - r)
-            assign[k] = best
+            assign[k] = best; autoKeys.add(k)
             autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + 1)
           }
         }
@@ -329,7 +331,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
               return false
             }
             if (dfs(0)) {
-              todo.forEach((x, idx) => { assign[x.k] = pick[idx]; map.set(pick[idx], map.get(pick[idx])! - x.r) })
+              todo.forEach((x, idx) => { assign[x.k] = pick[idx]; autoKeys.add(x.k); map.set(pick[idx], map.get(pick[idx])! - x.r) })
               autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + todo.length)
             }
           }
@@ -435,7 +437,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           lessons.push({
             id: `${key}|${s.name}|bi`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 2,
-            parity: i % 2 === 0 ? 'odd' : 'even',
+            parity: i % 2 === 0 ? 'odd' : 'even', autoAssigned: autoKeys.has(subjectClassKey(g, i, s.name)) || undefined,
           })
           continue
         }
@@ -450,6 +452,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
           lessons.push({
             id: `${key}|${s.name}|d${d2++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 2, parity: 'weekly',
+            autoAssigned: autoKeys.has(subjectClassKey(g, i, s.name)) || undefined,
           })
           hours -= 2
         }
@@ -460,6 +463,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
             id: `${key}|${s.name}|s${n++}`, classKey: key, grade: g, classLabel: classLabel(g, i),
             subject: s.name, teacherId: assigned, teacherName, size: 1, parity: 'weekly',
             ...(pairable ? { pairable: true } : {}),
+            autoAssigned: autoKeys.has(subjectClassKey(g, i, s.name)) || undefined,
           })
           hours--
         }
@@ -784,15 +788,7 @@ class State {
       for (const sl of r.offSlots) m.set(sl, { w: ROOM_OFF })   // 教室不排課時段：整週占住、誰都趕不走
       this.roomOcc.set(r.id, m)
     }
-    for (const l of input.lessons) {
-      if (!shouldUseRoom(input.weights, l.subject, l.grade, l.size)) continue
-      const same = input.rooms.filter(r => r.subject === l.subject)
-      if (!same.length) continue
-      const mine = same.filter(r => r.managerIds.includes(l.teacherId))
-      // 有管理教室的老師只用自己那間；沒有的則整科的教室都可用（可跨間跑）
-      if (mine.length) this.mgrRooms.set(l.id, mine)
-      this.roomPool.set(l.id, mine.length ? mine : same)
-    }
+    for (const l of input.lessons) this.bindRoomPool(l)
     for (const l of input.lessons) this.lessonById.set(l.id, l)
     for (const t of input.weights.templates) {
       if (t.template !== 'subjectApart' || !t.hard || t.subjects.length < 2) continue
@@ -806,6 +802,24 @@ class State {
     for (const c of input.classes) this.classOcc.set(c.classKey, new Map())
     for (const l of input.lessons) if (!this.teacherOcc.has(l.teacherId)) this.teacherOcc.set(l.teacherId, new Map())
     for (const l of input.lessons) if (l.coTeacherId && !this.teacherOcc.has(l.coTeacherId)) this.teacherOcc.set(l.coTeacherId, new Map())
+  }
+
+  /** 依授課老師決定這堂課的教室池：有管理教室的老師只用自己那間；沒有的則整科的教室都可用（可跨間跑）。 */
+  private bindRoomPool(l: EngineLesson) {
+    this.mgrRooms.delete(l.id); this.roomPool.delete(l.id)
+    if (!shouldUseRoom(this.input.weights, l.subject, l.grade, l.size)) return
+    const same = this.input.rooms.filter(r => r.subject === l.subject)
+    if (!same.length) return
+    const mine = same.filter(r => r.managerIds.includes(l.teacherId))
+    if (mine.length) this.mgrRooms.set(l.id, mine)
+    this.roomPool.set(l.id, mine.length ? mine : same)
+  }
+  /** 自動配班對調：把這堂（未排的）課改由另一位老師上，教室池跟著換。 */
+  rebindTeacher(l: EngineLesson, tid: string, name: string) {
+    if (this.pos.has(l.id)) throw new Error('rebindTeacher on placed lesson')
+    l.teacherId = tid; l.teacherName = name
+    if (!this.teacherOcc.has(tid)) this.teacherOcc.set(tid, new Map())
+    this.bindRoomPool(l)
   }
 
   /** 某教室某格，對這堂課而言是否「真的空著」（週型感知）。 */
@@ -1722,12 +1736,19 @@ export class EngineRun {
 
   /** @param initial 熱啟動落點（診斷探測／重排續跑用）：以既有解為搜尋起點，不合法的落點靜默略過，
    *  其餘課照常走建構流程補齊。 */
-  constructor(input: EngineInput, initial?: { id: string; day: number; period: number }[]) {
+  constructor(input0: EngineInput, initial?: { id: string; day: number; period: number; teacherId?: string; teacherName?: string }[]) {
+    // 課物件要複製：自動配班對調會改 lesson 的 teacherId，同一份 input 會被多個種子／保底重複使用，不能互相污染
+    const input: EngineInput = { ...input0, lessons: input0.lessons.map(l => ({ ...l })) }
     this.input = input
     this.rnd = mulberry32(input.seed)
     this.st = new State(input)
 
     if (initial?.length) {
+      // 熱啟動先套用原解的配班（自動配班對調的結果跟著落點一起帶過來），再放課
+      for (const w of initial) {
+        const l = this.st.lessonById.get(w.id)
+        if (l && w.teacherId && w.teacherId !== l.teacherId) this.st.rebindTeacher(l, w.teacherId, w.teacherName ?? l.teacherName)
+      }
       for (const w of initial) {
         const l = this.st.lessonById.get(w.id)
         if (!l || this.st.pos.has(w.id)) continue
@@ -1797,6 +1818,7 @@ export class EngineRun {
     })
     dblUnion.forEach((u, tid) => { if (u.n >= 2) pairRatio.set(tid, Math.max(pairRatio.get(tid) ?? 0, u.n / Math.max(1, pairCap(u.slots)))) })
     const pairTight = new Set(Array.from(pairRatio.entries()).filter(([, r]) => r >= 0.85).map(([tid]) => tid))
+    this.pairTight = pairTight
     for (const l of input.lessons) if (blockedOf(l.teacherId) >= 10 || teacherRatio(l.teacherId) >= 0.85 || pairTight.has(l.teacherId)) this.anchored.add(l.id)
     const difficulty = (l: EngineLesson) =>
       (l.size === 2 ? 100 : 0) + (l.parity !== 'weekly' ? 50 : 0)
@@ -2328,15 +2350,29 @@ export class EngineRun {
     const tl = (p: Placement) => (p.day - 1) * 7 + p.period
     const perms = <T,>(xs: T[]): T[][] => xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map(r => [x, ...r]))
     for (const room of rooms) {
-      const lessons = this.input.lessons.filter(l => !this.st.pos.has(l.id) && (this.st.mgrRooms.get(l.id) ?? [])[0]?.id === room.id)
-      if (!lessons.length) continue
+      const roomLessons = () => this.input.lessons.filter(l => !this.st.pos.has(l.id) && (this.st.mgrRooms.get(l.id) ?? [])[0]?.id === room.id)
+      if (!roomLessons().length) continue
+      // 預先對調：這間教室管理者的自動配班裡，落點很少的班（種子班：每天 3-4 都鎖給國數）換成同科同年級別位老師手上落點多的班——
+      // 「只要沒有手動指定的配班都可以調」。每換一班記一筆說明；整間最後還是放不進才復原
+      const preUndo: (() => void)[] = []
+      this.curGroups = null
+      for (const l of roomLessons()) {
+        if (!l.autoAssigned || l.size !== 2) continue
+        const myN = this.st.candidates(l).length
+        let best: EngineLesson | null = null, bestN = myN + 3
+        for (const p of this.swapPartners(l)) { const n = this.st.candidates(p).length; if (n > bestN) { best = p; bestN = n } }
+        if (best) { const u = this.swapAssignment(l, best); if (u) preUndo.push(u) }
+      }
+      const lessons = roomLessons()
       const byTeacher = new Map<string, EngineLesson[]>()
       for (const l of lessons) (byTeacher.get(l.teacherId) ?? byTeacher.set(l.teacherId, []).get(l.teacherId)!).push(l)
       const teachers = Array.from(byTeacher.keys()).sort(() => this.rnd() - 0.5)
       const teacherOrders = teachers.length <= 3 ? perms(teachers) : [teachers, [...teachers].reverse()]
       // 一組序列＝[[同師同年級的課], ...]；回溯沿時間軸單調放
       const roomT0 = Date.now()
+      this.curGroups = null
       const trySequence = (groups: EngineLesson[][], nodeCap: number, msCap = 100): boolean => {
+        this.curGroups = groups
         let nodes = 0
         const t0 = Date.now()
         const placedHere: EngineLesson[] = []
@@ -2351,7 +2387,18 @@ export class EngineRun {
           let earliest = Infinity
           for (const l of remaining) {
             const ps = this.st.candidates(l).filter(p => tl(p) > cursor)
-            if (!ps.length) return false                       // 前瞻：這堂已經沒位子
+            if (!ps.length) {
+              // 前瞻：這堂已經沒位子 → 若是自動配班，試著跟同科同年級另一位老師的自動配班對調（那一班的格子形狀可能合）
+              if (!l.autoAssigned) return false
+              for (const partner of this.swapPartners(l)) {
+                const undo = this.swapAssignment(l, partner)
+                if (!undo) continue
+                const ok = this.st.candidates(partner).some(p => tl(p) > cursor) && dfs(gi, cursor)   // partner 現在是這位老師的課、在這一組裡
+                if (ok) return true
+                undo()
+              }
+              return false
+            }
             optsOf.set(l, ps)
             for (const p of ps) earliest = Math.min(earliest, tl(p))
           }
@@ -2392,8 +2439,57 @@ export class EngineRun {
         // 第二層：老師不交錯，年級可混
         for (const to of teacherOrders) { if (Date.now() - roomT0 > 2500) break; if (trySequence(to.map(tid => byTeacher.get(tid)!), 20000, 400)) { done = true; this.notes.push(`${label}：年級連續排不進，已放寬為只要求老師不交錯`); break } }
       }
-      if (!done) { this.notes.push(`${label}：老師不交錯也排不進，這間改為一般排法（回頭仍是硬限制）`); continue }
-      for (const l of lessons) if (this.st.pos.has(l.id)) { this.frozen.add(l.id); this.anchored.add(l.id) }
+      if (!done) { for (const u of preUndo.reverse()) u(); this.notes.push(`${label}：老師不交錯也排不進，這間改為一般排法（回頭仍是硬限制）`); continue }
+      // 定案的課設為錨定（不被非錨定課逐出）。不完全凍結：完全凍結實測會讓五個種子都剩 1～4 堂排不完、保底又救不回，
+      // 最後整份課表退回沒有結構的純可行解；錨定＋「老師集中」高權重＋認領日偏好已足以讓結構大致保留，真的擠不下才讓步（自動降級）
+      for (const l of this.input.lessons) if (this.st.pos.has(l.id) && (this.st.mgrRooms.get(l.id) ?? [])[0]?.id === room.id) this.anchored.add(l.id)
+    }
+    this.curGroups = null
+  }
+  private curGroups: EngineLesson[][] | null = null
+  private pairTight = new Set<string>()   // 連堂配對容量緊的老師（見建構子）：不能把難排的班再丟給她
+  /** 可與 l 對調的課：同科同年級同型態、也是自動配班、屬於別位老師、兩班這科的課都還沒排也沒凍結、兩班課的形狀相同 */
+  private swapPartners(l: EngineLesson): EngineLesson[] {
+    const grp = (x: EngineLesson) => this.input.lessons.filter(y => y.classKey === x.classKey && y.subject === x.subject)
+    const shape = (ls: EngineLesson[]) => ls.map(y => `${y.size}${y.parity}`).sort().join(',')
+    const mine = grp(l)
+    if (mine.some(y => this.st.pos.has(y.id) || this.frozen.has(y.id))) return []
+    const myShape = shape(mine)
+    const seen = new Set<string>()
+    const out: EngineLesson[] = []
+    for (const y of this.input.lessons) {
+      if (y.subject !== l.subject || y.grade !== l.grade || y.size !== l.size || y.parity !== l.parity) continue
+      if (y.teacherId === l.teacherId || !y.autoAssigned || y.classKey === l.classKey || seen.has(y.classKey)) continue
+      if (this.pairTight.has(y.teacherId) && !this.pairTight.has(l.teacherId)) continue   // 對方已經很緊（教室滿載）→ 不把難排的班丟過去
+      seen.add(y.classKey)
+      const theirs = grp(y)
+      if (theirs.some(z => this.st.pos.has(z.id) || this.frozen.has(z.id))) continue
+      if (shape(theirs) !== myShape) continue
+      out.push(y)
+    }
+    return out.sort(() => this.rnd() - 0.5)
+  }
+  /** 對調兩班這科的授課老師（整班這科的所有課一起換），並把目前序列組裡的 l 換成 partner。回傳復原函式。 */
+  private swapAssignment(l: EngineLesson, partner: EngineLesson): (() => void) | null {
+    const grp = (x: EngineLesson) => this.input.lessons.filter(y => y.classKey === x.classKey && y.subject === x.subject)
+    const A = { id: l.teacherId, name: l.teacherName }, B = { id: partner.teacherId, name: partner.teacherName }
+    const mine = grp(l), theirs = grp(partner)
+    for (const y of mine) this.st.rebindTeacher(y, B.id, B.name)
+    for (const y of theirs) this.st.rebindTeacher(y, A.id, A.name)
+    // 序列組：把 l 換成 partner（同型態）
+    const swaps: { g: EngineLesson[]; i: number; was: EngineLesson }[] = []
+    if (this.curGroups) for (const g of this.curGroups) {
+      const i = g.indexOf(l), j = g.indexOf(partner)
+      if (i >= 0) { g[i] = partner; swaps.push({ g, i, was: l }) }
+      if (j >= 0) { g[j] = l; swaps.push({ g, i: j, was: partner }) }   // partner 的老師若也是這間教室的管理者（後面的組），她的組換成 l
+    }
+    this.notes.push(`自動配班對調：${l.classLabel} ${l.subject} ${A.name}→${B.name}、${partner.classLabel} ${partner.subject} ${B.name}→${A.name}`)
+    const noteIdx = this.notes.length - 1
+    return () => {
+      for (const y of mine) this.st.rebindTeacher(y, A.id, A.name)
+      for (const y of theirs) this.st.rebindTeacher(y, B.id, B.name)
+      for (const sw of swaps) sw.g[sw.i] = sw.was
+      this.notes.splice(noteIdx, 1)
     }
   }
 
