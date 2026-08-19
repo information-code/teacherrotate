@@ -765,11 +765,13 @@ export default function ScheduleWizardClient(props: Props) {
               藍格＝科任課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節；區塊的另一格由導師填課、同科兩節）、深灰格＝鎖課、虛線格＝導師自排留白、紅虛線＝導師不排課但未排入科任課。
             </p>
 
-            {view === 'class' && planStatus !== 'published' && planStatus !== 'final' && draftPlanObj && (
+            {planStatus !== 'published' && planStatus !== 'final' && draftPlanObj && (
               <OverviewAdjust
                 key={`embed-${adjustSession}`}
                 embedded
                 gradeSel={gradeSel}
+                mode={view}
+                focusId={view === 'teacher' ? teacherSel : view === 'room' ? roomSel : undefined}
                 year={year}
                 planStatus="draft"
                 setPlanStatus={setPlanStatus}
@@ -797,10 +799,10 @@ export default function ScheduleWizardClient(props: Props) {
                 ))}
               </div>
             )}
-            {view === 'teacher' && (teacherSel
+            {view === 'teacher' && (planStatus === 'published' || planStatus === 'final' || !draftPlanObj) && (teacherSel
               ? <div className="max-w-md"><Grid list={byTeacher.get(teacherSel) ?? []} mode="teacher" extra={nativeCellsByTeacher.get(teacherSel)} /></div>
               : <p className="text-sm text-zinc-400 text-center py-4">請選擇教師。</p>)}
-            {view === 'room' && (roomSel
+            {view === 'room' && (planStatus === 'published' || planStatus === 'final' || !draftPlanObj) && (roomSel
               ? <div className="max-w-md"><Grid list={byRoom.get(roomSel) ?? []} mode="room" roomOff={(() => { const r = roomList.find(x => x.id === roomSel); return r ? { slots: new Set(r.offSlots), note: r.offNote } : undefined })()} /></div>
               : <p className="text-sm text-zinc-400 text-center py-4">{roomList.length ? '請選擇教室。' : '教室設定中沒有綁定科目的科任教室。'}</p>)}
           </div>

@@ -22,6 +22,10 @@ interface Props {
    *  第一次調動才把課表存成草稿（persist 本來就是整份 PUT）。 */
   embedded?: boolean
   gradeSel?: number
+  /** 檢視：班級（多班格）／科任教師（一位老師的週課表）／科任教室（一間教室的週課表）。三種都能點課調、上色一致（以時段為格）。
+   *  內嵌時由外層控制；獨立（發布後）時自己有切換列。 */
+  mode?: 'class' | 'teacher' | 'room'
+  focusId?: string
   onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
   onPersisted?: () => void                             // 第一次成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
 }
@@ -36,7 +40,12 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, onPlacedChange, onPersisted }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, onPlacedChange, onPersisted }: Props) {
+  const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
+  const [teacherSelState, setTeacherSel] = useState('')
+  const [roomSelState, setRoomSel] = useState('')
+  const mode = modeProp ?? modeState
+  const focusId = focusIdProp ?? (mode === 'teacher' ? teacherSelState : mode === 'room' ? roomSelState : '')
   const [placed, setPlaced] = useState<PlacedResult[]>(() => (savedPlan.placed as PlacedResult[] | undefined) ?? [])
   // 導師填課開關（只在「已發布、未定案」有意義）：開著＝導師在填，課務組只能科任課互換；收回＝可自由調課
   const [fillOpenState, setFillOpenState] = useState<boolean>(() => savedPlan.fillOpen !== false)
@@ -101,6 +110,32 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
 
   // ── 索引 ──
   const lessonById = useMemo(() => new Map(placed.map(p => [p.id, p])), [placed])
+  const teacherOptions = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; co: boolean }>()
+    for (const p of placed) {
+      if (!m.has(p.teacherId)) m.set(p.teacherId, { id: p.teacherId, name: p.teacherName, co: false })
+      if (p.coTeacherId && !m.has(p.coTeacherId)) m.set(p.coTeacherId, { id: p.coTeacherId, name: p.coTeacherName ?? '外師', co: true })
+    }
+    return Array.from(m.values()).sort((a, b) => Number(a.co) - Number(b.co) || a.name.localeCompare(b.name, 'zh-Hant'))
+  }, [placed])
+  /** 教師／教室檢視：一張以時段為格的週課表（同一格可能有單週＋雙週兩堂） */
+  const focusCells = useMemo(() => {
+    const m = new Map<string, PlacedResult[]>()
+    if (mode === 'class' || !focusId) return m
+    for (const p of placed) {
+      const hit = mode === 'teacher' ? (p.teacherId === focusId || p.coTeacherId === focusId) : p.roomId === focusId
+      if (!hit) continue
+      const slots = p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+      for (const sl of slots) m.set(sl, [...(m.get(sl) ?? []), p])
+    }
+    return m
+  }, [placed, mode, focusId])
+  const focusOff = useMemo<Set<string>>(() => {
+    if (mode === 'teacher' && focusId) return new Set(engineInput.teacherBlocked[focusId] ?? [])
+    if (mode === 'room' && focusId) return new Set(engineInput.rooms.find(r => r.id === focusId)?.offSlots ?? [])
+    return new Set()
+  }, [mode, focusId, engineInput])
+  const maxPeriods = useMemo(() => Math.max(...Object.values(config.bands).map(b => b.periodsPerDay)), [config])
   const cellsByClass = useMemo(() => {
     const m = new Map<string, Map<string, PlacedResult>>()
     for (const p of placed) {
@@ -556,6 +591,28 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         </span>
       </div>
 
+      {!embedded && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {(['class', 'teacher', 'room'] as const).map(v => (
+            <button key={v} onClick={() => setModeState(v)} className={`btn text-xs py-0.5 ${mode === v ? 'btn-primary' : 'btn-secondary'}`}>
+              {v === 'class' ? '班級課表' : v === 'teacher' ? '科任教師課表' : '科任教室課表'}
+            </button>
+          ))}
+          {mode === 'teacher' && (
+            <select value={teacherSelState} onChange={e => setTeacherSel(e.target.value)} className="input py-0.5 text-xs w-44">
+              <option value="">選擇教師…</option>
+              {teacherOptions.map(t => <option key={t.id} value={t.id}>{t.co ? '★' : ''}{t.name}</option>)}
+            </select>
+          )}
+          {mode === 'room' && (
+            <select value={roomSelState} onChange={e => setRoomSel(e.target.value)} className="input py-0.5 text-xs w-44">
+              <option value="">選擇教室…</option>
+              {rooms.filter(r => r.subject).map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
       {(sel || !embedded) && (
         <div className="card p-2 text-xs text-zinc-500 flex items-center gap-3 flex-wrap">
           <span>
@@ -623,7 +680,70 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         ))}
       </div>}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {mode !== 'class' && !focusId && (
+        <p className="text-sm text-zinc-400 text-center py-4">{mode === 'teacher' ? '請選擇教師。' : '請選擇教室。'}</p>
+      )}
+      {mode !== 'class' && focusId && (
+        <div className="card p-3 max-w-md space-y-1">
+          <div className="text-sm font-semibold text-zinc-700">
+            {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? '教室')}
+            <span className="text-xs font-normal text-zinc-400 ml-2">{mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段（本土語、鎖課不在此列）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）'}</span>
+          </div>
+          <table className="w-full table-fixed border-collapse text-[10px]">
+            <thead>
+              <tr><th className="w-5 text-zinc-400 font-normal"></th>
+                {SCHEDULE_DAYS.map(d => <th key={d} className="text-center text-zinc-500 font-normal py-0.5">{DAY_LABEL[d].slice(1)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(q => (
+                <tr key={q}>
+                  <td className="text-zinc-400 text-center">{q}</td>
+                  {SCHEDULE_DAYS.map(d => {
+                    const k = `${d}-${q}`
+                    const ls = focusCells.get(k) ?? []
+                    const off = focusOff.has(k)
+                    const opt = sel?.type === 'lesson' ? optByCell.get(k) : undefined
+                    const why = sel?.type === 'lesson' && !opt && swapQ ? swapQ.why[k] : undefined
+                    const isSelSrc = sel?.type === 'lesson' && ls.some(x => x.id === sel.id)
+                    const isPartner = !!(hoverOpt && ls.some(x => hoverOpt.partnerIds.includes(x.id)))
+                    const ringKind = opt ? (opt.kind === 'move' ? 'ring-2 ring-emerald-400' : opt.kind === 'swap2' ? 'ring-2 ring-sky-400' : 'ring-2 ring-amber-400') : ''
+                    const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
+                    const dim = sel && !isSelSrc && !isPartner && !opt ? 'opacity-40' : ''
+                    const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
+                    const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? '不排課時段' : '教室不開放') : undefined)
+                    const onClick = () => {
+                      if (opt) { applyOption(opt); return }
+                      if (isSelSrc) { setSel(null); return }
+                      const mine = ls[0]
+                      if (mine) setSel({ type: 'lesson', id: mine.id })
+                    }
+                    return (
+                      <td key={d} className="p-0.5">
+                        <button onClick={onClick} title={title} {...hoverProps}
+                          className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
+                          {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
+                          {ls.length === 0 && off && <span className="text-[8px]">—</span>}
+                          {ls.slice(0, 2).map(x => (
+                            <span key={x.id} className="truncate w-full">
+                              <span className="font-medium">{x.classLabel}</span>
+                              <span className="opacity-80"> {mode === 'room' ? `${x.teacherName}・${x.subject}` : x.subject}</span>
+                              {x.parity !== 'weekly' && <span className="text-[8px] opacity-70">{x.parity === 'odd' ? '單' : '雙'}</span>}
+                              {mode === 'teacher' && x.coTeacherId && <span className="text-rose-700">★</span>}
+                            </span>
+                          ))}
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {mode === 'class' && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {gradeClasses.map(ck => {
           const teach = teachableOf(ck)
           const locks = lockOf(ck)
@@ -729,7 +849,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             </div>
           )
         })}
-      </div>
+      </div>}
 
       {/* 調整紀錄 */}
       {adjustments.length > 0 && (
