@@ -3038,26 +3038,33 @@ export class EngineRun {
 
   /** 還原歷來最佳解並產出結果（教室分配、罰分明細、未排原因）。 */
   finalize(): EngineResult {
-    const st = new State(this.input)
-    this.bestPos.forEach((p, id) => st.place(st.lessonById.get(id)!, p))
+    return buildResult(this.input, this.bestPos, { iterations: this.iterations, elapsedMs: this.elapsed, notes: this.notes })
+  }
+}
+
+/** 由落點表組出 EngineResult（教室分配、未排原因、罰分明細）。EngineRun.finalize 與收尾榨乾都用這個。 */
+function buildResult(input: EngineInput, posMap: Map<string, Placement>, meta: { iterations: number; elapsedMs: number; notes: string[] }): EngineResult {
+  {
+    const st = new State(input)
+    posMap.forEach((p, id) => { const l = st.lessonById.get(id); if (l) st.place(l, p) })
     const { total, soft, penalties, uncovered } = scoreState(st)
 
     const placed: PlacedResult[] = []
     const unplaced: UnplacedResult[] = []
     // 教室分配（與 scoreState 同邏輯：管理教師優先）
-    const roomOf = assignRooms(this.input, st)
+    const roomOf = assignRooms(input, st)
     const sorted: { l: EngineLesson; p: Placement }[] = []
     st.pos.forEach((p, id) => sorted.push({ l: st.lessonById.get(id)!, p }))
     sorted.sort((a, b) => a.l.id < b.l.id ? -1 : 1)
     for (const { l, p } of sorted) {
       placed.push({ ...l, day: p.day, period: p.period, roomId: roomOf.get(l.id) ?? null })
     }
-    for (const l of this.input.lessons) {
+    for (const l of input.lessons) {
       if (st.pos.has(l.id)) continue
       unplaced.push({ lesson: l, reason: unplacedReason(st, l) })
     }
     // 沒有科任可配的需求：不是排不進，是根本沒人上——一樣列為未排，不假報 0
-    for (const u of this.input.unassigned ?? []) {
+    for (const u of input.unassigned ?? []) {
       unplaced.push({
         lesson: { id: `unassigned|${u.classKey}|${u.subject}`, classKey: u.classKey, grade: u.grade, classLabel: u.classLabel, subject: u.subject,
           teacherId: '', teacherName: '（未指派科任）', size: 1, parity: 'weekly' },
@@ -3069,10 +3076,61 @@ export class EngineRun {
       placed, unplaced,
       penalties: penalties.filter(p => p.key !== 'unplaced'),   // 未排另有清單，不重複列
       totalPenalty: total, softPenalty: soft,
-      uncoveredMustFill: uncovered, iterations: this.iterations, elapsedMs: this.elapsed,
-      notes: this.notes.length ? [...this.notes] : undefined,
+      uncoveredMustFill: uncovered, iterations: meta.iterations, elapsedMs: meta.elapsedMs,
+      notes: meta.notes.length ? [...meta.notes] : undefined,
     }
   }
+}
+
+/** 收尾榨乾：引擎跑完後，用調課查詢器的鄰域（直接搬／兩角，最後幾輪含三角）一輪輪掃全校、只套「真的變好」的，
+ *  直到掃不到為止。引擎的局部搜尋沒把這些鄰域搜乾（實測可再降 15～20%）。硬規則全部照 State.canPlace，不會弄掉課。
+ *  分段 await 讓 Worker 能回報進度／接受停止。 */
+export async function polishResult(
+  input: EngineInput, result: EngineResult,
+  opts: { onProgress?: (p: { round: number; withThree: boolean; done: number; total: number; applied: number; soft0: number; soft: number }) => void; shouldStop?: () => boolean; maxMs?: number; maxThreeRounds?: number } = {},
+): Promise<EngineResult> {
+  if (!result.placed.length) return result
+  const t0 = Date.now()
+  const maxMs = opts.maxMs ?? 240_000
+  const f = new SwapFinder(input, result.placed, {})
+  const soft0 = f.soft
+  let round = 0, applied = 0, threeRounds = 0
+  let withThree = false
+  for (;;) {
+    if (opts.shouldStop?.() || Date.now() - t0 > maxMs) break
+    round++
+    const ids = f.snapshot().map(p => p.id)
+    const found = new Map<string, SwapOption>()
+    let lastYield = Date.now()
+    for (let i = 0; i < ids.length; i++) {
+      const q = f.query(ids[i], { maxThree: withThree ? 120 : 0, timeMs: withThree ? 250 : 80 })
+      for (const o of q.options) {
+        if (o.softDelta >= 0) continue
+        const key = o.moves.map(m => `${m.id}@${m.day}-${m.period}`).sort().join('|')
+        const prev = found.get(key)
+        if (!prev || o.moves.length < prev.moves.length) found.set(key, o)
+      }
+      if (Date.now() - lastYield > 100) {
+        opts.onProgress?.({ round, withThree, done: i + 1, total: ids.length, applied, soft0, soft: f.soft })
+        await new Promise(r => setTimeout(r, 0))
+        lastYield = Date.now()
+        if (opts.shouldStop?.() || Date.now() - t0 > maxMs) break
+      }
+    }
+    const list = Array.from(found.values()).sort((a, b) => a.softDelta - b.softDelta || a.moves.length - b.moves.length)
+    let n = 0
+    for (const o of list) { const r = f.applyIfBetter(o.moves); if (r.applied) n++ }
+    applied += n
+    opts.onProgress?.({ round, withThree, done: ids.length, total: ids.length, applied, soft0, soft: f.soft })
+    if (!withThree) { if (!list.length || !n) withThree = true }
+    else { threeRounds++; if (!list.length || !n || threeRounds >= (opts.maxThreeRounds ?? 4)) break }
+  }
+  if (!applied) return result
+  const pos = new Map<string, Placement>()
+  for (const p of f.snapshot()) pos.set(p.id, { day: p.day, period: p.period })
+  const notes = [...(result.notes ?? []), `收尾榨乾：${round} 輪套用 ${applied} 筆更好的調法，罰分 ${Math.round(soft0)} → ${Math.round(f.soft)}`]
+  const out = buildResult(input, pos, { iterations: result.iterations, elapsedMs: result.elapsedMs + (Date.now() - t0), notes })
+  return out
 }
 
 export interface RunOptions { timeMs: number; onProgress?: (p: RunProgress) => void }
@@ -3105,7 +3163,7 @@ export class SwapFinder {
   private input: EngineInput
   private lessons: EngineLesson[]
   private byId: Map<string, EngineLesson>
-  private baseSoft: number
+  private baseSoft: number   // 以 total（軟分＋必須級）量：必排未覆蓋／上空上空／導師連四等「必須級」是計分項不是 canPlace，用 soft 會把它們調壞還以為變好
 
   /** @param hrCells classKey → slot → 導師已填科目（這些格科任課不得放入）
    *  @param lockTargets true＝導師填課開放中：科任課只能跟科任課互換，不可搬進空格／導師格（避免撞到導師剛填的） */
@@ -3127,7 +3185,7 @@ export class SwapFinder {
     // 依原位落下（不驗證：既有課表就是事實；之後每一步查詢才用 canPlace）
     for (const p of placed) { const l = this.byId.get(p.id); if (l) this.st.place(l, { day: p.day, period: p.period }) }
     this.syncRooms(placed)
-    this.baseSoft = scoreState(this.st).soft
+    this.baseSoft = scoreState(this.st).total
   }
   /** 教室以畫面上（reassignRooms）的為準：State.place 自己挑的教室是路徑相依的，不同步的話「原地不動」也會算出分數差。 */
   private syncRooms(placed: PlacedResult[]) {
@@ -3188,8 +3246,8 @@ export class SwapFinder {
     const why: Record<string, string> = {}
     const name = (x: EngineLesson) => `${x.classLabel} ${x.subject}（${x.teacherName}）`
     const slotZhLocal = (p: Placement, x: EngineLesson = l) => `週${DAY_ZH[p.day]}第${p.period}節${x.size === 2 ? '–' + (p.period + 1) : ''}`
-    const base0 = scoreState(this.st).soft   // 每次查詢重新量基準（查詢中途的教室挪動會讓快取的 baseSoft 漂）
-    const delta = () => Math.round(scoreState(this.st).soft - base0)
+    const base0 = scoreState(this.st).total   // 每次查詢重新量基準（查詢中途的教室挪動會讓快取的 baseSoft 漂）
+    const delta = () => Math.round(scoreState(this.st).total - base0)
     const sameLesson = (a: EngineLesson, b: EngineLesson) => a.classKey === b.classKey && a.subject === b.subject && a.teacherId === b.teacherId && a.size === b.size && a.parity === b.parity && (a.coTeacherId ?? '') === (b.coTeacherId ?? '')
     const grid = this.input.classSlots[l.classKey] ?? []
     const candidates = Array.from(new Set(grid.map(s => { const { day, period } = parseSlotKey(s); return `${day}-${period}` })))
@@ -3321,7 +3379,7 @@ export class SwapFinder {
     const ok = solve([l], depth)
     let out: SwapOption | null = null
     if (ok) {
-      const softDelta = Math.round(scoreState(this.st).soft - this.baseSoft)
+      const softDelta = Math.round(scoreState(this.st).total - this.baseSoft)
       out = { lessonId: l.id, kind: 'chain', moves: [...moves], softDelta, desc: moves.map(mv => { const x = this.byId.get(mv.id)!; return `${x.classLabel} ${x.subject}（${x.teacherName}）→ 週${DAY_ZH[mv.day]}第${mv.period}節` }).join('；'), targetSlot: `${moves[0].day}-${moves[0].period}`, partnerIds: moves.slice(1).map(m => m.id) }
     }
     // 還原：所有動過的課回原位
@@ -3340,7 +3398,7 @@ export class SwapFinder {
     this.st.remove(l)
     const reason = this.explain(l, p)
     let softDelta = 0
-    if (!reason) { this.st.place(l, p); softDelta = Math.round(scoreState(this.st).soft - this.baseSoft); this.st.remove(l) }
+    if (!reason) { this.st.place(l, p); softDelta = Math.round(scoreState(this.st).total - this.baseSoft); this.st.remove(l) }
     this.st.place(l, from)
     this.input.classMustLeave[l.classKey] = arr
     return { reason, softDelta }
@@ -3362,7 +3420,7 @@ export class SwapFinder {
     // 教室用畫面同一套 reassignRooms 重配並同步回 State，回傳的就是最終版
     const out = reassignRooms(this.snapshot(), this.input.rooms, this.input.weights)
     this.syncRooms(out)
-    this.baseSoft = scoreState(this.st).soft
+    this.baseSoft = scoreState(this.st).total
     return { ok: true, placed: out }
   }
 

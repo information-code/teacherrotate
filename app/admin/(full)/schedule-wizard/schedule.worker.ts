@@ -5,7 +5,7 @@
 //     探測排得完 → 是權重把搜尋牽住了：比對哪些規則在探測解裡多了違反 → 建議降低那些權重；
 //     探測也排不完 → 非權重問題（硬限制／配課結構），列未排原因。
 // 全程可中途停止並採用目前最佳解。
-import { EngineRun, type EngineInput, type EngineResult } from '../../../../lib/schedule-engine'
+import { EngineRun, polishResult, type EngineInput, type EngineResult } from '../../../../lib/schedule-engine'
 
 const CHUNK_MS = 300
 const SEEDS = [42, 7, 17, 63, 3]
@@ -150,6 +150,17 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
     }
   }
 
+  // ── 收尾榨乾：用調課鄰域（直接搬／兩角／三角）一輪輪掃到沒有更好的為止（使用者中途停止則跳過） ──
+  if (isPerfect(best) && !stopRequested) {
+    const t0 = Date.now()
+    best = await polishResult(input, best, {
+      shouldStop: () => stopRequested,
+      onProgress: pg => self.postMessage({
+        type: 'progress', label: `收尾榨乾 第 ${pg.round} 輪${pg.withThree ? '（含三角）' : ''}・已套用 ${pg.applied} 筆`,
+        iter: 0, best: pg.soft, softBest: pg.soft, elapsed: Date.now() - t0, placed: pg.done, unplaced: 0, sinceImproveMs: 0,
+      }),
+    })
+  }
   if (isPerfect(best) || stopRequested) {
     self.postMessage({ type: 'done', result: best, stopped: stopRequested, failed: !isPerfect(best), hints: [], probePerfect: null, meta: { seed: bestSeed } })
     return
