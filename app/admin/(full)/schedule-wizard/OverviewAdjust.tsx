@@ -181,6 +181,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   }, [swapQ, showWorse])
 
   const [hoverOpt, setHoverOpt] = useState<SwapOption | null>(null)
+  const [detailOpt, setDetailOpt] = useState<SwapOption | null>(null)   // 點了「ⓘ」釘住看拆解（滑過會跳，改點擊）
   const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
   const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
   // 必須級規則（必排未覆蓋、上空上空、導師連四…）在引擎裡是 1e6 級計分：變化量破十萬就是在修／破必須級，不是軟分
@@ -447,7 +448,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     const sl = lessonById.get(opt.lessonId) ?? (sel?.type === 'lesson' ? lessonById.get(sel.id) : null)
     const head = sl ? `${sl.classLabel}：` : ''
     applyAdjust(r.placed, hr, `${head}${KIND_ZH[opt.kind]}｜${opt.desc}｜${deltaZh(opt.softDelta)}`, [])
-    setHoverOpt(null); setChain(null)
+    setHoverOpt(null); setChain(null); setDetailOpt(null)
   }
   function runFindChain() {
     if (!finder || sel?.type !== 'lesson') return
@@ -656,11 +657,16 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
           </span>
-          {sel && hoverOpt && (
-            <span className="basis-full text-zinc-600">
-              滑過：<b className={hoverOpt.softDelta < 0 ? 'text-emerald-700' : hoverOpt.softDelta > 0 ? 'text-red-600' : 'text-zinc-700'}>{KIND_ZH[hoverOpt.kind]} {hoverOpt.softDelta === 0 ? '罰分不變' : deltaBadge(hoverOpt.softDelta)}</b>
-              {bdZh(hoverOpt) && <> ＝ {bdZh(hoverOpt)}</>}
-              {hoverOpt.kind !== 'move' && <span className="text-zinc-400">　{hoverOpt.desc}</span>}
+          {sel && detailOpt && (
+            <span className="basis-full text-zinc-600 flex items-start gap-2">
+              <span>
+                <b className={detailOpt.softDelta < 0 ? 'text-emerald-700' : detailOpt.softDelta > 0 ? 'text-red-600' : 'text-zinc-700'}>{KIND_ZH[detailOpt.kind]} {detailOpt.softDelta === 0 ? '罰分不變' : deltaBadge(detailOpt.softDelta)}</b>
+                {(detailOpt.breakdown ?? []).length > 0
+                  ? <> ＝ {(detailOpt.breakdown ?? []).filter(b => Math.abs(b.delta) < MUST).map(b => `${b.label} ${b.delta > 0 ? '+' : ''}${b.delta}`).join('・')}</>
+                  : <span className="text-zinc-400">（各規則分數互相抵銷或皆無變化）</span>}
+                {detailOpt.kind !== 'move' && <span className="text-zinc-400">　{detailOpt.desc}</span>}
+              </span>
+              <button onClick={() => setDetailOpt(null)} className="text-zinc-400 hover:text-zinc-600 ml-auto shrink-0">✕</button>
             </span>
           )}
           {selLesson?.size === 2 && selLesson.parity === 'weekly' && (
@@ -705,6 +711,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                   className={`flex items-center gap-2 rounded-sm border px-1.5 py-1 ${o.softDelta < 0 ? 'border-emerald-400 bg-emerald-50' : o.softDelta > 0 ? 'border-red-200 bg-red-50/40' : 'border-zinc-200 bg-white'}`}>
                   <span className={`shrink-0 px-1 rounded-sm text-white ${o.kind === 'move' ? 'bg-emerald-500' : o.kind === 'swap2' ? 'bg-sky-500' : 'bg-amber-500'}`}>{KIND_ZH[o.kind]}</span>
                   <span className={`shrink-0 font-mono ${o.softDelta < 0 ? 'text-emerald-700 font-semibold' : o.softDelta > 0 ? 'text-red-600' : 'text-zinc-400'}`}>{o.softDelta === 0 ? '0' : deltaBadge(o.softDelta)}</span>
+                  <button onClick={() => setDetailOpt(o)} title="看是哪條規則變的" className="shrink-0 text-zinc-400 hover:text-zinc-700">ⓘ</button>
                   <span className="text-zinc-600 truncate" title={o.desc}>{o.desc}</span>
                   <button onClick={() => applyOption(o)} className="btn btn-secondary text-xs py-0 ml-auto shrink-0">套用</button>
                 </li>
@@ -765,7 +772,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                       <td key={d} className="p-0.5">
                         <button onClick={onClick} title={title} {...hoverProps}
                           className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
-                          {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)}</span>}
+                          {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                           {ls.length === 0 && off && <span className="text-[8px]">—</span>}
                           {ls.slice(0, 2).map(x => (
                             <span key={x.id} className="truncate w-full">
@@ -856,7 +863,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             <td key={d} className="p-0.5">
                               <button onClick={() => clickCell(ck, k)} title={title} {...hoverProps}
                                 className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                                {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)}</span>}
+                                {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                                 <span className="truncate w-full font-medium">{occ.subject}{occ.coTeacherId && <span className="text-rose-700">★</span>}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}{occ.coTeacherId && `＋${occ.coTeacherName ?? '外師'}`}</span>
                                 {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週' : '雙週'}</span>}
@@ -879,7 +886,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                           <td key={d} className="p-0.5">
                             <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
                               className={`relative w-full h-9 rounded-sm border border-dashed ${must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                              {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)}</span>}
+                              {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                               {must ? '需科任' : ''}
                             </button>
                           </td>
