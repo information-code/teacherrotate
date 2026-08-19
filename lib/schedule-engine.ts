@@ -1870,8 +1870,19 @@ export class EngineRun {
         const totalNeed = Array.from(need.values()).reduce((a, b) => a + b, 0)
         const totalCap = roomCap.reduce((a, b) => a + b, 0)
         // 依序認領：從週一開始吃，吃到夠為止；邊界日剩下的容量留給下一位。老師順序吃種子（不同種子試不同先後）。
-        const order = Array.from(m.keys()).sort(() => this.rnd() - 0.5)
+        // 老師順序不再隨機：誰「週末（四、五）的位子少」誰先從週一開始認領，週末位子多的墊後——
+        // 四年級週五沒下午 → 許老師先（一二三）、五年級可用週五下午 → 陳老師後（三四五）；三年級同理先、六年級後。
+        // 這是人排的邏輯：把只能用早段的人放早段，能用晚段的人放晚段。平手才隨機
+        const lateMinusEarly = (tid: string) => {
+          const u = teacherSlots.get(tid)!
+          return (pairsOn(u, 4) + pairsOn(u, 5)) - (pairsOn(u, 1) + pairsOn(u, 2))
+        }
+        // 平手（早晚段位子一樣多）→ 班級彈性小的老師先（四年級種子班只能用 1-2／下午的許老師，排在五年級班都很寬的陳老師前面）
+        const flexibility = (tid: string) => (m.get(tid) ?? []).reduce((acc, x) => { const u = new Set(this.input.classSlots[x.classKey] ?? []); return acc + SCHEDULE_DAYS.reduce((a2, d) => a2 + pairsOn(u, d), 0) }, 0)
+        const order = Array.from(m.keys()).sort((a, b) => (lateMinusEarly(a) - lateMinusEarly(b)) || (flexibility(a) - flexibility(b)) || (this.rnd() - 0.5))
+        order.forEach((tid, i) => this.roomTeacherRank.set(`${rid}|${tid}`, i))
         const used = [0, 0, 0, 0, 0, 0]   // 教室每天已被前面的老師吃掉幾組
+        const quota = new Map<string, number>()   // `${tid}|${d}` → 這位老師這天分到幾組
         let cursor = 1
         let feasible = totalNeed <= totalCap + 1e-9
         const assign = new Map<string, Set<number>>()
@@ -1885,6 +1896,7 @@ export class EngineRun {
             if (capHere <= 1e-9) { cursor++; continue }            // 這天她放不了（教室滿／她的班沒格）→ 跳過
             const take = Math.min(capHere, left)
             days.add(d); used[d] += take; left -= take
+            quota.set(`${tid}|${d}`, take)   // 她這天最多放幾組（邊界日只分到一部分，多放就會把下一位擠出去）
             if (used[d] >= roomCap[d - 1] - 1e-9) cursor++          // 這天教室吃滿 → 下一位從下一天起
             else if (left <= 1e-9) break                            // 她夠了、這天還有剩 → 下一位從同一天接（邊界日共用）
             else cursor++                                           // 她這天能放的都放了還不夠 → 下一天（剩的容量放棄，避免別人插進她的區塊）
@@ -1896,7 +1908,7 @@ export class EngineRun {
         // 只當建構偏好、不當硬限制：教室常常 100% 滿載（14 組連堂／14 個位子），認領日子當硬限制會讓一半種子排不完
         // （實測未排 2～7），而保底一鬆綁結構就全沒了；偏好＋交接計分＋定向修補是目前可行性與集中度的平衡點
         const hardRoom = false && feasible && input.weights.hardParams.noReturnSubjects.includes(room?.subject ?? '')
-        m.forEach((ls, tid) => { const days = assign.get(tid)!; for (const x of ls) { this.st.roomDayPref.set(x.id, days); if (hardRoom) this.st.roomDayHard.add(x.id) } })
+        m.forEach((ls, tid) => { const days = assign.get(tid)!; for (const x of ls) { this.st.roomDayPref.set(x.id, days); if (hardRoom) this.st.roomDayHard.add(x.id); for (const d of days) this.roomDayQuota.set(`${x.id}|${d}`, quota.get(`${tid}|${d}`) ?? 0) } })
       })
     }
     const teacherSidePenalty = (l: EngineLesson, p: Placement): number => {
@@ -1936,7 +1948,16 @@ export class EngineRun {
           else if (sameDay) pen -= roomHalfPen
           else pen += adjDay ? 0 : roomHalfPen * 0.5
           const pref = this.roomDayPref.get(l.id)
-          if (pref) pen += pref.has(p.day) ? -roomHalfPen * 0.5 : roomHalfPen   // 先分好的日子：在自己的區塊裡加分、跑到別人的區塊扣分
+          if (pref) {
+            pen += pref.has(p.day) ? -roomHalfPen * 0.5 : roomHalfPen * 2   // 先分好的日子：在自己的區塊裡加分、跑到別人的區塊扣分（×2：一組跑出區塊＝多一次交接）
+            // 邊界日配額：她這天只分到 1 組（週三上午一組留給下一位），已經放了就別再放——否則把下一位擠出她的區塊
+            const q = this.roomDayQuota.get(`${l.id}|${p.day}`)
+            if (q !== undefined) {
+              let mineToday = 0
+              for (let qq = 1; qq <= 7; qq++) if (teacherAt(p.day, qq) === l.teacherId) mineToday += 0.5
+              if (mineToday + l.size / 2 > q + 1e-9) pen += roomHalfPen * 2
+            }
+          }
           const delta = this.st.roomTransitions(rid, l, p) - this.st.roomTransitions(rid)
           if (delta > 0) pen += roomHalfPen * delta
         }
@@ -1967,7 +1988,11 @@ export class EngineRun {
       const fillBatch = (todo0: EngineLesson[], ok: (l: EngineLesson) => boolean) => {
         // 同一位老師的課排在一起（老師順序隨種子）：她先把自己教室的整個半天占滿，下一位再接——同教室同半天才會是同一位老師
         const tOrder = new Map<string, number>()
-        for (const l of todo0) if (!tOrder.has(l.teacherId)) tOrder.set(l.teacherId, this.rnd())
+        for (const l of todo0) if (!tOrder.has(l.teacherId)) {
+          const rid = (this.st.mgrRooms.get(l.id) ?? [])[0]?.id
+          const rank = rid !== undefined ? this.roomTeacherRank.get(`${rid}|${l.teacherId}`) : undefined
+          tOrder.set(l.teacherId, rank !== undefined ? rank : 10 + this.rnd())   // 有認領日子的依認領順序（週一那位先填），其餘隨機
+        }
         const todo = todo0.filter(l => !this.st.pos.has(l.id))
           .sort((x, y) => (tOrder.get(x.teacherId)! - tOrder.get(y.teacherId)!) || (y.size - x.size) || (classSlack(x.classKey) - classSlack(y.classKey)) || (this.rnd() - 0.5))
         let nodes = 0
@@ -1995,16 +2020,20 @@ export class EngineRun {
       // 第零輪：連堂配對容量緊（比 ≥0.85）且不進專科教室的老師 → 整批先落位。她們的「相鄰兩格」跟教室一樣是稀缺資源，
       // 排在教室之後就會被別科的單節卡在中間，最後一組永遠湊不成對（三年級視藝就是這樣）。
       // 整批＝她所有的連堂（進不進教室都算，canPlace 本來就要求要進教室的課有教室），最緊的老師先
-      const tightTeachers = Array.from(pairTight).sort((x, y) => (pairRatio.get(y)! - pairRatio.get(x)!) || (this.rnd() - 0.5))
-      for (const tid of tightTeachers) fillBatch(input.lessons.filter(l => l.teacherId === tid && l.size === 2), () => true)
-      // 第一輪：管理教師 → 自己的教室（管理者裡有連堂緊的老師的教室先）
       const roomsByTight = [...input.rooms].map(r => {
         const ls = input.lessons.filter(l => l.subject === r.subject && r.managerIds.includes(l.teacherId)
           && shouldUseRoom(input.weights, l.subject, l.grade, l.size))
         return { r, ls, tight: Math.max(0, ...r.managerIds.map(id => pairRatio.get(id) ?? 0)) }
       }).filter(x => x.ls.length > 0)
         .sort((x, y) => (Number(y.tight >= 0.85) - Number(x.tight >= 0.85)) || (y.ls.length - x.ls.length) || (this.rnd() - 0.5))   // 需求最滿的教室先；同樣滿的隨機
-      for (const { r, ls } of roomsByTight) fillBatch(ls, l => this.st.roomOf.get(l.id) === r.id)
+      // 第零輪（甲）：不回頭科目（自然）的教室最先——實驗器材的緣故自然優先；趁課表全空時照「先分天」的區塊填，
+      // 否則別科的緊老師（資訊教室）先把五年級上午格吃掉，許老師週二就少一格、第 7 組被擠到週四
+      const priority = new Set(input.weights.hardParams.noReturnSubjects)
+      for (const { r, ls } of roomsByTight.filter(x => priority.has(x.r.subject))) fillBatch(ls, l => this.st.roomOf.get(l.id) === r.id)
+      const tightTeachers = Array.from(pairTight).sort((x, y) => (pairRatio.get(y)! - pairRatio.get(x)!) || (this.rnd() - 0.5))
+      for (const tid of tightTeachers) fillBatch(input.lessons.filter(l => l.teacherId === tid && l.size === 2), () => true)
+      // 第一輪：管理教師 → 自己的教室（管理者裡有連堂緊的老師的教室先）
+      for (const { r, ls } of roomsByTight.filter(x => !priority.has(x.r.subject))) fillBatch(ls, l => this.st.roomOf.get(l.id) === r.id)
       // 第二輪：沒有管理教室但要進專科教室的老師 → 整科剩下的格子
       const subjects = Array.from(new Set(input.rooms.map(r => r.subject)))
       for (const subj of subjects.sort(() => this.rnd() - 0.5)) {
@@ -2446,6 +2475,8 @@ export class EngineRun {
     }
     this.curGroups = null
   }
+  private roomTeacherRank = new Map<string, number>()   // `${rid}|${tid}` → 先分天的老師順序（0＝從週一開始認領）
+  private roomDayQuota = new Map<string, number>()      // `${lessonId}|${day}` → 這位老師在這間教室這天分到幾組（連堂＝1、單節＝0.5）
   private curGroups: EngineLesson[][] | null = null
   private pairTight = new Set<string>()   // 連堂配對容量緊的老師（見建構子）：不能把難排的班再丟給她
   /** 可與 l 對調的課：同科同年級同型態、也是自動配班、屬於別位老師、兩班這科的課都還沒排也沒凍結、兩班課的形狀相同 */

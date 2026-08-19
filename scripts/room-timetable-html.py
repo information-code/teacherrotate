@@ -19,7 +19,7 @@ order = {'自然': 0, '智慧探究家：科技創新任務': 1, '視覺藝術':
 rooms.sort(key=lambda x: (order.get(x['subject'], 9), x['name'], x['no']))
 def cell(rid, d, q):
     p = byRoom[rid].get((d, q))
-    if p: return f'<td class="c" style="--t:{color[p["teacherName"]]}"><b>{html.escape(p["teacherName"])}</b><span>{html.escape(p["classLabel"])}{"（單）" if p["size"] == 1 else ""}</span></td>'
+    if p: return f'<td class="c{" auto" if p.get("autoAssigned") else " fixed"}" style="--t:{color[p["teacherName"]]}" title="{"自動配班：可與同科同年級另一位老師的自動配班對調" if p.get("autoAssigned") else "手動指定配班：不可對調"}"><b>{html.escape(p["teacherName"])}</b><span>{html.escape(p["classLabel"])}{"（單）" if p["size"] == 1 else ""}</span>{"" if p.get("autoAssigned") else "<i>固定</i>"}</td>'
     return '<td></td>'
 def stats(rid):
     ret = half = mixed = 0; days = defaultdict(set)
@@ -44,9 +44,16 @@ for rm in rooms:
         rows += f'<tr class="{"lunch" if q == 5 else ""}"><th>{q}</th>{tds}</tr>'
     used = len(byRoom[rm['id']]); ret, half, mixed, days = stats(rm['id'])
     who = '、'.join(f'{html.escape(t)}＝週{"".join(DAY[d-1] for d in sorted(ds))}' for t, ds in days.items())
+    # 每位老師在這間教室：哪些班是自動配班（可調）、哪些是手動指定（固定）
+    byT = {}
+    for pp in byRoom[rm['id']].values():
+        e = byT.setdefault(pp['teacherName'], {'auto': set(), 'fixed': set()})
+        e['auto' if pp.get('autoAssigned') else 'fixed'].add((pp['grade'], pp['classLabel']))
+    swapinfo = '；'.join(f'{html.escape(t)}：可調 ' + ('、'.join(c for g, c in sorted(e['auto'])) or '—') + (('｜固定 ' + '、'.join(c for g, c in sorted(e['fixed']))) if e['fixed'] else '') for t, e in byT.items())
     sections.append(f'''<section class="room"><header><h3>{html.escape(rm["name"])}{(" " + html.escape(rm["no"])) if rm["no"] else ""}</h3>
 <p class="meta">{html.escape(rm["floor"])}・{html.escape(rm["area"])}｜管理教師：{html.escape("、".join(rm["managers"]) or "—")}｜使用 {used} 節｜兩位以上老師的日子 <b class="{"warn" if mixed else ""}">{mixed}</b>｜半天兩位 {half}｜走了又回來 <b class="{"warn" if ret else ""}">{ret}</b></p>
-<p class="meta">{who}</p></header>
+<p class="meta">{who}</p>
+<p class="meta swap">{swapinfo}</p></header>
 <div class="wrap"><table><thead><tr><th></th>{"".join(f"<th>週{DAY[d-1]}</th>" for d in range(1, 6))}</tr></thead><tbody>{rows}</tbody></table></div></section>''')
 legend = ''.join(f'<span class="lg" style="--t:{c}">{html.escape(t)}</span>' for t, c in color.items())
 page = f'''<title>沙盒專科教室課表</title>
@@ -65,9 +72,13 @@ th,td{{border:1px solid var(--line);padding:3px 4px;text-align:center;height:34p
 tr.lunch td,tr.lunch th{{border-top:3px double var(--line)}}
 td.c{{background:color-mix(in srgb,var(--t) 16%,var(--paper));border-left:4px solid var(--t)}} td.c b{{display:block;font-weight:600}} td.c span{{display:block;color:var(--mute);font-size:.75rem}}
 td.off{{background:repeating-linear-gradient(45deg,transparent 0 6px,var(--line) 6px 7px);color:var(--mute);font-size:.72rem}}
+td.c.fixed{{outline:2px solid var(--warn);outline-offset:-3px}} td.c.fixed i{{display:block;font-style:normal;font-size:.68rem;color:var(--warn)}}
+td.c.auto{{border-right:2px dashed color-mix(in srgb,var(--t) 60%,transparent)}}
+.meta.swap{{font-size:.8rem;line-height:1.5}} .note{{font-size:.82rem;color:var(--mute);margin:0 0 10px}}
 .legend{{display:flex;flex-wrap:wrap;gap:6px 12px;margin:0 0 6px;font-size:.8rem}} .lg::before{{content:"";display:inline-block;width:10px;height:10px;background:var(--t);margin-right:4px;border-radius:2px}}
 </style>
 <main><h1>沙盒專科教室課表</h1><p class="sub">115 學年・引擎種子 {seed}・未排 {len(r["unplaced"])}・軟分 {round(r["softPenalty"])}｜規則：每位老師集中在少數幾天（一天一位老師）→ 排不滿時上午一位下午一位 → 走了不回頭（自然＝硬限制）</p>
-<div class="legend">{legend}</div>{"".join(sections)}</main>'''
+<div class="legend">{legend}</div>
+<p class="note">標記：格子右邊虛線＝<b>自動配班，可對調</b>（同科同年級、兩位老師的自動配班整班互換，班級時段不動、只換老師，兩邊節數不變）；紅框「固定」＝手動指定配班，不可對調。每間教室標題下列出各老師可調的班。</p>{"".join(sections)}</main>'''
 open(out, 'w', encoding='utf-8').write(page)
 print('ok', out)
