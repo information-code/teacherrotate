@@ -773,6 +773,8 @@ class State {
   apartHard: Map<string, Map<number, Set<string>>> = new Map()  // subject → grade → Set<other subjects>
   mgrRooms: Map<string, RoomInfo[]> = new Map()                // lessonId → 有管理教室者的自管教室（供排序與計分辨識）
   roomOf: Map<string, string> = new Map()                      // lessonId → 已占用的 roomId
+  roomDayPref = new Map<string, Set<number>>()                 // lessonId → 管理者認領的日子（先分天再填；不回頭科目的教室＝硬限制，其他＝建構偏好）
+  roomDayHard = new Set<string>()                              // 認領日子當硬限制的 lessonId（教室科目列在 hardParams.noReturnSubjects）
 
   constructor(input: EngineInput) {
     this.input = input
@@ -942,7 +944,28 @@ class State {
     // 沒教室不是回原班，是換時段；整週都塞不進才會成為未排（明著卡住，不悄悄降級）。
     const pool = this.roomPool.get(l.id)
     if (pool && !pool.some(r => this.planRoom(r.id, l, p) !== null && !this.roomReturnAfter(r.id, l, p))) return false
+    // 硬限制（不回頭科目的教室）：管理者只在自己認領的日子用教室——先分天再填（甲＝一二三、乙＝三四五），器材不用收
+    if (this.roomDayHard.has(l.id) && !this.roomDayPref.get(l.id)!.has(p.day)) return false
     return true
+  }
+
+  /** 這間教室一週時間軸上的老師交接次數（週一第 1 節 → 週五第 7 節，跳過空格）；可模擬把 l 放在 p（同週型才算）。 */
+  roomTransitions(roomId: string, l?: EngineLesson, p?: Placement): number {
+    const occ = this.roomOcc.get(roomId)
+    const mine = new Set(l && p ? this.slotsOf(l, p) : [])
+    let last: string | undefined; let n = 0
+    for (const d of SCHEDULE_DAYS) for (let q = 1; q <= 7; q++) {
+      const s = `${d}-${q}`
+      let tid: string | undefined
+      if (mine.has(s)) tid = l!.teacherId
+      else {
+        const cell = occ?.get(s)
+        const id = cell?.w ?? (l?.parity !== 'even' ? cell?.o : undefined) ?? (l?.parity !== 'odd' ? cell?.e : undefined)
+        if (id && id !== ROOM_OFF && id !== l?.id) tid = this.lessonById.get(id)?.teacherId
+      }
+      if (tid && tid !== last) { if (last) n++; last = tid }
+    }
+    return n
   }
 
   /** 硬限制（hardParams.noReturnSubjects 列的科目，預設自然）：同一間專科教室同一天，老師走了不能再回來——
@@ -1242,39 +1265,47 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 專科教室老師集中（權重）：每位老師在同一間專科教室的課盡量集中在少數幾天——一天一位老師，不用每天收實驗器材；
-  // 老師課數排不滿一天時，剩下的那天按上午／下午切（翁1-4／陳5-6 ✓）；走了不要再回來（翁1-2／陳3-4／翁5-6 ✗，自然＝硬限制）。
-  // 計分：同一天每多一位老師扣 1；回頭一次扣 1（自然為 MUST）；同一個半天被兩位老師分掉但沒回頭扣 ½。
-  // 114-1 人工課表：自然教室 27 個教室日 0 次回頭、1 個半天分掉；科技／音樂／律動教室共 4 次回頭 → 高權重、非硬
+  // 專科教室老師集中（權重）：一間教室一週依時間軸（週一第 1 節 → 週五第 7 節）看老師序列，「交接」越少越好——
+  // 一位老師連續幾天用完再換下一位（賴＝一二、翁＝三四五），器材不用收；同一天多位老師、隔天又換回來、走了又回來，都是多餘的交接。
+  // 計分：交接次數 −（老師數 − 1）＝多餘交接，每次扣 1；回頭（同一天走了又回來）另計，自然為 MUST；
+  //   同一個半天被兩位老師分掉扣 ½（真的得交接時，寧可在上午／下午之間交接，不要在 2／3 節之間）。
   if (w.roomHalfDay !== 'off' || input.weights.hardParams.noReturnSubjects.length) {
-    const byRoomDay = new Map<string, Map<number, string>>()   // `${rid}|${d}` → period → tid
+    const byRoom = new Map<string, Map<string, string>>()   // rid → `${d}-${q}` → tid
     for (const { l, p } of placedLessons) {
       const rid = roomOf.get(l.id)
       if (!rid) continue
-      const k = `${rid}|${p.day}`
-      const m = byRoomDay.get(k) ?? byRoomDay.set(k, new Map()).get(k)!
-      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) m.set(q, l.teacherId)
+      const m = byRoom.get(rid) ?? byRoom.set(rid, new Map()).get(rid)!
+      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) m.set(`${p.day}-${q}`, l.teacherId)
     }
-    byRoomDay.forEach((m, k) => {
-      const [rid, d] = k.split('|')
-      const label = `${roomById.get(rid)?.label ?? rid} 週${DAY_ZH[Number(d)]}`
-      // 回頭：依節次走一遍，每位老師第二塊以後每塊扣 1
-      const blocks: string[] = []
-      for (let q = 1; q <= 7; q++) { const t = m.get(q); if (t && blocks[blocks.length - 1] !== t) blocks.push(t) }
-      const seenT = new Set<string>(); let returns = 0
-      for (const t of blocks) { if (seenT.has(t)) returns++; seenT.add(t) }
-      if (returns) {
-        const subj = roomById.get(rid)?.subject ?? ''
-        const hard = input.weights.hardParams.noReturnSubjects.includes(subj)
-        acc(map, hard ? 'roomNoReturn' : 'roomHalfDay', hard ? '專科教室老師不回頭（硬限制）' : '專科教室老師集中', (hard ? MUST : pen(w.roomHalfDay)) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+    byRoom.forEach((m, rid) => {
+      const room = roomById.get(rid)
+      const rlabel = room?.label ?? rid
+      // 週時間軸的交接
+      const runs: { tid: string; from: string }[] = []
+      for (const d of SCHEDULE_DAYS) for (let q = 1; q <= 7; q++) {
+        const t = m.get(`${d}-${q}`)
+        if (t && runs[runs.length - 1]?.tid !== t) runs.push({ tid: t, from: `週${DAY_ZH[d]}${q}` })
       }
-      if (w.roomHalfDay !== 'off') {
-        // 一天多位老師：每多一位扣 1（一天一位老師，不用每天收器材；老師課數排不滿一天時才會出現第二位）
-        const dayTs = new Set(Array.from(m.values()))
-        if (dayTs.size > 1) acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * (dayTs.size - 1), `${label} ${Array.from(dayTs).map(t => nameOf(t)).join('＋')}（同一天 ${dayTs.size} 位老師）`)
-        // 半天分掉（沒回頭）：上午／下午各看，出現兩位以上老師扣 ½——同一天真的得兩位時，寧可上午一位下午一位
-        for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
-          const ts = new Set(qs.map(q => m.get(q)).filter(Boolean) as string[])
+      const teachers = new Set(runs.map(r => r.tid))
+      const excess = Math.max(0, runs.length - teachers.size)
+      if (w.roomHalfDay !== 'off' && excess > 0) {
+        acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * excess,
+          `${rlabel} 一週交接 ${runs.length - 1} 次（${teachers.size} 位老師至少 ${teachers.size - 1} 次）：${runs.map(r => `${nameOf(r.tid)}@${r.from}`).join('→')}`)
+      }
+      // 每天：回頭（硬／權重另計）＋半天兩位（½）
+      for (const d of SCHEDULE_DAYS) {
+        const label = `${rlabel} 週${DAY_ZH[d]}`
+        const blocks: string[] = []
+        for (let q = 1; q <= 7; q++) { const t = m.get(`${d}-${q}`); if (t && blocks[blocks.length - 1] !== t) blocks.push(t) }
+        const seenT = new Set<string>(); let returns = 0
+        for (const t of blocks) { if (seenT.has(t)) returns++; seenT.add(t) }
+        if (returns) {
+          const hard = input.weights.hardParams.noReturnSubjects.includes(room?.subject ?? '')
+          if (hard) acc(map, 'roomNoReturn', '專科教室老師不回頭（硬限制）', MUST * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+          else if (w.roomHalfDay !== 'off') acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+        }
+        if (w.roomHalfDay !== 'off') for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
+          const ts = new Set(qs.map(q => m.get(`${d}-${q}`)).filter(Boolean) as string[])
           if (ts.size > 1) acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * 0.5, `${label}${half} ${Array.from(ts).map(t => nameOf(t)).join('＋')}（半天兩位老師）`)
         }
       }
@@ -1681,6 +1712,7 @@ export class EngineRun {
   private lessonsByClass = new Map<string, EngineLesson[]>()
   private rankOf = new Map<string, number>()   // 難排順位（0＝最難）：未排安插時優先處理最難的課，模擬人工「先排最難的」
   private singleOnlyTeachers = new Set<string>()   // 全單節老師（沒有任何連堂）：「相鄰同年級」只看這些人
+  private get roomDayPref() { return this.st.roomDayPref }   // lessonId → 這堂課（管理教室的課）認領的日子：同一間教室的管理者先把週一～五切成連續區塊各自認領（放在 State 上，canPlace 對自然教室當硬限制）
   private anchored = new Set<string>()          // 錨定課：時間極受限老師（不排課多／負載比高）的課，先排且不被別堂逐出——人工排課的「先把行政／輔導團的課釘住」
   private hrBands = new Set<ReturnType<typeof bandOf>>()   // 導師連上上限適用年段
   private hrRunN = 3                                       // 導師連上上限節數
@@ -1780,6 +1812,68 @@ export class EngineRun {
     const roomHalfPen = cpen(w.builtin.roomHalfDay)
     const hasDouble = new Set(input.lessons.filter(x => x.size === 2).map(x => x.teacherId))
     for (const x of input.lessons) if (!hasDouble.has(x.teacherId)) this.singleOnlyTeachers.add(x.teacherId)
+    // 專科教室「先分天再填」：多位管理者共用一間教室時，依各自在這間教室的節數比例，把週一～五切成連續區塊
+    // （甲＝一二三、乙＝三四五，邊界日共用）——人工排課就是先講好「你一三五、我二四」再填；邊排邊偏好只能得到局部最佳。
+    // 順序吃種子（不同種子試不同的先後），只是偏好不是硬性：她的班級可排格塞不進去時仍可外溢
+    if (roomHalfPen) {
+      const byRoomTeacher = new Map<string, Map<string, EngineLesson[]>>()
+      for (const x of input.lessons) {
+        const mine = this.st.mgrRooms.get(x.id)
+        if (!mine || mine.length !== 1) continue
+        const m = byRoomTeacher.get(mine[0].id) ?? byRoomTeacher.set(mine[0].id, new Map()).get(mine[0].id)!
+        ;(m.get(x.teacherId) ?? m.set(x.teacherId, []).get(x.teacherId)!).push(x)
+      }
+      byRoomTeacher.forEach((m, rid) => {
+        if (m.size < 2) return
+        const room = input.rooms.find(r => r.id === rid)
+        const off = new Set(room?.offSlots ?? [])
+        // 每位老師每天在這間教室最多能放幾組「連堂位」（她的班級可排格 ∩ 教室可用格，相鄰兩格不跨午休；單節算半組）
+        const pairsOn = (slots: Set<string>, d: number) => {
+          let n = 0
+          for (let q = 1; q < 7; q++) {
+            if (q === MORNING_LAST) continue
+            if (slots.has(`${d}-${q}`) && slots.has(`${d}-${q + 1}`) && !off.has(`${d}-${q}`) && !off.has(`${d}-${q + 1}`)) { n++; q++ }
+          }
+          return n
+        }
+        const teacherSlots = new Map<string, Set<string>>()
+        m.forEach((ls, tid) => { const u = new Set<string>(); ls.forEach(x => (input.classSlots[x.classKey] ?? []).forEach(sl => u.add(sl))); teacherSlots.set(tid, u) })
+        const allSlots = new Set<string>(); teacherSlots.forEach(u => u.forEach(sl => allSlots.add(sl)))
+        const roomCap = SCHEDULE_DAYS.map(d => pairsOn(allSlots, d))          // 教室每天最多幾組
+        const need = new Map<string, number>()                                  // 每位老師要幾組（單節算 0.5）
+        m.forEach((ls, tid) => need.set(tid, ls.reduce((b, x) => b + x.size / 2, 0)))
+        const totalNeed = Array.from(need.values()).reduce((a, b) => a + b, 0)
+        const totalCap = roomCap.reduce((a, b) => a + b, 0)
+        // 依序認領：從週一開始吃，吃到夠為止；邊界日剩下的容量留給下一位。老師順序吃種子（不同種子試不同先後）。
+        const order = Array.from(m.keys()).sort(() => this.rnd() - 0.5)
+        const used = [0, 0, 0, 0, 0, 0]   // 教室每天已被前面的老師吃掉幾組
+        let cursor = 1
+        let feasible = totalNeed <= totalCap + 1e-9
+        const assign = new Map<string, Set<number>>()
+        for (const tid of order) {
+          let left = need.get(tid)!
+          const days = new Set<number>()
+          const mySlots = teacherSlots.get(tid)!
+          while (left > 1e-9 && cursor <= 5) {
+            const d = cursor
+            const capHere = Math.min(roomCap[d - 1] - used[d], pairsOn(mySlots, d))
+            if (capHere <= 1e-9) { cursor++; continue }            // 這天她放不了（教室滿／她的班沒格）→ 跳過
+            const take = Math.min(capHere, left)
+            days.add(d); used[d] += take; left -= take
+            if (used[d] >= roomCap[d - 1] - 1e-9) cursor++          // 這天教室吃滿 → 下一位從下一天起
+            else if (left <= 1e-9) break                            // 她夠了、這天還有剩 → 下一位從同一天接（邊界日共用）
+            else cursor++                                           // 她這天能放的都放了還不夠 → 下一天（剩的容量放棄，避免別人插進她的區塊）
+          }
+          if (left > 1e-9) feasible = false
+          if (!days.size) days.add(Math.min(cursor, 5))
+          assign.set(tid, days)
+        }
+        // 只當建構偏好、不當硬限制：教室常常 100% 滿載（14 組連堂／14 個位子），認領日子當硬限制會讓一半種子排不完
+        // （實測未排 2～7），而保底一鬆綁結構就全沒了；偏好＋交接計分＋定向修補是目前可行性與集中度的平衡點
+        const hardRoom = false && feasible && input.weights.hardParams.noReturnSubjects.includes(room?.subject ?? '')
+        m.forEach((ls, tid) => { const days = assign.get(tid)!; for (const x of ls) { this.st.roomDayPref.set(x.id, days); if (hardRoom) this.st.roomDayHard.add(x.id) } })
+      })
+    }
     const teacherSidePenalty = (l: EngineLesson, p: Placement): number => {
       const tOcc = this.st.teacherOcc.get(l.teacherId)
       if (!tOcc) return 0
@@ -1796,23 +1890,30 @@ export class EngineRun {
         }
       }
       // ③ 專科教室老師集中（只看有管理教室者：她的教室是確定的）：
-      //    這間教室今天已有別人 → 罰（一天一位老師，不用每天收器材）；今天已有自己 → 獎勵（把這一天填滿）；
-      //    今天沒人 → 小罰（開新的一天）；同半天已有別人再加罰（排不滿一天時，剩的按上午／下午切）
+      //    今天教室已有別人 → 重罰（同半天再加罰）；今天已有自己 → 大獎勵（把這一天填滿）；
+      //    今天沒人：前後一天有自己 → 小罰（把連段延長）、否則 → 罰（開孤立的新一天，之後別人插進來就是兩次交接）；
+      //    再加上「放這裡會讓一週交接多幾次」（別人已放好的情況）
       if (roomHalfPen) {
         const mine = this.st.mgrRooms.get(l.id)
         if (mine && mine.length === 1) {
-          const occ = this.st.roomOcc.get(mine[0].id)
+          const rid = mine[0].id
+          const occ = this.st.roomOcc.get(rid)
+          const teacherAt = (d: number, q: number) => { const cell = occ?.get(`${d}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e; return id && id !== ROOM_OFF ? this.st.lessonById.get(id)?.teacherId : undefined }
           const half = p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7]
-          let otherDay = 0, sameDay = 0, otherHalf = 0
+          let otherDay = false, sameDay = false, otherHalf = false, adjDay = false
           for (let q = 1; q <= 7; q++) {
-            const cell = occ?.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
-            if (!id || id === ROOM_OFF) continue
-            if (this.st.lessonById.get(id)!.teacherId === l.teacherId) sameDay++
-            else { otherDay++; if (half.includes(q)) otherHalf++ }
+            const t = teacherAt(p.day, q); if (!t) continue
+            if (t === l.teacherId) sameDay = true; else { otherDay = true; if (half.includes(q)) otherHalf = true }
           }
-          if (otherDay) pen += roomHalfPen * 2 + (otherHalf ? roomHalfPen : 0)
-          else if (sameDay) pen -= roomHalfPen * 2   // 已開了這一天就把它填滿——獎勵要夠大才蓋得過「低節次優先」的 +5
-          else pen += roomHalfPen                     // 開新的一天：比接著填舊的一天差
+          for (const d of [p.day - 1, p.day + 1]) if (d >= 1 && d <= 5) for (let q = 1; q <= 7; q++) if (teacherAt(d, q) === l.teacherId) { adjDay = true; break }
+          // 偏好分要節制：太重會扭曲建構、讓可行性掉下來（實測 +3pen 的認領日罰分讓五個種子全排不完）
+          if (otherDay) pen += roomHalfPen + (otherHalf ? roomHalfPen * 0.5 : 0)
+          else if (sameDay) pen -= roomHalfPen
+          else pen += adjDay ? 0 : roomHalfPen * 0.5
+          const pref = this.roomDayPref.get(l.id)
+          if (pref) pen += pref.has(p.day) ? -roomHalfPen * 0.5 : roomHalfPen   // 先分好的日子：在自己的區塊裡加分、跑到別人的區塊扣分
+          const delta = this.st.roomTransitions(rid, l, p) - this.st.roomTransitions(rid)
+          if (delta > 0) pen += roomHalfPen * delta
         }
       }
       // ② 全單節老師相鄰同年級：前後相鄰那格若是別的年級 → 罰
@@ -2207,77 +2308,48 @@ export class EngineRun {
     })
   }
 
-  /** 專科教室同日老師成塊定向修補（權重）：找「同一間教室同一天老師走了又回來」或「同半天兩位老師」的格局，
-   *  把回頭那一小塊／少數那位的一堂課搬到她自己教室「那半天沒有別人」的格子。只處理有管理教室者（教室確定）。 */
+  /** 專科教室老師集中定向修補（權重）：挑一間交接次數超過（老師數 − 1）的教室，找出「不在自己主要連段裡」的那一小段課，
+   *  搬到能讓這間教室一週交接次數變少的格子（接在自己的日子旁邊）。只處理有管理教室者（教室確定）。 */
   private tryFixRoomHalf() {
     if (this.input.weights.builtin.roomHalfDay === 'off') return
-    const byRoomHalf = new Map<string, Map<string, EngineLesson[]>>()
-    this.st.pos.forEach((p, id) => {
-      const l = this.st.lessonById.get(id)!
-      const rid = this.st.roomOf.get(id)
-      if (!rid) return
-      const k = `${rid}|${p.day}|${p.period <= MORNING_LAST ? 'am' : 'pm'}`
-      const m = byRoomHalf.get(k) ?? byRoomHalf.set(k, new Map()).get(k)!
-      ;(m.get(l.teacherId) ?? m.set(l.teacherId, []).get(l.teacherId)!).push(l)
-    })
-    const bad: { rid: string; minority: EngineLesson[] }[] = []
-    byRoomHalf.forEach((m, k) => {
-      if (m.size < 2) return
-      const sorted = Array.from(m.entries()).sort((a, b) => a[1].length - b[1].length)
-      const minority = sorted[0][1].filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
-      if (minority.length) bad.push({ rid: k.split('|')[0], minority })
-    })
-    // 走了又回來（翁／陳／翁）：回頭那位老師較小的那一塊也是候選——優先處理，因為這才是課務組最在意的
-    const byRoomDay = new Map<string, Map<number, EngineLesson>>()
+    // 每間教室：時間軸上的連段（跨天），每段的課
+    const byRoom = new Map<string, Map<string, EngineLesson>>()   // rid → `${d}-${q}` → lesson
     this.st.pos.forEach((p, id) => {
       const rid = this.st.roomOf.get(id); if (!rid) return
       const l = this.st.lessonById.get(id)!
-      const m = byRoomDay.get(`${rid}|${p.day}`) ?? byRoomDay.set(`${rid}|${p.day}`, new Map()).get(`${rid}|${p.day}`)!
-      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) m.set(q, l)
+      const m = byRoom.get(rid) ?? byRoom.set(rid, new Map()).get(rid)!
+      for (const s of this.st.slotsOf(l, p)) m.set(s, l)
     })
-    const returns: { rid: string; minority: EngineLesson[] }[] = []
-    byRoomDay.forEach((m, k) => {
-      const blocks: { tid: string; ls: EngineLesson[] }[] = []
-      for (let q = 1; q <= 7; q++) {
-        const l = m.get(q); if (!l) continue
-        const last = blocks[blocks.length - 1]
-        if (last && last.tid === l.teacherId) { if (!last.ls.includes(l)) last.ls.push(l) } else blocks.push({ tid: l.teacherId, ls: [l] })
+    const bad: { rid: string; ls: EngineLesson[] }[] = []
+    byRoom.forEach((m, rid) => {
+      const runs: { tid: string; ls: EngineLesson[] }[] = []
+      for (const d of SCHEDULE_DAYS) for (let q = 1; q <= 7; q++) {
+        const l = m.get(`${d}-${q}`); if (!l) continue
+        const last = runs[runs.length - 1]
+        if (last && last.tid === l.teacherId) { if (!last.ls.includes(l)) last.ls.push(l) } else runs.push({ tid: l.teacherId, ls: [l] })
       }
-      const byT = new Map<string, typeof blocks>()
-      for (const b of blocks) (byT.get(b.tid) ?? byT.set(b.tid, []).get(b.tid)!).push(b)
-      byT.forEach(bs => {
-        if (bs.length < 2) return
-        const smallest = bs.slice().sort((a, b) => a.ls.length - b.ls.length)[0]
-        const ls = smallest.ls.filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
-        if (ls.length) returns.push({ rid: k.split('|')[0], minority: ls })
+      const byT = new Map<string, typeof runs>()
+      for (const r of runs) (byT.get(r.tid) ?? byT.set(r.tid, []).get(r.tid)!).push(r)
+      byT.forEach(rs => {
+        if (rs.length < 2) return
+        // 除了最大那段，其餘每段都是「多餘交接」的來源；小段優先
+        const sorted = rs.slice().sort((a, b) => a.ls.length - b.ls.length)
+        for (const r of sorted.slice(0, -1)) {
+          const ls = r.ls.filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
+          if (ls.length) bad.push({ rid, ls })
+        }
       })
     })
-    // 同一天多位老師：少數那位的課也是候選（集中到她自己的日子）
-    const multi: { rid: string; minority: EngineLesson[] }[] = []
-    byRoomDay.forEach((m, k) => {
-      const byT = new Map<string, EngineLesson[]>()
-      m.forEach(l => { const a = byT.get(l.teacherId) ?? byT.set(l.teacherId, []).get(l.teacherId)!; if (!a.includes(l)) a.push(l) })
-      if (byT.size < 2) return
-      const minority = Array.from(byT.values()).sort((a, b) => a.length - b.length)[0].filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
-      if (minority.length) multi.push({ rid: k.split('|')[0], minority })
-    })
-    const dayMode = multi.length > 0 && this.rnd() < 0.5
-    if (returns.length && (this.rnd() < 0.7 || !bad.length)) { bad.length = 0; bad.push(...returns) }
-    else if (dayMode) { bad.length = 0; bad.push(...multi) }
     if (!bad.length) return
     const b = bad[Math.floor(this.rnd() * bad.length)]
-    const l = b.minority[Math.floor(this.rnd() * b.minority.length)]
+    const l = b.ls[Math.floor(this.rnd() * b.ls.length)]
     const from = this.st.pos.get(l.id)!
-    const occ = this.st.roomOcc.get(b.rid)!
-    this.directedMove(l, p => {
-      const half = dayMode ? [1, 2, 3, 4, 5, 6, 7] : (p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7])
-      if (dayMode ? p.day === from.day : (p.day === from.day && (from.period <= MORNING_LAST) === (p.period <= MORNING_LAST))) return false
-      for (const q of half) {
-        const cell = occ.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
-        if (id && id !== ROOM_OFF && id !== l.id && this.st.lessonById.get(id)!.teacherId !== l.teacherId) return false
-      }
-      return true
-    })
+    // 現況交接數（把 l 拿掉後的基準）＝ roomTransitions 不含 l
+    this.st.remove(l)
+    const base = this.st.roomTransitions(b.rid)
+    const okAt = (p: Placement) => this.st.roomTransitions(b.rid, l, p) - base < this.st.roomTransitions(b.rid, l, from) - base
+    this.st.place(l, from)
+    this.directedMove(l, p => okAt(p))
   }
 
   /** 導師連上定向修補（硬限制）：找出班級同日連續留白超過上限的段，把該班某堂課搬進段中把它切成兩截。
