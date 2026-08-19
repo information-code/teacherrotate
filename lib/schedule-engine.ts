@@ -1736,10 +1736,11 @@ export class EngineRun {
     // 這兩條規則的地形是平的——某天 3 節英語＋1 節國際教育，把國際教育搬到另一個也有英語的日子還是混，分數不變，
     // 事後局部搜尋永遠走不過去；人工是「一開始就決定週一國際教育日、週二英語日」再往裡填。所以要在放的當下就避開。
     const w = input.weights
+    const cpen = (lv: WeightLevel) => lv === 'off' ? 0 : Number.isFinite(WEIGHT_PENALTY[lv]) ? WEIGHT_PENALTY[lv] : 50   // 建構期的偏好分：必須級也只當「很大」，不能是 Infinity
     const apartPairs: { subjects: string[]; pen: number }[] = w.builtin.teacherApart === 'off' ? []
-      : w.templates.filter(t => t.template === 'teacherApart' && t.level !== 'off' && t.subjects.length >= 2).map(t => ({ subjects: t.subjects, pen: WEIGHT_PENALTY[t.level] }))
-    const bandPen = w.builtin.bandAdjacent === 'off' ? 0 : WEIGHT_PENALTY[w.builtin.bandAdjacent]
-    const roomHalfPen = w.builtin.roomHalfDay === 'off' ? 0 : WEIGHT_PENALTY[w.builtin.roomHalfDay]
+      : w.templates.filter(t => t.template === 'teacherApart' && t.level !== 'off' && t.subjects.length >= 2).map(t => ({ subjects: t.subjects, pen: cpen(t.level) }))
+    const bandPen = cpen(w.builtin.bandAdjacent)
+    const roomHalfPen = cpen(w.builtin.roomHalfDay)
     const hasDouble = new Set(input.lessons.filter(x => x.size === 2).map(x => x.teacherId))
     for (const x of input.lessons) if (!hasDouble.has(x.teacherId)) this.singleOnlyTeachers.add(x.teacherId)
     const teacherSidePenalty = (l: EngineLesson, p: Placement): number => {
