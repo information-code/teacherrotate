@@ -153,12 +153,24 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     try { return new SwapFinder(engineInput, placed, hrCells, fillOpen) } catch { return null }
   }, [engineInput, placed, hr, fillOpen])
   const swapQ = useMemo(() => (sel?.type === 'lesson' && finder) ? finder.query(sel.id) : null, [sel, finder])
-  /** 被點的課所在班級：每格最好的調法（已依軟分排序，取第一個） */
+  /** 會變差（罰分 > 0）的方案預設不顯示：課務組要的微調是「不影響分數」的 0 分方案；負分＝有更好的排法，醒目提醒。 */
+  const [showWorse, setShowWorse] = useState(false)
+  const visibleOptions = useMemo(() => (swapQ?.options ?? []).filter(o => showWorse || o.softDelta <= 0), [swapQ, showWorse])
+  const betterCount = swapQ?.options.filter(o => o.softDelta < 0).length ?? 0
+  const zeroCount = swapQ?.options.filter(o => o.softDelta === 0).length ?? 0
+  const worseCount = swapQ?.options.filter(o => o.softDelta > 0).length ?? 0
+  /** 被點的課所在班級：每格最好的調法（已依罰分排序，取第一個）；被藏起來的正分方案給灰格原因 */
   const optByCell = useMemo(() => {
     const m = new Map<string, SwapOption>()
-    for (const o of swapQ?.options ?? []) if (!m.has(o.targetSlot)) m.set(o.targetSlot, o)
+    for (const o of visibleOptions) if (!m.has(o.targetSlot)) m.set(o.targetSlot, o)
     return m
-  }, [swapQ])
+  }, [visibleOptions])
+  const hiddenWhy = useMemo(() => {
+    const m = new Map<string, string>()
+    if (showWorse) return m
+    for (const o of swapQ?.options ?? []) if (o.softDelta > 0 && !m.has(o.targetSlot)) m.set(o.targetSlot, `可調但會變差（罰分 +${o.softDelta}）——打開「顯示會變差的方案」才可用`)
+    return m
+  }, [swapQ, showWorse])
   const [hoverOpt, setHoverOpt] = useState<SwapOption | null>(null)
   const [chain, setChain] = useState<SwapOption | null | 'none' | 'busy'>(null)
   const KIND_ZH: Record<SwapOption['kind'], string> = { move: '直接搬', swap2: '兩角互換', swap3: '三角互調', chain: '多角鏈' }
@@ -310,7 +322,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         // 查詢器有答案：科任格／空格一律以引擎硬規則為準（鎖課、教室、不回頭、連 7 都擋）
         const o = optByCell.get(slot)
         if (o) return { ok: true, why: `${KIND_ZH[o.kind]}・${deltaZh(o.softDelta)}${o.kind !== 'move' ? '：' + o.desc : ''}` }
-        if (!hrSubject) return { ok: false, why: swapQ.why[slot] ?? '不合法' }
+        if (!hrSubject) return { ok: false, why: hiddenWhy.get(slot) ?? swapQ.why[slot] ?? '不合法' }
         if (fillOpen) return { ok: false, why: '導師填課開放中：不可與導師課互換' }
         // 導師課格：沿用下面的 科任↔導師 互換檢查
       }
@@ -623,7 +635,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400 align-middle mx-0.5 ml-2" />兩角互換
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400 align-middle mx-0.5 ml-2" />三角互調
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400 align-middle mx-0.5 ml-2" />與導師課互換
-                    ；灰格滑過看卡在哪條硬規則；滑過彩格會標出牽動到的課（虛線框）；格角數字＝罰分變化，<b>越低越好</b>（負＝變好、正＝變差）{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
+                    ；灰格滑過看原因；滑過彩格會標出牽動到的課（虛線框）。<b className="text-emerald-700">綠色「更好 −N」＝比現在更好，建議採用</b>；沒數字＝不影響分數（微調用）；會變差的預設隱藏{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
           </span>
@@ -643,9 +655,16 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       {adjustMode && selLesson && swapQ && (
         <div className="card p-2 text-xs space-y-1">
           <div className="flex items-center gap-2 flex-wrap text-zinc-500">
-            <span>合法調法 <b className="text-zinc-700">{swapQ.options.length}</b> 種
-              （直接搬 {swapQ.options.filter(o => o.kind === 'move').length}、兩角 {swapQ.options.filter(o => o.kind === 'swap2').length}、三角 {swapQ.options.filter(o => o.kind === 'swap3').length}）
-              ，依罰分變化排序（越低越好），前 12 種：</span>
+            {betterCount > 0
+              ? <span className="px-1.5 py-0.5 rounded-sm bg-emerald-600 text-white font-medium">✨ 有 {betterCount} 種排法比現在更好</span>
+              : <span className="text-zinc-400">目前這堂沒有更好的排法</span>}
+            <span>・不影響分數 <b className="text-zinc-700">{zeroCount}</b> 種</span>
+            {worseCount > 0 && (
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={showWorse} onChange={e => setShowWorse(e.target.checked)} />
+                <span>顯示會變差的方案（{worseCount}）</span>
+              </label>
+            )}
             {chain === 'none' && <span className="text-amber-700">找不到四層內的多角鏈（可能教室全滿或被鎖課卡死）</span>}
           </div>
           {chain && chain !== 'none' && chain !== 'busy' && (
@@ -655,13 +674,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               <button onClick={() => applyOption(chain)} className="btn btn-primary text-xs py-0.5 ml-auto shrink-0">套用</button>
             </div>
           )}
-          {swapQ.options.length > 0 && (
+          {visibleOptions.length > 0 && (
             <ul className="grid gap-1 md:grid-cols-2">
-              {swapQ.options.slice(0, 12).map((o, i) => (
+              {visibleOptions.slice(0, 12).map((o, i) => (
                 <li key={i} onMouseEnter={() => setHoverOpt(o)} onMouseLeave={() => setHoverOpt(null)}
-                  className={`flex items-center gap-2 rounded-sm border px-1.5 py-1 ${o.kind === 'move' ? 'border-emerald-200 bg-emerald-50/50' : o.kind === 'swap2' ? 'border-sky-200 bg-sky-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+                  className={`flex items-center gap-2 rounded-sm border px-1.5 py-1 ${o.softDelta < 0 ? 'border-emerald-400 bg-emerald-50' : o.softDelta > 0 ? 'border-red-200 bg-red-50/40' : 'border-zinc-200 bg-white'}`}>
                   <span className={`shrink-0 px-1 rounded-sm text-white ${o.kind === 'move' ? 'bg-emerald-500' : o.kind === 'swap2' ? 'bg-sky-500' : 'bg-amber-500'}`}>{KIND_ZH[o.kind]}</span>
-                  <span className={`shrink-0 font-mono ${o.softDelta < 0 ? 'text-emerald-700' : o.softDelta > 0 ? 'text-red-600' : 'text-zinc-500'}`}>{o.softDelta > 0 ? '+' : ''}{o.softDelta}</span>
+                  <span className={`shrink-0 font-mono ${o.softDelta < 0 ? 'text-emerald-700 font-semibold' : o.softDelta > 0 ? 'text-red-600' : 'text-zinc-400'}`}>{o.softDelta < 0 ? `更好 ${o.softDelta}` : o.softDelta > 0 ? `+${o.softDelta}` : '0'}</span>
                   <span className="text-zinc-600 truncate" title={o.desc}>{o.desc}</span>
                   <button onClick={() => applyOption(o)} className="btn btn-secondary text-xs py-0 ml-auto shrink-0">套用</button>
                 </li>
@@ -704,10 +723,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     const ls = focusCells.get(k) ?? []
                     const off = focusOff.has(k)
                     const opt = sel?.type === 'lesson' ? optByCell.get(k) : undefined
-                    const why = sel?.type === 'lesson' && !opt && swapQ ? swapQ.why[k] : undefined
+                    const why = sel?.type === 'lesson' && !opt && swapQ ? (hiddenWhy.get(k) ?? swapQ.why[k]) : undefined
                     const isSelSrc = sel?.type === 'lesson' && ls.some(x => x.id === sel.id)
                     const isPartner = !!(hoverOpt && ls.some(x => hoverOpt.partnerIds.includes(x.id)))
-                    const ringKind = opt ? (opt.kind === 'move' ? 'ring-2 ring-emerald-400' : opt.kind === 'swap2' ? 'ring-2 ring-sky-400' : 'ring-2 ring-amber-400') : ''
+                    const ringKind = opt ? `${opt.softDelta < 0 ? 'ring-4' : 'ring-2'} ${opt.kind === 'move' ? 'ring-emerald-400' : opt.kind === 'swap2' ? 'ring-sky-400' : 'ring-amber-400'}` : ''
                     const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
                     const dim = sel && !isSelSrc && !isPartner && !opt ? 'opacity-40' : ''
                     const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
@@ -722,7 +741,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                       <td key={d} className="p-0.5">
                         <button onClick={onClick} title={title} {...hoverProps}
                           className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
-                          {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
+                          {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{opt.softDelta < 0 ? `更好 ${opt.softDelta}` : `+${opt.softDelta}`}</span>}
                           {ls.length === 0 && off && <span className="text-[8px]">—</span>}
                           {ls.slice(0, 2).map(x => (
                             <span key={x.id} className="truncate w-full">
@@ -787,7 +806,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const st = adjustMode && sel && !isSelSrc ? targetState(ck, k) : null
                         const opt = sel?.type === 'lesson' && selLesson?.classKey === ck ? optByCell.get(k) : undefined
                         const isPartner = !!(hoverOpt && occ && hoverOpt.partnerIds.includes(occ.id))
-                        const ringKind = opt ? (opt.kind === 'move' ? 'ring-2 ring-emerald-400' : opt.kind === 'swap2' ? 'ring-2 ring-sky-400' : 'ring-2 ring-amber-400') : st?.ok ? (hrSubj && sel?.type === 'lesson' ? 'ring-2 ring-violet-400' : 'ring-2 ring-emerald-400') : ''
+                        const ringKind = opt ? `${opt.softDelta < 0 ? 'ring-4' : 'ring-2'} ${opt.kind === 'move' ? 'ring-emerald-400' : opt.kind === 'swap2' ? 'ring-sky-400' : 'ring-amber-400'}` : st?.ok ? (hrSubj && sel?.type === 'lesson' ? 'ring-2 ring-violet-400' : 'ring-2 ring-emerald-400') : ''
                         const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
                         const dim = adjustMode && sel && !isSelSrc && !isPartner && st && !st.ok ? 'opacity-40' : ''
                         const title = st ? st.why : undefined
@@ -813,7 +832,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             <td key={d} className="p-0.5">
                               <button onClick={() => clickCell(ck, k)} title={title} {...hoverProps}
                                 className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                                {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
+                                {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{opt.softDelta < 0 ? `更好 ${opt.softDelta}` : `+${opt.softDelta}`}</span>}
                                 <span className="truncate w-full font-medium">{occ.subject}{occ.coTeacherId && <span className="text-rose-700">★</span>}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}{occ.coTeacherId && `＋${occ.coTeacherName ?? '外師'}`}</span>
                                 {bi && <span className="text-[8px] opacity-70">{occ.parity === 'odd' ? '單週' : '雙週'}</span>}
@@ -836,7 +855,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                           <td key={d} className="p-0.5">
                             <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
                               className={`relative w-full h-9 rounded-sm border border-dashed ${must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                              {opt && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-500' : opt.softDelta > 0 ? 'bg-red-400' : 'bg-zinc-400'}`}>{opt.softDelta > 0 ? '+' : ''}{opt.softDelta}</span>}
+                              {opt && opt.softDelta !== 0 && <span className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{opt.softDelta < 0 ? `更好 ${opt.softDelta}` : `+${opt.softDelta}`}</span>}
                               {must ? '需科任' : ''}
                             </button>
                           </td>
