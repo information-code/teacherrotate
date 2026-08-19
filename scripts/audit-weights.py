@@ -9,10 +9,14 @@ SRC = sys.argv[1] if len(sys.argv) > 1 else 'hand-114-2.json'
 cs = json.load(open(os.path.join(HERE, SRC), encoding='utf-8'))
 # 系統用簡稱、人工課表 PDF 用全名 → 統一成全名再算
 ALIAS = {'自然': '自然科學', '英語': '英語文', '英語主題課': '英語主題課程', '國語': '國語文', '生活': '生活課程',
-         '智慧探究家：科技創新任務': '智慧探究家：科技創新任務課程', '綜合': '綜合活動', '本土語': '本土語文', '班級活動': '班級學年活動'}
+         '智慧探究家：科技創新任務': '智慧探究家：科技創新任務課程', '綜合': '綜合活動', '本土語': '本土語文', '班級活動': '班級學年活動',
+         # 112／113 學年舊名 → 114 名稱（跨年比對用）：專題探究＝科技課前身、英語主題（三～六年級）＝國際教育前身
+         '本國語文': '國語文', '英文主題課程': '英語主題課程', '英語主題活動': '英語主題課程', '自然與生活科': '自然科學', '自然與生活科技': '自然科學',
+         '本土語言': '本土語文', '級學年活動': '班級學年活動', '專題探究': '智慧探究家：科技創新任務課程', '專題探究課程': '智慧探究家：科技創新任務課程'}
 for _c in cs:
     for _v in _c['cells'].values():
         _v['subject'] = ALIAS.get(_v['subject'], _v['subject'])
+        if _v['subject'] == '英語主題課程' and _c['grade'] >= 3: _v['subject'] = '國際教育'
 DAYS = [1, 2, 3, 4, 5]
 MORNING = [1, 2, 3, 4]
 R = []          # 報告行
@@ -194,6 +198,28 @@ for t, sc in tt_.items():
             if ra != rb: mov += 1
 p(f'⑬ 相鄰兩堂課換場地：{mov}／{pair} 組（{mov/pair:.0%}）')
 
+p()
+# ⑭ 英語老師同日不混：同一位老師同一天既有國際教育（英語主題）又有英語文
+days_ = mix_ = 0
+for t, sc in tt_.items():
+    if not any(v[1] == '國際教育' for v in sc.values()): continue
+    for d in DAYS:
+        subs = {v[1] for (dd, q), v in sc.items() if dd == d}
+        if '國際教育' in subs or '英語文' in subs: days_ += 1
+        if '國際教育' in subs and '英語文' in subs: mix_ += 1
+p(f'⑭ 英語老師同日混排（國際教育＋英語文）：{mix_}／{days_} 個相關日（{mix_/max(1,days_):.0%}）')
+# ⑮ 全單節老師相鄰兩堂跨年級
+single_ = [t for t, sc in tt_.items() if sc and all(
+    not ((d, q + 1) in sc and sc[(d, q + 1)][1] == sc[(d, q)][1] and sc[(d, q + 1)][0] == sc[(d, q)][0]) for (d, q) in sc)]
+pairs_ = cross_ = 0
+for t in single_:
+    sc = tt_[t]
+    for (d, q), v in sc.items():
+        w = sc.get((d, q + 1))
+        if not w: continue
+        pairs_ += 1
+        if v[0].split('-')[0] != w[0].split('-')[0]: cross_ += 1
+p(f'⑮ 全單節老師相鄰兩堂跨年級：{cross_}／{pairs_} 組（{cross_/max(1,pairs_):.0%}）')
 p()
 p('══════ 三、專科教室：連堂 vs 單節 ══════')
 for sub in ('自然科學', '智慧探究家：科技創新任務課程', '視覺藝術', '音樂', '表演藝術'):

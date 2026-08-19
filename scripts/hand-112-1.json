@@ -1,0 +1,10502 @@
+[
+ {
+  "grade": 1,
+  "index": 1,
+  "homeroom": "吳宛儒",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "健康",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "吳宛儒",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 2,
+  "homeroom": "張瑜恩",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "健康",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "數學",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "國語文",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "張瑜恩",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 3,
+  "homeroom": "曾月貞",
+  "cells": {
+   "1-1": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "健康",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "生活課程",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "曾月貞",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 4,
+  "homeroom": "莊艾儒",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "本土語文",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "健康",
+    "teacher": "陳嘉綺",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "莊艾儒",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 5,
+  "homeroom": "陳映竹",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "生活課程",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "健康",
+    "teacher": "唐筱媛",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "國語文",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "陳映竹",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 6,
+  "homeroom": "柳芳宛",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "健康",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "柳芳宛",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 7,
+  "homeroom": "王筱惠",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "數學",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "王筱惠",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "健康",
+    "teacher": "陳嘉綺",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 8,
+  "homeroom": "林玟君",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "健康",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "林玟君",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 9,
+  "homeroom": "高佳郁",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本土語文",
+    "teacher": "游嘉鈴",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語主題課程",
+    "teacher": "姚亭卉",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "健康",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "高佳郁",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 1,
+  "index": 10,
+  "homeroom": "許恩琳",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "賴庭萱",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "國語文",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "健康",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "許恩琳",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 1,
+  "homeroom": "張美玲",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "數學",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "國語文",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "班級學年活動",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "健康",
+    "teacher": "張美玲",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 2,
+  "homeroom": "呂庭昀",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "生活課程",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "數學",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "健康",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "數學",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "呂庭昀",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 3,
+  "homeroom": "王怡凡",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "健康",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "國語文",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "數學",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "王怡凡",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 4,
+  "homeroom": "王媁玉",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "李佳穎(大)",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "李佳穎(大)",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "健康",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "王媁玉",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "體育",
+    "teacher": "丁建嘉",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 5,
+  "homeroom": "蘇怡慈",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "健康",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本土語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "蘇怡慈",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 6,
+  "homeroom": "張以瑄",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "健康",
+    "teacher": "劉育妮",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "國語文",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "張以瑄",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 7,
+  "homeroom": "陳映如",
+  "cells": {
+   "1-1": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "班級學年活動",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "吳冠廷",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "陳映如",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 8,
+  "homeroom": "陳美燕",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "英語主題課程",
+    "teacher": "王婉如",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "生活課程",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "生活課程",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "陳美燕",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 9,
+  "homeroom": "江彗竹",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "生活課程",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "生活課程",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "生活課程",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "生活課程",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "健康",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "生活課程",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "江彗竹",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 2,
+  "index": 10,
+  "homeroom": "林慧茵",
+  "cells": {
+   "1-1": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "體育",
+    "teacher": "王培真",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "數學",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "生活課程",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本土語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "生活課程",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "生活課程",
+    "teacher": "鍾侑蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "數學",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "數學",
+    "teacher": "林慧茵",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 1,
+  "homeroom": "王嬿婷",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "健康",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語主題課程",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "專題探究",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "專題探究",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語文",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "綜合活動",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "數學",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "班級學年活動",
+    "teacher": "王嬿婷",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 2,
+  "homeroom": "林仕偉",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "專題探究",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "專題探究",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語文",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "英語主題課程",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "班級學年活動",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "綜合活動",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "健康",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "林仕偉",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 3,
+  "homeroom": "潘佳伶",
+  "cells": {
+   "1-1": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語主題課程",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語文",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "音樂",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "班級學年活動",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "國語文",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "潘佳伶",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "陳嘉綺",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 4,
+  "homeroom": "徐千淑",
+  "cells": {
+   "1-1": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "音樂",
+    "teacher": "黃頌慈",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語文",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "國語文",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "綜合活動",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "徐千淑",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 5,
+  "homeroom": "曾義勝",
+  "cells": {
+   "1-1": {
+    "subject": "英語文",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "綜合活動",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "音樂",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "綜合活動",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語主題課程",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "健康",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "國語文",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "國語文",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "數學",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 6,
+  "homeroom": "陳映蓉",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "英語文",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "班級學年活動",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "視覺藝術",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語主題課程",
+    "teacher": "黃閔瑜",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "視覺藝術",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "綜合活動",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "國語文",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "國語文",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "綜合活動",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "健康",
+    "teacher": "陳映蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 7,
+  "homeroom": "陳立軒",
+  "cells": {
+   "1-1": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "音樂",
+    "teacher": "曾義勝",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "英語文",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "專題探究",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "綜合活動",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "社會",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本土語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "數學",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "綜合活動",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "健康",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "數學",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "班級學年活動",
+    "teacher": "陳立軒",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 8,
+  "homeroom": "莊瀅嘉",
+  "cells": {
+   "1-1": {
+    "subject": "綜合活動",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "綜合活動",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語文",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本土語文",
+    "teacher": "陳雅梅",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "國語文",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "莊瀅嘉",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 9,
+  "homeroom": "吳亭蕙",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "綜合活動",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語文",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "數學",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "綜合活動",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "視覺藝術",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "健康",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "唐筱媛",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "班級學年活動",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "唐筱媛",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "國語文",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "社會",
+    "teacher": "唐筱媛",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "國語文",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "數學",
+    "teacher": "吳亭蕙",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 3,
+  "index": 10,
+  "homeroom": "鄭綿綿",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "音樂",
+    "teacher": "黃頌慈",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "英語主題課程",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "視覺藝術",
+    "teacher": "劉軒含",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "綜合活動",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語文",
+    "teacher": "徐貴枝",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "王英汝",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "國語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "自然科學",
+    "teacher": "吳桂芳",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本土語文",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "陳嘉綺",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "體育",
+    "teacher": "相宇宣",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "班級學年活動",
+    "teacher": "鄭綿綿",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 1,
+  "homeroom": "黃慧蓮",
+  "cells": {
+   "1-1": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本土語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "英語主題課程",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "綜合活動",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "班級學年活動",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "健康",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "綜合活動",
+    "teacher": "黃慧蓮",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "英語文",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 2,
+  "homeroom": "陳詩緣",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "英語文",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本土語文",
+    "teacher": "黃菁宥",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "視覺藝術",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "英語主題課程",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "國語文",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "綜合活動",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "國語文",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "陳詩緣",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "劉姿君",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 3,
+  "homeroom": "黃琦文",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "綜合活動",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "班級學年活動",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "國語文",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "綜合活動",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "數學",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "數學",
+    "teacher": "黃琦文",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 4,
+  "homeroom": "曾品綺",
+  "cells": {
+   "1-1": {
+    "subject": "綜合活動",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "健康",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "曾品綺",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 5,
+  "homeroom": "吳佳軒",
+  "cells": {
+   "1-1": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本土語文",
+    "teacher": "溫靜婉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "健康",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "班級學年活動",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "吳佳軒",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 6,
+  "homeroom": "練芳妤",
+  "cells": {
+   "1-1": {
+    "subject": "綜合活動",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "綜合活動",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本土語文",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "國語文",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "國語文",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "社會",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語主題課程",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "社會",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語文",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "數學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "練芳妤",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 7,
+  "homeroom": "謝欣穎",
+  "cells": {
+   "1-1": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "綜合活動",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本土語文",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "數學",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語主題課程",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "英語文",
+    "teacher": "郭翊姍",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然科學",
+    "teacher": "粘瑋竹",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "謝欣穎",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 8,
+  "homeroom": "楊芸禎",
+  "cells": {
+   "1-1": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "綜合活動",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "班級學年活動",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "綜合活動",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "國語文",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "楊芸禎",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 9,
+  "homeroom": "洪佳微",
+  "cells": {
+   "1-1": {
+    "subject": "健康",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "體育",
+    "teacher": "黃宥銜",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本土語文",
+    "teacher": "溫靜婉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "綜合活動",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "綜合活動",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "自然科學",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "國語文",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "數學",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "社會",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "班級學年活動",
+    "teacher": "洪佳微",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 4,
+  "index": 10,
+  "homeroom": "李皓",
+  "cells": {
+   "1-1": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "健康",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "英語主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "專題探究",
+    "teacher": "鍾孟妤",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "視覺藝術",
+    "teacher": "吳秉純",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本土語文",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "國語文",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "賴佳欣",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然科學",
+    "teacher": "許祚榮",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "班級學年活動",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "英語文",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "李皓",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 1,
+  "homeroom": "顏子愉",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "綜合活動",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "綜合活動",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "班級學年活動",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "班級學年活動",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "健康",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本土語文",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "自主學習",
+    "teacher": "顏子愉",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 2,
+  "homeroom": "葉庭均",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "班級學年活動",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "綜合活動",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "健康",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本土語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "國語文",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "國語文",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "國語文",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自主學習",
+    "teacher": "葉庭均",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 3,
+  "homeroom": "吳佩容",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自主學習",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "班級學年活動",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "班級學年活動",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "健康",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "綜合活動",
+    "teacher": "吳佩容",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 4,
+  "homeroom": "陳昱樺",
+  "cells": {
+   "1-1": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "國語文",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "班級學年活動",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "國語文",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "國語文",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "綜合活動",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本土語文",
+    "teacher": "梁慧美",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "綜合活動",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自主學習",
+    "teacher": "陳昱樺",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 5,
+  "homeroom": "吳惠庭",
+  "cells": {
+   "1-1": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "健康",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "班級學年活動",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "國語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "國語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "國語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "綜合活動",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本土語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "國語文",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "自主學習",
+    "teacher": "吳惠庭",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 6,
+  "homeroom": "李芝芬",
+  "cells": {
+   "1-1": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "國語文",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "國語文",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "健康",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "班級學年活動",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "國語文",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "班級學年活動",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "數學",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "李柔芸",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "自然科學",
+    "teacher": "陳慧嘉",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "自主學習",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "綜合活動",
+    "teacher": "李芝芬",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 7,
+  "homeroom": "楊淑聿",
+  "cells": {
+   "1-1": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "自主學習",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "國語文",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "國語文",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "班級學年活動",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "數學",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "國語文",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "綜合活動",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "班級學年活動",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "綜合活動",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "健康",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "梁慧美",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "視覺藝術",
+    "teacher": "林園淳",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "國語文",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "國語文",
+    "teacher": "楊淑聿",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 8,
+  "homeroom": "陳妤孟",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "自主學習",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "班級學年活動",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語主題課程",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "英語文",
+    "teacher": "林岱璇",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "綜合活動",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "社會",
+    "teacher": "張立懃",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "江惠珍",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "綜合活動",
+    "teacher": "陳妤孟",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 9,
+  "homeroom": "洪永約",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "自主學習",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "班級學年活動",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "數學",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "專題探究課程",
+    "teacher": "賴昀瑩",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "健康",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "體育",
+    "teacher": "郭乃慈",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "綜合活動",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "數學",
+    "teacher": "洪永約",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "社會",
+    "teacher": "蔡欣潔",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 10,
+  "homeroom": "陳怡君",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "健康",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "綜合活動",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "班級學年活動",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "綜合活動",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "班級學年活動",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "自然科學",
+    "teacher": "劉芳如",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自主學習",
+    "teacher": "陳怡君",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 5,
+  "index": 11,
+  "homeroom": "林俞均",
+  "cells": {
+   "1-1": {
+    "subject": "國語文",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "國語文",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "國語文",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "國語文",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "國語文",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "數學",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "數學",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自主學習",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語主題課程",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "班級學年活動",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "綜合活動",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "綜合活動",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "音樂",
+    "teacher": "鄭安庭",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本土語文",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "專題探究課程",
+    "teacher": "江玉玲",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "健康",
+    "teacher": "林俞均",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "英語文",
+    "teacher": "陳易宏",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自然科學",
+    "teacher": "楊季璇",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 1,
+  "homeroom": "陳家浩",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "綜合活動",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "本國語文",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本國語文",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "本國語文",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本國語文",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "本國語文",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本土語言",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "班級學年活動",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "英語",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "英文主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "班級學年活動",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "自主學習",
+    "teacher": "陳家浩",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 2,
+  "homeroom": "王柏雅",
+  "cells": {
+   "1-1": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "自主學習",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "數學",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "英語",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本土語言",
+    "teacher": "溫靜婉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英文主題課程",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "數學",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英語",
+    "teacher": "呂若綺",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "本國語文",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "本國語文",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "班級學年活動",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "本國語文",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "班級學年活動",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "本國語文",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "本國語文",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "健康",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "王柏雅",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 3,
+  "homeroom": "顏汝蓉",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "本國語文",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本國語文",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "本國語文",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本國語文",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "本國語文",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "級學年活動",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本土語言",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "自主學習",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "班級學年活動",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "綜合活動",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "顏汝蓉",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 4,
+  "homeroom": "吳淩萱",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "本國語文",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "自主學習",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "數學",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本土語言",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "本國語文",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本國語文",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "本國語文",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "綜合活動",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "綜合活動",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "班級學年活動",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本國語文",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "吳淩萱",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 5,
+  "homeroom": "蘇愛芝",
+  "cells": {
+   "1-1": {
+    "subject": "班級學年活動",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "班級學年活動",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "自主學習",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "本國語文",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本土語言",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本國語文",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "本國語文",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "數學",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "數學",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "本國語文",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "本國語文",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "綜合活動",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "健康",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "蘇愛芝",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 6,
+  "homeroom": "許靖纓",
+  "cells": {
+   "1-1": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "本國語文",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "自主學習",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "數學",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "自然與生活科技",
+    "teacher": "施政宏",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "本國語文",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "數學",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "本國語文",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "本土語言",
+    "teacher": "黃明珠",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "本國語文",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "潘致全",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "本國語文",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "綜合活動",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "數學",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "班級學年活動",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "許靖纓",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 7,
+  "homeroom": "郭建宏",
+  "cells": {
+   "1-1": {
+    "subject": "班級學年活動",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "本國語文",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "本國語文",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "班級學年活動",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本國語文",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "自主學習",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "數學",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "本國語文",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "數學",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "數學",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "本土語言",
+    "teacher": "蔡姿萱",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "本國語文",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "數學",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "健康",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "綜合活動",
+    "teacher": "郭建宏",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 8,
+  "homeroom": "林瑋婷",
+  "cells": {
+   "1-1": {
+    "subject": "數學",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "數學",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "數學",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "數學",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "健康",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "本國語文",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "本國語文",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "本國語文",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "本國語文",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "本國語文",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "綜合活動",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "本土語言",
+    "teacher": "陳珮怡",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "體育",
+    "teacher": "林宗凱",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "自主學習",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "班級學年活動",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "專題探究",
+    "teacher": "唐郁婷",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "班級學年活動",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "綜合活動",
+    "teacher": "林瑋婷",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   }
+  }
+ },
+ {
+  "grade": 6,
+  "index": 9,
+  "homeroom": "歐馥萱",
+  "cells": {
+   "1-1": {
+    "subject": "班級學年活動",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "2-1": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "3-1": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "4-1": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "5-1": {
+    "subject": "班級學年活動",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "1-2": {
+    "subject": "數學",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "2-2": {
+    "subject": "數學",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "3-2": {
+    "subject": "本國語文",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "4-2": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "5-2": {
+    "subject": "體育",
+    "teacher": "林聖傑",
+    "room": "",
+    "co": ""
+   },
+   "1-3": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "2-3": {
+    "subject": "音樂",
+    "teacher": "林姿均",
+    "room": "",
+    "co": ""
+   },
+   "3-3": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-3": {
+    "subject": "英語",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   },
+   "5-3": {
+    "subject": "數學",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "1-4": {
+    "subject": "專題探究",
+    "teacher": "黃政昱",
+    "room": "",
+    "co": ""
+   },
+   "2-4": {
+    "subject": "本國語文",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "3-4": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "4-4": {
+    "subject": "本土語言",
+    "teacher": "溫靜婉",
+    "room": "",
+    "co": ""
+   },
+   "5-4": {
+    "subject": "本國語文",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "1-5": {
+    "subject": "社會",
+    "teacher": "鄭宇涵",
+    "room": "",
+    "co": ""
+   },
+   "2-5": {
+    "subject": "視覺藝術",
+    "teacher": "賴姵菁",
+    "room": "",
+    "co": ""
+   },
+   "4-5": {
+    "subject": "數學",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "5-5": {
+    "subject": "綜合活動",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "1-6": {
+    "subject": "本國語文",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "2-6": {
+    "subject": "自主學習",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "4-6": {
+    "subject": "本國語文",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "5-6": {
+    "subject": "自然與生活科技",
+    "teacher": "張舒雯",
+    "room": "",
+    "co": ""
+   },
+   "1-7": {
+    "subject": "綜合活動",
+    "teacher": "歐馥萱",
+    "room": "",
+    "co": ""
+   },
+   "2-7": {
+    "subject": "表演藝術",
+    "teacher": "李靜樺",
+    "room": "",
+    "co": ""
+   },
+   "4-7": {
+    "subject": "健康",
+    "teacher": "楊宥薫",
+    "room": "",
+    "co": ""
+   },
+   "5-7": {
+    "subject": "英文主題課程",
+    "teacher": "顏嘉璘",
+    "room": "",
+    "co": ""
+   }
+  }
+ }
+]

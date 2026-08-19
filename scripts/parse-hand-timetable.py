@@ -93,7 +93,7 @@ def parse_page(page):
         rec = {'subject': lines[0] if lines else '', 'teacher': '', 'room': '', 'co': ''}
         rest = lines[1:]
         # 長科目名（智慧探究家：科技創新任務課程）會佔 2~3 行 → 合併到遇見人名為止
-        while rest and (rec['subject'].endswith('：') or rec['subject'].endswith('任務') or rec['subject'] == '智慧探究家'):
+        while rest and (rec['subject'].endswith('：') or rec['subject'].endswith('任務') or rec['subject'] == '智慧探究家' or rec['subject'] == '自然與生活科'):
             rec['subject'] += rest.pop(0)
         if rest: rec['teacher'] = rest.pop(0)
         for r in rest:
