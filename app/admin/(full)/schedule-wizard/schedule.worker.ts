@@ -32,7 +32,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
         compact: 'off', classCohesion: 'off', batchType: 'off', bandAdjacent: 'off', teacherApart: 'off',
         hourlyBalance: { ...b.hourlyBalance, level: 'off' },
-        walkCost: 'off', roomManagerFirst: 'off', homeroomMorning: { ...b.homeroomMorning, level: 'off' },
+        walkCost: 'off', roomManagerFirst: 'off', roomHalfDay: 'off', homeroomMorning: { ...b.homeroomMorning, level: 'off' },
         avoidPeriods: 'off', timePrefer: 'off', subjectApart: 'off',
       },
       templates: input.weights.templates.map(t => ({ ...t, level: 'off' as const })),

@@ -1221,6 +1221,29 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
+  // 專科教室同半天同老師（權重）：同一間教室 上午 1~4／下午 5~7 盡量同一位老師（自然老師收實驗器材來不及換班）。
+  // 以「較少那一邊」計次：上午 翁2＋陳2 扣 2、翁3＋陳1 扣 1
+  if (w.roomHalfDay !== 'off') {
+    const byRoomHalf = new Map<string, Map<string, number>>()   // `${rid}|${d}|${am/pm}` → tid → 節數
+    for (const { l, p } of placedLessons) {
+      const rid = roomOf.get(l.id)
+      if (!rid) continue
+      for (const q of (l.size === 2 ? [p.period, p.period + 1] : [p.period])) {
+        const k = `${rid}|${p.day}|${q <= MORNING_LAST ? 'am' : 'pm'}`
+        const m = byRoomHalf.get(k) ?? byRoomHalf.set(k, new Map()).get(k)!
+        m.set(l.teacherId, (m.get(l.teacherId) ?? 0) + 1)
+      }
+    }
+    byRoomHalf.forEach((m, k) => {
+      if (m.size < 2) return
+      const [rid, d, half] = k.split('|')
+      const counts = Array.from(m.values()).sort((x, y) => y - x)
+      const times = counts.slice(1).reduce((x, y) => x + y, 0)
+      acc(map, 'roomHalfDay', '專科教室同半天同老師', pen(w.roomHalfDay) * times,
+        `${roomById.get(rid)?.label ?? rid} 週${DAY_ZH[Number(d)]}${half === 'am' ? '上午' : '下午'} ${Array.from(m.entries()).map(([tid, n]) => `${nameOf(tid)}${n}`).join('＋')}`)
+    })
+  }
+
   // 必排科任課覆蓋
   for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
@@ -1716,6 +1739,7 @@ export class EngineRun {
     const apartPairs: { subjects: string[]; pen: number }[] = w.builtin.teacherApart === 'off' ? []
       : w.templates.filter(t => t.template === 'teacherApart' && t.level !== 'off' && t.subjects.length >= 2).map(t => ({ subjects: t.subjects, pen: WEIGHT_PENALTY[t.level] }))
     const bandPen = w.builtin.bandAdjacent === 'off' ? 0 : WEIGHT_PENALTY[w.builtin.bandAdjacent]
+    const roomHalfPen = w.builtin.roomHalfDay === 'off' ? 0 : WEIGHT_PENALTY[w.builtin.roomHalfDay]
     const hasDouble = new Set(input.lessons.filter(x => x.size === 2).map(x => x.teacherId))
     for (const x of input.lessons) if (!hasDouble.has(x.teacherId)) this.singleOnlyTeachers.add(x.teacherId)
     const teacherSidePenalty = (l: EngineLesson, p: Placement): number => {
@@ -1731,6 +1755,22 @@ export class EngineRun {
           const others = ap.subjects.filter(sb => sb !== l.subject && daySubjects.has(sb))
           if (others.length) pen += ap.pen * 2
           else if (daySubjects.has(l.subject)) pen -= 1
+        }
+      }
+      // ③ 專科教室同半天同老師（只看有管理教室者：她的教室是確定的）：那間教室這半天已有別人的課 → 罰；已有自己的 → 小獎勵
+      if (roomHalfPen) {
+        const mine = this.st.mgrRooms.get(l.id)
+        if (mine && mine.length === 1) {
+          const occ = this.st.roomOcc.get(mine[0].id)
+          const half = p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7]
+          let other = 0, same = 0
+          for (const q of half) {
+            const cell = occ?.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
+            if (!id || id === ROOM_OFF) continue
+            if (this.st.lessonById.get(id)!.teacherId === l.teacherId) same++; else other++
+          }
+          if (other) pen += roomHalfPen * 2
+          else if (same) pen -= roomHalfPen   // 已開了這半天就把它填滿——獎勵要夠大才蓋得過「低節次優先」的 +5
         }
       }
       // ② 全單節老師相鄰同年級：前後相鄰那格若是別的年級 → 罰
@@ -1750,8 +1790,11 @@ export class EngineRun {
     // 這些課之後仍可換時段（鎖的是教室歸屬，不是時段），但 canPlace 保證換到哪都有教室。
     {
       const fillBatch = (todo0: EngineLesson[], ok: (l: EngineLesson) => boolean) => {
+        // 同一位老師的課排在一起（老師順序隨種子）：她先把自己教室的整個半天占滿，下一位再接——同教室同半天才會是同一位老師
+        const tOrder = new Map<string, number>()
+        for (const l of todo0) if (!tOrder.has(l.teacherId)) tOrder.set(l.teacherId, this.rnd())
         const todo = todo0.filter(l => !this.st.pos.has(l.id))
-          .sort((x, y) => (y.size - x.size) || (classSlack(x.classKey) - classSlack(y.classKey)) || (this.rnd() - 0.5))
+          .sort((x, y) => (tOrder.get(x.teacherId)! - tOrder.get(y.teacherId)!) || (y.size - x.size) || (classSlack(x.classKey) - classSlack(y.classKey)) || (this.rnd() - 0.5))
         let nodes = 0
         const dfs = (i: number): boolean => {
           if (i >= todo.length) return true
@@ -2022,6 +2065,37 @@ export class EngineRun {
       if (done) return true
       this.st.place(l, from); this.st.place(l2, p2)
     }
+    // ③ 與同一間教室裡別位老師的同型態課互換（教室快滿時，兩位管理者的連堂只能對調半天，搬不動）
+    const rid = this.st.roomOf.get(l.id)
+    if (rid) {
+      const mates: EngineLesson[] = []
+      this.st.pos.forEach((pp, id) => {
+        if (id === l.id || this.st.roomOf.get(id) !== rid) return
+        const x = this.st.lessonById.get(id)!
+        if (x.teacherId !== l.teacherId && x.size === l.size && x.parity === l.parity && want(pp)) mates.push(x)
+      })
+      const s3 = Math.floor(this.rnd() * Math.max(1, mates.length))
+      for (let k = 0; k < mates.length; k++) {
+        const l2 = mates[(s3 + k) % mates.length]
+        const p2 = this.st.pos.get(l2.id)!
+        const b2 = this.mustSetByClass.get(l2.classKey)
+        if (b2 && b2.has(`${p2.day}-${p2.period}`)) continue
+        this.st.remove(l); this.st.remove(l2)
+        let done = false
+        if (this.st.canPlace(l, p2)) {
+          this.st.place(l, p2)
+          if (this.st.canPlace(l2, from)) {
+            this.st.place(l2, from)
+            const sc = scoreState(this.st)
+            if (this.accept(sc)) { this.take(sc); done = true }
+            else this.st.remove(l2)
+          }
+          if (!done) this.st.remove(l)
+        }
+        if (done) return true
+        this.st.place(l, from); this.st.place(l2, p2)
+      }
+    }
     return false
   }
 
@@ -2088,6 +2162,42 @@ export class EngineRun {
         same++
       }
       return same > 0
+    })
+  }
+
+  /** 專科教室同半天同老師定向修補（權重）：找一個「同一間教室同半天有兩位老師」的格局，把少數那位的一堂課
+   *  搬到她自己教室「那半天沒有別人」的格子。只處理有管理教室者（教室確定）。 */
+  private tryFixRoomHalf() {
+    if (this.input.weights.builtin.roomHalfDay === 'off') return
+    const byRoomHalf = new Map<string, Map<string, EngineLesson[]>>()
+    this.st.pos.forEach((p, id) => {
+      const l = this.st.lessonById.get(id)!
+      const rid = this.st.roomOf.get(id)
+      if (!rid) return
+      const k = `${rid}|${p.day}|${p.period <= MORNING_LAST ? 'am' : 'pm'}`
+      const m = byRoomHalf.get(k) ?? byRoomHalf.set(k, new Map()).get(k)!
+      ;(m.get(l.teacherId) ?? m.set(l.teacherId, []).get(l.teacherId)!).push(l)
+    })
+    const bad: { rid: string; minority: EngineLesson[] }[] = []
+    byRoomHalf.forEach((m, k) => {
+      if (m.size < 2) return
+      const sorted = Array.from(m.entries()).sort((a, b) => a[1].length - b[1].length)
+      const minority = sorted[0][1].filter(l => (this.st.mgrRooms.get(l.id) ?? []).length === 1)
+      if (minority.length) bad.push({ rid: k.split('|')[0], minority })
+    })
+    if (!bad.length) return
+    const b = bad[Math.floor(this.rnd() * bad.length)]
+    const l = b.minority[Math.floor(this.rnd() * b.minority.length)]
+    const from = this.st.pos.get(l.id)!
+    const occ = this.st.roomOcc.get(b.rid)!
+    this.directedMove(l, p => {
+      const half = p.period <= MORNING_LAST ? [1, 2, 3, 4] : [5, 6, 7]
+      if (p.day === from.day && (from.period <= MORNING_LAST) === (p.period <= MORNING_LAST)) return false
+      for (const q of half) {
+        const cell = occ.get(`${p.day}-${q}`); const id = cell?.w ?? cell?.o ?? cell?.e
+        if (id && id !== ROOM_OFF && id !== l.id && this.st.lessonById.get(id)!.teacherId !== l.teacherId) return false
+      }
+      return true
     })
   }
 
@@ -2272,6 +2382,7 @@ export class EngineRun {
       if (this.iterations % 16 === 7) { this.tryFixTeacherApart(); continue }   // 7 % 8 = 7
       if (this.iterations % 16 === 15) { this.tryFixBandAdjacent(); continue }
       if (this.iterations % 16 === 11 && this.st.pos.size < this.input.lessons.length) { this.tryEjectionChain(); continue }   // 11 % 8 = 3
+      if (this.iterations % 16 === 3) { this.tryFixRoomHalf(); continue }
       if (this.rnd() < 0.3) { this.trySwap(); continue }
       const l = allLessons[Math.floor(this.rnd() * allLessons.length)]
       const oldP = this.st.pos.get(l.id) ?? null

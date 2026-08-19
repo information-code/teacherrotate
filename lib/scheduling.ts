@@ -141,6 +141,8 @@ export interface BuiltinRules {
   // 已刪除（被硬限制自動涵蓋）：連堂單節分半週（間隔≥2天的組合必然跨半週）
   walkCost: WeightLevel                           // 走動成本（依教室設定相鄰距離）
   roomManagerFirst: WeightLevel                   // 教室管理教師優先：管理者必得自己的教室（結構保證）；非管理者用到有管理者的教室時扣分
+  roomHalfDay: WeightLevel                        // 專科教室同半天同老師：同一間專科教室上午（1~4）／下午（5~7）盡量同一位老師——自然老師收實驗器材來不及換班。
+                                                  //   114-1 人工課表自然教室 27 個半天只有 1 個換老師（4%）、科技教室 3 個（11%）→ 高權重
   // 上午導師課下限：每天上午（1~4 節）至少 N 節是導師課。刻意做成「下限」而非「越多越好」——
   // 單調版本會把科任課全擠到下午、讓上午 4 格全是導師課而撞上「不連四」硬限制。
   homeroomMorning: { level: WeightLevel; n: number }
@@ -257,6 +259,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       bandAdjacent: 'mid',
       walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
+      roomHalfDay: 'high',
       homeroomMorning: { level: 'mid', n: 2 },
       homeroomDailyMax: { level: 'high', n: 3 },
       avoidPeriods: 'mid',
@@ -314,6 +317,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       bandAdjacent: normLevel(b.bandAdjacent, db.bandAdjacent),
       walkCost: normLevel(b.walkCost, db.walkCost),
       roomManagerFirst: normLevel(b.roomManagerFirst, db.roomManagerFirst),
+      roomHalfDay: normLevel(b.roomHalfDay, db.roomHalfDay),
       // 舊資料的 homeroomMorning 是純字串（單調版）→ 補成下限 N；homeroomBalance 直接丟棄
       homeroomMorning: typeof b.homeroomMorning === 'string'
         ? { level: normLevel(b.homeroomMorning, db.homeroomMorning.level), n: db.homeroomMorning.n }

@@ -93,6 +93,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
     { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
+    { key: 'roomHalfDay', name: '專科教室同半天同老師', def: '高', desc: '同一間專科教室上午（1~4 節）盡量同一位老師、下午（5~7 節）盡量同一位老師——自然老師收實驗器材來不及換班。以「較少那一邊」計次：上午 甲2＋乙2 扣 2 次。114-1 人工課表自然教室 27 個半天只換老師 1 次（4%），故為高權重', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
     { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '中', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%），故為權重' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
