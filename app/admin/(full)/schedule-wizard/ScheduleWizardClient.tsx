@@ -192,11 +192,13 @@ export default function ScheduleWizardClient(props: Props) {
   }, [versions, planStatus, running, result])
 
   async function patchVersion(id: string, patch: { label?: string | null; starred?: boolean }) {
-    await fetch('/api/admin/schedule-plan-versions', {
+    // 樂觀更新：先改畫面（星號、名稱立即反應），寫入失敗再抓回正確狀態
+    setVersions(prev => prev.map(v => v.id === id ? { ...v, ...(patch.starred !== undefined ? { starred: patch.starred } : {}), ...(patch.label !== undefined ? { label: patch.label } : {}) } : v))
+    const res = await fetch('/api/admin/schedule-plan-versions', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...patch }),
-    })
-    loadVersions()
+    }).catch(() => null)
+    if (!res?.ok) loadVersions()
   }
   async function deleteVersion(v: VersionRow) {
     if (!confirm(`刪除版本「${v.label || new Date(v.created_at).toLocaleString('zh-TW')}」？此操作無法復原。`)) return
