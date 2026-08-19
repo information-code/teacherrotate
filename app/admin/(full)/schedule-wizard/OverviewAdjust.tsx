@@ -175,15 +175,16 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
 
   // ── 全校掃描：每堂科任課都查一次，只收「比現在更好」（罰分 < 0）的方案 ──
   //   引擎停在它自己那幾種搬法的局部最佳；這裡用兩角／三角再掃一遍常常還撈得到。分批跑（setTimeout）不卡畫面。
-  const [scan, setScan] = useState<{ running: boolean; done: number; total: number; results: SwapOption[]; withThree: boolean; stale: boolean } | null>(null)
+  const [scan, setScan] = useState<{ running: boolean; done: number; total: number; results: SwapOption[]; withThree: boolean; stale: boolean; auto?: { round: number; applied: number; soft0: number; softNow: number } } | null>(null)
   const scanToken = useRef(0)
-  function runScan(withThree: boolean) {
-    if (!finder) return
-    const f = finder
+  /** 掃一輪；onDone 給「自動反覆」用（同一個 finder 實例、不經 setState 的 placed）。 */
+  function runScan(withThree: boolean, f0?: SwapFinder, onDone?: (results: SwapOption[]) => void, auto?: { round: number; applied: number; soft0: number; softNow: number }) {
+    const f = f0 ?? finder
+    if (!f) return
     const token = ++scanToken.current
-    const ids = placed.map(p => p.id)
+    const ids = f.snapshot().map(p => p.id)
     const found = new Map<string, SwapOption>()
-    setScan({ running: true, done: 0, total: ids.length, results: [], withThree, stale: false })
+    setScan({ running: true, done: 0, total: ids.length, results: [], withThree, stale: false, auto })
     let i = 0
     const step = () => {
       if (scanToken.current !== token) return   // 課表變了／重新開始：作廢
@@ -198,10 +199,37 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         }
       }
       const results = Array.from(found.values()).sort((a, b) => a.softDelta - b.softDelta || a.moves.length - b.moves.length).slice(0, 200)
-      setScan({ running: i < ids.length, done: i, total: ids.length, results, withThree, stale: false })
+      setScan({ running: i < ids.length, done: i, total: ids.length, results, withThree, stale: false, auto })
       if (i < ids.length) setTimeout(step, 0)
+      else onDone?.(results)
     }
     setTimeout(step, 0)
+  }
+  /** 自動反覆：掃 → 全部套用（逐筆重量）→ 再掃……直到直接搬／兩角掃不到，最後補一輪三角；一筆調整紀錄。 */
+  function runAutoPolish() {
+    if (!finder) return
+    const f = finder
+    const soft0 = f.soft
+    let applied = 0, round = 0, threeRounds = 0
+    let last: PlacedResult[] | null = null
+    const finish = () => {
+      scanToken.current++
+      if (!last || !applied) { setScan(null); alert('已經沒有更好的排法了（直接搬／兩角／三角都掃不到）。'); return }
+      const total = Math.round(f.soft - soft0)
+      applyAdjust(last, hr, `自動反覆優化：${round} 輪共套用 ${applied} 筆更好的調法，罰分 ${Math.round(soft0)} → ${Math.round(f.soft)}（${total}）`, [])
+      setHoverOpt(null); setScan(null)
+    }
+    const loop = (withThree: boolean) => {
+      round++
+      runScan(withThree, f, results => {
+        let n = 0
+        for (const o of results) { const r = f.applyIfBetter(o.moves); if (r.applied) { n++; last = r.placed } }
+        applied += n
+        if (!withThree) { if (results.length && n) loop(false); else { threeRounds = 1; loop(true) } }
+        else { threeRounds++; if (results.length && n && threeRounds <= 4) loop(true); else finish() }
+      }, { round, applied, soft0, softNow: f.soft })
+    }
+    loop(false)
   }
   // 課表一變，掃描結果的分數就不準了：標為過期（按「重新掃描」）
   useEffect(() => { scanToken.current++; setScan(sc => sc && !sc.running ? { ...sc, stale: true } : sc && sc.running ? null : sc) }, [placed])
@@ -657,6 +685,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               {scan?.running ? `🔍 掃描中 ${scan.done}/${scan.total}…` : '🔍 全校找更好的調法'}
             </button>
           )}
+          {finder && !(fillOpen) && (
+            <button onClick={runAutoPolish} disabled={scan?.running} className="btn btn-secondary text-xs py-0.5"
+              title="自動：掃→全部套用→再掃……直到掃不到更好的（最後補幾輪三角）。約 2～4 分鐘；一筆調整紀錄、可整批復原">
+              {scan?.running && scan.auto ? `🔁 第 ${scan.auto.round} 輪…` : '🔁 自動反覆到沒有更好'}
+            </button>
+          )}
           {!embedded && planStatus === 'published' && (
             <button onClick={toggleFill} disabled={fillBusy} className={`btn text-xs py-0.5 ${fillOpenState ? 'btn-secondary' : 'btn-primary'}`}
               title={fillOpenState ? '收回後導師端唯讀，課務組可自由調課（搬進空格、與導師課互換）' : '重新開放導師填課；開放期間課務組只能科任課互換'}>
@@ -720,6 +754,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       {scan && (
         <div className="card p-2 text-xs space-y-1 border-emerald-200">
           <div className="flex items-center gap-2 flex-wrap text-zinc-600">
+            {scan.running && scan.auto && (
+              <span className="px-1.5 py-0.5 rounded-sm bg-emerald-600 text-white font-medium">🔁 第 {scan.auto.round} 輪{scan.withThree ? '（含三角）' : ''}・已套用 {scan.auto.applied} 筆・罰分 {Math.round(scan.auto.soft0)} → {Math.round(scan.auto.softNow)}</span>
+            )}
             {scan.running
               ? <span>🔍 掃描中… {scan.done}/{scan.total} 堂
                   <span className="inline-block w-32 h-1.5 bg-zinc-200 rounded-full overflow-hidden align-middle ml-2"><span className="block h-full bg-emerald-500 rounded-full" style={{ width: `${Math.round(scan.done / Math.max(1, scan.total) * 100)}%` }} /></span>
