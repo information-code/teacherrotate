@@ -298,6 +298,47 @@ export default function ScheduleWizardClient(props: Props) {
       const adj = Array.isArray(props.savedPlan?.adjustments) ? (props.savedPlan!.adjustments as unknown[]).length : 0
       if (adj > 0 && previewVersionId && !confirm(`目前的正式課表有 ${adj} 筆手動微調紀錄。\n發布這一份會整個覆蓋掉，微調將全部消失。確定發布？`)) return
     }
+    // 發布前把關：導師已填的課若跟這份科任課撞在同一格，課表會以導師課覆蓋顯示、把科任課蓋掉。
+    // 撤回發布→換版本→重新發布最容易踩到（導師填課存在另一張表，不會跟著版本回去）。
+    if (action === 'publish') {
+      const toPublish = result?.placed ?? (Array.isArray(props.savedPlan?.placed) ? props.savedPlan!.placed as PlacedResult[] : null)
+      if (toPublish) {
+        const clash: { ck: string; slots: string[] }[] = []
+        for (const r of props.homeroomRows) {
+          const cells = r.cells ?? {}
+          if (!Object.keys(cells).length) continue
+          const occ = new Set<string>()
+          for (const q of toPublish) {
+            if (q.classKey !== r.class_key) continue
+            occ.add(`${q.day}-${q.period}`)
+            if (q.size === 2) occ.add(`${q.day}-${q.period + 1}`)
+          }
+          const bad = Object.keys(cells).filter(sl => occ.has(sl))
+          if (bad.length) clash.push({ ck: r.class_key, slots: bad })
+        }
+        if (clash.length) {
+          const zh = (ck: string) => { const [g, i] = ck.split('-').map(Number); return `${GRADE_LABEL[g]}${i + 1}班` }
+          const n = clash.reduce((a, c) => a + c.slots.length, 0)
+          const head = clash.slice(0, 6).map(c => `${zh(c.ck)}×${c.slots.length}`).join('、')
+          const msg = '有 ' + clash.length + ' 個班、共 ' + n + ' 格導師已填的課，跟這份課表的科任課落在同一格（'
+            + head + (clash.length > 6 ? '…' : '') + '）。\n\n課表顯示時導師課會蓋住科任課，等於科任課消失。\n\n'
+            + '按「確定」＝清掉這幾格導師填的課再發布（導師需重填那幾格）\n按「取消」＝先不發布，自行處理'
+          if (!confirm(msg)) return
+          setPhaseBusy(true)
+          try {
+            for (const c of clash) {
+              const row = props.homeroomRows.find(r => r.class_key === c.ck)
+              const cells = { ...(row?.cells ?? {}) }
+              for (const sl of c.slots) delete cells[sl]
+              await fetch('/api/admin/schedule-homeroom', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, classKey: c.ck, action: 'setCells', cells }),
+              })
+            }
+          } finally { setPhaseBusy(false) }
+        }
+      }
+    }
     setPhaseBusy(true)
     try {
       if (action === 'publish' && !draftDirty) {
@@ -1014,7 +1055,9 @@ export default function ScheduleWizardClient(props: Props) {
                                   className="btn btn-secondary text-xs py-0.5">{versionBusy === v.id ? '載入中…' : '預覽'}</button>
                                 <button onClick={() => { const n = window.prompt('版本名稱（留空＝顯示時間）', v.label ?? ''); if (n !== null) patchVersion(v.id, { label: n }) }}
                                   className="ml-2 text-xs text-zinc-400 hover:text-sky-600">改名</button>
-                                <button onClick={() => deleteVersion(v)} className="ml-2 text-xs text-zinc-400 hover:text-red-500">刪除</button>
+                                {planStatus === 'published' || planStatus === 'final'
+                                  ? <span className="ml-2 text-xs text-zinc-300" title="課表已發布，版本紀錄鎖定保存；要刪除請先撤回發布">刪除</span>
+                                  : <button onClick={() => deleteVersion(v)} className="ml-2 text-xs text-zinc-400 hover:text-red-500">刪除</button>}
                               </td>
                             </tr>
                           )
