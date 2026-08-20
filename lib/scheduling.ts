@@ -259,7 +259,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
       consecMax: { level: 'high', n: 5 },     // N=3 時人工課表 110 筆超標（最長 6 連）→ 放寬至 5
       compact: 'low',
-      hourlyBalance: { level: 'mid', mode: 'concentrate', days: 2 },
+      hourlyBalance: { level: 'high', mode: 'concentrate', days: 2 },
       classCohesion: 'high',   // 114-2 人工課表遵守率 91%（43/463 半天被切開）
       batchType: 'high',
       bandAdjacent: 'mid',

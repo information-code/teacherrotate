@@ -1548,7 +1548,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         const worse = { over: Math.max(eo.over, ee.over), run: Math.max(eo.run, ee.run), gaps: Math.max(eo.gaps, ee.gaps), segs: Math.max(eo.segs, ee.segs) }
         if (worse.over > 0 && w.dailyMax.level !== 'off') acc(map, 'dailyMax', `每日節數上限 ${w.dailyMax.n}`, pen(w.dailyMax.level) * worse.over, `${nameOf(tid)} 週${DAY_ZH[d]}超 ${worse.over} 節`)
         if (worse.run > 0 && w.consecMax.level !== 'off') acc(map, 'consecMax', `連續授課上限 ${w.consecMax.n}`, pen(w.consecMax.level) * worse.run, `${nameOf(tid)} 週${DAY_ZH[d]}連續超 ${worse.run} 節`)
-        if (worse.gaps > 0 && w.compact !== 'off') acc(map, 'compact', '減少零碎空堂', pen(w.compact) * worse.gaps, `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
+        if (worse.gaps > 0 && w.compact !== 'off' && !hourlySet.has(tid)) acc(map, 'compact', '減少零碎空堂', pen(w.compact) * worse.gaps, `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
         // 硬限制：課間空堂最多一段（禁止上空上空交錯）
         if (worse.segs > 1) acc(map, 'gapAlternate', '課間空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}空堂分成 ${worse.segs} 段（上空上空）`)
       }
@@ -1568,6 +1568,15 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       })
       const r = spreadOver(cfg, loads, 3)
       if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${nameOf(tid)} ${r.why}`)
+      // 孤堂日：鐘點老師「來一趟只上 1 節」直接對準痛點加重罰（×3），逼引擎把零星課併進已有課的日子。
+      // 只在集中模式且總節數 > 1 時計（總共就 1 節的人本來就只能來一天一堂）。
+      if (cfg.mode === 'concentrate' && cfg.level !== 'off') {
+        const total7 = loads.reduce((a2, b2) => a2 + b2, 0)
+        if (total7 > 1) {
+          const lonely = loads.filter(n => n === 1).length
+          if (lonely > 0) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * 3 * lonely, `${nameOf(tid)} 有 ${lonely} 天到校只上 1 節（孤堂日）`)
+        }
+      }
       }
     }
   })
@@ -1649,6 +1658,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       return input.classRoom[l.classKey] ?? null
     }
     st.teacherOcc.forEach((occ, tid) => {
+      if (hourlySet.has(tid)) return   // 鐘點老師不計走動：對她們「多來一天」遠比「多走幾步」痛，走動罰會把課推散到不同天
       for (const d of SCHEDULE_DAYS) {
         // 當天這位老師的課依節次排成序列（連堂只算一堂）。
         // 比較「相鄰兩堂課」而不是「相鄰兩節」——中間隔空堂照樣要走那一趟，
