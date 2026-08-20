@@ -939,7 +939,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           <div className="text-sm font-semibold text-red-700">
             {freeMode ? '🔓 自由編輯中——不檢查任何規則' : '🔓 這份課表含自由編輯的內容'}
             <span className="ml-2 text-xs font-normal text-red-600">
-              鎖課格、非可排時段、老師衝堂一律放行；結果只能「另存為版本」，不會寫進正式課表。
+              非可排時段、老師衝堂、放進鎖課格一律放行；結果只能「另存為版本」，不會寫進正式課表。
+              <b>鎖課本身</b>（種子班國數、本土語、游泳…）屬於設定不屬於課表，要換時段請到
+              <a href="/admin/schedule-config?tab=lock" className="underline">排課設定 → 5 鎖課設定</a>：點掉舊格、再點新格即可。
               {tray.length > 0 && <b className="ml-1">待排區還有 {tray.length} 堂。</b>}
             </span>
           </div>
@@ -1059,6 +1061,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             : ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900')
                             : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700'
                             : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300'
+                            : freeMode && trayPick ? 'border-dashed border-amber-400 text-amber-500'
                             : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${ls.length || opt || freeMode ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                           {ls.length === 0 && ex.length === 0 && off && <span className="text-[8px]">—</span>}
@@ -1133,8 +1136,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                           const picked = slotPick?.classKey === ck && slotPick?.slot === k
                           return (
                             <td key={d} className="p-0.5">
-                              <button onClick={() => clickCell(ck, k)} title="鎖課格——自由編輯下仍可放課"
-                                className={`w-full h-9 rounded-sm border flex items-center justify-center truncate px-0.5 cursor-pointer ${picked ? 'border-amber-500 bg-amber-50 text-amber-700' : 'bg-zinc-200 border-zinc-300 text-zinc-600'}`}>{label}</button>
+                              <button onClick={() => clickCell(ck, k)}
+                                title={trayPick ? '放進這一格（鎖課仍在，兩者會同格）' : '鎖課格：要移動鎖課本身請到「排課設定 → 5 鎖課設定」；這裡可以把待排區的課放進來'}
+                                className={`w-full h-9 rounded-sm border flex items-center justify-center truncate px-0.5 cursor-pointer ${picked ? 'border-amber-500 bg-amber-50 text-amber-700' : trayPick ? 'bg-zinc-200 border-amber-400 border-dashed text-zinc-600' : 'bg-zinc-200 border-zinc-300 text-zinc-600'}`}>{label}</button>
                             </td>
                           )
                         }
@@ -1191,8 +1195,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const must = mustFillOf[ck]?.has(k)
                         return (
                           <td key={d} className="p-0.5">
-                            <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
-                              className={`relative w-full h-9 rounded-sm border border-dashed ${slotPick?.classKey === ck && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700' : must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                            <button onClick={() => clickCell(ck, k)} title={freeMode && trayPick ? '放進這一格' : title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
+                              className={`relative w-full h-9 rounded-sm border border-dashed ${slotPick?.classKey === ck && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700' : freeMode && trayPick ? 'border-amber-400 text-amber-500' : must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
                               {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                               {must ? '需科任' : ''}
                             </button>
