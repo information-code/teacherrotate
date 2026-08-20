@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
+import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
@@ -31,7 +32,8 @@ interface Props {
   focusId?: string
   extras?: AdjustExtras     // 本土語（原班、語別場次）：教師／教室檢視顯示為灰格、不可調
   onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
-  onPersisted?: () => void                             // 第一次成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
+  onPersisted?: () => void                             // 成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
+  onDirtyChange?: (unsaved: number) => void            // 未儲存的微調筆數（外層據此攔截重跑／換版本）
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -46,7 +48,7 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -81,34 +83,57 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [note, setNote] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [snapState, setSnapState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  // 微調＝暫存：改動只在記憶體，按「儲存微調」才寫入課表。未儲存時離開頁面會攔截確認，
+  // 不存就離開＝資料庫維持原狀（回來看到的是沒改過的那份）。
+  const [unsaved, setUnsaved] = useState(0)
+  const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
+  const markDirty = (changedHrClasses: string[]) => {
+    for (const ck of changedHrClasses) pendingHrRef.current.add(ck)
+    setUnsaved(n => { const next = n + 1; onDirtyChange?.(next); return next })
+  }
 
-  /** 把目前（微調後）的課表另存成一份版本快照。
-   *  微調是每步自動存進正式課表的，沒有版本可回頭；批次調完按這顆就留一個復原點。
+  /** 把指定內容存成一份版本快照。
+   *  微調是每步自動寫進課表的，復原堆疊只在記憶體、換頁就沒了；故第一次微調前會自動備份一份（silent），
+   *  批次調完也可按「存為版本」再留一個點。
    *  罰分不重算——引擎的計分要完整 EngineInput，這裡沒有；故標明數值為微調前的，避免被拿去比較。 */
-  async function snapshot() {
-    setSnapState('saving')
+  async function saveVersion(opts: { placed: PlacedResult[]; adjustments: Adjustment[]; label: string; silent?: boolean }) {
+    if (!opts.silent) setSnapState('saving')
     try {
       const pens = (savedPlan.penalties as { key: string; label: string; count: number; points: number }[] | undefined) ?? []
       const res = await fetch('/api/admin/schedule-plan-versions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          year, source: 'manual', baseHash, weights: config.weights,
-          label: `手動微調後（${adjustments.length} 筆調整）`,
+          year, source: opts.adjustments.length > 0 ? 'manual' : 'engine', baseHash, weights: config.weights,
+          label: opts.label,
           summary: {
-            placed: placed.length,
+            placed: opts.placed.length,
             unplaced: Array.isArray(savedPlan.unplaced) ? (savedPlan.unplaced as unknown[]).length : 0,
             uncovered: Array.isArray(savedPlan.uncoveredMustFill) ? (savedPlan.uncoveredMustFill as unknown[]).length : 0,
             mustCount: pens.filter(x => Number(x.points) >= 1e6).reduce((a, x) => a + (x.count ?? 0), 0),
             softPenalty: Math.round(Number(savedPlan.softPenalty ?? 0)),
-            note: '手動微調後保存；罰分為微調前的數值、未重算，不可與其他版本比較。',
+            note: opts.adjustments.length > 0
+              ? '手動微調後保存；罰分為微調前的數值、未重算，不可與其他版本比較。'
+              : '微調前的自動備份；罰分為引擎產生時的數值。',
             rules: pens.filter(x => Number(x.points) > 0).map(x => ({ key: x.key, label: x.label, count: x.count, points: Math.round(Number(x.points)) })),
           },
-          plan: { ...savedPlan, placed, adjustments },
+          plan: { ...savedPlan, placed: opts.placed, adjustments: opts.adjustments },
         }),
       })
-      setSnapState(res.ok ? 'saved' : 'error')
-    } catch { setSnapState('error') }
+      if (!opts.silent) setSnapState(res.ok ? 'saved' : 'error')
+      return res.ok
+    } catch { if (!opts.silent) setSnapState('error'); return false }
   }
+  const snapshot = () => saveVersion({ placed, adjustments, label: `手動微調後（${adjustments.length} 筆調整）` })
+
+  /** 儲存微調：寫入課表（發布中的話老師端立刻看到）＋ 自動留一份版本可回頭。 */
+  async function saveAdjust() {
+    const ok = await persist(placed, hr, adjustments, Array.from(pendingHrRef.current))
+    if (!ok) return
+    pendingHrRef.current.clear()
+    setUnsaved(0); onDirtyChange?.(0)
+    void saveVersion({ placed, adjustments, label: `手動微調後（${adjustments.length} 筆調整）`, silent: true })
+  }
+  useUnsavedGuard(unsaved > 0, `有 ${unsaved} 筆微調尚未儲存，離開將全部捨棄（課表會維持微調前的樣子）。確定要離開嗎？`)
   const [busy, setBusy] = useState(false)
 
   const rooms = useMemo(() => roomsFromConfig(config), [config])
@@ -436,7 +461,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       savedPlan.adjustments = nextAdj
       setSaveState('saved')
       onPersisted?.()
-    } catch { setSaveState('error') }
+      return true
+    } catch { setSaveState('error'); return false }
   }
 
   function applyAdjust(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, desc: string, changedHrClasses: string[]) {
@@ -449,7 +475,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     setAdjustments(nextAdj)
     setSel(null)
     setNote('')
-    void persist(withRooms, nextHr, nextAdj, changedHrClasses)
+    markDirty(changedHrClasses)
   }
 
   /** 套用查詢器給的一組搬動（直接搬／兩角／三角／多角鏈）：全部合法才套，教室由引擎狀態重配。 */
@@ -536,7 +562,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     const adj: Adjustment = { at: new Date().toISOString(), desc: `${l.classLabel}：${l.subject} 連堂拆為兩個單節` }
     const nextAdj = [...adjustments, adj]
     setPlaced(next); onPlacedChange?.(next); setAdjustments(nextAdj); setSel(null)
-    void persist(next, hr, nextAdj, [])
+    markDirty([])
   }
 
   function undo() {
@@ -547,8 +573,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     setHr(last.hr)
     setAdjustments(last.adjustments)
     setSel(null)
-    const changed = Object.keys(last.hr)
-    void persist(last.placed, last.hr, last.adjustments, changed)
+    markDirty(Object.keys(last.hr))
   }
 
   async function unconfirmClass(classKey: string) {
@@ -666,7 +691,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">點一堂課就能調（會上色）；調動自動存成草稿，發布時就發布調整後的這份</span> : '年級總覽與調整'}
+        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">點一堂課就能調（會上色）；改動先<b>暫存在畫面上</b>，按「💾 儲存微調」才寫入課表。沒儲存就離開＝全部捨棄（會先問你），課表維持原樣</span> : '年級總覽與調整'}
           {!embedded && (planStatus === 'draft'
             ? <span className="text-xs font-normal text-amber-600 ml-2">草稿（尚未發布）</span>
             : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>)}
@@ -678,8 +703,15 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         </div>
         <span className="ml-auto flex items-center gap-2 flex-wrap">
           {saveState === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
-          {saveState === 'saved' && <span className="text-xs text-green-600">✓ 已儲存</span>}
+          {saveState === 'saved' && unsaved === 0 && <span className="text-xs text-green-600">✓ 已儲存</span>}
           {saveState === 'error' && <span className="text-xs text-red-600">⚠ 儲存失敗</span>}
+          {unsaved > 0 && (
+            <>
+              <span className="text-xs text-amber-600 font-medium">⚠ {unsaved} 筆微調尚未儲存</span>
+              <button onClick={saveAdjust} disabled={saveState === 'saving'} className="btn btn-primary text-xs py-0.5"
+                title="寫入課表；同時自動留一份版本，之後可從版本紀錄回到這裡">💾 儲存微調</button>
+            </>
+          )}
           {snapState === 'saved' && <span className="text-xs text-green-600">✓ 已存為版本</span>}
           {snapState === 'error' && <span className="text-xs text-red-600">⚠ 存版本失敗</span>}
           {adjustments.length > 0 && (

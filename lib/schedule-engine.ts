@@ -1043,7 +1043,10 @@ class State {
     return null
   }
 
-  /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。 */
+  /** 放置後該師當日「課間空堂段數」（取兩週型較差者）。
+   *  只算「起點落在上午（1~MORNING_LAST 節）」的空堂段——下午的空堂完全不計。
+   *  半天日「上空上空」＝1 段（可以）；整天日「上空上空上」＝2 段（不行）；
+   *  而 1,2,3 上完、下午 5、7 這種只有下午空一節的，不算違反。 */
   private teacherGapSegsAfter(l: EngineLesson, p: Placement): number {
     const tOcc = this.teacherOcc.get(l.teacherId)!
     const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
@@ -1058,7 +1061,10 @@ class State {
       if (l.size === 2) taught.push(p.period + 1)
       const qs = Array.from(new Set(taught)).sort((a, b) => a - b)
       let segs = 0
-      for (let i = 1; i < qs.length; i++) if (qs[i] - qs[i - 1] > 1) segs++
+      for (let i = 1; i < qs.length; i++) {
+        if (qs[i] - qs[i - 1] <= 1) continue
+        if (qs[i - 1] + 1 <= MORNING_LAST) segs++   // 空堂起點在上午才計
+      }
       worst = Math.max(worst, segs)
     }
     return worst
@@ -1541,7 +1547,10 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           for (let q = 1; q <= 7; q++) { run = taught.includes(q) ? run + 1 : 0; best = Math.max(best, run) }
           res.run = Math.max(0, best - w.consecMax.n)
           res.gaps = (taught[taught.length - 1] - taught[0] + 1) - taught.length
-          for (let i = 1; i < taught.length; i++) if (taught[i] - taught[i - 1] > 1) res.segs++
+          // segs 只計「起點落在上午」的空堂段（與 canPlace 同口徑）；下午的空堂不計
+          for (let i = 1; i < taught.length; i++) {
+            if (taught[i] - taught[i - 1] > 1 && taught[i - 1] + 1 <= MORNING_LAST) res.segs++
+          }
           return res
         }
         const eo = evalDay(taughtO), ee = evalDay(taughtE)
@@ -1550,7 +1559,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (worse.run > 0 && w.consecMax.level !== 'off') acc(map, 'consecMax', `連續授課上限 ${w.consecMax.n}`, pen(w.consecMax.level) * worse.run, `${nameOf(tid)} 週${DAY_ZH[d]}連續超 ${worse.run} 節`)
         if (worse.gaps > 0 && w.compact !== 'off' && !hourlySet.has(tid)) acc(map, 'compact', '減少零碎空堂', pen(w.compact) * worse.gaps, `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
         // 硬限制：課間空堂最多一段（禁止上空上空交錯）
-        if (worse.segs > 1) acc(map, 'gapAlternate', '課間空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}空堂分成 ${worse.segs} 段（上空上空）`)
+        if (worse.segs > 1) acc(map, 'gapAlternate', '上午空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}上午空堂分成 ${worse.segs} 段（上空上空上）`)
       }
     }
     // 每日負擔平衡

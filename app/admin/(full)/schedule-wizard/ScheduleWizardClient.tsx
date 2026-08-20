@@ -88,6 +88,10 @@ export default function ScheduleWizardClient(props: Props) {
   const [draftDirty, setDraftDirty] = useState(false)
   const [adjustSession, setAdjustSession] = useState(0)
   const [resumedAdjustments, setResumedAdjustments] = useState<unknown[] | null>(null)   // 接續草稿時帶回的微調紀錄
+  const [adjustUnsaved, setAdjustUnsaved] = useState(0)   // 內嵌微調尚未儲存的筆數（重跑／換版本前要問）
+  /** 有未儲存微調時先確認；確定放棄才往下走。 */
+  const confirmDropAdjust = (what: string) =>
+    adjustUnsaved === 0 || window.confirm(`有 ${adjustUnsaved} 筆微調尚未儲存，${what}將全部捨棄。確定要繼續嗎？`)
   const sessionBase = useRef<EngineResult | null>(null)   // 這一輪微調的起點（放棄微調要回到這裡）
   const resumeBase = useRef<EngineResult | null>(null)    // 接續草稿時從草稿裡帶回的起點（草稿存了 base）
   const draftPlanObj = useMemo<Record<string, unknown> | null>(() => {
@@ -234,7 +238,9 @@ export default function ScheduleWizardClient(props: Props) {
   }
 
   function run() {
+    if (!confirmDropAdjust('重新排課')) return
     workerRef.current?.terminate()
+    setAdjustUnsaved(0)
     setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null); setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
@@ -372,7 +378,9 @@ export default function ScheduleWizardClient(props: Props) {
 
   /** 從版本紀錄挑一份來預覽（不會動到正式課表，要按發布才算數）。 */
   async function previewVersion(v: VersionRow) {
+    if (!confirmDropAdjust('切換到別的版本')) return
     setVersionBusy(v.id)
+    setAdjustUnsaved(0)
     setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
     try {
       const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
@@ -877,6 +885,7 @@ export default function ScheduleWizardClient(props: Props) {
                 teacherNames={teacherNames}
                 onPlacedChange={placed => setResult(r => r ? { ...r, placed } : r)}
                 onPersisted={() => setDraftDirty(true)}
+                onDirtyChange={setAdjustUnsaved}
                 onGradeChange={g => { setGradeSel(g); setView('class') }}
                 onDiscard={discardDraft}
               />
