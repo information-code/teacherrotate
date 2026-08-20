@@ -75,7 +75,7 @@ export interface EngineResult {
   notes?: string[]         // 引擎說明（如：自然教室優先排的降級紀錄）
 }
 
-export interface PreflightIssue { level: 'error' | 'warn' | 'info'; text: string; tab?: string; href?: string }   // info＝說明性、不是問題   // tab＝排課設定分頁 key、href＝其他頁面完整路徑（引導按鈕用，href 優先）
+export interface PreflightIssue { level: 'error' | 'warn'; text: string; tab?: string; href?: string }   // tab＝排課設定分頁 key、href＝其他頁面完整路徑（引導按鈕用，href 優先）
 
 // ── 亂數（可重現） ──
 function mulberry32(seed: number) {
@@ -646,10 +646,6 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const have = nodesByClass[c.classKey] ?? 0
       if (have < need) short.push(`${c.label}（需 ${need} 節／科任課僅 ${have} 節）`)
     }
-    if (short.length) preflight.push({
-      level: 'info', tab: 'weight',
-      text: `導師每日節數上限 ${hrN} 節：這些班的科任課節數不足以完全達標，會殘留超標（權重＝盡量，不會卡住排課，其餘班級照樣壓到 ${hrN} 節，這幾班也會盡量壓近）：${joinCap(short)}——想完全消掉可於配課統計增加該班科任課，或調高上限。`,
-    })
   }
   // 導師鎖課本身就連上超過 N（如種子班國數鎖滿整個上午）：引擎一格也動不了，先講明白
   {
@@ -714,14 +710,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const [g, subj] = k2.split('|')
       return `${GRADE_LABEL[Number(g)]}${subj}（${n} 班）`
     })
-    // 預設就是「隨機（精靈自動分配）」，這不是問題、只是告知；配課統計配完＝供給齊了，配班是可選的固定
-    const totalAuto = Array.from(autoAgg.values()).reduce((s2, n) => s2 + n, 0)
-    preflight.push({ level: 'info', text: `${totalAuto} 個班科由精靈依配課節數自動配班（未手動指定授課老師）——這是預設行為；只有要固定某班由誰上時才需到科任配班指定。`, tab: 'subject' })
   }
   if (agg.leftoverLow.length) preflight.push({ level: 'warn', text: `班級課表塞不下：導師要排進留白的節數多於留白格（留白/導師待排＝導師實際配課−已鎖固定格）——請於配課統計調整該班導師或科任的節數：${joinCap(agg.leftoverLow)}`, href: '/admin/allocation-statistics' })
   if (agg.artBiweekly.length) preflight.push({ level: 'warn', text: `單雙週連堂假設每週均攤 1 節，但每班節數不同：${joinCap(agg.artBiweekly)}`, tab: 'weight' })
   const noManager = rooms.filter(r => r.managerIds.length === 0).map(r => r.label)
-  if (noManager.length) preflight.push({ level: 'info', text: `未指定管理教師的科任教室（「教室管理教師優先」權重不作用於這些教室，其餘照常）：${joinCap(noManager)}`, tab: 'room' })
   // 本土語檢核
   if (nativeAgg.notLocked.length) preflight.push({ level: 'warn', text: `本土語尚未鎖滿時段：${joinCap(nativeAgg.notLocked)}`, tab: 'lock' })
   for (const issue of derived.issues) preflight.push(issue)

@@ -135,7 +135,6 @@ export default function ScheduleWizardClient(props: Props) {
   )
   const errors = preflight.filter(p => p.level === 'error')
   const warns = preflight.filter(p => p.level === 'warn')
-  const infos = preflight.filter(p => p.level === 'info')
 
   const curBaseHash = useMemo(() => baseHashOf(input), [input])
 
@@ -619,13 +618,13 @@ export default function ScheduleWizardClient(props: Props) {
       </div>
 
       {/* 前置檢查（附前往設定引導按鈕） */}
-      {(errors.length > 0 || warns.length > 0 || infos.length > 0) && (
+      {(errors.length > 0 || warns.length > 0) && (
         <div className="card p-3 space-y-1.5">
           <div className="text-sm font-semibold text-zinc-700">前置檢查</div>
-          {[...errors, ...warns, ...infos].map((p, i) => (
+          {[...errors, ...warns].map((p, i) => (
             <div key={i} className="flex items-start gap-2">
-              <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : p.level === 'warn' ? 'text-amber-600' : 'text-zinc-500'}`}>
-                {p.level === 'error' ? '✕' : p.level === 'warn' ? '⚠' : 'ⓘ'} {p.text}
+              <p className={`text-xs flex-1 ${p.level === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                {p.level === 'error' ? '✕' : '⚠'} {p.text}
               </p>
               {(p.href || p.tab) && (
                 <Link href={p.href ?? `/admin/schedule-config?tab=${p.tab}`}
@@ -780,7 +779,6 @@ export default function ScheduleWizardClient(props: Props) {
             return (
               <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap">
                 <span>目前顯示版本：<b>{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>{v.label && <span className="text-zinc-400 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
-                <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-0.5 ml-auto">換一份</button>
               </div>
             )
           })()}
