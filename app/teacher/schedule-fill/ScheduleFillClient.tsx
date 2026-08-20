@@ -69,6 +69,28 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
     })
   }
 
+  /** 取消確認：填課還開著就讓導師自己解鎖，不必請教務處退回。 */
+  async function cancelConfirm() {
+    if (!confirm('取消確認後即可繼續修改，改完記得再按一次「確認送出」。確定取消確認？')) return
+    setConfirming(true)
+    try {
+      const res = await fetch('/api/teacher/schedule-fill', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, unconfirm: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? '取消失敗'); return }
+      setConfirmed(false)
+    } finally { setConfirming(false) }
+  }
+  /** 一鍵清空：只清自己填的，科任課與鎖課不動。 */
+  function clearAll() {
+    const n = Object.keys(cells).length
+    if (!n || !confirm(`清空您已填的 ${n} 格？（科任課與鎖課不受影響）`)) return
+    setCells({})
+    setSelected(null)
+  }
+
   async function confirmSubmit() {
     if (!allDone) return
     if (!confirm('確認送出後即不可自行修改（如需調整請洽教務處）。確定送出？')) return
@@ -92,8 +114,9 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
         <div>
           <h2 className="page-title mb-1">排課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度・{classLabel}</span></h2>
           <p className="text-xs text-zinc-400">
-            灰色＝科任課與鎖課（不可動）；點選下方科目後，點空白格填入自己的課，再點一次移除。全部填完才能確認送出。
-            紫色虛線格＝視藝單雙週的配對格：您在該週型連上整塊兩節（同一科），填一格扣 2 節。
+            灰色＝科任課與鎖課（不可動）；點下方科目後，點空白格填入，再點一次移除。全部填完才能按「確認送出」。
+            紫色格是隔週輪流的：那一節單週上視覺藝術、雙週換您上（或相反）。輪到您的那格<b>一次上兩節</b>，
+            所以填一格會扣掉 2 節配課，而且兩節要同一科。
           </p>
         </div>
         <span className="text-xs flex-shrink-0">
@@ -104,8 +127,13 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
       </div>
 
       {confirmed && (
-        <div className="card bg-green-50 border-green-200 text-sm text-green-700 py-3">
-          ✓ 已確認送出{confirmedAt ? `（${new Date(confirmedAt).toLocaleString('zh-TW')}）` : ''}。如需修改請洽教務處。
+        <div className="card bg-green-50 border-green-200 text-sm text-green-700 py-3 flex items-center gap-3 flex-wrap">
+          <span>✓ 已確認送出{confirmedAt ? `（${new Date(confirmedAt).toLocaleString('zh-TW')}）` : ''}。</span>
+          {finalized
+            ? <span className="text-zinc-500">{lockMessage ?? '課表已公告，如需修改請洽教務處。'}</span>
+            : <button onClick={cancelConfirm} disabled={confirming} className="btn btn-secondary text-xs py-0.5 ml-auto">
+                {confirming ? '處理中…' : '取消確認，繼續修改'}
+              </button>}
         </div>
       )}
       {!confirmed && finalized && lockMessage && (
@@ -133,8 +161,8 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
       )}
 
       {/* 課表 */}
-      <div className="card p-3">
-        <table className="w-full table-fixed border-collapse text-[11px]">
+      <div className="card p-3 overflow-x-auto">
+        <table className="w-full table-fixed border-collapse text-[11px] min-w-[420px]">
           <thead>
             <tr>
               <th className="w-7 text-zinc-400 font-normal"></th>
@@ -151,22 +179,22 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
                   if (f) {
                     return (
                       <td key={d} className="p-0.5">
-                        <div className={`h-11 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${f.kind === 'lock' ? 'bg-zinc-200 border-zinc-300 text-zinc-600' : f.biweekly ? 'bg-violet-50 border-violet-200 text-violet-800' : 'bg-zinc-100 border-zinc-200 text-zinc-500'}`}>
+                        <div className={`h-12 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${f.kind === 'lock' ? 'bg-zinc-200 border-zinc-300 text-zinc-600' : f.biweekly ? 'bg-violet-50 border-violet-200 text-violet-800' : 'bg-zinc-100 border-zinc-200 text-zinc-500'}`}>
                           <span className="truncate w-full font-medium">{f.subject}</span>
                           {f.teacherName && <span className="truncate w-full text-[9px] opacity-70">{f.teacherName}</span>}
-                          {f.biweekly && <span className="text-[8px] opacity-70">{f.biweekly === 'odd' ? '單週（雙週歸您）' : '雙週（單週歸您）'}</span>}
+                          {f.biweekly && <span className="text-[8px] opacity-70">{f.biweekly === 'odd' ? '單週上這堂・雙週輪您' : '雙週上這堂・單週輪您'}</span>}
                         </div>
                       </td>
                     )
                   }
-                  if (!teachSet.has(k)) return <td key={d} className="p-0.5"><div className="h-11 rounded-sm bg-zinc-50" /></td>
+                  if (!teachSet.has(k)) return <td key={d} className="p-0.5"><div className="h-12 rounded-sm bg-zinc-50" /></td>
                   const mine = cells[k]
                   const pair = pairCells[k]
-                  const pairTag = pair === 'odd' ? '單週・整塊兩節' : pair === 'even' ? '雙週・整塊兩節' : null
+                  const pairTag = pair === 'odd' ? '單週輪您・算 2 節' : pair === 'even' ? '雙週輪您・算 2 節' : null
                   return (
                     <td key={d} className="p-0.5">
                       <button type="button" onClick={() => clickCell(k)} disabled={readOnly}
-                        className={`w-full h-11 rounded-sm border text-[11px] leading-tight flex flex-col items-center justify-center ${mine
+                        className={`w-full h-12 rounded-sm border text-[11px] leading-tight flex flex-col items-center justify-center ${mine
                           ? pair ? 'bg-violet-50 border-violet-300 text-violet-800 font-medium' : 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
                           : pair ? 'bg-white border-dashed border-violet-300 text-violet-400 hover:border-violet-500'
                           : 'bg-white border-dashed border-zinc-300 text-zinc-300 hover:border-emerald-400'}`}>
@@ -184,8 +212,11 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
 
       {!readOnly && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <span className="text-xs text-zinc-400">
-            {allDone ? '✓ 全部配課已填入' : `尚餘 ${subjects.reduce((s2, s) => s2 + Math.max(0, remaining(s)), 0)} 節未填`}
+          <span className="text-xs text-zinc-400 flex items-center gap-3">
+            <span>{allDone ? '✓ 全部配課已填入' : `尚餘 ${subjects.reduce((s2, s) => s2 + Math.max(0, remaining(s)), 0)} 節未填`}</span>
+            {Object.keys(cells).length > 0 && (
+              <button onClick={clearAll} className="text-zinc-400 hover:text-red-500 underline underline-offset-2">清空重填</button>
+            )}
           </span>
           <button onClick={confirmSubmit} disabled={!allDone || confirming || saveStatus === 'saving'} className="btn-primary text-sm">
             {confirming ? '送出中…' : '確認送出'}

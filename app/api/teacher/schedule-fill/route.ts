@@ -13,7 +13,7 @@ export async function PUT(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { year, cells, confirm } = await request.json()
+  const { year, cells, confirm, unconfirm } = await request.json()
   if (!Number.isInteger(Number(year))) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
   if (!cells || typeof cells !== 'object') return NextResponse.json({ error: '格式錯誤' }, { status: 400 })
 
@@ -35,11 +35,21 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '課務組已收回填課權限（正在調課），如需調整請洽教務處' }, { status: 403 })
   }
 
+  // 取消確認：填課還開著就讓導師自己解鎖繼續改，不必為了改一格去麻煩教務處
+  if (unconfirm === true) {
+    const { error } = await supabaseAdmin
+      .from('schedule_homeroom')
+      .update({ confirmed_at: null, updated_at: new Date().toISOString() })
+      .eq('year', Number(year)).eq('class_key', classKey)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, confirmed: false })
+  }
+
   const { data: existing } = await supabaseAdmin
     .from('schedule_homeroom').select('confirmed_at')
     .eq('year', Number(year)).eq('class_key', classKey).maybeSingle()
   if (existing?.confirmed_at) {
-    return NextResponse.json({ error: '已確認送出，如需修改請洽教務處退回' }, { status: 403 })
+    return NextResponse.json({ error: '已確認送出，如需修改請先按「取消確認」' }, { status: 403 })
   }
 
   // 固定格集合：鎖課＋科任課。
