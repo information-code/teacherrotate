@@ -939,9 +939,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           <div className="text-sm font-semibold text-red-700">
             {freeMode ? '🔓 自由編輯中——不檢查任何規則' : '🔓 這份課表含自由編輯的內容'}
             <span className="ml-2 text-xs font-normal text-red-600">
-              非可排時段、老師衝堂、放進鎖課格一律放行；結果只能「另存為版本」，不會寫進正式課表。
-              <b>鎖課本身</b>（種子班國數、本土語、游泳…）屬於設定不屬於課表，要換時段請到
-              <a href="/admin/schedule-config?tab=lock" className="underline">排課設定 → 5 鎖課設定</a>：點掉舊格、再點新格即可。
+              非可排時段、老師衝堂一律放行；結果只能「另存為版本」，不會寫進正式課表。
+              <b>鎖課格（灰色）仍然不可動、不可放</b>——鎖課是設定不是課表，要換時段請到
+              <a href="/admin/schedule-config?tab=lock" className="underline">排課設定 → 5 鎖課設定</a>。
               {tray.length > 0 && <b className="ml-1">待排區還有 {tray.length} 堂。</b>}
             </span>
           </div>
@@ -1044,6 +1044,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         // 自由編輯：點有課的格＝拿到待排區；點空格＝放入選中的待排課（班級由那堂課自己帶）
                         const mine = ls[0]
                         if (mine) { parkLesson(mine); return }
+                        if (ex.length) return   // 本土語等鎖課時段：不可動也不可放
                         if (trayPick) { placeFromTray(trayPick, ANY_CLASS, k); return }
                         setSlotPick(prev => prev && prev.slot === k && prev.classKey === ANY_CLASS ? null : { classKey: ANY_CLASS, slot: k })
                         return
@@ -1061,7 +1062,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             : ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900')
                             : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700'
                             : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300'
-                            : freeMode && trayPick ? 'border-dashed border-amber-400 text-amber-500'
+                            : freeMode && trayPick ? 'border-dashed border-amber-400 text-amber-500'   // ex（鎖課）已於上一條擋掉，不會亮成可放
                             : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${ls.length || opt || freeMode ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                           {ls.length === 0 && ex.length === 0 && off && <span className="text-[8px]">—</span>}
@@ -1128,19 +1129,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const k = `${d}-${q}`
                         if (!teach.has(k)) return <td key={d} className="p-0.5"><div className="h-9 rounded-sm bg-zinc-50" /></td>
                         const lock = locks[k]
-                        if (lock && !(freeMode && cm?.get(k))) {
+                        // 鎖課永遠不可動、不可放——自由編輯也一樣（鎖課是設定，要改請到「5 鎖課設定」）。
+                        // 例外：鎖課格上竟然有課＝資料異常，讓它照常顯示才處理得掉，不然那堂課會被鎖課蓋成隱形。
+                        if (lock && !cm?.get(k)) {
                           const t = lockTypeMap[lock]
-                          const label = t?.subject || '鎖'
-                          // 自由編輯：鎖課格也放行（人工說了算），可當放置目標
-                          if (!freeMode) return <td key={d} className="p-0.5"><div className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 flex items-center justify-center truncate px-0.5">{label}</div></td>
-                          const picked = slotPick?.classKey === ck && slotPick?.slot === k
-                          return (
-                            <td key={d} className="p-0.5">
-                              <button onClick={() => clickCell(ck, k)}
-                                title={trayPick ? '放進這一格（鎖課仍在，兩者會同格）' : '鎖課格：要移動鎖課本身請到「排課設定 → 5 鎖課設定」；這裡可以把待排區的課放進來'}
-                                className={`w-full h-9 rounded-sm border flex items-center justify-center truncate px-0.5 cursor-pointer ${picked ? 'border-amber-500 bg-amber-50 text-amber-700' : trayPick ? 'bg-zinc-200 border-amber-400 border-dashed text-zinc-600' : 'bg-zinc-200 border-zinc-300 text-zinc-600'}`}>{label}</button>
-                            </td>
-                          )
+                          return <td key={d} className="p-0.5"><div title="鎖課（不可調整）" className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 flex items-center justify-center truncate px-0.5">{t?.subject || '鎖'}</div></td>
                         }
                         const occ = cm?.get(k)
                         const hrSubj = hrRow?.cells?.[k]
