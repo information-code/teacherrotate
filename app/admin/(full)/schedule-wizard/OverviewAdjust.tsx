@@ -474,11 +474,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     applyAdjust(placed, { ...hr, [classKey]: { ...row, cells } }, `${classLabelOf(classKey)}：導師課「${subject}」${slotZh(slot)} → 待排區`, [classKey])
   }
   /** 把待排區的項目放進某個空格。 */
+  const ANY_CLASS = '*'   // 教師／教室檢視點的格子只決定「時段」，班級由那堂課自己帶
   function placeFromTray(key: string, classKey: string, slot: string) {
     const it = tray.find(x => x.key === key); if (!it) return
     const [d, q] = slot.split('-').map(Number)
     const own = it.kind === 'lesson' ? it.lesson.classKey : it.classKey
-    if (own !== classKey) { alert('這堂課屬於別的班，只能放回自己班的格子。'); return }
+    if (classKey !== ANY_CLASS && own !== classKey) { alert('這堂課屬於別的班，只能放回自己班的格子。'); return }
+    classKey = own
     if (it.kind === 'lesson' && it.lesson.size === 2 && q >= 7) { alert('連堂需要相鄰兩節，放不進第 7 節。'); return }
     setTray(t => t.filter(x => x.key !== key)); setTrayPick(null); setSlotPick(null)
     if (it.kind === 'lesson') {
@@ -771,7 +773,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               </button>
             ))}
           </div>}
-      {slotPick && <p className="text-[11px] text-amber-700">已選格子：{classLabelOf(slotPick.classKey)} {slotZh(slotPick.slot)}——點上面的課放進去。</p>}
+      {slotPick && <p className="text-[11px] text-amber-700">
+        已選格子：{slotPick.classKey === ANY_CLASS ? slotZh(slotPick.slot) : `${classLabelOf(slotPick.classKey)} ${slotZh(slotPick.slot)}`}——點上面的課放進去。
+      </p>}
       {tray.length > 0 && <p className="text-[11px] text-red-600">待排區還有課沒放回去，存檔時這些課會變成未排。</p>}
     </div>
   )
@@ -1005,7 +1009,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         <div className="card p-3 max-w-md flex-1 space-y-1">
           <div className="text-sm font-semibold text-zinc-700">
             {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
-            <span className="text-xs font-normal text-zinc-400 ml-2">{mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
+            <span className="text-xs font-normal text-zinc-400 ml-2">{freeMode
+              ? '自由編輯中：點課＝拿到待排區、點空格＝放回（不檢查任何規則）'
+              : mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
           </div>
           <table className="w-full table-fixed border-collapse text-[10px]">
             <thead>
@@ -1032,6 +1038,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
                     const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${bdZh(opt) ? `（${bdZh(opt)}）` : ''}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? '不排課時段' : '教室不開放') : undefined)
                     const onClick = () => {
+                      if (freeMode) {
+                        // 自由編輯：點有課的格＝拿到待排區；點空格＝放入選中的待排課（班級由那堂課自己帶）
+                        const mine = ls[0]
+                        if (mine) { parkLesson(mine); return }
+                        if (trayPick) { placeFromTray(trayPick, ANY_CLASS, k); return }
+                        setSlotPick(prev => prev && prev.slot === k && prev.classKey === ANY_CLASS ? null : { classKey: ANY_CLASS, slot: k })
+                        return
+                      }
                       if (opt) { applyOption(opt); return }
                       if (isSelSrc) { setSel(null); return }
                       const mine = ls[0]
@@ -1040,7 +1054,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     return (
                       <td key={d} className="p-0.5">
                         <button onClick={onClick} title={title} {...hoverProps}
-                          className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900') : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700' : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${dim} ${ls.length || opt ? 'cursor-pointer' : 'cursor-default'}`}>
+                          className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${
+                            freeMode && slotPick?.classKey === ANY_CLASS && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700'
+                            : ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900')
+                            : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700'
+                            : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300'
+                            : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${ls.length || opt || freeMode ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                           {ls.length === 0 && ex.length === 0 && off && <span className="text-[8px]">—</span>}
                           {ls.length === 0 && ex.slice(0, 2).map((e, i) => (
@@ -1106,9 +1125,18 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const k = `${d}-${q}`
                         if (!teach.has(k)) return <td key={d} className="p-0.5"><div className="h-9 rounded-sm bg-zinc-50" /></td>
                         const lock = locks[k]
-                        if (lock) {
+                        if (lock && !(freeMode && cm?.get(k))) {
                           const t = lockTypeMap[lock]
-                          return <td key={d} className="p-0.5"><div className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 flex items-center justify-center truncate px-0.5">{t?.subject || '鎖'}</div></td>
+                          const label = t?.subject || '鎖'
+                          // 自由編輯：鎖課格也放行（人工說了算），可當放置目標
+                          if (!freeMode) return <td key={d} className="p-0.5"><div className="h-9 rounded-sm border bg-zinc-200 border-zinc-300 text-zinc-600 flex items-center justify-center truncate px-0.5">{label}</div></td>
+                          const picked = slotPick?.classKey === ck && slotPick?.slot === k
+                          return (
+                            <td key={d} className="p-0.5">
+                              <button onClick={() => clickCell(ck, k)} title="鎖課格——自由編輯下仍可放課"
+                                className={`w-full h-9 rounded-sm border flex items-center justify-center truncate px-0.5 cursor-pointer ${picked ? 'border-amber-500 bg-amber-50 text-amber-700' : 'bg-zinc-200 border-zinc-300 text-zinc-600'}`}>{label}</button>
+                            </td>
+                          )
                         }
                         const occ = cm?.get(k)
                         const hrSubj = hrRow?.cells?.[k]
