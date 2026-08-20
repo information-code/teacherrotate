@@ -86,6 +86,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // 微調＝暫存：改動只在記憶體，按「儲存微調」才寫入課表。未儲存時離開頁面會攔截確認，
   // 不存就離開＝資料庫維持原狀（回來看到的是沒改過的那份）。
   const [unsaved, setUnsaved] = useState(0)
+  // 自由編輯：完全不檢查任何硬／軟規則，全由人工決定。結果只能「另存為版本」，不會寫進正式課表。
+  const [freeMode, setFreeMode] = useState(false)
+  const [freeTouched, setFreeTouched] = useState(false)
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
   const markDirty = (changedHrClasses: string[]) => {
     for (const ck of changedHrClasses) pendingHrRef.current.add(ck)
@@ -132,6 +135,15 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     pendingHrRef.current.clear()
     setUnsaved(0); onDirtyChange?.(0)
     void saveVersion({ placed, adjustments, label: `手動微調後（${adjustments.length} 筆調整）`, silent: true })
+  }
+  /** 自由編輯的結果只另存成版本，不動正式課表——要採用請到版本紀錄預覽後發布。 */
+  async function saveFreeVersion() {
+    const now = new Date()
+    const stamp = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    const ok = await saveVersion({ placed, adjustments, label: `自由編輯 ${stamp}` })
+    if (!ok) return
+    setUnsaved(0); onDirtyChange?.(0)
+    alert(`已存成版本「自由編輯 ${stamp}」。\n\n這份不會自動變成正式課表——要採用請到「版本紀錄」預覽後發布。`)
   }
   useUnsavedGuard(unsaved > 0, `有 ${unsaved} 筆微調尚未儲存，離開將全部捨棄（課表會維持微調前的樣子）。確定要離開嗎？`)
   const [busy, setBusy] = useState(false)
@@ -358,6 +370,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   /** 目標格狀態（供亮燈）：選中來源後，對某格計算 可行/原因。 */
   function targetState(classKey: string, slot: string): { ok: boolean; why?: string } | null {
     if (!sel) return null
+    if (freeMode) {   // 自由編輯：同班任何格都能放（跨班沒有意義——課本來就屬於那個班）
+      const own = sel.type === 'lesson' ? lessonById.get(sel.id)?.classKey : sel.classKey
+      return own === classKey ? { ok: true } : { ok: false, why: '課只能在自己班內移動' }
+    }
     if (sel.type === 'lesson') {
       const l = lessonById.get(sel.id)
       if (!l || l.classKey !== classKey) return { ok: false, why: '僅限同班調整' }
@@ -431,6 +447,30 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     return hrCanGo(classKey, slot, new Set([srcId]))
   }
 
+  /** 自由編輯下的違規清點——只是告知，不擋任何操作。 */
+  const freeIssues = useMemo(() => {
+    if (!freeTouched) return null
+    const clash: string[] = [], inLock: string[] = [], offSlot: string[] = []
+    const occ = new Map<string, Map<string, PlacedResult[]>>()
+    for (const x of placed) {
+      const slots = x.size === 2 ? [`${x.day}-${x.period}`, `${x.day}-${x.period + 1}`] : [`${x.day}-${x.period}`]
+      const tm = occ.get(x.teacherId) ?? new Map<string, PlacedResult[]>()
+      for (const sl of slots) tm.set(sl, [...(tm.get(sl) ?? []), x])
+      occ.set(x.teacherId, tm)
+      const locks = lockOf(x.classKey), teach = teachableOf(x.classKey)
+      for (const sl of slots) {
+        if (locks[sl]) inLock.push(`${x.classLabel} ${x.subject} ${slotZh(sl)}`)
+        else if (!teach.has(sl)) offSlot.push(`${x.classLabel} ${x.subject} ${slotZh(sl)}`)
+      }
+    }
+    occ.forEach((tm, tid) => tm.forEach((arr, sl) => {
+      // 單雙週互補不算衝堂
+      const conflict = arr.length > 1 && arr.some((a, i) => arr.some((b, j) => i < j && (a.parity === 'weekly' || b.parity === 'weekly' || a.parity === b.parity)))
+      if (conflict) clash.push(`${nameOf(tid)} ${slotZh(sl)}：${arr.map(x => x.classLabel).join('、')}`)
+    }))
+    return { clash, inLock, offSlot, total: clash.length + inLock.length + offSlot.length }
+  }, [freeTouched, placed, config])
+
   // ── 套用調整 ──
   function pushUndo() {
     setUndoStack(prev => [...prev.slice(-19), {
@@ -466,6 +506,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   }
 
   function applyAdjust(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, desc: string, changedHrClasses: string[]) {
+    if (freeMode) { setFreeTouched(true); desc = `【自由編輯】${desc}` }
     pushUndo()
     const adj: Adjustment = { at: new Date().toISOString(), desc, ...(note.trim() ? { note: note.trim() } : {}) }
     const nextAdj = [...adjustments, adj]
@@ -518,7 +559,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (sel.type === 'lesson') {
       const l = lessonById.get(sel.id)!
       const [d, p] = slot.split('-').map(Number)
-      const opt = l.classKey === classKey ? optByCell.get(slot) : undefined
+      // 自由編輯不走查詢器（那條路徑會再驗一次硬規則）：同班有課就互換、沒課就直接搬
+      const opt = !freeMode && l.classKey === classKey ? optByCell.get(slot) : undefined
       if (opt) { applyOption(opt); return }
       if (occ) {
         const next = placed.map(x => x.id === l.id ? { ...x, day: occ.day, period: occ.period } : x.id === occ.id ? { ...x, day: l.day, period: l.period } : x)
@@ -706,11 +748,22 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           {saveState === 'saved' && unsaved === 0 && <span className="text-xs text-green-600">✓ 已儲存</span>}
           {saveState === 'error' && <span className="text-xs text-red-600">⚠ 儲存失敗</span>}
           {unsaved > 0 && (
-            <>
-              <span className="text-xs text-amber-600 font-medium">⚠ {unsaved} 筆微調尚未儲存</span>
-              <button onClick={saveAdjust} disabled={saveState === 'saving'} className="btn btn-primary text-xs py-0.5"
-                title="寫入課表；同時自動留一份版本，之後可從版本紀錄回到這裡">💾 儲存微調</button>
-            </>
+            <span className="text-xs text-amber-600 font-medium">⚠ {unsaved} 筆尚未儲存</span>
+          )}
+          {unsaved > 0 && !freeTouched && (
+            <button onClick={saveAdjust} disabled={saveState === 'saving'} className="btn btn-primary text-xs py-0.5"
+              title="寫入課表；同時自動留一份版本，之後可從版本紀錄回到這裡">💾 儲存微調</button>
+          )}
+          {freeTouched && (
+            <button onClick={saveFreeVersion} disabled={saveState === 'saving' || snapState === 'saving'} className="btn btn-primary text-xs py-0.5"
+              title="自由編輯的結果只另存成版本，不會寫進正式課表">📌 另存為版本</button>
+          )}
+          {planStatus !== 'final' && (
+            <button onClick={() => {
+              if (!freeMode && !confirm('開啟自由編輯？\n\n這個模式下所有硬規則與權重都不檢查——鎖課格、非可排時段、老師衝堂都放行，完全由你決定。\n結果只能「另存為版本」，不會直接寫進正式課表。')) return
+              setFreeMode(v => !v); setSel(null)
+            }} className={`btn text-xs py-0.5 ${freeMode ? 'btn-danger' : 'btn-secondary'}`}
+              title="不檢查任何規則、全由人工決定">{freeMode ? '🔓 自由編輯中（點此關閉）' : '🔓 自由編輯'}</button>
           )}
           {snapState === 'saved' && <span className="text-xs text-green-600">✓ 已存為版本</span>}
           {snapState === 'error' && <span className="text-xs text-red-600">⚠ 存版本失敗</span>}
@@ -795,7 +848,25 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         </div>
       )}
 
-      {adjustMode && selLesson && swapQ && (
+      {(freeMode || freeTouched) && (
+        <div className="card border-red-300 bg-red-50 px-3 py-2 space-y-1">
+          <div className="text-sm font-semibold text-red-700">
+            {freeMode ? '🔓 自由編輯中——不檢查任何規則' : '🔓 這份課表含自由編輯的內容'}
+            <span className="ml-2 text-xs font-normal text-red-600">
+              鎖課格、非可排時段、老師衝堂一律放行；結果只能「另存為版本」，不會寫進正式課表。
+            </span>
+          </div>
+          {freeIssues && (freeIssues.total > 0
+            ? <div className="text-xs text-red-700 space-y-0.5">
+                {freeIssues.clash.length > 0 && <div>・老師同時段有兩堂（{freeIssues.clash.length}）：{freeIssues.clash.slice(0, 4).join('；')}{freeIssues.clash.length > 4 ? '…' : ''}</div>}
+                {freeIssues.inLock.length > 0 && <div>・排進鎖課格（{freeIssues.inLock.length}）：{freeIssues.inLock.slice(0, 4).join('；')}{freeIssues.inLock.length > 4 ? '…' : ''}</div>}
+                {freeIssues.offSlot.length > 0 && <div>・排在非可排時段（{freeIssues.offSlot.length}）：{freeIssues.offSlot.slice(0, 4).join('；')}{freeIssues.offSlot.length > 4 ? '…' : ''}</div>}
+              </div>
+            : <div className="text-xs text-green-700">目前沒有踩到硬規則。</div>)}
+        </div>
+      )}
+
+      {adjustMode && !freeMode && selLesson && swapQ && (
         <div className="card p-2 text-xs space-y-1">
           <div className="flex items-center gap-2 flex-wrap text-zinc-500">
             {betterCount > 0
