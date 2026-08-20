@@ -10,7 +10,7 @@
 
 import {
   SCHEDULE_DAYS, WEIGHT_PENALTY, HOMEROOM_SELF, LOCK_COLORS,
-  bandOf, shouldUseRoom, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf,
+  bandOf, shouldUseRoom, classKey as ck, classLabel, subjectClassKey, parseSlotKey, roomLabel, deriveNativeSessions, foreignDemand, doubleModeOf, homeroomLockSlots,
   DAY_MODE_LABEL,
   type ScheduleConfig, type ScheduleWeights, type WeightLevel, type TemplateRule, type DaySpread,
 } from './scheduling'
@@ -361,14 +361,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       lockedCells[key] = lockDisplay
       // 鎖課由誰上？科目在該班導師的配課裡（或科任配班標「導師自上」）＝導師課；否則（本土語鐘點、外聘）＝非導師。
       // 從配課推、不必另外勾選——種子班鎖課(國語/數學/班級活動/自主學習) 全命中、本土語鎖課全不命中。
-      homeroomLocks[key] = Object.entries(locks).filter(([, tid]) => {
-        const t = lockTypeMap[tid]
-        if (!t) return false
-        if (t.byHomeroom !== null && t.byHomeroom !== undefined) return t.byHomeroom   // 名目手動指定（如游泳＝否）
-        const subj = t.subject
-        if (!subj) return false
-        return (a.homeroomHours?.[key]?.[subj] ?? 0) > 0 || config.subjectClassTeacher[subjectClassKey(g, i, subj)] === HOMEROOM_SELF
-      }).map(([slot]) => slot)
+      homeroomLocks[key] = homeroomLockSlots(config, g, i, a.homeroomHours?.[key])
       const slots: string[] = []
       const dayFull: Record<number, boolean> = {}
       for (const d of SCHEDULE_DAYS) {

@@ -29,7 +29,7 @@ export interface BuildArgs {
   year: number
   placed: PlacedResult[]
   config: ScheduleConfig
-  input: EngineInput
+  input: Pick<EngineInput, 'rooms' | 'homeroomLocks'>   // 匯出只用到這兩項；教師端自行組即可
   teacherNames: Record<string, string>
   classCounts: Record<number, number>
   hrCells: Record<string, Record<string, string>>     // classKey → slot → 導師填的科目

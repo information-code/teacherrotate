@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type BandGrid, type Band } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type BandGrid, type Band, type ScheduleConfig, type DerivedNativeSession } from '@/lib/scheduling'
+import type { RoomInfo } from '@/lib/schedule-engine'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import type { TTPlaced, LockCell, NativeSessionView } from './page'
 
@@ -18,12 +19,47 @@ interface Props {
   nativeSessions: NativeSessionView[]
   nativeClassCells: { classKey: string; slot: string; teacherId: string }[]
   planStatus: string
+  // 下載整份課表用（匯出程式較重，按下才動態載入）
+  exportArgs: {
+    config: ScheduleConfig
+    classCounts: Record<number, number>
+    homeroomLocks: Record<string, string[]>
+    rooms: RoomInfo[]
+    teacherNames: Record<string, string>
+    nativeSessions: DerivedNativeSession[]
+    nativeRoomNames: Record<string, string>
+  }
+  updatedAt: string | null
 }
 
 type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
-export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus }: Props) {
+export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus, exportArgs, updatedAt }: Props) {
+  const [dlOpen, setDlOpen] = useState(false)
+  const [dlScope, setDlScope] = useState<'all' | '班級' | '教師' | '教室'>('all')
+  const [dlStatus, setDlStatus] = useState<string | null>(null)
+  /** 下載課表：可選整份或只要班級／教師／教室其中一段。 */
+  async function download(kind: 'pdf' | 'doc' | 'csv') {
+    setDlOpen(false); setDlStatus('準備中…')
+    try {
+      const ex = await import('@/lib/schedule-export')
+      const all = ex.buildExportSheets({
+        year, placed: placed as never, config: exportArgs.config,
+        input: { rooms: exportArgs.rooms, homeroomLocks: exportArgs.homeroomLocks },
+        teacherNames: exportArgs.teacherNames, classCounts: exportArgs.classCounts,
+        hrCells: homeroomCells, nativeSessions: exportArgs.nativeSessions, nativeRoomNames: exportArgs.nativeRoomNames,
+      })
+      const sheets = dlScope === 'all' ? all : all.filter(x => x.section === dlScope)
+      if (!sheets.length) { alert('這個範圍沒有可匯出的課表。'); return }
+      const base = `${year}學年度課表（${dlScope === 'all' ? '班級＋科任教師＋科任教室' : dlScope}）`
+      if (kind === 'csv') { ex.saveBlob(new Blob([ex.sheetsToCsv(sheets)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
+      if (kind === 'doc') { setDlStatus('產生 Word 中…'); ex.saveBlob(await ex.sheetsToDocx(sheets), `${base}.docx`); return }
+      ex.saveBlob(await ex.sheetsToPdf(sheets, m => setDlStatus(m)), `${base}.pdf`)
+    } catch (e) {
+      alert(`下載失敗：${e instanceof Error ? e.message : String(e)}`)
+    } finally { setDlStatus(null) }
+  }
   const iTeach = useMemo(() => placed.some(p => p.teacherId === userId || p.coTeacherId === userId), [placed, userId])
   const [view, setView] = useState<View>(myClassKey ? 'class' : 'teacher')
   const [classSel, setClassSel] = useState<string>(myClassKey ?? '')
@@ -136,19 +172,38 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       <div>
         <h2 className="page-title mb-1">我的課表
           <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
-          {planStatus === 'final'
-            ? <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">定案</span>
-            : <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 border border-amber-200 align-middle">初版（導師排課進行中，內容可能異動）</span>}
+          <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">全校課表</span>
+          {updatedAt && <span className="ml-2 text-[11px] text-zinc-400 align-middle">最後更新：{new Date(updatedAt).toLocaleString('zh-TW')}</span>}
         </h2>
         <p className="text-xs text-zinc-400">
-          可查看全校班級、教師與科任教室課表（唯讀）。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
-          {planStatus === 'final'
-            ? '課表已定案，如需調整請洽教務處。'
-            : '初版期間，導師請至「排課選填」調整自己班級的課；其餘調整請洽教務處。'}
+          可查看全校班級、教師與科任教室課表（唯讀），也可下載。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
+          如需調整請洽教務處。
         </p>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
+        <span className="relative">
+          <button onClick={() => setDlOpen(o => !o)} disabled={dlStatus !== null} className="btn btn-secondary text-sm py-1"
+            title="下載全校課表：可選整份或只要班級／教師／教室">{dlStatus ?? '⬇ 下載課表 ▾'}</button>
+          {dlOpen && (
+            <span className="absolute z-20 mt-1 left-0 bg-white border border-zinc-200 rounded-sm shadow-lg p-2 w-52 flex flex-col gap-2">
+              <label className="text-xs text-zinc-500 flex items-center gap-1.5">範圍
+                <select value={dlScope} onChange={e => setDlScope(e.target.value as typeof dlScope)} className="input py-0.5 text-xs flex-1">
+                  <option value="all">整份（班級＋教師＋教室）</option>
+                  <option value="班級">只要班級課表</option>
+                  <option value="教師">只要教師課表</option>
+                  <option value="教室">只要科任教室課表</option>
+                </select>
+              </label>
+              <span className="flex gap-1">
+                <button onClick={() => download('pdf')} className="btn btn-primary text-xs py-0.5 flex-1">PDF</button>
+                <button onClick={() => download('doc')} className="btn btn-secondary text-xs py-0.5 flex-1">Word</button>
+                <button onClick={() => download('csv')} className="btn btn-secondary text-xs py-0.5 flex-1">CSV</button>
+              </span>
+              <span className="text-[10px] text-zinc-400">一張課表一頁，版面同人工課表。</span>
+            </span>
+          )}
+        </span>
         {(['class', 'teacher', 'room'] as View[]).map(v => (
           <button key={v} onClick={() => setView(v)} className={`btn text-sm py-1 ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
             {v === 'class' ? '班級' : v === 'teacher' ? '教師' : '科任教室'}

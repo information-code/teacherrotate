@@ -102,7 +102,7 @@ export default async function ScheduleFillPage() {
       initialCells={(hrRow?.cells ?? {}) as Record<string, string>}
       confirmedAt={hrRow?.confirmed_at ?? null}
       finalized={plan.status === 'final' || plan.fillOpen === false}
-      lockMessage={plan.status === 'final' ? '課表已定案，排課選填唯讀；如需調整請洽教務處。' : plan.fillOpen === false ? '課務組已收回填課權限（正在進行調課），目前唯讀；重新開放後即可繼續填。' : undefined}
+      lockMessage={plan.status === 'final' ? '全校課表已發布，排課選填唯讀；如需調整請洽教務處。' : plan.fillOpen === false ? '課務組已收回填課權限（正在進行調課），目前唯讀；重新開放後即可繼續填。' : undefined}
     />
   )
 }

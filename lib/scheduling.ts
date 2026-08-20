@@ -410,6 +410,24 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
   }
 }
 
+/** 某班「由導師授課的鎖課格」：名目有手動指定就聽它；否則看科目是否在該班導師的配課裡
+ *  （或科任配班標「導師自上」）。種子班鎖課（國數／班級活動）全命中、本土語鎖課全不命中。
+ *  引擎與課表匯出共用同一份判定，避免兩邊算出不同的導師課。 */
+export function homeroomLockSlots(
+  config: ScheduleConfig, grade: number, index: number, hrHours: Record<string, number> | undefined,
+): string[] {
+  const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+  const key = classKey(grade, index)
+  return Object.entries(config.lockCells[key] ?? {}).filter(([, tid]) => {
+    const t = lockTypeMap[tid]
+    if (!t) return false
+    if (t.byHomeroom !== null && t.byHomeroom !== undefined) return t.byHomeroom
+    if (!t.subject) return false
+    return (hrHours?.[t.subject] ?? 0) > 0
+      || config.subjectClassTeacher[subjectClassKey(grade, index, t.subject)] === HOMEROOM_SELF
+  }).map(([slot]) => slot)
+}
+
 /** 科任配班中「導師自上」的特殊值（該班該科由導師授課，不指派科任）。 */
 export const HOMEROOM_SELF = '__homeroom__'
 export function subjectClassKey(grade: number, index: number, subject: string): string {

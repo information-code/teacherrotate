@@ -267,7 +267,7 @@ export default function ScheduleWizardClient(props: Props) {
    *  排課結果本來就自動存成版本了，「儲存」只是在決定哪一份算數，那件事併進發布更單純。 */
   async function setPhase(action: 'publish' | 'unpublish') {
     if (action === 'unpublish') {
-      if (!confirm('撤回發布後可重新排課，但導師已填的排課選填可能與新課表不符。確定撤回？')) return
+      if (!confirm('撤回「發布導師排課」後可重新排課，但導師已填的排課選填可能與新課表不符。確定撤回？')) return
       // 撤回後正式課表就不存在了（含發布後的手動微調）——先留一份版本，免得回不去
       const sp = props.savedPlan
       if (sp && Array.isArray(sp.placed)) {
@@ -592,8 +592,8 @@ export default function ScheduleWizardClient(props: Props) {
         <span className="flex gap-2 flex-shrink-0">
           {planStatus !== 'published' && planStatus !== 'final' && result !== null && (
             <button onClick={() => setPhase('publish')} disabled={phaseBusy} className="btn btn-primary text-sm py-1"
-              title={draftDirty ? '發布目前微調後的課表：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課' : '發布後：全校教師即可查看所有課表（初版）、導師開始於教師端填入自己的配課；科任課凍結'}>
-              📢 初版課表發布{draftDirty ? '（含微調）' : ''}
+              title={'發布給導師填課：導師可在教師端填排自己班的課務；此階段課表尚未對全校公開，科任課凍結'}>
+              📢 發布導師排課{draftDirty ? '（含微調）' : ''}
             </button>
           )}
           {planStatus === 'published' && (
@@ -648,7 +648,7 @@ export default function ScheduleWizardClient(props: Props) {
         )}
         {planStatus === 'published' || planStatus === 'final' ? (
           <span className="text-xs text-amber-600">
-            初版課表已發布（全校可見），科任課已凍結——導師正在教師端填報。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
+            已發布導師排課，科任課凍結——導師正在教師端填自己班的課；<b>此階段課表尚未對全校公開</b>。收回填課即可調課；全部完成後按「發布全校課表」。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
           </span>
         ) : (
           <>

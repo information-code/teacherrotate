@@ -689,10 +689,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (action === 'finalize') {
       const unconfirmed = allClassKeys.filter(ck => !hr[ck]?.confirmed_at)
       const msg = unconfirmed.length
-        ? `尚有 ${unconfirmed.length} 班導師未確認（${unconfirmed.slice(0, 6).map(classLabelOf).join('、')}${unconfirmed.length > 6 ? '…' : ''}）。\n仍要定案發布課表嗎？`
-        : '所有導師皆已確認。定案後全校課表對教師公開。確定定案？'
+        ? `尚有 ${unconfirmed.length} 班導師未確認（${unconfirmed.slice(0, 6).map(classLabelOf).join('、')}${unconfirmed.length > 6 ? '…' : ''}）。\n仍要發布全校課表嗎？`
+        : '所有導師皆已確認。發布後全校老師即可查看並下載課表。確定發布全校課表？'
       if (!confirm(msg)) return
-    } else if (!confirm('取消定案？課表將暫停對教師公開。')) return
+    } else if (!confirm('收回全校課表？課表將暫停對全校公開，回到導師排課階段。')) return
     setBusy(true)
     try {
       const res = await fetch('/api/admin/schedule-plan', {
@@ -863,8 +863,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               {fillOpenState ? '🔒 收回導師填課' : '🔓 開放導師填課'}
             </button>
           )}
-          {!embedded && planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5">🏁 定案發布課表</button>}
-          {!embedded && planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5">取消定案</button>}
+          {!embedded && planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5" title="對全校公開：所有老師可查看並下載全校課表（唯讀）">🏁 發布全校課表</button>}
+          {!embedded && planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5" title="收回全校公開，回到導師排課階段">↩ 收回全校課表</button>}
         </span>
       </div>
 

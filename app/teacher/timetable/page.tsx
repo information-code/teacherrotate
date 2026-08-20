@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF, deriveNativeSessions } from '@/lib/scheduling'
-import { normalizeConfig as normalizeAllocConfig, type TeacherAllocation } from '@/lib/allocation'
+import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF, deriveNativeSessions, homeroomLockSlots } from '@/lib/scheduling'
+import { roomsFromConfig } from '@/lib/schedule-engine'
+import { normalizeConfig as normalizeAllocConfig, GRADES, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 import TimetableClient from './TimetableClient'
 
 export interface LockCell { main: string; sub?: string }
@@ -47,12 +48,20 @@ export default async function TimetablePage() {
   const config = normalizeScheduleConfig(schRow?.config)
   const plan = (planRow?.plan ?? null) as { status?: string; placed?: TTPlaced[] } | null
 
-  // 初版發布（published）與定案（final）皆對全校公開；初版＝導師課仍在填報、內容可能異動
-  if (!plan || (plan.status !== 'published' && plan.status !== 'final')) {
+  // 全校課表只在「定案（發布全校課表）」後公開。發布導師排課（published）階段只開放導師到「排課選填」
+  // 填自己班的課，不對外顯示任何課表——避免未定案的內容被當成正式版流出。
+  if (!plan || plan.status !== 'final') {
+    const homeroomNow = plan?.status === 'published'
+      && Object.entries(normalizeScheduleConfig(schRow?.config).classTeacher).some(([, tid]) => tid === user.id)
     return (
       <div className="max-w-2xl">
         <h2 className="page-title mb-2">課表</h2>
-        <div className="card text-sm text-zinc-500 py-8 text-center">{year} 學年度課表尚未發布，請等候教務處公告。</div>
+        <div className="card text-sm text-zinc-500 py-8 text-center space-y-1">
+          <p>{plan?.status === 'published'
+            ? `${year} 學年度課表正在請導師填排班級課務，尚未對全校公開。`
+            : `${year} 學年度課表尚未發布，請等候教務處公告。`}</p>
+          {homeroomNow && <p className="text-zinc-600">您是班級導師——請至左側「<b>排課選填</b>」填排自己班的課。</p>}
+        </div>
       </div>
     )
   }
@@ -87,7 +96,8 @@ export default async function TimetablePage() {
     locks[ck] = out
   }
   // 本土語開課場次（教室／教師檢視用）：由鎖課時段×配課自動推導，取消／無教室者不顯示
-  const extraCourses = normalizeAllocConfig(allocCfgRow?.config).extraCourses
+  const allocConfig = normalizeAllocConfig(allocCfgRow?.config)
+  const extraCourses = allocConfig.extraCourses
   const hoursByTeacher: Record<string, Record<string, Record<string, number>>> = {}
   const extraNames = new Set(extraCourses.map(c => c.lang).filter(Boolean))
   for (const row of allocRows ?? []) {
@@ -109,6 +119,21 @@ export default async function TimetablePage() {
 
   const myClassKey = Object.entries(config.classTeacher).find(([, tid]) => tid === user.id)?.[0] ?? null
 
+  // ── 下載用：班級數、導師自上節數（決定鎖課格算不算導師課）、科任教室 ──
+  const allocById = Object.fromEntries((allocRows ?? []).map(a => [a.teacher_id, a.data as TeacherAllocation | null]))
+  const classCounts: Record<number, number> = {}
+  for (const g of GRADES) classCounts[g] = allocConfig.grades[g].classCount
+  const homeroomLocks: Record<string, string[]> = {}
+  for (const g of GRADES) {
+    const rk = String(adoptedReduction(allocConfig.grades[g]))
+    for (let i = 0; i < classCounts[g]; i++) {
+      const ck2 = `${g}-${i}`
+      const d = allocById[config.classTeacher[ck2] ?? '']
+      const bd = d?.scenarios?.[rk]?.breakdown ?? d?.scenarios?.['0']?.breakdown
+      homeroomLocks[ck2] = homeroomLockSlots(config, g, i, bd as Record<string, number> | undefined)
+    }
+  }
+
   return (
     <TimetableClient
       year={year}
@@ -123,6 +148,8 @@ export default async function TimetablePage() {
       nativeSessions={nativeSessions}
       nativeClassCells={nativeClassCells}
       planStatus={plan.status}
+      exportArgs={{ config, classCounts, homeroomLocks, rooms: roomsFromConfig(config), teacherNames: nameOf, nativeSessions: derived.sessions, nativeRoomNames: roomNames }}
+      updatedAt={String((plan as { finalizedAt?: string }).finalizedAt ?? '') || null}
     />
   )
 }
