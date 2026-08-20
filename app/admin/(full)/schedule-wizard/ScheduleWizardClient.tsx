@@ -269,24 +269,23 @@ export default function ScheduleWizardClient(props: Props) {
     if (action === 'unpublish') {
       const filled = props.homeroomRows.filter(r => Object.keys(r.cells ?? {}).length > 0)
       const confirmed = filled.filter(r => r.confirmed_at).length
+      // 撤回＝要重排，科任課位置會變，導師先前依舊課表做的安排整體不成立 → 一律清空重來
       const head = filled.length
-        ? `目前有 ${filled.length} 班導師已填課${confirmed ? `（其中 ${confirmed} 班已確認送出）` : ''}。\n`
+        ? `目前有 ${filled.length} 班導師已填課${confirmed ? `（其中 ${confirmed} 班已確認送出）` : ''}，撤回後將全部清空、導師依新課表重新填。
+`
         : ''
-      if (!confirm(`撤回「發布導師排課」後可重新排課。\n${head}確定撤回？`)) return
-      // 撤回＝要重排，科任課位置會變；導師先前的安排是依舊課表做的，預設一併清空讓他們重來。
+      if (!confirm(`撤回「發布導師排課」後可重新排課。
+${head}確定撤回？`)) return
       if (filled.length > 0) {
-        const wipe = confirm(`要一併清空這 ${filled.length} 班導師填的課嗎？\n\n確定＝全部清空、取消確認，導師依新課表重新填\n取消＝保留（若之後科任課有變動，發布時會再提醒撞格）`)
-        if (wipe) {
-          setPhaseBusy(true)
-          try {
-            for (const r of filled) {
-              await fetch('/api/admin/schedule-homeroom', {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ year, classKey: r.class_key, action: 'reset' }),
-              })
-            }
-          } finally { setPhaseBusy(false) }
-        }
+        setPhaseBusy(true)
+        try {
+          for (const r of filled) {
+            await fetch('/api/admin/schedule-homeroom', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ year, classKey: r.class_key, action: 'reset' }),
+            })
+          }
+        } finally { setPhaseBusy(false) }
       }
       // 撤回後正式課表就不存在了（含發布後的手動微調）——先留一份版本，免得回不去
       const sp = props.savedPlan
