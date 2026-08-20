@@ -48,6 +48,11 @@ const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH
  *  防呆（灰燈硬擋）：鎖課、導師不排課格只能科任課、科任自身不排課、老師撞課（週型感知）、
  *  導師課不跨班。連堂可拆、上空上空不擋（老師自行協調的結果）。
  *  每步調整後教室自動重分配（管理教師優先），零警告。 */
+/** 待排區項目：科任課（整堂搬走）或導師課（格子上的科目字串）。 */
+type TrayItem =
+  | { key: string; kind: 'lesson'; lesson: PlacedResult }
+  | { key: string; kind: 'hr'; classKey: string; subject: string }
+
 export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
@@ -75,7 +80,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   }
   const [hr, setHr] = useState<Record<string, HomeroomRow>>(() => Object.fromEntries(homeroomRows.map(r => [r.class_key, { ...r, cells: { ...r.cells } }])))
   const [adjustments, setAdjustments] = useState<Adjustment[]>(() => (savedPlan.adjustments as Adjustment[] | undefined) ?? [])
-  const [undoStack, setUndoStack] = useState<{ placed: PlacedResult[]; hr: Record<string, HomeroomRow>; adjustments: Adjustment[] }[]>([])
+  const [undoStack, setUndoStack] = useState<{ placed: PlacedResult[]; hr: Record<string, HomeroomRow>; adjustments: Adjustment[]; tray: TrayItem[] }[]>([])
   const [sel, setSel] = useState<Sel>(null)
   const [gradeSelState, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
   const gradeSel = gradeSelProp ?? gradeSelState
@@ -89,6 +94,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // 自由編輯：完全不檢查任何硬／軟規則，全由人工決定。結果只能「另存為版本」，不會寫進正式課表。
   const [freeMode, setFreeMode] = useState(false)
   const [freeTouched, setFreeTouched] = useState(false)
+  // 待排區（自由編輯用）：從課表拿下來、還沒放回去的課。點課＝拿下來，點空格＝放回去。
+  const [tray, setTray] = useState<TrayItem[]>([])
+  const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
+  const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
   const markDirty = (changedHrClasses: string[]) => {
     for (const ck of changedHrClasses) pendingHrRef.current.add(ck)
@@ -99,7 +108,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
    *  微調是每步自動寫進課表的，復原堆疊只在記憶體、換頁就沒了；故第一次微調前會自動備份一份（silent），
    *  批次調完也可按「存為版本」再留一個點。
    *  罰分不重算——引擎的計分要完整 EngineInput，這裡沒有；故標明數值為微調前的，避免被拿去比較。 */
-  async function saveVersion(opts: { placed: PlacedResult[]; adjustments: Adjustment[]; label: string; silent?: boolean }) {
+  async function saveVersion(opts: { placed: PlacedResult[]; adjustments: Adjustment[]; label: string; silent?: boolean; unplaced?: unknown[] }) {
     if (!opts.silent) setSnapState('saving')
     try {
       const pens = (savedPlan.penalties as { key: string; label: string; count: number; points: number }[] | undefined) ?? []
@@ -110,7 +119,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           label: opts.label,
           summary: {
             placed: opts.placed.length,
-            unplaced: Array.isArray(savedPlan.unplaced) ? (savedPlan.unplaced as unknown[]).length : 0,
+            unplaced: opts.unplaced ? opts.unplaced.length : (Array.isArray(savedPlan.unplaced) ? (savedPlan.unplaced as unknown[]).length : 0),
             uncovered: Array.isArray(savedPlan.uncoveredMustFill) ? (savedPlan.uncoveredMustFill as unknown[]).length : 0,
             mustCount: pens.filter(x => Number(x.points) >= 1e6).reduce((a, x) => a + (x.count ?? 0), 0),
             softPenalty: Math.round(Number(savedPlan.softPenalty ?? 0)),
@@ -119,7 +128,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               : '微調前的自動備份；罰分為引擎產生時的數值。',
             rules: pens.filter(x => Number(x.points) > 0).map(x => ({ key: x.key, label: x.label, count: x.count, points: Math.round(Number(x.points)) })),
           },
-          plan: { ...savedPlan, placed: opts.placed, adjustments: opts.adjustments },
+          plan: { ...savedPlan, placed: opts.placed, adjustments: opts.adjustments,
+            ...(opts.unplaced ? { unplaced: opts.unplaced } : {}) },
         }),
       })
       if (!opts.silent) setSnapState(res.ok ? 'saved' : 'error')
@@ -140,7 +150,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   async function saveFreeVersion() {
     const now = new Date()
     const stamp = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    const ok = await saveVersion({ placed, adjustments, label: `自由編輯 ${stamp}` })
+    if (tray.length > 0 && !confirm(`待排區還有 ${tray.length} 堂沒放回課表。\n存下去這份版本就會少這 ${tray.length} 堂課（列為未排）。確定要存嗎？`)) return
+    const ok = await saveVersion({ placed, adjustments, label: `自由編輯 ${stamp}`,
+      unplaced: tray.filter((t): t is Extract<TrayItem, { kind: 'lesson' }> => t.kind === 'lesson')
+        .map(t => ({ lesson: t.lesson, reason: '自由編輯：留在待排區未排回' })) })
     if (!ok) return
     setUnsaved(0); onDirtyChange?.(0)
     alert(`已存成版本「自由編輯 ${stamp}」。\n\n這份不會自動變成正式課表——要採用請到「版本紀錄」預覽後發布。`)
@@ -370,10 +383,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   /** 目標格狀態（供亮燈）：選中來源後，對某格計算 可行/原因。 */
   function targetState(classKey: string, slot: string): { ok: boolean; why?: string } | null {
     if (!sel) return null
-    if (freeMode) {   // 自由編輯：同班任何格都能放（跨班沒有意義——課本來就屬於那個班）
-      const own = sel.type === 'lesson' ? lessonById.get(sel.id)?.classKey : sel.classKey
-      return own === classKey ? { ok: true } : { ok: false, why: '課只能在自己班內移動' }
-    }
+    if (freeMode) return null   // 自由編輯不用選中→亮燈那一套，改走待排區
     if (sel.type === 'lesson') {
       const l = lessonById.get(sel.id)
       if (!l || l.classKey !== classKey) return { ok: false, why: '僅限同班調整' }
@@ -447,6 +457,44 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     return hrCanGo(classKey, slot, new Set([srcId]))
   }
 
+  // ── 待排區：拿下來／放回去 ──
+  const trayLabel = (it: TrayItem) => it.kind === 'lesson'
+    ? `${it.lesson.classLabel} ${it.lesson.subject}（${it.lesson.teacherName}）${it.lesson.size === 2 ? '・連堂' : ''}`
+    : `${classLabelOf(it.classKey)} 導師課「${it.subject}」`
+  /** 把課表上的一堂課（或導師課）拿到待排區，格子變空。 */
+  function parkLesson(l: PlacedResult) {
+    const it: TrayItem = { key: `L${l.id}`, kind: 'lesson', lesson: l }
+    setTray(t => [...t, it]); setTrayPick(it.key); setSlotPick(null)
+    applyAdjust(placed.filter(x => x.id !== l.id), hr, `${l.classLabel}：${l.subject}（${l.teacherName}）${slotZh(`${l.day}-${l.period}`)} → 待排區`, [])
+  }
+  function parkHr(classKey: string, slot: string, subject: string) {
+    const it: TrayItem = { key: `H${classKey}|${slot}|${subject}|${Date.now()}`, kind: 'hr', classKey, subject }
+    const row = hr[classKey]; const cells = { ...row.cells }; delete cells[slot]
+    setTray(t => [...t, it]); setTrayPick(it.key); setSlotPick(null)
+    applyAdjust(placed, { ...hr, [classKey]: { ...row, cells } }, `${classLabelOf(classKey)}：導師課「${subject}」${slotZh(slot)} → 待排區`, [classKey])
+  }
+  /** 把待排區的項目放進某個空格。 */
+  function placeFromTray(key: string, classKey: string, slot: string) {
+    const it = tray.find(x => x.key === key); if (!it) return
+    const [d, q] = slot.split('-').map(Number)
+    const own = it.kind === 'lesson' ? it.lesson.classKey : it.classKey
+    if (own !== classKey) { alert('這堂課屬於別的班，只能放回自己班的格子。'); return }
+    if (it.kind === 'lesson' && it.lesson.size === 2 && q >= 7) { alert('連堂需要相鄰兩節，放不進第 7 節。'); return }
+    setTray(t => t.filter(x => x.key !== key)); setTrayPick(null); setSlotPick(null)
+    if (it.kind === 'lesson') {
+      applyAdjust([...placed, { ...it.lesson, day: d, period: q }], hr,
+        `待排區 → ${it.lesson.classLabel}：${it.lesson.subject}（${it.lesson.teacherName}）${slotZh(slot)}`, [])
+    } else {
+      const row = hr[classKey]
+      applyAdjust(placed, { ...hr, [classKey]: { ...row, cells: { ...row.cells, [slot]: it.subject } } },
+        `待排區 → ${classLabelOf(classKey)}：導師課「${it.subject}」${slotZh(slot)}`, [classKey])
+    }
+  }
+  function clickTray(key: string) {
+    if (slotPick) { placeFromTray(key, slotPick.classKey, slotPick.slot); return }
+    setTrayPick(k => k === key ? null : key)
+  }
+
   /** 自由編輯下的違規清點——只是告知，不擋任何操作。 */
   const freeIssues = useMemo(() => {
     if (!freeTouched) return null
@@ -477,6 +525,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       placed: placed.map(p => ({ ...p })),
       hr: Object.fromEntries(Object.entries(hr).map(([k, v]) => [k, { ...v, cells: { ...v.cells } }])),
       adjustments: [...adjustments],
+      tray: [...tray],
     }])
   }
 
@@ -545,6 +594,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (!adjustMode) return
     const occ = cellsByClass.get(classKey)?.get(slot)
     const hrSubject = hr[classKey]?.cells?.[slot]
+    if (freeMode) {
+      // 自由編輯：點有課的格＝拿到待排區（並選中它）；點空格＝放入選中的待排課，沒選就先把這格記成目標
+      if (occ) { parkLesson(occ); return }
+      if (hrSubject) { parkHr(classKey, slot, hrSubject); return }
+      if (trayPick) { placeFromTray(trayPick, classKey, slot); return }
+      setSlotPick(prev => prev && prev.classKey === classKey && prev.slot === slot ? null : { classKey, slot })
+      return
+    }
     if (!sel) {
       if (occ) setSel({ type: 'lesson', id: occ.id })
       else if (hrSubject) setSel({ type: 'hr', classKey, slot })
@@ -614,6 +671,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     setPlaced(last.placed); onPlacedChange?.(last.placed)
     setHr(last.hr)
     setAdjustments(last.adjustments)
+    setTray(last.tray); setTrayPick(null); setSlotPick(null)
     setSel(null)
     markDirty(Object.keys(last.hr))
   }
@@ -693,6 +751,30 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     for (const [sl, lock] of Object.entries(lockOf(ck))) { const t = lockTypeMap[lock]; cells.set(sl, [{ text: t?.subject || t?.label || '鎖課', kind: 'extra' }]) }
     return { title: `${selLesson.classLabel} 班級課表`, cells, off: new Set<string>(), selSlots, periods: config.bands[bandOf(g)].periodsPerDay }
   })()
+  const trayPanel = (freeMode || tray.length > 0) && (
+    <div className="card p-3 w-64 shrink-0 sticky top-2 space-y-2">
+      <div className="text-sm font-semibold text-zinc-700">待排區
+        <span className="ml-1 text-xs font-normal text-zinc-400">{tray.length} 堂</span>
+      </div>
+      <p className="text-[11px] text-zinc-500 leading-snug">
+        點課表上的課 → 拿到這裡（格子變空）；點這裡的課再點空格 → 放回去。可以先把要動的都拿下來，再一一排。
+      </p>
+      {tray.length === 0
+        ? <p className="text-xs text-zinc-400 py-2">目前沒有待排的課。</p>
+        : <div className="flex flex-col gap-1 max-h-[420px] overflow-y-auto">
+            {tray.map(it => (
+              <button key={it.key} onClick={() => clickTray(it.key)}
+                className={`text-left text-[11px] leading-tight px-2 py-1.5 rounded-sm border ${trayPick === it.key
+                  ? 'bg-amber-100 border-amber-400 text-amber-900'
+                  : it.kind === 'hr' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
+                {trayLabel(it)}
+              </button>
+            ))}
+          </div>}
+      {slotPick && <p className="text-[11px] text-amber-700">已選格子：{classLabelOf(slotPick.classKey)} {slotZh(slotPick.slot)}——點上面的課放進去。</p>}
+      {tray.length > 0 && <p className="text-[11px] text-red-600">待排區還有課沒放回去，存檔時這些課會變成未排。</p>}
+    </div>
+  )
   const sidePanel = side && (
     <div className="card p-3 w-72 shrink-0 sticky top-2 space-y-1">
       <div className="text-sm font-semibold text-zinc-700 truncate">{side.title}
@@ -854,6 +936,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             {freeMode ? '🔓 自由編輯中——不檢查任何規則' : '🔓 這份課表含自由編輯的內容'}
             <span className="ml-2 text-xs font-normal text-red-600">
               鎖課格、非可排時段、老師衝堂一律放行；結果只能「另存為版本」，不會寫進正式課表。
+              {tray.length > 0 && <b className="ml-1">待排區還有 {tray.length} 堂。</b>}
             </span>
           </div>
           {freeIssues && (freeIssues.total > 0
@@ -983,6 +1066,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             </tbody>
           </table>
         </div>
+        {trayPanel}
         {sidePanel}
         </div>
       )}
@@ -1080,7 +1164,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         return (
                           <td key={d} className="p-0.5">
                             <button onClick={() => clickCell(ck, k)} title={title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
-                              className={`relative w-full h-9 rounded-sm border border-dashed ${must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                              className={`relative w-full h-9 rounded-sm border border-dashed ${slotPick?.classKey === ck && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700' : must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
                               {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                               {must ? '需科任' : ''}
                             </button>
@@ -1095,6 +1179,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           )
         })}
       </div>
+      {trayPanel}
       {sidePanel}
       </div>}
 
