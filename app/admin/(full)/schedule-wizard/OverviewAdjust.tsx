@@ -595,6 +595,74 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
 
   const selLesson = sel?.type === 'lesson' ? lessonById.get(sel.id) : null
 
+  // ── 側欄對照小課表：班級檢視點一堂課 → 旁邊顯示該師整週；教師／教室檢視 → 旁邊顯示該班整週（唯讀） ──
+  const dispSlots = (p: PlacedResult) => p.parity !== 'weekly'
+    ? [`${p.day}-${p.parity === 'odd' ? p.period : p.period + 1}`]
+    : p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+  const side = (() => {
+    if (!selLesson) return null
+    const selSlots = new Set(dispSlots(selLesson))
+    if (mode === 'class') {
+      const tid = selLesson.teacherId
+      const cells = new Map<string, { text: string; sub?: string; kind: 'lesson' | 'extra' | 'hr' }[]>()
+      for (const p of placed) {
+        if (p.teacherId !== tid && p.coTeacherId !== tid) continue
+        const sub = p.parity === 'odd' ? '單週' : p.parity === 'even' ? '雙週' : undefined
+        for (const sl of dispSlots(p)) cells.set(sl, [...(cells.get(sl) ?? []), { text: `${p.classLabel} ${p.subject}`, sub, kind: 'lesson' as const }])
+      }
+      for (const e of extras?.teacher.get(tid) ?? []) cells.set(e.slot, [...(cells.get(e.slot) ?? []), { text: e.main, sub: e.sub, kind: 'extra' as const }])
+      return { title: `${selLesson.teacherName} 老師課表`, cells, off: new Set(engineInput.teacherBlocked[tid] ?? []), selSlots, periods: 7 }
+    }
+    const ck = selLesson.classKey
+    const g = Number(ck.split('-')[0])
+    const cells = new Map<string, { text: string; sub?: string; kind: 'lesson' | 'extra' | 'hr' }[]>()
+    const cm = cellsByClass.get(ck)
+    for (const sl of Array.from(teachableOf(ck))) {
+      const occ = cm?.get(sl)
+      if (occ) { cells.set(sl, [{ text: occ.subject, sub: occ.teacherName, kind: 'lesson' }]); continue }
+      const hrSubj = hr[ck]?.cells?.[sl]
+      if (hrSubj) cells.set(sl, [{ text: hrSubj, sub: nameOf(config.classTeacher[ck] ?? ''), kind: 'hr' }])
+    }
+    for (const [sl, lock] of Object.entries(lockOf(ck))) { const t = lockTypeMap[lock]; cells.set(sl, [{ text: t?.subject || t?.label || '鎖課', kind: 'extra' }]) }
+    return { title: `${selLesson.classLabel} 班級課表`, cells, off: new Set<string>(), selSlots, periods: config.bands[bandOf(g)].periodsPerDay }
+  })()
+  const sidePanel = side && (
+    <div className="card p-3 w-72 shrink-0 sticky top-2 space-y-1">
+      <div className="text-sm font-semibold text-zinc-700 truncate">{side.title}
+        <span className="text-[10px] font-normal text-zinc-400 ml-1">對照用・深框＝選中的課</span>
+      </div>
+      <table className="w-full table-fixed border-collapse text-[9px]">
+        <thead>
+          <tr><th className="w-4 text-zinc-400 font-normal"></th>
+            {SCHEDULE_DAYS.map(d => <th key={d} className="text-center text-zinc-500 font-normal py-0.5">{DAY_LABEL[d].slice(1)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: side.periods }, (_, i) => i + 1).map(q => (
+            <tr key={q}>
+              <td className="text-zinc-400 text-center">{q}</td>
+              {SCHEDULE_DAYS.map(d => {
+                const k = `${d}-${q}`
+                const ls = side.cells.get(k) ?? []
+                const isSelHere = side.selSlots.has(k)
+                return (
+                  <td key={d} className="p-px">
+                    <div className={`h-8 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center text-center ${ls.length ? (ls[0].kind === 'extra' ? 'bg-zinc-200 border-zinc-300 text-zinc-600' : ls[0].kind === 'hr' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-sky-50 border-sky-200 text-sky-900') : side.off.has(k) ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'border-dashed border-zinc-100'} ${isSelHere ? 'ring-2 ring-zinc-700' : ''}`}>
+                      {ls.length === 0 && side.off.has(k) && <span>—</span>}
+                      {ls.slice(0, 2).map((x, i2) => (
+                        <span key={i2} className="truncate w-full">{x.text}{x.sub && <span className="opacity-60"> {x.sub}</span>}</span>
+                      ))}
+                    </div>
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -747,7 +815,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         <p className="text-sm text-zinc-400 text-center py-4">{mode === 'teacher' ? '請選擇教師。' : '請選擇教室。'}</p>
       )}
       {mode !== 'class' && focusId && (
-        <div className="card p-3 max-w-md space-y-1">
+        <div className="flex gap-3 items-start">
+        <div className="card p-3 max-w-md flex-1 space-y-1">
           <div className="text-sm font-semibold text-zinc-700">
             {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
             <span className="text-xs font-normal text-zinc-400 ml-2">{mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
@@ -811,9 +880,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             </tbody>
           </table>
         </div>
+        {sidePanel}
+        </div>
       )}
 
-      {mode === 'class' && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {mode === 'class' && <div className="flex gap-3 items-start">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 flex-1 min-w-0">
         {gradeClasses.map(ck => {
           const teach = teachableOf(ck)
           const locks = lockOf(ck)
@@ -919,6 +991,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             </div>
           )
         })}
+      </div>
+      {sidePanel}
       </div>}
 
       {/* 調整紀錄 */}
