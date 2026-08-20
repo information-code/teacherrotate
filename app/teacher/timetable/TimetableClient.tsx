@@ -93,8 +93,8 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
 
   // 目前檢視的格子內容
   const cells = useMemo(() => {
-    const m = new Map<string, { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string }>()
-    const put = (day: number, period: number, v: { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string }) => m.set(`${day}-${period}`, v)
+    const m = new Map<string, { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string; warn?: string }>()
+    const put = (day: number, period: number, v: { main: string; sub?: string; kind: 'subject' | 'hr' | 'lock'; bi?: string; warn?: string }) => m.set(`${day}-${period}`, v)
     // 單雙週課只顯示一格：單週畫在起始節、雙週畫在次節（區塊另一格＝導師填課，同科兩節）
     const putPlaced = (p: TTPlaced, v: { main: string; sub?: string; kind: 'subject'; bi?: string }) => {
       if (p.parity !== 'weekly') { put(p.day, p.parity === 'odd' ? p.period : p.period + 1, v); return }
@@ -113,6 +113,10 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       }
       for (const [s, subj] of Object.entries(homeroomCells[classSel] ?? {})) {
         const [d, q] = s.split('-').map(Number)
+        // 科任課優先：導師填的內容絕不覆蓋科任課。同格還有導師資料＝課務組改過科任課、
+        // 導師那格已過期，標紅提醒而不是把科任課蓋掉
+        const cur = m.get(s)
+        if (cur && cur.kind === 'subject') { m.set(s, { ...cur, warn: `另有導師填的「${subj}」與此格衝突` }); continue }
         put(d, q, { main: subj, kind: 'hr', bi: pairTag[s] })
       }
       for (const [s, lc] of Object.entries(locks[classSel] ?? {})) {
@@ -143,6 +147,8 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       const ck = Object.entries(classTeacher).find(([, tid]) => tid === teacherSel)?.[0]
       if (ck) for (const [s, subj] of Object.entries(homeroomCells[ck] ?? {})) {
         const [d, q] = s.split('-').map(Number)
+        const cur = m.get(s)
+        if (cur && cur.kind === 'subject') { m.set(s, { ...cur, warn: `另有導師填的「${subj}」與此格衝突` }); continue }
         put(d, q, { main: `${labelOf(ck)} ${subj}`, kind: 'hr' })
       }
     } else if (view === 'room' && roomSel) {
@@ -267,7 +273,9 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
                       : 'bg-sky-50 border-sky-200 text-sky-900'
                     return (
                       <td key={d} className="p-0.5">
-                        <div className={`h-11 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${cls}`}>
+                        <div title={c.warn ?? undefined}
+                          className={`relative h-11 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${c.warn ? 'ring-1 ring-red-400' : ''} ${cls}`}>
+                          {c.warn && <span className="absolute top-0 right-0 text-[9px] leading-none text-red-500" aria-label="衝突">⚠</span>}
                           <span className="truncate w-full font-medium">{c.main}</span>
                           {c.sub && <span className="truncate w-full text-[9px] opacity-70">{c.sub}</span>}
                           {c.bi && <span className="text-[8px] opacity-70">{c.bi}</span>}
