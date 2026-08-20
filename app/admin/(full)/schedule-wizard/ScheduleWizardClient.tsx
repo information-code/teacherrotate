@@ -267,7 +267,27 @@ export default function ScheduleWizardClient(props: Props) {
    *  排課結果本來就自動存成版本了，「儲存」只是在決定哪一份算數，那件事併進發布更單純。 */
   async function setPhase(action: 'publish' | 'unpublish') {
     if (action === 'unpublish') {
-      if (!confirm('撤回「發布導師排課」後可重新排課，但導師已填的排課選填可能與新課表不符。確定撤回？')) return
+      const filled = props.homeroomRows.filter(r => Object.keys(r.cells ?? {}).length > 0)
+      const confirmed = filled.filter(r => r.confirmed_at).length
+      const head = filled.length
+        ? `目前有 ${filled.length} 班導師已填課${confirmed ? `（其中 ${confirmed} 班已確認送出）` : ''}。\n`
+        : ''
+      if (!confirm(`撤回「發布導師排課」後可重新排課。\n${head}確定撤回？`)) return
+      // 撤回＝要重排，科任課位置會變；導師先前的安排是依舊課表做的，預設一併清空讓他們重來。
+      if (filled.length > 0) {
+        const wipe = confirm(`要一併清空這 ${filled.length} 班導師填的課嗎？\n\n確定＝全部清空、取消確認，導師依新課表重新填\n取消＝保留（若之後科任課有變動，發布時會再提醒撞格）`)
+        if (wipe) {
+          setPhaseBusy(true)
+          try {
+            for (const r of filled) {
+              await fetch('/api/admin/schedule-homeroom', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, classKey: r.class_key, action: 'reset' }),
+              })
+            }
+          } finally { setPhaseBusy(false) }
+        }
+      }
       // 撤回後正式課表就不存在了（含發布後的手動微調）——先留一份版本，免得回不去
       const sp = props.savedPlan
       if (sp && Array.isArray(sp.placed)) {

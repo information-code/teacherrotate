@@ -43,6 +43,16 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // 撤回發布後重排＝導師要重來：清空填課並取消確認，導師端回到空白重填
+  if (action === 'reset') {
+    const { error } = await supabaseAdmin
+      .from('schedule_homeroom')
+      .update({ cells: {}, confirmed_at: null, updated_at: new Date().toISOString() })
+      .eq('year', Number(year)).eq('class_key', String(classKey))
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
   if (action === 'setCells') {
     if (!cells || typeof cells !== 'object') return NextResponse.json({ error: 'cells 格式錯誤' }, { status: 400 })
     const { error } = await supabaseAdmin
