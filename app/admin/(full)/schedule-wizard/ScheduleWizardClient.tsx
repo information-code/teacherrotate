@@ -405,9 +405,12 @@ export default function ScheduleWizardClient(props: Props) {
   // ── 匯出整份課表（班級＋科任教師＋科任教室）：PDF／Word／CSV ──
   const [exportOpen, setExportOpen] = useState(false)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
-  const exportPlaced: PlacedResult[] | null = (planStatus === 'published' || planStatus === 'final') && Array.isArray(props.savedPlan?.placed)
-    ? (props.savedPlan!.placed as PlacedResult[])
-    : result?.placed ?? null
+  // 下載哪一份＝螢幕上顯示的那一份：預覽舊版本時下載該版本，否則發布後下載正式課表
+  const exportPlaced: PlacedResult[] | null = previewVersionId
+    ? (result?.placed ?? null)
+    : (planStatus === 'published' || planStatus === 'final') && Array.isArray(props.savedPlan?.placed)
+      ? (props.savedPlan!.placed as PlacedResult[])
+      : result?.placed ?? null
   async function doExport(kind: 'pdf' | 'doc' | 'csv') {
     setExportOpen(false)
     if (!exportPlaced) return
@@ -677,8 +680,8 @@ export default function ScheduleWizardClient(props: Props) {
         )}
       </div>
 
-      {/* 發布後：年級總覽與調整模式 */}
-      {(planStatus === 'published' || planStatus === 'final') && props.savedPlan && Array.isArray(props.savedPlan.placed) ? (
+      {/* 發布後：年級總覽與調整模式。正在預覽舊版本時先讓位——同一畫面只出現一份課表，免得看錯 */}
+      {(planStatus === 'published' || planStatus === 'final') && !previewVersionId && props.savedPlan && Array.isArray(props.savedPlan.placed) ? (
         <OverviewAdjust
           key={planStatus}
           year={year}
@@ -751,7 +754,7 @@ export default function ScheduleWizardClient(props: Props) {
         </div>
       )}
 
-      {result && (
+      {result && (planStatus !== 'published' && planStatus !== 'final' ? true : Boolean(previewVersionId)) && (
         <>
           {/* 未達成功條件：診斷是權重牽制還是結構卡死 */}
           {runFailed && (
@@ -777,8 +780,16 @@ export default function ScheduleWizardClient(props: Props) {
             const v = versions.find(x => x.id === previewVersionId)
             if (!v) return null
             return (
-              <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap">
-                <span>目前顯示版本：<b>{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>{v.label && <span className="text-zinc-400 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
+              <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${planStatus === 'published' || planStatus === 'final'
+                ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-zinc-50 border border-zinc-200 text-zinc-600'}`}>
+                <span>{planStatus === 'published' || planStatus === 'final' ? '正在預覽舊版本（唯讀、尚未套用）：' : '目前顯示版本：'}
+                  <b>{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
+                  {v.label && <span className="opacity-70 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
+                {(planStatus === 'published' || planStatus === 'final') && <>
+                  <span className="opacity-80">版本只保存科任課，不含導師填的課。</span>
+                  <button onClick={() => { setPreviewVersionId(null); setResult(null) }}
+                    className="btn btn-secondary text-xs py-0.5 ml-auto">↩ 回到目前課表</button>
+                </>}
               </div>
             )
           })()}
