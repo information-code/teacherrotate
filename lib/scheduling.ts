@@ -286,7 +286,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
     // 為此願意付出走動距離、相鄰同年級、導師每日／上午規則的分數，連上放寬到 6 連。
     builtin: {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
-      consecMax: { level: 'low', n: 6 },      // 人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」遠不如「不空堂」要緊；絕對上限仍是硬限制 6
+      consecMax: { level: 'mid', n: 6 },      // 人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」不如「不空堂」要緊；v19 一天 6 節偏多，課務組定為中；絕對上限仍是硬限制 6
       compact: 'high',                        // 課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，v17 引擎只有 51%
       hourlyBalance: { level: 'high', mode: 'concentrate', days: 3 },   // 課務組原則「鐘點不要超過 3 天」
       lonelyDay: { level: 'high', halfLevel: 'low', partTimeMust: false },
@@ -297,7 +297,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       walkCost: 'low',         // 人工課表 79% 相鄰兩堂換場地，學校根本沒在省；v17 目標函數被它吃掉一半而課務組完全不在意
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       roomHalfDay: 'mid',
-      homeroomMorning: { level: 'mid', n: 2 },
+      homeroomMorning: { level: 'high', n: 2 },   // v19 上午 0 節導師課的班日 12→23，課務組定為高
       homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5」
       homeroomRun: 'high',
       gradeSandwich: 'high',
