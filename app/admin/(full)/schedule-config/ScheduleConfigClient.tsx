@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   SCHEDULE_DAYS, DAY_LABEL, BANDS, BAND_LABEL, BAND_GRADES,
-  classKey, classLabel, type ScheduleConfig, type Band,
+  classKey, classLabel, parseSlotKey, homeroomLockSlots, type ScheduleConfig, type Band,
 } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
@@ -87,6 +87,29 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
   // 排課需求「避開子女就讀年段」：teacherId → 年級列表（配班下拉顯示警告用）
   const avoidMap: Record<string, number[]> = {}
   for (const n of needsRefs) if (n.avoidChildGrades.length) avoidMap[n.teacherId] = n.avoidChildGrades
+
+  // 導師「自己要上」的鎖課（種子班國數班會等；本土語那種不是她上的不算）落在她本人的不排課時段
+  const hrLockOff = useMemo(() => {
+    const offOf: Record<string, Set<string>> = {}
+    for (const o of config.personalOff) {
+      if (o.mode !== 'off' || !o.teacherId) continue
+      const set = offOf[o.teacherId] ??= new Set<string>()
+      for (const sl of o.slots) set.add(sl)
+    }
+    const out: string[] = []
+    for (const [ck, tid] of Object.entries(config.classTeacher)) {
+      const off = tid ? offOf[tid] : undefined
+      if (!off) continue
+      const [g, i] = ck.split('-').map(Number)
+      for (const sl of homeroomLockSlots(config, g, i, homeroomBreakdown[tid])) {
+        if (!off.has(sl)) continue
+        const t = config.lockTypes.find(x => x.id === config.lockCells[ck]?.[sl])
+        const { day, period } = parseSlotKey(sl)
+        out.push(`${classLabel(g, i)}（${allNames[tid] ?? ''}） ${DAY_LABEL[day]}第 ${period} 節 ${t?.subject || t?.label || '鎖課'}`)
+      }
+    }
+    return out
+  }, [config, homeroomBreakdown, allNames])
 
   return (
     <div className="space-y-4 max-w-6xl">
@@ -240,6 +263,24 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
       {/* ── 四、教室設定 ── */}
       {tab === 'room' && (
         <RoomTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} subjectTeachers={subjectTeachers} />
+      )}
+
+      {/* 鎖課與不排課互相打架時，在這兩頁就先講——不用等到排課精靈才發現 */}
+      {(tab === 'lock' || tab === 'off') && hrLockOff.length > 0 && (
+        <div className="card border-amber-300 bg-amber-50 p-3 space-y-1">
+          <div className="text-sm font-semibold text-amber-800">⚠ 導師自己要上的鎖課，排在她本人的不排課時段</div>
+          <p className="text-xs text-amber-700">
+            鎖課把課釘死在那一節，不排課又說那一節不能上，兩者互相牴觸——排課引擎兩邊都動不了，
+            只能請您擇一調整：把鎖課改到別節（
+            <button onClick={() => setTab('lock')} className="underline underline-offset-2">5 鎖課設定</button>
+            ），或取消該格的個人不排課（
+            <button onClick={() => setTab('off')} className="underline underline-offset-2">7 排課/不排課標記</button>
+            ）。
+          </p>
+          <ul className="text-xs text-amber-800 list-disc pl-5">
+            {hrLockOff.map(x => <li key={x}>{x}</li>)}
+          </ul>
+        </div>
       )}
 
       {/* ── 五、鎖課設定 ── */}

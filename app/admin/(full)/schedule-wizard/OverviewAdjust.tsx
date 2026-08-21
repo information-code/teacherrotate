@@ -492,6 +492,19 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         `待排區 → ${classLabelOf(classKey)}：導師課「${it.subject}」${slotZh(slot)}`, [classKey])
     }
   }
+  /** 待排區拆連堂：一堂兩節拆成兩個單節，之後可分開放到不同時段（自由編輯用；一般模式在課表上按 ✂）。 */
+  function splitTrayItem(key: string) {
+    const it = tray.find(x => x.key === key)
+    if (!it || it.kind !== 'lesson' || it.lesson.size !== 2 || it.lesson.parity !== 'weekly') return
+    const a = { ...it.lesson, id: `${it.lesson.id}~a`, size: 1 as const }
+    const b = { ...it.lesson, id: `${it.lesson.id}~b`, size: 1 as const }
+    setTray(t => t.flatMap(x => x.key !== key ? [x] : [
+      { key: `L${a.id}`, kind: 'lesson' as const, lesson: a },
+      { key: `L${b.id}`, kind: 'lesson' as const, lesson: b },
+    ]))
+    setTrayPick(`L${a.id}`)
+    applyAdjust(placed, hr, `${it.lesson.classLabel}：${it.lesson.subject}（${it.lesson.teacherName}）連堂拆為兩個單節（待排區）`, [])
+  }
   function clickTray(key: string) {
     if (slotPick) { placeFromTray(key, slotPick.classKey, slotPick.slot); return }
     setTrayPick(k => k === key ? null : key)
@@ -760,17 +773,24 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       </div>
       <p className="text-[11px] text-zinc-500 leading-snug">
         點課表上的課 → 拿到這裡（格子變空）；點這裡的課再點空格 → 放回去。可以先把要動的都拿下來，再一一排。
+        連堂（自然、社會等）按 <b>✂</b> 可拆成兩個單節，分開排到不同時段。
       </p>
       {tray.length === 0
         ? <p className="text-xs text-zinc-400 py-2">目前沒有待排的課。</p>
         : <div className="flex flex-col gap-1 max-h-[420px] overflow-y-auto">
             {tray.map(it => (
-              <button key={it.key} onClick={() => clickTray(it.key)}
-                className={`text-left text-[11px] leading-tight px-2 py-1.5 rounded-sm border ${trayPick === it.key
+              <div key={it.key}
+                className={`flex items-center gap-1 rounded-sm border ${trayPick === it.key
                   ? 'bg-amber-100 border-amber-400 text-amber-900'
                   : it.kind === 'hr' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
-                {trayLabel(it)}
-              </button>
+                <button onClick={() => clickTray(it.key)} className="flex-1 text-left text-[11px] leading-tight px-2 py-1.5">
+                  {trayLabel(it)}
+                </button>
+                {it.kind === 'lesson' && it.lesson.size === 2 && it.lesson.parity === 'weekly' && (
+                  <button onClick={() => splitTrayItem(it.key)} title="拆成兩個單節，之後可分開放到不同時段"
+                    className="px-1.5 py-1 text-[11px] text-zinc-500 hover:text-sky-700">✂</button>
+                )}
+              </div>
             ))}
           </div>}
       {slotPick && <p className="text-[11px] text-amber-700">
