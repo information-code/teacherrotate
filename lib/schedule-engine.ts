@@ -371,16 +371,17 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       // 鎖課由誰上？科目在該班導師的配課裡（或科任配班標「導師自上」）＝導師課；否則（本土語鐘點、外聘）＝非導師。
       // 從配課推、不必另外勾選——種子班鎖課(國語/數學/班級活動/自主學習) 全命中、本土語鎖課全不命中。
       homeroomLocks[key] = homeroomLockSlots(config, g, i, a.homeroomHours?.[key])
-      // 導師自上的連堂科目（自然／社會 3 節＝1 組、生活 4 節＝2 組、視藝單雙週＝1 組）需要的連堂位
+      // 導師自上的科目裡只要有連堂（或單雙週）的，該班就要留「至少 1 組」同半天連續兩格留白——
+      // 給導師連堂的機會；要不要拆、拆幾組由導師自己決定，引擎不按節數多要（課務組：就算只有一組連堂位也可以）
       {
-        let pairs = 0; const notes: string[] = []
+        const notes: string[] = []
         for (const [subj, h] of Object.entries(a.homeroomHours?.[key] ?? {})) {
           const n = Number(h); if (!(n > 0)) continue
           const m = dmode(subj, g)
-          if (m === 'double') { const p = Math.floor(n / 2); if (p) { pairs += p; notes.push(`${subj} ${n} 節→${p} 組`) } }
-          else if (m === 'biweekly') { pairs += 1; notes.push(`${subj}（單雙週）→1 組`) }
+          if (m === 'double') notes.push(`${subj} ${n} 節連堂`)
+          else if (m === 'biweekly') notes.push(`${subj} 單雙週`)
         }
-        if (pairs) homeroomDoubleNeed[key] = { pairs, note: notes.join('、') }
+        if (notes.length) homeroomDoubleNeed[key] = { pairs: 1, note: notes.join('、') }
       }
       const slots: string[] = []
       const dayFull: Record<number, boolean> = {}
@@ -1495,8 +1496,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
-  // 硬限制：導師連堂位——導師自上的連堂科目（自然／社會／生活連堂、視藝單雙週）需要同半天連續兩格留白；
-  // 科任課把留白切得一格一格的，導師的連堂就上不了（4年10班 吳佩容 視藝單雙週 v21 實測 0 組）。不足幾組＝幾筆必須級。
+  // 硬限制：導師連堂位——導師自上的科目有連堂（自然／社會／生活）或單雙週（視藝）的班，至少留 1 組同半天連續兩格留白；
+  // 科任課把留白切得一格一格的，導師的連堂就上不了（4年10班 吳佩容 視藝單雙週 v21 實測 0 組）。沒留到＝必須級。
   for (const c of input.classes) {
     const need = input.homeroomDoubleNeed?.[c.classKey]
     if (!need?.pairs) continue
@@ -1507,7 +1508,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       let run = 0
       for (const q of [...half, 0]) { if (q && blank.has(`${d}-${q}`)) run++; else { pairs += Math.floor(run / 2); run = 0 } }
     }
-    if (pairs < need.pairs) acc(map, 'homeroomDouble', '導師連堂位不足（硬限制）', MUST * (need.pairs - pairs), `${c.label} 需 ${need.pairs} 組連續兩格留白（${need.note}），只剩 ${pairs} 組`)
+    if (pairs < need.pairs) acc(map, 'homeroomDouble', '導師連堂位不足（硬限制）', MUST * (need.pairs - pairs), `${c.label} 導師自上 ${need.note}，卻沒有任何一組連續兩格留白`)
   }
 
   // 上午導師課下限：每天上午（1~4 節）至少 N 節導師課，不足才罰。
