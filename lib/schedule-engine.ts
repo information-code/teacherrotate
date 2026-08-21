@@ -2928,6 +2928,11 @@ export class EngineRun {
       const l = lessons[(off + j) % lessons.length]
       if (this.directedMove(l, p => p.day !== t.day)) return
     }
+    // 直接搬都失敗（常見：連堂在別天找不到班空＋師空＋教室空的位置）→ 逐出式搬家
+    for (let j = 0; j < lessons.length; j++) {
+      const l = lessons[(off + j) % lessons.length]
+      if (this.relocateWithEject(l, p => p.day !== t.day)) return
+    }
   }
 
   /** 導師連堂位定向修補（必須級）：導師自上有連堂科目的班，科任課把留白切到連一組「同半天連續兩格」都不剩時，
@@ -2966,6 +2971,10 @@ export class EngineRun {
       const l = t.lessons[(off + j) % t.lessons.length]
       if (this.directedMove(l, p => !(p.day === t.day && t.half.includes(p.period)))) return
     }
+    for (let j = 0; j < t.lessons.length; j++) {
+      const l = t.lessons[(off + j) % t.lessons.length]
+      if (this.relocateWithEject(l, p => !(p.day === t.day && t.half.includes(p.period)))) return
+    }
   }
 
   /** 鐘點天數定向修補（必須級）：鐘點老師到校天數超過目標時，把課最少那一天的課搬到她已經有課的日子。 */
@@ -2981,7 +2990,62 @@ export class EngineRun {
       const [dMin, ls] = days[0]
       const keep = new Set(days.slice(1).map(([d]) => d))
       for (const l of ls) { if (this.directedMove(l, p => keep.has(p.day))) return }
+      for (const l of ls) { if (this.relocateWithEject(l, p => keep.has(p.day))) return }
     }
+  }
+
+  /** 逐出式搬家：把已排的 l 搬到符合 want 的某格；格子被占（老師衝堂／班級格有別堂課）就把擋路的 1～depth 堂先搬走再放。
+   *  直接搬找不到位子時的第二招——5年10班 週一那種「視藝連堂要整組搬走、但別天都沒有班空＋師空＋教室空的位置」就要靠它。 */
+  private relocateWithEject(l: EngineLesson, want: (p: Placement) => boolean, depth = 3): boolean {
+    const from = this.st.pos.get(l.id)
+    if (!from || this.frozen.has(l.id)) return false
+    const avail = this.input.classSlots[l.classKey] ?? []
+    const cOcc = this.st.classOcc.get(l.classKey)!
+    const blockedT = this.input.teacherBlocked[l.teacherId] ?? []
+    const mustLeave = this.input.classMustLeave?.[l.classKey] ?? []
+    const fromSlots = this.st.slotsOf(l, from)
+    this.st.remove(l)
+    const start = Math.floor(this.rnd() * Math.max(1, avail.length))
+    for (let k = 0; k < avail.length; k++) {
+      const p = parseSlotKey(avail[(start + k) % avail.length])
+      if (!want(p) || (p.day === from.day && p.period === from.period)) continue
+      if (l.size === 2 && p.period >= 7) continue
+      if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) continue
+      const slots = this.st.slotsOf(l, p)
+      if (!slots.every(x => avail.includes(x) && !blockedT.includes(x) && !mustLeave.includes(x))) continue
+      const tOcc = this.st.teacherOcc.get(l.teacherId)!
+      const blockers = new Set<string>()
+      for (const x of slots) {
+        const cell = tOcc.get(x)
+        if (cell) for (const id of [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]) if (id && id !== l.id) blockers.add(id)
+        const occId = cOcc.get(x); if (occId && occId !== l.id) blockers.add(occId)
+      }
+      if (blockers.size > depth) continue
+      if (!this.anchored.has(l.id) && Array.from(blockers).some(id => this.anchored.has(id))) continue
+      const moved: { bl: EngineLesson; from: Placement }[] = []
+      let fail = false
+      for (const bid of Array.from(blockers)) {
+        const bl = this.st.lessonById.get(bid)!, bfrom = this.st.pos.get(bid)
+        if (!bfrom || this.frozen.has(bid)) { fail = true; break }
+        const bMust = this.mustSetByClass.get(bl.classKey)
+        if (bMust && this.st.slotsOf(bl, bfrom).some(x => bMust.has(x))) { fail = true; break }
+        this.st.remove(bl); moved.push({ bl, from: bfrom })
+        // 擋路的課可以搬去 l 剛空出來的格（同班才有意義）或任何別的合法格，但不能又占住 l 的目標格
+        const cands = this.st.candidates(bl).filter(pp => !this.st.slotsOf(bl, pp).some(x => slots.includes(x)))
+        if (!cands.length) { fail = true; break }
+        this.st.place(bl, cands[Math.floor(this.rnd() * cands.length)])
+      }
+      if (!fail && this.st.canPlace(l, p)) {
+        this.st.place(l, p)
+        const sc = scoreState(this.st)
+        if (this.accept(sc)) { this.take(sc); return true }
+        this.st.remove(l)
+      }
+      for (const m of moved.reverse()) { if (this.st.pos.has(m.bl.id)) this.st.remove(m.bl); this.st.place(m.bl, m.from) }
+    }
+    this.st.place(l, from)
+    void fromSlots
+    return false
   }
 
   private tryCoverMustFill() {

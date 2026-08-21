@@ -9,7 +9,7 @@ import { EngineRun, polishResult, type EngineInput, type EngineResult } from '..
 
 const CHUNK_MS = 300
 const SEEDS = [42, 7, 17, 63, 3]
-const BUDGET = { converge: 20000, cap: 90000 }        // 尚未有完整解：每種子收斂/上限
+const BUDGET = { converge: 25000, cap: 120000 }       // 尚未有完整解：每種子收斂/上限（必須級條件變多後，沙盒實測成功的種子要跑滿 90s，上限放寬到 120s）
 const BUDGET_MORE = { converge: 12000, cap: 60000 }   // 已有完整解：其餘種子只為多起點比軟分
 const PROBE_MS = 20000
 const RESCUE_SEEDS = [101, 202, 303]
