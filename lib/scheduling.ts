@@ -144,6 +144,9 @@ export interface BuiltinRules {
   // 導師連上上限（N 與適用年段在 hardParams.maxRunHomeroom／homeroomRunBands）：原為硬限制，人工課表 5% 班日導師連四、
   //   課務組手調也踩了 4 筆 → 降為權重（預設高）
   homeroomRun: WeightLevel
+  // 導師每日下限：整天日至少 full 節、半天日至少 half 節導師課（該班當天可排格扣掉導師不排課後不足時，以實際可能為準）。
+  //   must＝不足升必須級（人工課表 0 例外：導師每天都會在自己班上課）。單雙週格兩種週型分開算、取較差的一週
+  homeroomDailyMin: { level: WeightLevel; full: number; half: number; must: boolean }
   // 同半天年級夾單節：同一位老師、上午（1-4）或下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級（2→1→2）。
   //   2→1→1→2、隔空堂、跨午休都不算。114-2 人工課表 0 筆（學校守的不是「相鄰不跨年級」而是「不要為一節課跳去又跳回」）；v18 手調 1 筆、v19 引擎 11 筆
   gradeSandwich: WeightLevel
@@ -303,6 +306,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomMorning: { level: 'high', n: 2 },   // v19 上午 0 節導師課的班日 12→23，課務組定為高
       homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5」
       homeroomRun: 'high',
+      homeroomDailyMin: { level: 'high', full: 2, half: 1, must: true },   // 課務組：半天至少 1 節、整天至少 2 節導師課
       gradeSandwich: 'high',
       zoneSandwich: 'high',   // 課務組：千萬不要讓老師來回跨區
       teacherEveryDay: { level: 'high', n: 12 },
@@ -369,6 +373,11 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         return { level: normLevel(b.lowLoadConcentrate?.level, db.lowLoadConcentrate.level), n: Number.isInteger(n) && n >= 2 && n <= 20 ? n : db.lowLoadConcentrate.n }
       })(),
       homeroomRun: normLevel(b.homeroomRun, db.homeroomRun),
+      homeroomDailyMin: (() => {
+        const h = (b.homeroomDailyMin ?? {}) as Partial<BuiltinRules['homeroomDailyMin']>
+        const num = (v: unknown, d: number) => { const x = Number(v); return Number.isInteger(x) && x >= 0 && x <= 7 ? x : d }
+        return { level: normLevel(h.level, db.homeroomDailyMin.level), full: num(h.full, db.homeroomDailyMin.full), half: num(h.half, db.homeroomDailyMin.half), must: typeof h.must === 'boolean' ? h.must : db.homeroomDailyMin.must }
+      })(),
       gradeSandwich: normLevel(b.gradeSandwich, db.gradeSandwich),
       zoneSandwich: normLevel(b.zoneSandwich, db.zoneSandwich),
       teacherEveryDay: (() => {

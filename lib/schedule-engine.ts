@@ -1472,27 +1472,73 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   // 目的是導師不會整個上午連上四節、中間沒有一節科任課可以喘口氣／改作業。
   // 引擎只排科任課，導師側靠「該段留白被科任課或鎖課切開」；適用年段可於權重頁調整（清空＝停用）。
   // 人工課表 5% 班日導師連四、課務組手調也踩 4 筆 → 不是絕對條件，降為權重（預設高）。
+  // 班級某日某週型的「導師格」遮罩（週型感知）：單雙週的視藝格，不是這週的那組就是導師在上——
+  // 導師連上／每日上限／上午下限／每日下限都要兩種週型分開算、取較差的一週，否則導師週會出現半天連四、整天連七，科任週整天沒導師
+  const hrMask = (ckey: string, d: number, par: 'o' | 'e') => {
+    const occ = st.classOcc.get(ckey)!
+    const avail = new Set(input.classSlots[ckey] ?? [])
+    const locks = input.lockedCells[ckey] ?? {}
+    const hrLock = new Set(input.homeroomLocks[ckey] ?? [])
+    const teachable: boolean[] = [], hr: boolean[] = [], blank: boolean[] = []
+    for (let q = 1; q <= 7; q++) {
+      const k = `${d}-${q}`
+      const t = avail.has(k) || (k in locks)
+      teachable[q] = t
+      if (!t) { hr[q] = false; blank[q] = false; continue }
+      if (k in locks) { hr[q] = hrLock.has(k); blank[q] = false; continue }
+      const id = occ.get(k)
+      if (!id) { hr[q] = true; blank[q] = true; continue }
+      const p = st.lessonById.get(id)?.parity ?? 'weekly'
+      const isHr = p !== 'weekly' && p[0] !== par   // 單雙週：不是這週上的就是導師課
+      hr[q] = isHr; blank[q] = isHr
+    }
+    return { teachable, hr, blank }
+  }
+  const PARS: ('o' | 'e')[] = ['o', 'e']
+
   const runBands = new Set(input.weights.hardParams.homeroomRunBands)
   if (runBands.size && w.homeroomRun !== 'off') for (const c of input.classes) {
     if (!runBands.has(bandOf(c.grade))) continue
-    const occ = st.classOcc.get(c.classKey)!
-    const avail = new Set(input.classSlots[c.classKey] ?? [])
-    const locks = input.lockedCells[c.classKey] ?? {}
-    const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])   // 由導師上的鎖課（種子班國數等）＝導師課
     const maxRun = input.weights.hardParams.maxRunHomeroom
     for (const d of SCHEDULE_DAYS) {
       // 只罰引擎能改變的連段（段內至少有一格是留白）；整段都是導師鎖課的，引擎一格也動不了，
-      // 由前置檢核告知課務組（種子班鎖課排滿整個上午就是這種情況）
-      let run = 0, best = 0, hasBlank = false, bestHasBlank = false
-      for (let q = 1; q <= 8; q++) {
-        const k = `${d}-${q}`
-        const teachable = q <= 7 && (avail.has(k) || k in locks)
-        const isHr = teachable && !occ.has(k) && (!(k in locks) || hrLock.has(k))
-        if (isHr) { run++; if (!(k in locks)) hasBlank = true; continue }
-        if (run > best || (run === best && hasBlank)) { best = run; bestHasBlank = hasBlank }
-        run = 0; hasBlank = false
+      // 由前置檢核告知課務組（種子班鎖課排滿整個上午就是這種情況）。兩種週型取較差的。
+      let worstBest = 0, worstBlank = false
+      for (const par of PARS) {
+        const m = hrMask(c.classKey, d, par)
+        let run = 0, best = 0, hasBlank = false, bestHasBlank = false
+        for (let q = 1; q <= 8; q++) {
+          if (q <= 7 && m.hr[q]) { run++; if (m.blank[q]) hasBlank = true; continue }
+          if (run > best || (run === best && hasBlank)) { best = run; bestHasBlank = hasBlank }
+          run = 0; hasBlank = false
+        }
+        if (best > worstBest || (best === worstBest && bestHasBlank)) { worstBest = best; worstBlank = bestHasBlank }
       }
-      if (best > maxRun && bestHasBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節`, pen(w.homeroomRun) * sev(best - maxRun), `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
+      if (worstBest > maxRun && worstBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節`, pen(w.homeroomRun) * sev(worstBest - maxRun), `${c.label} 週${DAY_ZH[d]}連續 ${worstBest} 格導師課${worstBest >= 7 ? '（單雙週導師週整天連七）' : ''}`)
+    }
+  }
+
+  // 導師每日下限（課務組：半天日至少 1 節、整天日至少 2 節導師課；人工課表 0 例外）——兩種週型分開算、取較少的一週。
+  // 該班當天導師最多可能幾節＝可排格 − 導師不排課格 − 非導師鎖課；下限不超過它（導師整天不排課的日子不算）。
+  if (w.homeroomDailyMin.level !== 'off') {
+    const hm = w.homeroomDailyMin
+    for (const c of input.classes) {
+      const mustFill = new Set(input.classMustFill[c.classKey] ?? [])
+      for (const d of SCHEDULE_DAYS) {
+        const m0 = hrMask(c.classKey, d, 'o')
+        let possible = 0
+        for (let q = 1; q <= 7; q++) if (m0.teachable[q] && !mustFill.has(`${d}-${q}`) && (m0.blank[q] || m0.hr[q] || (st.classOcc.get(c.classKey)!.has(`${d}-${q}`)))) possible++
+        if (!possible) continue
+        const full = input.classDayFull[c.classKey]?.[d]
+        const need = Math.min(full ? hm.full : hm.half, possible)
+        if (!need) continue
+        let have = 99
+        for (const par of PARS) { const m = hrMask(c.classKey, d, par); have = Math.min(have, m.hr.filter(Boolean).length) }
+        if (have < need) {
+          if (hm.must) acc(map, 'homeroomDailyMinMust', `導師每日下限（${full ? '整天' : '半天'}${need} 節，必須級）`, MUST * (need - have), `${c.label} 週${DAY_ZH[d]}導師只有 ${have} 節`)
+          else acc(map, 'homeroomDailyMin', '導師每日下限', pen(hm.level) * sev(need - have), `${c.label} 週${DAY_ZH[d]}導師只有 ${have} 節（${full ? '整天' : '半天'}至少 ${need}）`)
+        }
+      }
     }
   }
 
@@ -1516,15 +1562,13 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   if (w.homeroomMorning.level !== 'off') {
     const target = Math.max(1, w.homeroomMorning.n)
     for (const c of input.classes) {
-      const occ = st.classOcc.get(c.classKey)!
-      const avail = new Set(input.classSlots[c.classKey] ?? [])
-      const locks = input.lockedCells[c.classKey] ?? {}
-      const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])
       for (const d of SCHEDULE_DAYS) {
-        // 上午可排格數不足 N 的日子（如只開 2 格），目標降到實際格數，不能罰它做不到的事
-        const morningSlots = [1, 2, 3, 4].filter(q => avail.has(`${d}-${q}`) || (`${d}-${q}` in locks))
+        // 上午可排格數不足 N 的日子（如只開 2 格），目標降到實際格數，不能罰它做不到的事；單雙週取較少的一週
+        const m0 = hrMask(c.classKey, d, 'o')
+        const morningSlots = [1, 2, 3, 4].filter(q => m0.teachable[q])
         if (morningSlots.length === 0) continue
-        const hr = morningSlots.filter(q => !occ.has(`${d}-${q}`) && (!(`${d}-${q}` in locks) || hrLock.has(`${d}-${q}`))).length
+        let hr = 99
+        for (const par of PARS) { const m = hrMask(c.classKey, d, par); hr = Math.min(hr, morningSlots.filter(q => m.hr[q]).length) }
         const want = Math.min(target, morningSlots.length)
         if (hr < want) acc(map, 'homeroomMorning', `上午導師課下限 ${target}`, pen(w.homeroomMorning.level) * sev(want - hr), `${c.label} 週${DAY_ZH[d]}上午只有 ${hr} 節導師課`)
       }
@@ -1562,13 +1606,10 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   // 導師每日節數上限：每班每日留白（可排格−科任課）≤ N
   if (w.homeroomDailyMax.level !== 'off') {
     for (const c of input.classes) {
-      const avail = input.classSlots[c.classKey] ?? []
-      const occ = st.classOcc.get(c.classKey)!
-      const hrLocks = input.homeroomLocks[c.classKey] ?? []
       for (const d of SCHEDULE_DAYS) {
-        const daySlots = avail.filter(s => parseSlotKey(s).day === d)
-        // 導師當日節數＝留白 ＋ 由導師上的鎖課（種子班國數等）
-        const free = daySlots.filter(s => !occ.has(s)).length + hrLocks.filter(s => parseSlotKey(s).day === d).length
+        // 導師當日節數＝留白 ＋ 由導師上的鎖課（種子班國數等）；單雙週格兩種週型取較多的一週（導師週會多 2 節）
+        let free = 0
+        for (const par of PARS) { const m = hrMask(c.classKey, d, par); free = Math.max(free, m.hr.filter(Boolean).length) }
         // 上限：基本 N；低年段整天日（週二）用 fullDayLowN；導師個人不排課達 offBonusFrom 格者 +1
         const hm = w.homeroomDailyMax
         let limit = hm.n
