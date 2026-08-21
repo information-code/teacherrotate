@@ -74,33 +74,37 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 }
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
-type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning'
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
-type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey>
-type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey
+type SpecialKey = 'lonelyDay' | 'homeroomRun'   // 有自己的附屬控制項
+type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey | SpecialKey>
+type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey | SpecialKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; spread?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
 // 規則依「為誰而設」分組——每一條權重都是因為某個人的處境才存在，依作用對象分組比依技術面向直覺。
 // 鐘點教師在引擎裡沒有專屬規則（受的是與科任、行政完全相同的那一組），故三者合併為一組。
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
-    { key: 'homeroomMorning', name: '上午導師課下限', def: '中', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「不連四」硬限制' },
-    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。導師一週僅 14~15 節，N=3 等於強制用滿五天、形狀只剩 3/3/3/3/2——「每週平均分散」由這條涵蓋，不另設規則。另有固定硬限制「導師連上上限」＝不連四' },
-    { key: 'classCohesion', name: '科任課同日成塊', def: '高', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 32 班有違反、且與「空堂最多一段」互斥，故為權重' },
+    { key: 'homeroomMorning', name: '上午導師課下限', def: '中', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「導師連上上限」' },
+    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '中', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。導師一週僅 14~15 節，N=3 等於強制用滿五天、形狀只剩 3/3/3/3/2——「每週平均分散」由這條涵蓋，不另設規則' },
+    { key: 'homeroomRun', name: '導師連上上限', def: '高', desc: '班級同日連續留白不要超過 N 格（引擎用科任課／鎖課切開），導師不會整個上午連上、中間沒有一節可喘息／改作業。原為硬限制；人工課表 5% 班日導師連四、課務組手調也踩了 4 筆 → 權重' },
+    { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 9% 半天被切開、引擎 4%——引擎已比人工好，中即可' },
   ] },
   { title: '科任・行政', note: '為授課老師本人而設：一週課表的鬆緊、空堂與移動', rows: [
     { key: 'dailyMax', name: '每日節數上限', def: '高', hasN: true, nHint: '一天最多 N 節', desc: '114-2 人工課表實測最大值恰為 6、0 筆超標' },
-    { key: 'consecMax', name: '連續授課上限', def: '高', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。預設 N=5：人工課表在 N=3 下有 110 筆超標、最長 6 連' },
-    { key: 'walkCost', name: '走動成本', def: '高', desc: '相鄰兩堂課跨教室，距離越遠扣越多；不同區同層＝4，跨樓再加 3×樓層差，中間有空堂或跨午休減半。上去了就待在同層比上去又下來便宜', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
+    { key: 'consecMax', name: '連續授課上限', def: '低', hasN: true, nHint: '連上 N 節後應有空堂', desc: '另有固定硬限制「永不連 7」。人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」遠不如「不空堂」要緊，預設 N=6、低' },
+    { key: 'walkCost', name: '走動成本', def: '低', desc: '相鄰兩堂課跨教室，距離越遠扣越多（距離只當同分時的加分）；中間有空堂或跨午休減半。人工課表 79% 相鄰兩堂換場地、課務組手調完全不在意 → 預設低', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
-    { key: 'roomHalfDay', name: '專科教室老師集中', def: '高', desc: '一間專科教室一週從週一第 1 節看到週五第 7 節，老師「交接」越少越好——一位老師連續幾天用完再換下一位（甲＝週一二、乙＝週三四五），實驗器材不用每天收。多餘的交接（超過「老師數 − 1」的部分）每次扣 1；同一天走了又回來另扣 1（自然是硬限制）；真的得交接時寧可在上午／下午之間，2／3 節之間交接扣 ½', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
-    { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '中', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%），故為權重' },
+    { key: 'roomHalfDay', name: '專科教室老師集中', def: '中', desc: '一間專科教室一週從週一第 1 節看到週五第 7 節，老師「交接」越少越好——一位老師連續幾天用完再換下一位（甲＝週一二、乙＝週三四五），實驗器材不用每天收。多餘的交接（超過「老師數 − 1」的部分）每次扣 1；同一天走了又回來另扣 1（自然是硬限制）；真的得交接時寧可在上午／下午之間，2／3 節之間交接扣 ½', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
+    { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '低', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。人工課表 13% 跨年級；權重高時課務組仍手動打破 10 筆 → 預設低' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
-    { key: 'compact', name: '減少零碎空堂', def: '低', desc: '單一空堂越少越好（「上空上空」交錯已是固定硬限制，這裡管殘餘的單一空堂）' },
+    { key: 'compact', name: '減少零碎空堂', def: '高', desc: '課間空堂越少越好（「上空上空」交錯已是固定硬限制）。課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，引擎原本只有 51%' },
+    { key: 'lonelyDay', name: '孤堂日', def: '高', desc: '非導師老師某天只上 1 節＝來一趟只為一節課（導師整天在自己班，不算；總共只有 1 節的人不計）。人工課表 6% 人日、引擎 11%、課務組手調後 4%。節數極少又有不排課的人、或 20 節老師的週三半天，可能真的湊不出來，所以是權重不是硬限制' },
+    { key: 'lowLoadConcentrate', name: '少節數老師集中', def: '高', hasN: true, nHint: '總節數 ≤ N 的老師', desc: '行政兼課、輔導團等節數少的老師壓到最少天（3 節→1 天、5～8 節→2 天）。人工課表 ≤6 節老師平均到校 2.1 天、引擎 2.7 天。鐘點另由「鐘點每週分布」管' },
   ] },
   { title: '鐘點', note: '鐘點老師多半希望少跑幾趟學校。上面「科任・行政」那組的規則同樣作用在鐘點身上，這裡只放身分專屬的', rows: [
-    { key: 'hourlyBalance', name: '鐘點每週分布', def: '中', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
+    { key: 'hourlyBalance', name: '鐘點每週分布', def: '高', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
   ] },
   { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
     { key: 'subjectApart', name: '科目互斥同日', def: '中', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組，各組可再調權重；勾「必須」則升為硬限制（絕不同日）——國際教育／英語在人工課表是 0／106 零例外，屬鐵律，預設已勾', master: 'subjectApart' },
@@ -108,7 +112,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
-const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning'
+const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate'
 const isSpread = (k: RuleKey): k is SpreadKey => k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']
@@ -136,9 +140,9 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   function setWeights(fn: (w: ScheduleWeights) => ScheduleWeights) { setConfig(c => ({ ...c, weights: fn(c.weights) })) }
   function setBuiltin(patch: Partial<BuiltinRules>) { setWeights(x => ({ ...x, builtin: { ...x.builtin, ...patch } })) }
   const levelOf = (key: RuleKey): WeightLevel =>
-    isParam(key) || isSpread(key) ? (w.builtin[key] as { level: WeightLevel }).level : w.builtin[key] as WeightLevel
+    isParam(key) || isSpread(key) || key === 'lonelyDay' ? (w.builtin[key] as { level: WeightLevel }).level : w.builtin[key] as WeightLevel
   const setLevel = (key: RuleKey, l: WeightLevel) => {
-    if (isParam(key) || isSpread(key)) setBuiltin({ [key]: { ...(w.builtin[key] as object), level: l } } as Partial<BuiltinRules>)
+    if (isParam(key) || isSpread(key) || key === 'lonelyDay') setBuiltin({ [key]: { ...(w.builtin[key] as object), level: l } } as Partial<BuiltinRules>)
     else setBuiltin({ [key]: l } as Partial<BuiltinRules>)
   }
   const spreadOf = (key: SpreadKey) => w.builtin[key]
@@ -223,6 +227,35 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                         onChange={e => setBuiltin({ [r.key]: { ...w.builtin[r.key as ParamKey], n: Number(e.target.value) } } as Partial<BuiltinRules>)}
                         className="input w-14 text-center py-0.5 text-xs" />
                     </label>
+                  )}
+                  {r.key === 'lonelyDay' && on && (
+                    <div className="flex items-center gap-3 text-xs text-zinc-500 flex-shrink-0 self-center flex-wrap justify-end">
+                      <label className="flex items-center gap-1">半天只 1 節
+                        <LevelPicker size="sm" value={w.builtin.lonelyDay.halfLevel} onChange={l => setBuiltin({ lonelyDay: { ...w.builtin.lonelyDay, halfLevel: l } })} />
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer" title="鐘點／代理是專程跑一趟的人：勾了之後他們的孤堂日算必須級——結果照樣跑得出來，但成功條件會卡住並點名是誰">
+                        <input type="checkbox" checked={w.builtin.lonelyDay.partTimeMust} onChange={e => setBuiltin({ lonelyDay: { ...w.builtin.lonelyDay, partTimeMust: e.target.checked } })} />
+                        鐘點／代理＝必須級
+                      </label>
+                    </div>
+                  )}
+                  {r.key === 'homeroomRun' && on && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-500 flex-shrink-0 self-center flex-wrap justify-end">
+                      <label className="flex items-center gap-1">N=
+                        <input type="number" min={2} max={6} value={w.hardParams.maxRunHomeroom}
+                          onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunHomeroom: Math.min(6, Math.max(2, Number(e.target.value) || 3)) } }))}
+                          className="input w-14 text-center py-0.5 text-xs" />
+                      </label>
+                      {BANDS.map(b => (
+                        <label key={b} className="flex items-center gap-1 cursor-pointer">
+                          <input type="checkbox" checked={w.hardParams.homeroomRunBands.includes(b)}
+                            onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams,
+                              homeroomRunBands: e.target.checked ? BANDS.filter(k => k === b || x.hardParams.homeroomRunBands.includes(k)) : x.hardParams.homeroomRunBands.filter(k => k !== b) } }))} />
+                          <span>{BAND_LABEL[b]}</span>
+                        </label>
+                      ))}
+                      {w.hardParams.homeroomRunBands.length === 0 && <span className="text-amber-600">未選年段＝停用</span>}
+                    </div>
                   )}
                   {isSpread(r.key) && on && (() => {
                     const sp = spreadOf(r.key)
@@ -422,36 +455,6 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                 onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunTeacher: Math.min(6, Math.max(2, Number(e.target.value) || 6)) } }))}
                 className="input w-14 text-center py-0.5 text-xs" />
               <span>節（科任與外師；預設 6＝永不連 7）</span>
-            </li>
-            <li className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span>導師連上絕對上限</span>
-                <input type="number" min={2} max={6} value={w.hardParams.maxRunHomeroom}
-                  onChange={e => setWeights(x => ({ ...x, hardParams: { ...x.hardParams, maxRunHomeroom: Math.min(6, Math.max(2, Number(e.target.value) || 3)) } }))}
-                  className="input w-14 text-center py-0.5 text-xs" />
-                <span>節（＝班級同日連續留白不得超過此數，引擎會用科任課／鎖課切開；預設 3＝導師不連四）</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-zinc-400">適用年段</span>
-                {BANDS.map(b => (
-                  <label key={b} className="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" checked={w.hardParams.homeroomRunBands.includes(b)}
-                      onChange={e => setWeights(x => ({
-                        ...x,
-                        hardParams: {
-                          ...x.hardParams,
-                          homeroomRunBands: e.target.checked
-                            ? BANDS.filter(k => k === b || x.hardParams.homeroomRunBands.includes(k))
-                            : x.hardParams.homeroomRunBands.filter(k => k !== b),
-                        },
-                      }))} />
-                    <span>{BAND_LABEL[b]}</span>
-                  </label>
-                ))}
-                {w.hardParams.homeroomRunBands.length === 0
-                  ? <span className="text-amber-600">未選任何年段＝此限制停用</span>
-                  : <span className="text-zinc-400">避免導師整個上午連上、中間沒有一節可喘息／改作業</span>}
-              </div>
             </li>
             <li className="flex items-center gap-2 flex-wrap">
               <span><b>連堂後不緊接單節</b>（同一位老師、同半天；午休隔開不算）——連堂結束要收器材，緊接著跑班來不及；單節後接連堂可以。適用科目：</span>

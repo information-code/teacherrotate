@@ -53,6 +53,8 @@ export interface EngineInput {
    *  以前被靜默當成「導師自排」、精靈報未排 0——那是假的 0。現在一律列為未排，讓課務組看得到。 */
   unassigned: { classKey: string; grade: number; classLabel: string; subject: string; hours: number }[]
   hourlyTeachers: string[]                   // 鐘點教師 id：每週分布傾向另用 hourlyBalance（多半要集中、少跑幾趟）
+  substituteTeachers: string[]               // 代理教師 id：與鐘點同屬「專程跑一趟」的人，孤堂日可升必須級
+  homeroomTeachers: string[]                 // 導師 id：孤堂日／少節數集中不算他們（整天都在自己班）
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
   classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null>
   weights: ScheduleWeights
@@ -179,6 +181,8 @@ export interface AssembleArgs {
   teacherNames: Record<string, string>
   /** 鐘點教師 id 清單（聘任別 hourly）：供「鐘點每週分布傾向」辨識對象。 */
   hourlyTeacherIds?: string[]
+  /** 代理教師 id 清單（聘任別 substitute）：孤堂日「鐘點／代理必須級」用。 */
+  substituteTeacherIds?: string[]
   /** 導師自上節數（同科分擔用）：classKey → 科目 → 節數。
    *  科目有指派科任時，科任只排「每班節數 − 鎖課 − 導師分擔」的剩餘節數（如生活 6＝導師 3＋科任 3）。 */
   homeroomHours?: Record<string, Record<string, number>>
@@ -671,7 +675,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       text: `導師連上上限 ${hrN} 節：下列班日「由導師授課的鎖課」本身就連續超過 ${hrN} 節（如種子班國語／數學鎖滿整個上午），排課引擎動不了鎖課、無法補救——請確認是否接受，或調整鎖課：${joinCap(hits)}`,
     })
   }
-  // 導師連上上限（硬限制）可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
+  // 導師連上上限可行性：每段長度 L 的連續可排格，需要 ceil((L−N)/(N+1)) 堂科任課／鎖課切開；
   // 全週加總若多於該班的科任課堂數，就是怎麼排都必然違反——先在前置檢核講明白，別讓精靈白跑一輪。
   {
     const { maxRunHomeroom: hrN, homeroomRunBands } = config.weights.hardParams
@@ -696,7 +700,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     }
     if (short.length) preflight.push({
       level: 'error', tab: 'weight',
-      text: `導師連上上限 ${hrN} 節（硬限制）需要科任課把連續留白切開，但這些班的科任課堂數不足、必然違反：${joinCap(short)}——請調高上限、縮小適用年段，或增加該班科任課。`,
+      text: `導師連上上限 ${hrN} 節需要科任課把連續留白切開，但這些班的科任課堂數不足、必然違反（會扣「導師連上上限」權重分）：${joinCap(short)}——請調高上限、縮小適用年段，或增加該班科任課。`,
     })
   }
   // 外師檢核（設定為絕對：掛不上／塞不下皆為必須級）
@@ -736,6 +740,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     input: {
       classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks,
       teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, unassigned: unassignedList, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
+      substituteTeachers: a.substituteTeacherIds ?? [],
+      homeroomTeachers: Array.from(new Set(Object.values(config.classTeacher).filter((t): t is string => Boolean(t)))),
       weights: config.weights, seed: a.seed ?? 42,
     },
     preflight,
@@ -1446,11 +1452,12 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
-  // 硬限制：導師連上上限——班級同日連續留白（無科任課、無鎖課）不得超過 maxRunHomeroom（預設 3＝不連四）。
+  // 導師連上上限（權重，原為硬限制）——班級同日連續留白（無科任課、無鎖課）不要超過 maxRunHomeroom（預設 3＝不連四）。
   // 目的是導師不會整個上午連上四節、中間沒有一節科任課可以喘口氣／改作業。
-  // 引擎只排科任課，導師側靠「該段留白被科任課或鎖課切開」保證；適用年段可於權重頁調整（清空＝停用）。
+  // 引擎只排科任課，導師側靠「該段留白被科任課或鎖課切開」；適用年段可於權重頁調整（清空＝停用）。
+  // 人工課表 5% 班日導師連四、課務組手調也踩 4 筆 → 不是絕對條件，降為權重（預設高）。
   const runBands = new Set(input.weights.hardParams.homeroomRunBands)
-  if (runBands.size) for (const c of input.classes) {
+  if (runBands.size && w.homeroomRun !== 'off') for (const c of input.classes) {
     if (!runBands.has(bandOf(c.grade))) continue
     const occ = st.classOcc.get(c.classKey)!
     const avail = new Set(input.classSlots[c.classKey] ?? [])
@@ -1469,7 +1476,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (run > best || (run === best && hasBlank)) { best = run; bestHasBlank = hasBlank }
         run = 0; hasBlank = false
       }
-      if (best > maxRun && bestHasBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節（硬限制）`, MUST, `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
+      if (best > maxRun && bestHasBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節`, pen(w.homeroomRun) * sev(best - maxRun), `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
     }
   }
 
@@ -1539,6 +1546,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
 
   // ── 教師面 ──
   const hourlySet = new Set(input.hourlyTeachers ?? [])
+  const substituteSet = new Set(input.substituteTeachers ?? [])
+  const homeroomSet = new Set(input.homeroomTeachers ?? [])
   st.teacherOcc.forEach((occ, tid) => {
     if (occ.size === 0) return
     for (const par of ['o', 'e'] as const) {
@@ -1575,30 +1584,43 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (worse.segs > 1) acc(map, 'gapAlternate', '上午空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}上午空堂分成 ${worse.segs} 段（上空上空上）`)
       }
     }
-    // 每日負擔平衡
+    // ── 以「老師」為單位的規則：鐘點每週分布／孤堂日／半天一節／少節數集中 ──
     {
-      // 只有鐘點有每週分布規則（科任・行政的「分散」依 114-2 人工課表刪除：
-      // 最重日與最輕日差 4 節最常見，學校根本沒在平均分配）
-      const cfg = w.hourlyBalance
-      const key = 'hourlyBalance'
-      const who = '鐘點'
-      if (!hourlySet.has(tid)) { /* 非鐘點不計 */ } else {
-      const loads = SCHEDULE_DAYS.map(d => {
-        let n = 0
-        for (let q = 1; q <= 7; q++) { const cell = occ.get(`${d}-${q}`); if (cell && (cell.w || cell.o || cell.e)) n++ }
-        return n
-      })
-      const r = spreadOver(cfg, loads, 3)
-      if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * sev(r.over), `${nameOf(tid)} ${r.why}`)
-      // 孤堂日：鐘點老師「來一趟只上 1 節」直接對準痛點加重罰（×3），逼引擎把零星課併進已有課的日子。
-      // 只在集中模式且總節數 > 1 時計（總共就 1 節的人本來就只能來一天一堂）。
-      if (cfg.mode === 'concentrate' && cfg.level !== 'off') {
-        const total7 = loads.reduce((a2, b2) => a2 + b2, 0)
-        if (total7 > 1) {
-          const lonely = loads.filter(n => n === 1).length
-          if (lonely > 0) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * lonely, `${nameOf(tid)} 有 ${lonely} 天到校只上 1 節（孤堂日）`)
+      const isHr = homeroomSet.has(tid)
+      const taughtAt = (d: number, q: number) => { const c = occ.get(`${d}-${q}`); return Boolean(c && (c.w || c.o || c.e)) }
+      const loads = SCHEDULE_DAYS.map(d => { let n = 0; for (let q = 1; q <= 7; q++) if (taughtAt(d, q)) n++; return n })
+      const total7 = loads.reduce((a2, b2) => a2 + b2, 0)
+      // 鐘點每週分布（分散／集中）——只有鐘點有；科任・行政的「分散」依 114-2 人工課表刪除（最重日與最輕日差 4 節最常見）
+      if (hourlySet.has(tid)) {
+        const cfg = w.hourlyBalance
+        const r = spreadOver(cfg, loads, 3)
+        if (r) acc(map, 'hourlyBalance', `鐘點每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * sev(r.over), `${nameOf(tid)} ${r.why}`)
+      }
+      // 孤堂日：非導師老師某天只上 1 節＝來一趟只為一節課。導師整天在自己班，不算；總共只有 1 節的人本來就只能如此，不計。
+      const ld = w.lonelyDay
+      if (!isHr && total7 > 1) {
+        const partTime = hourlySet.has(tid) || substituteSet.has(tid)
+        for (const d of SCHEDULE_DAYS) {
+          if (loads[d - 1] !== 1) continue
+          const q = [1, 2, 3, 4, 5, 6, 7].find(q2 => taughtAt(d, q2))
+          if (ld.partTimeMust && partTime) acc(map, 'lonelyDayMust', '鐘點／代理孤堂日（必須級）', MUST, `${nameOf(tid)} 週${DAY_ZH[d]}只上第 ${q} 節`)
+          else if (ld.level !== 'off') acc(map, 'lonelyDay', '孤堂日（一天只上 1 節）', pen(ld.level), `${nameOf(tid)} 週${DAY_ZH[d]}只上第 ${q} 節`)
+        }
+        // 半天只上 1 節（該天不只這一節才算，否則已經是孤堂日）
+        if (ld.halfLevel !== 'off') for (const d of SCHEDULE_DAYS) {
+          if (loads[d - 1] < 2) continue
+          for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+            const qs = half.filter(q2 => taughtAt(d, q2))
+            if (qs.length === 1) acc(map, 'lonelyHalf', '半天只上 1 節', pen(ld.halfLevel), `${nameOf(tid)} 週${DAY_ZH[d]}${half[0] === 1 ? '上午' : '下午'}只上第 ${qs[0]} 節`)
+          }
         }
       }
+      // 少節數老師集中：非導師、非鐘點、總節數 ≤ N 的老師（行政兼課、輔導團）壓到 ceil(節數/4) 天內
+      const lc = w.lowLoadConcentrate
+      if (!isHr && !hourlySet.has(tid) && lc.level !== 'off' && total7 >= 2 && total7 <= lc.n) {
+        const used = loads.filter(n => n > 0).length
+        const target = Math.ceil(total7 / 4)
+        if (used > target) acc(map, 'lowLoadConcentrate', `少節數老師集中（≤${lc.n} 節）`, pen(lc.level) * sev(used - target), `${nameOf(tid)} ${total7} 節分散在 ${used} 天（目標 ${target} 天內）`)
       }
     }
   })
@@ -2612,7 +2634,7 @@ export class EngineRun {
    *  與必排格補洞同套路（直接搬 → 逐出式），差別只在目標格由「必排格」換成「切點」。
    *  沒有這一步時，「同科不隔天」等權重會把科任課全推去一三五，讓某些班的週二整天沒有科任課可切。 */
   private tryFixHomeroomRun() {
-    if (!this.hrBands.size) return
+    if (!this.hrBands.size || this.input.weights.builtin.homeroomRun === 'off') return
     const n = this.hrRunN
     const targets: { classKey: string; day: number; period: number }[] = []
     for (const c of this.input.classes) {

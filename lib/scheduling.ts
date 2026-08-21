@@ -132,6 +132,16 @@ export interface BuiltinRules {
   consecMax: { level: WeightLevel; n: number }    // 連續授課軟上限 N（永不連 7＝固定硬限制，絕對上限 6 連）
   compact: WeightLevel                            // 減少零碎空堂（單一空堂的多寡；「上空上空」交錯為固定硬限制）
   hourlyBalance: DaySpread                        // 鐘點的每週分布傾向（多半要「集中」——少跑幾趟學校）
+  // 孤堂日：非導師老師某天只上 1 節＝來一趟只為一節課（導師整天在自己班，不算）。
+  //   level＝一天只 1 節；halfLevel＝半天只 1 節（該天不只這一節才算）；partTimeMust＝鐘點／代理的孤堂日升為必須級（結果仍跑得出來、但成功條件會卡住並點名）。
+  //   114-2 人工課表 6% 人日是孤堂日、13% 半天只 1 節；v17 引擎 11%／15%，課務組手調後 4%／10%
+  lonelyDay: { level: WeightLevel; halfLevel: WeightLevel; partTimeMust: boolean }
+  // 少節數老師集中：非導師、非鐘點、總節數 ≤ n 的老師（行政兼課、輔導團）壓到 ceil(節數/4) 天內（3 節→1 天、5～8 節→2 天）。
+  //   人工課表 ≤6 節老師平均到校 2.1 天、v17 引擎 2.7 天；鐘點另有 hourlyBalance
+  lowLoadConcentrate: { level: WeightLevel; n: number }
+  // 導師連上上限（N 與適用年段在 hardParams.maxRunHomeroom／homeroomRunBands）：原為硬限制，人工課表 5% 班日導師連四、
+  //   課務組手調也踩了 4 筆 → 降為權重（預設高）
+  homeroomRun: WeightLevel
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   bandAdjacent: WeightLevel                       // 全單節老師相鄰兩堂同年級：課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同年級，
                                                   //   免得一下四年級一下六年級（跨年級＝換教材換進度）。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%）→ 權重
@@ -160,8 +170,8 @@ export interface BuiltinRules {
 /** 固定硬限制的參數（不是權重、只是數字；引擎絕不違反）。 */
 export interface HardParams {
   maxRunTeacher: number       // 老師（科任／外師）連續授課絕對上限（預設 6＝永不連 7）
-  maxRunHomeroom: number      // 導師連上絕對上限（預設 3＝不連四）：班級同日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開。
-                              // 目的＝導師不會整個上午連四節都是自己的課（中間要有科任課能喘口氣、改作業）
+  maxRunHomeroom: number      // 導師連上上限（預設 3＝不連四）：班級同日連續留白不得超過此數＝至少落 1 堂科任／鎖課切開。
+                              // 目的＝導師不會整個上午連四節都是自己的課（中間要有科任課能喘口氣、改作業）。強度由 builtin.homeroomRun 權重決定
   homeroomRunBands: Band[]    // 上一條適用的年段（預設全年段；清空＝停用）
   // 連堂後不緊接單節（同一位老師、同一個半天）：連堂結束要收器材，緊接著跑班來不及。
   // 單節後接連堂可以。114-2 人工課表自然 42 組連堂 0 例外 → 硬限制。列出的科目為「連堂的科目」
@@ -255,19 +265,25 @@ export function defaultRoomUse(): Record<string, Record<string, RoomUse>> {
 
 export function defaultScheduleWeights(): ScheduleWeights {
   return {
+    // 預設值＝「關埔慣例」：由 115 學年度課務組最滿意的版本（v17）再手調 97 堂（v18）與四期人工課表逆推——
+    // 課務組排的是「老師的課表」：科任老師不空堂、不為一節課跑一趟、少節數老師集中、連堂與單節分日；
+    // 為此願意付出走動距離、相鄰同年級、導師每日／上午規則的分數，連上放寬到 6 連。
     builtin: {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
-      consecMax: { level: 'high', n: 5 },     // N=3 時人工課表 110 筆超標（最長 6 連）→ 放寬至 5
-      compact: 'low',
+      consecMax: { level: 'low', n: 6 },      // 人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」遠不如「不空堂」要緊；絕對上限仍是硬限制 6
+      compact: 'high',                        // 課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，v17 引擎只有 51%
       hourlyBalance: { level: 'high', mode: 'concentrate', days: 2 },
-      classCohesion: 'high',   // 114-2 人工課表遵守率 91%（43/463 半天被切開）
+      lonelyDay: { level: 'high', halfLevel: 'low', partTimeMust: false },
+      lowLoadConcentrate: { level: 'high', n: 8 },
+      classCohesion: 'mid',    // 114-2 人工課表 9% 半天被切開、v17 引擎 4%：引擎已比人工好，中即可
       batchType: 'high',
-      bandAdjacent: 'mid',
-      walkCost: 'high',                       // 人工課表 943 組相接中，跨專科教室僅 12 組（1.3%）→ 實務上比原本的「中」更嚴格
+      bandAdjacent: 'low',     // 權重高時課務組仍手動打破 10 筆；人工課表 13% 相鄰跨年級——在他心裡位階低於不空堂
+      walkCost: 'low',         // 人工課表 79% 相鄰兩堂換場地，學校根本沒在省；v17 目標函數被它吃掉一半而課務組完全不在意
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
-      roomHalfDay: 'high',
+      roomHalfDay: 'mid',
       homeroomMorning: { level: 'mid', n: 2 },
-      homeroomDailyMax: { level: 'high', n: 3 },
+      homeroomDailyMax: { level: 'mid', n: 3 },
+      homeroomRun: 'high',
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
@@ -318,6 +334,16 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       consecMax: { level: normLevel(b.consecMax?.level, db.consecMax.level), n: Number(b.consecMax?.n ?? db.consecMax.n) },
       compact: normLevel(b.compact, db.compact),
       hourlyBalance: normSpread(b.hourlyBalance, db.hourlyBalance),
+      lonelyDay: {
+        level: normLevel(b.lonelyDay?.level, db.lonelyDay.level),
+        halfLevel: normLevel(b.lonelyDay?.halfLevel, db.lonelyDay.halfLevel),
+        partTimeMust: Boolean(b.lonelyDay?.partTimeMust ?? db.lonelyDay.partTimeMust),
+      },
+      lowLoadConcentrate: (() => {
+        const n = Number(b.lowLoadConcentrate?.n)
+        return { level: normLevel(b.lowLoadConcentrate?.level, db.lowLoadConcentrate.level), n: Number.isInteger(n) && n >= 2 && n <= 20 ? n : db.lowLoadConcentrate.n }
+      })(),
+      homeroomRun: normLevel(b.homeroomRun, db.homeroomRun),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
       bandAdjacent: normLevel(b.bandAdjacent, db.bandAdjacent),
