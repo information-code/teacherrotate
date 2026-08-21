@@ -1535,7 +1535,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         let have = 99
         for (const par of PARS) { const m = hrMask(c.classKey, d, par); have = Math.min(have, m.hr.filter(Boolean).length) }
         if (have < need) {
-          if (hm.must) acc(map, 'homeroomDailyMinMust', `導師每日下限（${full ? '整天' : '半天'}${need} 節，必須級）`, MUST * (need - have), `${c.label} 週${DAY_ZH[d]}導師只有 ${have} 節`)
+          if (hm.must) acc(map, 'homeroomDailyMinMust', `導師每日下限（整天 ${hm.full}／半天 ${hm.half}，必須級）`, MUST * (need - have), `${c.label} 週${DAY_ZH[d]}（${full ? '整天' : '半天'}）導師只有 ${have} 節`)
           else acc(map, 'homeroomDailyMin', '導師每日下限', pen(hm.level) * sev(need - have), `${c.label} 週${DAY_ZH[d]}導師只有 ${have} 節（${full ? '整天' : '半天'}至少 ${need}）`)
         }
       }
