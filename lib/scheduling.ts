@@ -179,7 +179,11 @@ export interface BuiltinRules {
   // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）。
   //   fullDayLowN＝低年段整天日（週二）的上限（低年級只有週二整天，每班科任 7～8 堂擺不滿，課務組接受 5）；
   //   offBonusFrom＝導師個人不排課／進修加總達此格數者上限 +1（可排格少、其餘日子必然多上）
-  homeroomDailyMax: { level: WeightLevel; n: number; fullDayLowN: number; offBonusFrom: number }
+  //   hardN＝絕對上限（必須級）：人工課表四期整天導師 ≥6 節只有 3 班日 → 預設 5，不論例外都不得超過
+  homeroomDailyMax: { level: WeightLevel; n: number; fullDayLowN: number; offBonusFrom: number; hardN: number }
+  // 上午導師課上限：每天上午（1-4 節）導師最多 n 節（預設 3）；導師自己的鎖課（種子班國數）若在上午就超過 n，以鎖課數為準（鎖課逼的可以）。
+  //   must＝超過升必須級。課務組：沒有鎖課的老師上午最多 3 節，但可以連 3
+  homeroomMorningMax: { level: WeightLevel; n: number; must: boolean }
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
   avoidPeriods: WeightLevel
@@ -304,7 +308,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       roomHalfDay: 'mid',
       homeroomMorning: { level: 'high', n: 2 },   // v19 上午 0 節導師課的班日 12→23，課務組定為高
-      homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5」
+      homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7, hardN: 5 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5；絕不 6」
+      homeroomMorningMax: { level: 'high', n: 3, must: true },
       homeroomRun: 'high',
       homeroomDailyMin: { level: 'high', full: 2, half: 1, must: true },   // 課務組：半天至少 1 節、整天至少 2 節導師課
       gradeSandwich: 'high',
@@ -405,7 +410,12 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       homeroomDailyMax: (() => {
         const h = (b.homeroomDailyMax ?? {}) as Partial<BuiltinRules['homeroomDailyMax']>
         const num = (v: unknown, d: number, lo: number, hi: number) => { const x = Number(v); return Number.isInteger(x) && x >= lo && x <= hi ? x : d }
-        return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35) }
+        return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35), hardN: num(h.hardN, db.homeroomDailyMax.hardN, 1, 7) }
+      })(),
+      homeroomMorningMax: (() => {
+        const h = (b.homeroomMorningMax ?? {}) as Partial<BuiltinRules['homeroomMorningMax']>
+        const n = Number(h.n)
+        return { level: normLevel(h.level, db.homeroomMorningMax.level), n: Number.isInteger(n) && n >= 1 && n <= 4 ? n : db.homeroomMorningMax.n, must: typeof h.must === 'boolean' ? h.must : db.homeroomMorningMax.must }
       })(),
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),

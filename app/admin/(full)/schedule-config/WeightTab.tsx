@@ -77,7 +77,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay' | 'teacherSpread' | 'shortBreakCross'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
-type SpecialKey = 'lonelyDay' | 'homeroomRun' | 'homeroomDailyMin'   // 有自己的附屬控制項
+type SpecialKey = 'lonelyDay' | 'homeroomRun' | 'homeroomDailyMin' | 'homeroomMorningMax'   // 有自己的附屬控制項
 type SimpleKey = Exclude<keyof BuiltinRules, ParamKey | MasterKey | SpreadKey | SpecialKey>
 type RuleKey = SimpleKey | ParamKey | MasterKey | SpreadKey | SpecialKey
 interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?: boolean; spread?: boolean; nHint?: string; master?: RuleTemplate; link?: { href: string; label: string } }
@@ -86,7 +86,8 @@ interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
     { key: 'homeroomMorning', name: '上午導師課下限', def: '高', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「導師連上上限」' },
-    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節（預設 4、高）。例外：低年級整天日（週二）可到右側設定的節數（預設 5）；導師個人不排課／進修合計達設定格數（預設 7）者上限 +1。課務組原則原文：低年級週二最多 5、其餘 4；不排課加總 7 格以上的老師可接受 5' },
+    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節（預設 4、高）。例外：低年級整天日（週二）可到右側設定的節數（預設 5）；導師個人不排課／進修合計達設定格數（預設 7）者上限 +1。另有「絕對上限」（預設 5、必須級）：不論例外都不得超過——人工課表四期整天 ≥6 節只有 3 班日' },
+    { key: 'homeroomMorningMax', name: '上午導師課上限', def: '高', desc: '課務組原則：沒有鎖課的老師上午最多 3 節導師課（可以連 3）；導師自己的鎖課（種子班國數）在上午就超過 3 的，以鎖課數為準。人工課表 5 節日以 3+2／2+3 為主、4+1 偶有。單雙週取較多的一週。勾「必須級」＝超過就卡成功條件並點名' },
     { key: 'homeroomDailyMin', name: '導師每日下限', def: '高', desc: '課務組原則：半天日至少 1 節、整天日至少 2 節導師課（人工課表 0 例外——導師每天都會在自己班上課）。該班當天導師最多可能的節數（可排格扣掉導師不排課）不足時以實際為準；單雙週格兩種週型分開算、取較少的一週。勾「必須級」＝不足就卡成功條件並點名' },
     { key: 'homeroomRun', name: '導師連上上限', def: '高', desc: '班級同日連續留白不要超過 N 格（引擎用科任課／鎖課切開），導師不會整個上午連上、中間沒有一節可喘息／改作業。單雙週格兩種週型分開算（導師週的視藝格也是導師課，避免半天連四、整天連七）。原為硬限制；人工課表 5% 班日導師連四、課務組手調也踩了 4 筆 → 權重' },
     { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 9% 半天被切開、引擎 4%——引擎已比人工好，中即可' },
@@ -146,9 +147,9 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
   function setWeights(fn: (w: ScheduleWeights) => ScheduleWeights) { setConfig(c => ({ ...c, weights: fn(c.weights) })) }
   function setBuiltin(patch: Partial<BuiltinRules>) { setWeights(x => ({ ...x, builtin: { ...x.builtin, ...patch } })) }
   const levelOf = (key: RuleKey): WeightLevel =>
-    isParam(key) || isSpread(key) || key === 'lonelyDay' || key === 'homeroomDailyMin' ? (w.builtin[key] as { level: WeightLevel }).level : w.builtin[key] as WeightLevel
+    isParam(key) || isSpread(key) || key === 'lonelyDay' || key === 'homeroomDailyMin' || key === 'homeroomMorningMax' ? (w.builtin[key] as { level: WeightLevel }).level : w.builtin[key] as WeightLevel
   const setLevel = (key: RuleKey, l: WeightLevel) => {
-    if (isParam(key) || isSpread(key) || key === 'lonelyDay' || key === 'homeroomDailyMin') setBuiltin({ [key]: { ...(w.builtin[key] as object), level: l } } as Partial<BuiltinRules>)
+    if (isParam(key) || isSpread(key) || key === 'lonelyDay' || key === 'homeroomDailyMin' || key === 'homeroomMorningMax') setBuiltin({ [key]: { ...(w.builtin[key] as object), level: l } } as Partial<BuiltinRules>)
     else setBuiltin({ [key]: l } as Partial<BuiltinRules>)
   }
   const spreadOf = (key: SpreadKey) => w.builtin[key]
@@ -241,10 +242,27 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                           onChange={e => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, fullDayLowN: Math.min(7, Math.max(1, Number(e.target.value) || 5)) } })}
                           className="input w-12 text-center py-0.5 text-xs" />節
                       </label>
+                      <label className="flex items-center gap-1" title="不論低年級整天日或不排課例外，導師一天絕不超過此數（必須級）。人工課表四期整天 ≥6 節只有 3 班日">絕對上限
+                        <input type="number" min={1} max={7} value={w.builtin.homeroomDailyMax.hardN}
+                          onChange={e => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, hardN: Math.min(7, Math.max(1, Number(e.target.value) || 5)) } })}
+                          className="input w-12 text-center py-0.5 text-xs" />節（必須級）
+                      </label>
                       <label className="flex items-center gap-1" title="導師個人不排課／進修合計達此格數者，其餘日子必然多上，上限放寬一節">不排課≥
                         <input type="number" min={1} max={35} value={w.builtin.homeroomDailyMax.offBonusFrom}
                           onChange={e => setBuiltin({ homeroomDailyMax: { ...w.builtin.homeroomDailyMax, offBonusFrom: Math.min(35, Math.max(1, Number(e.target.value) || 7)) } })}
                           className="input w-12 text-center py-0.5 text-xs" />格者 +1
+                      </label>
+                    </div>
+                  )}
+                  {r.key === 'homeroomMorningMax' && on && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-500 flex-shrink-0 self-center flex-wrap justify-end">
+                      <label className="flex items-center gap-1">上午最多
+                        <input type="number" min={1} max={4} value={w.builtin.homeroomMorningMax.n}
+                          onChange={e => setBuiltin({ homeroomMorningMax: { ...w.builtin.homeroomMorningMax, n: Math.min(4, Math.max(1, Number(e.target.value) || 3)) } })}
+                          className="input w-12 text-center py-0.5 text-xs" />節
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer" title="勾了＝超過算必須級；不勾＝只扣權重分">
+                        <input type="checkbox" checked={w.builtin.homeroomMorningMax.must} onChange={e => setBuiltin({ homeroomMorningMax: { ...w.builtin.homeroomMorningMax, must: e.target.checked } })} />必須級
                       </label>
                     </div>
                   )}

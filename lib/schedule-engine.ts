@@ -1575,6 +1575,25 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
+  // 上午導師課上限：每天上午（1-4 節）導師最多 n 節（課務組：沒鎖課的老師上午最多 3，可以連 3）；
+  // 導師自己的鎖課（種子班國數）在上午就超過 n 的，以鎖課數為準——鎖課逼出來的可以。單雙週取較多的一週
+  if (w.homeroomMorningMax.level !== 'off') {
+    const mm = w.homeroomMorningMax
+    for (const c of input.classes) {
+      const hrLock = new Set(input.homeroomLocks[c.classKey] ?? [])
+      for (const d of SCHEDULE_DAYS) {
+        const lockAm = [1, 2, 3, 4].filter(q => hrLock.has(`${d}-${q}`)).length
+        const allowed = Math.max(mm.n, lockAm)
+        let am = 0
+        for (const par of PARS) { const m = hrMask(c.classKey, d, par); am = Math.max(am, [1, 2, 3, 4].filter(q => m.hr[q]).length) }
+        if (am > allowed) {
+          if (mm.must) acc(map, 'homeroomMorningMaxMust', `上午導師課上限 ${mm.n}（必須級）`, MUST * (am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節${lockAm > mm.n ? `（鎖課 ${lockAm}）` : ''}`)
+          else acc(map, 'homeroomMorningMax', `上午導師課上限 ${mm.n}`, pen(mm.level) * sev(am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節`)
+        }
+      }
+    }
+  }
+
   // 科任課同日成塊（權重）——同班同日（上、下午各自計）科任課＋鎖課連成一塊，每多一塊扣一次
   if (w.classCohesion !== 'off') for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
@@ -1617,6 +1636,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if ((input.classMustFill[c.classKey]?.length ?? 0) >= hm.offBonusFrom) limit += 1
         const over = free - limit
         if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${hm.n}`, pen(hm.level) * sev(over), `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${limit} 節`)
+        // 絕對上限（必須級）：不論低年級整天日、不排課例外，導師一天都不得超過 hardN（課務組：絕不 6）
+        if (free > hm.hardN) acc(map, 'homeroomDailyMaxMust', `導師每日絕對上限 ${hm.hardN}（必須級）`, MUST * (free - hm.hardN), `${c.label} 週${DAY_ZH[d]}導師 ${free} 節`)
       }
     }
   }
@@ -2415,6 +2436,7 @@ export class EngineRun {
     for (let k = 0; k < this.input.classes.length * 3; k++) this.tryFixHomeroomRun()
     for (let k = 0; k < this.input.classes.length * 2; k++) this.tryFixHomeroomMin()
     for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomDouble()
+    for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomMorningMax()
     for (let k = 0; k < 6; k++) this.tryFixHourlyDays()
   }
 
@@ -2854,7 +2876,53 @@ export class EngineRun {
       }
     }
     if (!targets.length) return
-    const t = targets[Math.floor(this.rnd() * targets.length)]
+    this.coverTarget(targets[Math.floor(this.rnd() * targets.length)])
+  }
+
+  /** 上午導師課上限定向修補：上午導師超過上限的班日，挑一格上午留白（優先連段中間）把該班一堂科任課放進去。 */
+  private tryFixHomeroomMorningMax() {
+    const mm = this.input.weights.builtin.homeroomMorningMax
+    if (mm.level === 'off') return
+    const targets: { classKey: string; day: number; period: number }[] = []
+    for (const c of this.input.classes) {
+      const occ = this.st.classOcc.get(c.classKey)!
+      const avail = new Set(this.input.classSlots[c.classKey] ?? [])
+      const locks = this.input.lockedCells[c.classKey] ?? {}
+      const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
+      const mustLeave = this.input.classMustLeave?.[c.classKey] ?? []
+      for (const d of SCHEDULE_DAYS) {
+        const lockAm = [1, 2, 3, 4].filter(q => hrLock.has(`${d}-${q}`)).length
+        const allowed = Math.max(mm.n, lockAm)
+        // 取較多的一週：單雙週格若不是這週的就是導師
+        let worstAm = 0; let blanks: number[] = []
+        for (const par of ['o', 'e'] as const) {
+          let am = 0; const bl: number[] = []
+          for (const q of [1, 2, 3, 4]) {
+            const k = `${d}-${q}`
+            const teachable = avail.has(k) || (k in locks)
+            if (!teachable) continue
+            if (k in locks) { if (hrLock.has(k)) am++; continue }
+            const id = occ.get(k)
+            if (!id) { am++; if (!mustLeave.includes(k)) bl.push(q); continue }
+            const p = this.st.lessonById.get(id)?.parity ?? 'weekly'
+            if (p !== 'weekly' && p[0] !== par) am++
+          }
+          if (am > worstAm) { worstAm = am; blanks = bl }
+        }
+        if (worstAm > allowed && blanks.length) {
+          // 優先挑夾在中間的留白（把連段切開），否則隨便一格
+          const mid = blanks.filter(q => q > 1 && q < 4)
+          const pick = (mid.length ? mid : blanks)[Math.floor(this.rnd() * (mid.length ? mid : blanks).length)]
+          targets.push({ classKey: c.classKey, day: d, period: pick })
+        }
+      }
+    }
+    if (!targets.length) return
+    this.coverTarget(targets[Math.floor(this.rnd() * targets.length)])
+  }
+
+  /** 把 t 班的某一堂科任課放進 (t.day, t.period)：先直接搬，搬不動再逐出式。導師連上／上午上限的修補共用。 */
+  private coverTarget(t: { classKey: string; day: number; period: number }) {
     const mustSet = this.mustSetByClass.get(t.classKey) ?? new Set<string>()
     const lessons = (this.lessonsByClass.get(t.classKey) ?? [])
     if (!lessons.length) return
@@ -3166,11 +3234,12 @@ export class EngineRun {
       // 節奏：只拿 1/8 的步數（奇數步之一，避開下面 %8 的偶數分支）——上一版拿走全部奇數步，隨機搬動與交換完全沒機會跑，
       // 反而讓未排從 0 暴增到 8～15 堂
       if (this.cur >= MUST && this.iterations % 8 === 1) {
-        const k = Math.floor(this.iterations / 8) % 5
+        const k = Math.floor(this.iterations / 8) % 6
         if (k === 0) this.tryCoverMustFill()
         else if (k === 1) this.tryFixHomeroomMin()
         else if (k === 2) this.tryFixHomeroomDouble()
         else if (k === 3) this.tryFixHourlyDays()
+        else if (k === 4) this.tryFixHomeroomMorningMax()
         else this.tryFixHomeroomRun()
         continue
       }
