@@ -1538,8 +1538,13 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         const daySlots = avail.filter(s => parseSlotKey(s).day === d)
         // 導師當日節數＝留白 ＋ 由導師上的鎖課（種子班國數等）
         const free = daySlots.filter(s => !occ.has(s)).length + hrLocks.filter(s => parseSlotKey(s).day === d).length
-        const over = free - w.homeroomDailyMax.n
-        if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${w.homeroomDailyMax.n}`, pen(w.homeroomDailyMax.level) * sev(over), `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${w.homeroomDailyMax.n} 節`)
+        // 上限：基本 N；低年段整天日（週二）用 fullDayLowN；導師個人不排課達 offBonusFrom 格者 +1
+        const hm = w.homeroomDailyMax
+        let limit = hm.n
+        if (bandOf(c.grade) === 'low' && input.classDayFull[c.classKey]?.[d]) limit = Math.max(limit, hm.fullDayLowN)
+        if ((input.classMustFill[c.classKey]?.length ?? 0) >= hm.offBonusFrom) limit += 1
+        const over = free - limit
+        if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${hm.n}`, pen(hm.level) * sev(over), `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${limit} 節`)
       }
     }
   }

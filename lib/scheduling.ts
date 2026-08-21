@@ -165,7 +165,10 @@ export interface BuiltinRules {
   // 單調版本會把科任課全擠到下午、讓上午 4 格全是導師課而撞上「不連四」硬限制。
   homeroomMorning: { level: WeightLevel; n: number }
   // 導師每週分布已刪除：每日上限 N 一設，14 節÷N 就強制用滿 5 天且只剩一種形狀，分散是必然結果
-  homeroomDailyMax: { level: WeightLevel; n: number }  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）
+  // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）。
+  //   fullDayLowN＝低年段整天日（週二）的上限（低年級只有週二整天，每班科任 7～8 堂擺不滿，課務組接受 5）；
+  //   offBonusFrom＝導師個人不排課／進修加總達此格數者上限 +1（可排格少、其餘日子必然多上）
+  homeroomDailyMax: { level: WeightLevel; n: number; fullDayLowN: number; offBonusFrom: number }
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
   avoidPeriods: WeightLevel
@@ -290,7 +293,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       roomHalfDay: 'mid',
       homeroomMorning: { level: 'mid', n: 2 },
-      homeroomDailyMax: { level: 'high', n: 4 },   // 課務組原則「導師一天不要超過 4 節」——之前 N=3 比他要的還嚴一節
+      homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5」
       homeroomRun: 'high',
       gradeSandwich: 'high',
       zoneSandwich: 'mid',
@@ -371,7 +374,11 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       homeroomMorning: typeof b.homeroomMorning === 'string'
         ? { level: normLevel(b.homeroomMorning, db.homeroomMorning.level), n: db.homeroomMorning.n }
         : { level: normLevel(b.homeroomMorning?.level, db.homeroomMorning.level), n: Number(b.homeroomMorning?.n ?? db.homeroomMorning.n) },
-      homeroomDailyMax: { level: normLevel(b.homeroomDailyMax?.level, db.homeroomDailyMax.level), n: Number(b.homeroomDailyMax?.n ?? db.homeroomDailyMax.n) },
+      homeroomDailyMax: (() => {
+        const h = (b.homeroomDailyMax ?? {}) as Partial<BuiltinRules['homeroomDailyMax']>
+        const num = (v: unknown, d: number, lo: number, hi: number) => { const x = Number(v); return Number.isInteger(x) && x >= lo && x <= hi ? x : d }
+        return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35) }
+      })(),
       avoidPeriods: normLevel(b.avoidPeriods, db.avoidPeriods),
       timePrefer: normLevel(b.timePrefer, db.timePrefer),
       subjectApart: normLevel(b.subjectApart, db.subjectApart),
