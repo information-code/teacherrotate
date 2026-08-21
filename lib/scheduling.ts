@@ -100,7 +100,9 @@ export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
 }
 
 /** 一個區域：同層樓一排彼此相鄰的教室。ring＝環狀（首尾也相鄰）；否則直排（首尾最遠）。 */
-export interface RoomZone { id: string; floor: string; area: string; ring: boolean; rooms: Room[] }
+/** building＝棟（建築群組，選填）：同一棟不同樓（如 A 區 1 樓與 B 區 2 樓同一棟）跑班老師可接受，
+ *  「同半天跨區來回」以棟為單位；未填＝以區域字串為單位。 */
+export interface RoomZone { id: string; floor: string; area: string; building: string; ring: boolean; rooms: Room[] }
 
 // 科任教室常用名稱（datalist 快選用）
 export const SUBJECT_ROOM_PRESETS = [
@@ -611,6 +613,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
     roomZones: Array.isArray(r.roomZones)
       ? r.roomZones.map(z => ({
           id: String(z.id ?? ''), floor: String(z.floor ?? ''), area: String(z.area ?? ''),
+          building: String((z as { building?: unknown }).building ?? ''),
           ring: Boolean(z.ring),
           rooms: Array.isArray(z.rooms)
             ? z.rooms.map(rm => ({
