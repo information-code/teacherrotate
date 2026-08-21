@@ -1601,7 +1601,9 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       if (hourlySet.has(tid)) {
         const cfg = w.hourlyBalance
         const r = spreadOver(cfg, loads, 3)
-        if (r) acc(map, 'hourlyBalance', `鐘點每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * sev(r.over), `${nameOf(tid)} ${r.why}`)
+        // 集中模式且勾「必須級」：超過目標天數＝必須級（課務組：鐘點不超過 3 天是鐵律；權重高只扣 9 分，引擎會拿去換別的）
+        if (r && cfg.mode === 'concentrate' && cfg.must) acc(map, 'hourlyBalanceMust', `鐘點超過 ${cfg.days} 天（必須級）`, MUST * r.over, `${nameOf(tid)} ${r.why}`)
+        else if (r) acc(map, 'hourlyBalance', `鐘點每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * sev(r.over), `${nameOf(tid)} ${r.why}`)
       }
       // 孤堂日：非導師老師某天只上 1 節＝來一趟只為一節課。導師整天在自己班，不算；總共只有 1 節的人本來就只能如此，不計。
       const ld = w.lonelyDay

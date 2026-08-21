@@ -126,7 +126,7 @@ export const WEIGHT_PENALTY: Record<WeightLevel, number> = { off: 0, low: 1, mid
 export type DayMode = 'spread' | 'off' | 'concentrate'
 export const DAY_MODES: DayMode[] = ['spread', 'off', 'concentrate']
 export const DAY_MODE_LABEL: Record<DayMode, string> = { spread: '分散', off: '不拘', concentrate: '集中' }
-export interface DaySpread { level: WeightLevel; mode: DayMode; days: number }   // days 僅在 concentrate 時使用＝目標天數
+export interface DaySpread { level: WeightLevel; mode: DayMode; days: number; must: boolean }   // days 僅在 concentrate 時使用＝目標天數；must＝超過天數升必須級（課務組：鐘點不超過 3 天是鐵律，權重高只扣 9 分咬不住）
 
 /** 內建規則（只能調權重與參數，不能增刪）。 */
 export interface BuiltinRules {
@@ -288,7 +288,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
       consecMax: { level: 'mid', n: 6 },      // 人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」不如「不空堂」要緊；v19 一天 6 節偏多，課務組定為中；絕對上限仍是硬限制 6
       compact: 'high',                        // 課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，v17 引擎只有 51%
-      hourlyBalance: { level: 'high', mode: 'concentrate', days: 3 },   // 課務組原則「鐘點不要超過 3 天」
+      hourlyBalance: { level: 'high', mode: 'concentrate', days: 3, must: true },   // 課務組原則「鐘點不要超過 3 天」——鐵律，超過＝必須級
       lonelyDay: { level: 'high', halfLevel: 'low', partTimeMust: false },
       lowLoadConcentrate: { level: 'high', n: 8 },
       classCohesion: 'mid',    // 114-2 人工課表 9% 半天被切開、v17 引擎 4%：引擎已比人工好，中即可
@@ -331,7 +331,7 @@ function normLevel(v: unknown, fallback: WeightLevel): WeightLevel {
 
 /** 舊資料的 homeroomBalance 是單純的 WeightLevel 字串 → 補成「分散」傾向。 */
 function normSpread(v: unknown, fallback: DaySpread): DaySpread {
-  if (typeof v === 'string') return { level: normLevel(v, fallback.level), mode: 'spread', days: fallback.days }
+  if (typeof v === 'string') return { level: normLevel(v, fallback.level), mode: 'spread', days: fallback.days, must: fallback.must }
   if (!v || typeof v !== 'object') return { ...fallback }
   const o = v as Partial<DaySpread>
   const days = Number(o.days)
@@ -339,6 +339,7 @@ function normSpread(v: unknown, fallback: DaySpread): DaySpread {
     level: normLevel(o.level, fallback.level),
     mode: DAY_MODES.includes(o.mode as DayMode) ? o.mode as DayMode : fallback.mode,
     days: Number.isInteger(days) && days >= 1 && days <= 5 ? days : fallback.days,
+    must: typeof o.must === 'boolean' ? o.must : fallback.must,
   }
 }
 

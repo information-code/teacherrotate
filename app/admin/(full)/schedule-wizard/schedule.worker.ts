@@ -31,7 +31,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         consecMax: { ...b.consecMax, level: 'off' },
         homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off' },
         compact: 'off', classCohesion: 'off', batchType: 'off', bandAdjacent: 'off', teacherApart: 'off',
-        hourlyBalance: { ...b.hourlyBalance, level: 'off' },
+        hourlyBalance: { ...b.hourlyBalance, level: 'off', must: false },
         lonelyDay: { level: 'off', halfLevel: 'off', partTimeMust: false },
         lowLoadConcentrate: { ...b.lowLoadConcentrate, level: 'off' },
         homeroomRun: 'off', gradeSandwich: 'off', zoneSandwich: 'off',

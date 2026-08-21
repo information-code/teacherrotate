@@ -294,6 +294,11 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                               className="input w-12 text-center py-0.5 text-xs" />天內
                           </label>
                         )}
+                        {sp.mode === 'concentrate' && (
+                          <label className="flex items-center gap-1 cursor-pointer" title="勾了＝超過天數算必須級：結果照樣跑得出來，但成功條件會卡住並點名是誰；不勾＝只扣權重分（高＝9 分／天，引擎可能拿去換別處的分數）">
+                            <input type="checkbox" checked={sp.must} onChange={e => setSpread(r.key as SpreadKey, { must: e.target.checked })} />超過＝必須級
+                          </label>
+                        )}
                       </div>
                     )
                   })()}
