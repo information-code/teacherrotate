@@ -205,6 +205,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
     onOffConflict: [] as string[],  // 同格同時被標排課與不排課
     onNoLesson: [] as string[],     // 標了排課但無科任課的教師
     onBadSlot: [] as string[],      // 排課標記時段不可行（非授課班可排格或與封鎖衝突）
+    hrLockOff: [] as string[],      // 導師自己要上的鎖課，落在她本人的不排課時段（矛盾，引擎動不了）
   }
   const classes: EngineInput['classes'] = []
   const classSlots: Record<string, string[]> = {}
@@ -381,6 +382,17 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       const homeroomOff = homeroomId ? (offByTeacher[homeroomId] ?? []) : []
       const mustSet = new Set<string>()
       for (const s of [...gradeOff, ...homeroomOff]) if (slots.includes(s)) mustSet.add(s)
+      // 導師自己要上的鎖課（種子班國數班會等）落在她本人的不排課時段＝矛盾：
+      // 鎖課釘死時段、不排課說那時段不能上，引擎兩邊都動不了，只能請課務組擇一調整。
+      if (homeroomOff.length) {
+        const offSet = new Set(homeroomOff)
+        for (const sl of homeroomLocks[key] ?? []) {
+          if (!offSet.has(sl)) continue
+          const t = lockTypeMap[config.lockCells[key]?.[sl] ?? '']
+          const { day, period } = parseSlotKey(sl)
+          agg.hrLockOff.push(`${classLabel(g, i)}${a.teacherNames[homeroomId] ? `（${a.teacherNames[homeroomId]}）` : ''} 週${'一二三四五'[day - 1]}第${period}節 ${t?.subject || t?.label || '鎖課'}`)
+        }
+      }
       // 必留導師格：該班導師的個人排課標記——科任課不可放（同格同時被標排課＋不排課＝矛盾，兩者皆忽略並警告）
       const homeroomOn = homeroomId ? (onByTeacher[homeroomId] ?? []) : []
       const leaveSet = new Set<string>()
@@ -712,6 +724,10 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   for (const issue of derived.issues) preflight.push(issue)
   if (nativeAgg.streamClasses.length) preflight.push({ level: 'warn', text: `本土語未指派閩南語老師、將以直播共學處理（請確認非漏填）：${joinCap(nativeAgg.streamClasses)}`, tab: 'subject' })
   // 排課標記檢核
+  if (agg.hrLockOff.length) preflight.push({
+    level: 'warn', tab: 'lock',
+    text: `導師自己要上的鎖課，排在她本人的不排課時段——引擎兩邊都動不了，請擇一調整（改鎖課時段，或取消該格不排課）：${joinCap(agg.hrLockOff)}`,
+  })
   if (agg.onOffConflict.length) preflight.push({ level: 'warn', text: `排課與不排課標記同格衝突（該格兩者皆忽略）：${joinCap(agg.onOffConflict)}`, tab: 'off' })
   if (agg.onNoLesson.length) preflight.push({ level: 'warn', text: `標了排課但無科任課、標記無作用：${joinCap(agg.onNoLesson)}`, tab: 'off' })
   if (agg.onBadSlot.length) preflight.push({ level: 'warn', text: `排課標記時段不可行（非其授課班可排格或與不排課衝突，已忽略）：${joinCap(agg.onBadSlot)}`, tab: 'off' })
@@ -912,6 +928,9 @@ class State {
       if (cOcc.has(s)) return false
       if (blocked.includes(s)) return false
       if (mustLeave.includes(s)) return false   // 導師排課標記格：必留導師課
+      // 單雙週區塊：另一週整塊兩節歸導師上，所以整塊都不能碰導師的不排課時段
+      // （只放一半＝導師那一週還是得來上課，等於不排課申報形同虛設）
+      if (l.parity !== 'weekly' && (this.input.classMustFill[l.classKey] ?? []).includes(s)) return false
       const cell = tOcc.get(s)
       if (cell) {
         if (cell.w) return false
@@ -1326,14 +1345,17 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 必排科任課覆蓋
+  // 必排科任課覆蓋。單雙週課只覆蓋一半（另一週整塊還給導師上），對「導師不排課」而言等於沒覆蓋
   for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!
     for (const s of input.classMustFill[c.classKey] ?? []) {
-      if (!occ.has(s)) {
+      const id = occ.get(s)
+      const biweekly = id ? st.lessonById.get(id)?.parity !== 'weekly' : false
+      if (!id || biweekly) {
         uncovered.push({ classKey: c.classKey, slot: s })
         const { day, period } = parseSlotKey(s)
-        acc(map, 'mustFill', '導師不排課時段未排科任課', MUST, `${c.label} ${slotZh(day, period)}`)
+        acc(map, 'mustFill', '導師不排課時段未排科任課', MUST,
+          `${c.label} ${slotZh(day, period)}${biweekly ? '（單雙週課只有一週是科任，另一週導師仍要上）' : ''}`)
       }
     }
   }
