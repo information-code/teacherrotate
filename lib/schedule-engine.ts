@@ -3099,8 +3099,10 @@ export class EngineRun {
       this.iterations++
       // 還有必須級沒清乾淨時，定向修補要比隨機搬動勤快得多：必須級是「留白形狀」類的條件（連堂位、每日下限、鐘點天數），
       // 隨機搬一堂課很難剛好把形狀修對，輪流叫各條修補器直接對準目標
-      if (this.cur >= MUST && this.iterations % 2 === 1) {
-        const k = Math.floor(this.iterations / 2) % 5
+      // 節奏：只拿 1/8 的步數（奇數步之一，避開下面 %8 的偶數分支）——上一版拿走全部奇數步，隨機搬動與交換完全沒機會跑，
+      // 反而讓未排從 0 暴增到 8～15 堂
+      if (this.cur >= MUST && this.iterations % 8 === 1) {
+        const k = Math.floor(this.iterations / 8) % 5
         if (k === 0) this.tryCoverMustFill()
         else if (k === 1) this.tryFixHomeroomMin()
         else if (k === 2) this.tryFixHomeroomDouble()
@@ -3111,7 +3113,6 @@ export class EngineRun {
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
       if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
-      if (this.iterations % 16 === 9) { this.tryFixHomeroomMin(); continue }   // 9 % 8 = 1：不被上面 %8 的分支攔走
       if (this.iterations % 8 === 4) { this.tryPlaceUnplacedWithEject(); continue }
       if (this.iterations % 64 === 13 && this.st.pos.size < this.input.lessons.length) { this.tryResolveTeacher(); continue }   // 13 % 8 = 5：不被上面 %8 的分支攔走
       if (this.iterations % 16 === 7) { this.tryFixTeacherApart(); continue }   // 7 % 8 = 7
