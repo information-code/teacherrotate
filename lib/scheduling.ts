@@ -152,6 +152,9 @@ export interface BuiltinRules {
   // 科任每天至少一節：非導師、非鐘點、一週 ≥ n 節的老師，每個上課日至少 1 節（整天被個人不排課蓋住的日子不算）。
   //   課務組原則「科任不能有一天完全沒課」；行政兼課（<n 節）不受此限，由「少節數老師集中」管
   teacherEveryDay: { level: WeightLevel; n: number }
+  // 科任每週平均：正式／代理科任（非導師、非鐘點、總節數 > 少節數門檻）各日課量盡量平均——最重日減最輕日 ≤ n 節才不罰
+  //   （整天被個人不排課蓋住的日子不計）。課務組原則「正式和代理科任的課務要盡量平均、鐘點要集中」
+  teacherSpread: { level: WeightLevel; n: number }
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   bandAdjacent: WeightLevel                       // 全單節老師相鄰兩堂同年級：課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同年級，
                                                   //   免得一下四年級一下六年級（跨年級＝換教材換進度）。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%）→ 權重
@@ -300,6 +303,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       gradeSandwich: 'high',
       zoneSandwich: 'mid',
       teacherEveryDay: { level: 'high', n: 12 },
+      teacherSpread: { level: 'mid', n: 2 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
@@ -365,6 +369,10 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       teacherEveryDay: (() => {
         const n = Number(b.teacherEveryDay?.n)
         return { level: normLevel(b.teacherEveryDay?.level, db.teacherEveryDay.level), n: Number.isInteger(n) && n >= 1 && n <= 30 ? n : db.teacherEveryDay.n }
+      })(),
+      teacherSpread: (() => {
+        const n = Number(b.teacherSpread?.n)
+        return { level: normLevel(b.teacherSpread?.level, db.teacherSpread.level), n: Number.isInteger(n) && n >= 0 && n <= 7 ? n : db.teacherSpread.n }
       })(),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),

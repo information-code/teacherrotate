@@ -74,7 +74,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 }
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
-type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay'
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay' | 'teacherSpread'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
 type SpecialKey = 'lonelyDay' | 'homeroomRun'   // 有自己的附屬控制項
@@ -99,6 +99,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '低', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級。人工課表 13% 跨年級、課務組手調也不在意 → 預設低；真正要擋的是下一條「夾單節」' },
     { key: 'gradeSandwich', name: '同半天年級夾單節', def: '高', desc: '同一位老師上午（1-4）或下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級（2→1→2）。2→1→1→2（去別的年級上一整塊再回來）、隔空堂、跨午休都不算。人工課表 0 筆、課務組手調 1 筆、引擎原本 11 筆' },
     { key: 'zoneSandwich', name: '同半天跨棟來回', def: '中', desc: '同一口徑看教室設定的「棟」：甲棟→乙棟→甲棟 且乙棟只一節（用實際分配到的教室，沒進專科教室＝原班）。同棟不同樓（A 區 1 樓↔B 區 2 樓）不算——跑班老師可接受上下樓。區域沒填「棟」時以區域為單位。走動成本罰的是距離，這條罰的是「跑去又跑回來」', link: { href: '/admin/schedule-config?tab=room', label: '棟在「4 教室設定」每個區域的第三欄' } },
+    { key: 'teacherSpread', name: '科任每週平均', def: '中', hasN: true, nHint: '最重日 − 最輕日 ≤ N', desc: '課務組原則「正式／代理科任的課務要盡量平均、鐘點要集中」：總節數超過「少節數老師集中」門檻的非導師、非鐘點老師，各日課量盡量平均，最重日減最輕日超過 N 才罰（整天被個人不排課蓋住的日子不計）。人工課表 20 節老師多半是 4/4/4/4/4' },
     { key: 'teacherEveryDay', name: '科任每天至少一節', def: '高', hasN: true, nHint: '一週 ≥ N 節的老師', desc: '課務組原則「科任不能有一天完全沒課（不含鐘點）」：一週 ≥ N 節的非導師老師，每個上課日至少 1 節；那天她教的班可排格全在她的個人不排課裡（吳秉純週三）不算。行政兼課（< N 節）由「少節數老師集中」管' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
@@ -115,7 +116,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
-const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate' || k === 'teacherEveryDay'
+const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate' || k === 'teacherEveryDay' || k === 'teacherSpread'
 const isSpread = (k: RuleKey): k is SpreadKey => k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']

@@ -1641,6 +1641,19 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           acc(map, 'teacherEveryDay', `科任每天至少一節（≥${ed.n} 節）`, pen(ed.level), `${nameOf(tid)}（${total7} 節）週${DAY_ZH[d]}整天沒課`)
         }
       }
+      // 科任每週平均：正式／代理科任（總節數 > 少節數門檻）最重日減最輕日 ≤ N；整天被不排課蓋住的日子不計
+      const sp = w.teacherSpread
+      if (!isHr && !hourlySet.has(tid) && sp.level !== 'off' && total7 > lc.n) {
+        const blocked = new Set(input.teacherBlocked[tid] ?? [])
+        const cks = classesOfTeacher.get(tid) ?? new Set<string>()
+        const openDays = SCHEDULE_DAYS.filter(d => [...cks].some(ck => (input.classSlots[ck] ?? []).some(sl => sl.startsWith(`${d}-`) && !blocked.has(sl))))
+        if (openDays.length >= 2) {
+          const ls = openDays.map(d => loads[d - 1])
+          const diff = Math.max(...ls) - Math.min(...ls)
+          const over = diff - sp.n
+          if (over > 0) acc(map, 'teacherSpread', `科任每週平均（日差 ≤${sp.n}）`, pen(sp.level) * sev(over), `${nameOf(tid)} 最重日 ${Math.max(...ls)} 節、最輕日 ${Math.min(...ls)} 節（差 ${diff}）`)
+        }
+      }
     }
   })
 
