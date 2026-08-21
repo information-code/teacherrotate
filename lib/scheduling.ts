@@ -303,7 +303,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       gradeSandwich: 'high',
       zoneSandwich: 'high',   // 課務組：千萬不要讓老師來回跨區
       teacherEveryDay: { level: 'high', n: 12 },
-      teacherSpread: { level: 'mid', n: 2 },
+      teacherSpread: { level: 'high', n: 2 },   // v20 實測中咬不住：20 節老師幾乎都是 6/6/2，一天 6 節的人日 21%（人工 15%）
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
