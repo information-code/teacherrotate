@@ -34,7 +34,7 @@ export interface EngineLesson {
   autoAssigned?: boolean   // 這班這科的授課老師是精靈自動配的（非手動指定）→ 排課時可與同科同年級另一位老師的自動配班對調
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; area: string /* 棟（有填）或區 */; offSlots: string[]; offNote: string }
+export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; area: string /* 區（有填）否則棟 */; offSlots: string[]; offNote: string }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -119,7 +119,7 @@ export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.building || z.area, offSlots: r.offSlots ?? [], offNote: r.offNote ?? '' })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.district || z.area, offSlots: r.offSlots ?? [], offNote: r.offNote ?? '' })
       }
     })
   })
@@ -586,7 +586,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'class' && r.classKey) {
-        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.building || z.area }   // area＝棟（有填）或區：跨區來回以此為單位
+        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.district || z.area }   // area＝區（有填）否則棟：跨區來回以此為單位
       }
     })
   })
@@ -1784,8 +1784,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
-  // 同半天跨區來回（權重）：與「年級夾單節」同口徑，看教室設定的「棟」（未填棟＝區）。同棟不同樓不算跨區——跑班老師上下樓可以接受。
-  // 用實際分配到的教室；沒進專科教室＝原班教室
+  // 同半天跨區來回（權重，預設高）：與「年級夾單節」同口徑，看教室設定的「區」（幾棟合成一區；未填＝每棟自成一區）。
+  // 同一區的棟之間跑班可以接受，課務組：千萬不要讓老師來回跨區。用實際分配到的教室；沒進專科教室＝原班教室
   if (w.zoneSandwich !== 'off') {
     const areaOf = (l: EngineLesson): string | null => {
       const rid = roomOf.get(l.id)

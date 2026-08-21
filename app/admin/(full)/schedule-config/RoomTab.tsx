@@ -49,13 +49,13 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
   }
   function addZone() {
     updateZones(zs => [...zs, {
-      id: crypto.randomUUID(), floor: '', area: '', building: '', ring: false,
+      id: crypto.randomUUID(), floor: '', area: '', district: '', ring: false,
       rooms: Array.from({ length: 4 }, newRoom),
     }])
   }
   function removeZone(z: RoomZone) {
     const filled = z.rooms.filter(r => (r.kind === 'class' && r.classKey) || (r.kind === 'subject' && r.name)).length
-    if (filled > 0 && !confirm(`區域「${z.area}${z.floor}」已填 ${filled} 間教室，確定刪除？`)) return
+    if (filled > 0 && !confirm(`「${z.area}棟 ${z.floor}」已填 ${filled} 間教室，確定刪除？`)) return
     updateZones(zs => zs.filter(x => x.id !== z.id))
   }
   function setRoomCount(z: RoomZone, n: number) {
@@ -123,8 +123,8 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
         )}
       </div>
 
-      <datalist id="building-names">
-        {Array.from(new Set(zones.map(z => z.building).filter(Boolean))).map(b => <option key={b} value={b} />)}
+      <datalist id="district-names">
+        {Array.from(new Set(zones.map(z => z.district).filter(Boolean))).map(b => <option key={b} value={b} />)}
       </datalist>
       {zones.length === 0 && (
         <div className="card text-sm text-zinc-400 text-center py-6">尚無教室區域，點「＋ 新增區域」開始（例如 A區 1樓 5間）。</div>
@@ -134,11 +134,11 @@ export default function RoomTab({ config, setConfig, classCounts, gradeSubjects,
         <div key={z.id} className="card p-3 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <input value={z.area} onChange={e => updateZone(z.id, { area: e.target.value })}
-              placeholder="區域（如 A區）" className="input py-1 text-sm w-24" />
+              placeholder="棟（如 A）" title="建築物代號（A～G）" className="input py-1 text-sm w-24" />
             <input value={z.floor} onChange={e => updateZone(z.id, { floor: e.target.value })}
               placeholder="樓層（如 1樓）" className="input py-1 text-sm w-24" />
-            <input value={z.building} onChange={e => updateZone(z.id, { building: e.target.value })} list="building-names"
-              placeholder="棟（選填，如 東棟）" title="同一棟不同樓的區域填同一個名字：跑班老師可接受同棟上下樓，「同半天跨區來回」只罰跨棟；留空＝以區域為單位"
+            <input value={z.district} onChange={e => updateZone(z.id, { district: e.target.value })} list="district-names"
+              placeholder="區（選填，如 AB區）" title="校園分區：同一區的幾棟填同一個名字。老師在同一區的棟之間跑班可以接受，「同半天跨區來回」只罰跨區；留空＝這棟自成一區"
               className="input py-1 text-sm w-28" />
             <label className="flex items-center gap-1 text-xs text-zinc-500">
               教室數

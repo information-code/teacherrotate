@@ -100,9 +100,9 @@ export function roomLabel(r: Pick<Room, 'name' | 'no'>): string {
 }
 
 /** 一個區域：同層樓一排彼此相鄰的教室。ring＝環狀（首尾也相鄰）；否則直排（首尾最遠）。 */
-/** building＝棟（建築群組，選填）：同一棟不同樓（如 A 區 1 樓與 B 區 2 樓同一棟）跑班老師可接受，
- *  「同半天跨區來回」以棟為單位；未填＝以區域字串為單位。 */
-export interface RoomZone { id: string; floor: string; area: string; building: string; ring: boolean; rooms: Room[] }
+/** area＝棟（A～G 是建築物）；district＝區（校園分區，選填）：幾棟合成一區（A 棟與 B 棟同在一區），
+ *  老師在同一區的棟之間跑班可以接受，「同半天跨區來回」以區為單位、絕不讓老師來回跨區；未填＝每棟自成一區。 */
+export interface RoomZone { id: string; floor: string; area: string; district: string; ring: boolean; rooms: Room[] }
 
 // 科任教室常用名稱（datalist 快選用）
 export const SUBJECT_ROOM_PRESETS = [
@@ -301,7 +301,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5」
       homeroomRun: 'high',
       gradeSandwich: 'high',
-      zoneSandwich: 'mid',
+      zoneSandwich: 'high',   // 課務組：千萬不要讓老師來回跨區
       teacherEveryDay: { level: 'high', n: 12 },
       teacherSpread: { level: 'mid', n: 2 },
       avoidPeriods: 'mid',
@@ -621,7 +621,7 @@ export function normalizeScheduleConfig(raw: unknown): ScheduleConfig {
     roomZones: Array.isArray(r.roomZones)
       ? r.roomZones.map(z => ({
           id: String(z.id ?? ''), floor: String(z.floor ?? ''), area: String(z.area ?? ''),
-          building: String((z as { building?: unknown }).building ?? ''),
+          district: String((z as { district?: unknown }).district ?? (z as { building?: unknown }).building ?? ''),
           ring: Boolean(z.ring),
           rooms: Array.isArray(z.rooms)
             ? z.rooms.map(rm => ({
