@@ -135,23 +135,25 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; se
       if (!cand.notes?.length && best?.notes?.length) cand.notes = best.notes   // 熱啟動不會重跑教室優先求解，說明沿用原種子的
       if (betterThan(cand, best!)) { best = cand; bestSeed = seed }
     }
-    // ⓪ 先退一層：不做「自然／科技教室優先求解」、權重全開再試兩個種子（教室結構交給權重，這是最接近原本的降級）
-    const noBlock: EngineInput = { ...input, weights: { ...input.weights, hardParams: { ...input.weights.hardParams, roomBlockSubjects: [] } } }
-    for (const seed of RESCUE_SEEDS.slice(0, 2)) {
-      if (isPerfect(best!) || stopRequested) break
-      const r = await runOne({ ...noBlock, seed }, { label: '保底：不做教室優先求解（權重全開）', budget: BUDGET })
-      if (r.notes) r.notes = [...(best.notes ?? []), '整份排不完 → 改為不做自然／科技教室優先求解，教室結構交給權重']
-      else r.notes = [...(best.notes ?? []), '整份排不完 → 改為不做自然／科技教室優先求解，教室結構交給權重']
-      if (betterThan(r, best)) { best = r; bestSeed = seed }
+    // ⓪ 先退一層：不做「自然／科技教室優先求解」再試兩個種子——只在有開教室優先時才有意義（沒開＝同一份輸入再跑兩次，白花三分鐘）
+    if (input.weights.hardParams.roomBlockSubjects.length) {
+      const noBlock: EngineInput = { ...input, weights: { ...input.weights, hardParams: { ...input.weights.hardParams, roomBlockSubjects: [] } } }
+      for (const seed of RESCUE_SEEDS.slice(0, 2)) {
+        if (isPerfect(best!) || stopRequested) break
+        const r = await runOne({ ...noBlock, seed }, { label: '5 個種子沒排成 → 保底：不做教室優先求解再試', budget: BUDGET })
+        r.notes = [...(best.notes ?? []), '整份排不完 → 改為不做自然／科技教室優先求解，教室結構交給權重']
+        if (betterThan(r, best)) { best = r; bestSeed = seed }
+      }
     }
-    // ① 從最佳解熱啟動純硬
+    // ① 從最佳解熱啟動純硬補完（幾秒）：差一兩堂沒排進時最有效
     const fixed = await runOne({ ...hardOnlyInput(input), seed: bestSeed }, {
-      label: '保底：從最佳解補完（純硬）', budget: RESCUE_FIX, perfectExit: true,
+      label: '5 個種子沒排成 → 保底：從最佳解補完', budget: RESCUE_FIX, perfectExit: true,
       initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
     })
     if (isPerfect(fixed)) await polish(fixed, bestSeed, '保底：加權優化')
-    // ② 仍不完整 → 從零純硬多試幾個種子
-    for (let k = 0; k < RESCUE_SEEDS.length && !isPerfect(best) && !stopRequested; k++) {
+    // ② 仍有「未排」→ 從零純硬多試幾個種子。只剩必須級沒過（未排已 0）就不跑：純硬會把可勾選的必須級關掉求可行解，
+    //    之後加權優化多半救不回來，跑三輪只是讓課務組多等四分鐘——直接報失敗、讓他換種子重排更實在
+    for (let k = 0; k < RESCUE_SEEDS.length && !isPerfect(best) && best.unplaced.length > 0 && !stopRequested; k++) {
       const seed = RESCUE_SEEDS[k]
       const feasible = await runOne({ ...hardOnlyInput(input), seed }, {
         label: `保底 ${k + 1}/${RESCUE_SEEDS.length}：純硬從零`, budget: RESCUE_HARD, perfectExit: true,
