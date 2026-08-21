@@ -142,6 +142,14 @@ export interface BuiltinRules {
   // 導師連上上限（N 與適用年段在 hardParams.maxRunHomeroom／homeroomRunBands）：原為硬限制，人工課表 5% 班日導師連四、
   //   課務組手調也踩了 4 筆 → 降為權重（預設高）
   homeroomRun: WeightLevel
+  // 同半天年級夾單節：同一位老師、上午（1-4）或下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級（2→1→2）。
+  //   2→1→1→2、隔空堂、跨午休都不算。114-2 人工課表 0 筆（學校守的不是「相鄰不跨年級」而是「不要為一節課跳去又跳回」）；v18 手調 1 筆、v19 引擎 11 筆
+  gradeSandwich: WeightLevel
+  // 同半天跨區來回：同一口徑，看教室設定的「區」（A→B→A、B 只一節）
+  zoneSandwich: WeightLevel
+  // 科任每天至少一節：非導師、非鐘點、一週 ≥ n 節的老師，每個上課日至少 1 節（整天被個人不排課蓋住的日子不算）。
+  //   課務組原則「科任不能有一天完全沒課」；行政兼課（<n 節）不受此限，由「少節數老師集中」管
+  teacherEveryDay: { level: WeightLevel; n: number }
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   bandAdjacent: WeightLevel                       // 全單節老師相鄰兩堂同年級：課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同年級，
                                                   //   免得一下四年級一下六年級（跨年級＝換教材換進度）。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%）→ 權重
@@ -272,7 +280,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       dailyMax: { level: 'high', n: 6 },      // 114-2 人工課表實測最大值恰為 6、0 筆超標
       consecMax: { level: 'low', n: 6 },      // 人工課表 16% 人日超過 4 連、課務組手調主動做出 6 連——「連上」遠不如「不空堂」要緊；絕對上限仍是硬限制 6
       compact: 'high',                        // 課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，v17 引擎只有 51%
-      hourlyBalance: { level: 'high', mode: 'concentrate', days: 2 },
+      hourlyBalance: { level: 'high', mode: 'concentrate', days: 3 },   // 課務組原則「鐘點不要超過 3 天」
       lonelyDay: { level: 'high', halfLevel: 'low', partTimeMust: false },
       lowLoadConcentrate: { level: 'high', n: 8 },
       classCohesion: 'mid',    // 114-2 人工課表 9% 半天被切開、v17 引擎 4%：引擎已比人工好，中即可
@@ -282,8 +290,11 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       roomHalfDay: 'mid',
       homeroomMorning: { level: 'mid', n: 2 },
-      homeroomDailyMax: { level: 'mid', n: 3 },
+      homeroomDailyMax: { level: 'high', n: 4 },   // 課務組原則「導師一天不要超過 4 節」——之前 N=3 比他要的還嚴一節
       homeroomRun: 'high',
+      gradeSandwich: 'high',
+      zoneSandwich: 'mid',
+      teacherEveryDay: { level: 'high', n: 12 },
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
@@ -344,6 +355,12 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         return { level: normLevel(b.lowLoadConcentrate?.level, db.lowLoadConcentrate.level), n: Number.isInteger(n) && n >= 2 && n <= 20 ? n : db.lowLoadConcentrate.n }
       })(),
       homeroomRun: normLevel(b.homeroomRun, db.homeroomRun),
+      gradeSandwich: normLevel(b.gradeSandwich, db.gradeSandwich),
+      zoneSandwich: normLevel(b.zoneSandwich, db.zoneSandwich),
+      teacherEveryDay: (() => {
+        const n = Number(b.teacherEveryDay?.n)
+        return { level: normLevel(b.teacherEveryDay?.level, db.teacherEveryDay.level), n: Number.isInteger(n) && n >= 1 && n <= 30 ? n : db.teacherEveryDay.n }
+      })(),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
       bandAdjacent: normLevel(b.bandAdjacent, db.bandAdjacent),

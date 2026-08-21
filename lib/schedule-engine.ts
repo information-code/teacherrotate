@@ -34,7 +34,7 @@ export interface EngineLesson {
   autoAssigned?: boolean   // 這班這科的授課老師是精靈自動配的（非手動指定）→ 排課時可與同科同年級另一位老師的自動配班對調
 }
 
-export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; offSlots: string[]; offNote: string }
+export interface RoomInfo { id: string; label: string; subject: string; managerIds: string[]; zone: number; index: number; zoneSize: number; ring: boolean; floor: number; area: string; offSlots: string[]; offNote: string }
 
 export interface EngineInput {
   classes: { classKey: string; grade: number; label: string }[]
@@ -56,7 +56,7 @@ export interface EngineInput {
   substituteTeachers: string[]               // 代理教師 id：與鐘點同屬「專程跑一趟」的人，孤堂日可升必須級
   homeroomTeachers: string[]                 // 導師 id：孤堂日／少節數集中不算他們（整天都在自己班）
   rooms: RoomInfo[]                          // 科任教室（有綁科目者參與容量/走動計算）
-  classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number } | null>
+  classRoom: Record<string, { zone: number; index: number; zoneSize: number; ring: boolean; floor: number; area: string } | null>
   weights: ScheduleWeights
   seed: number
 }
@@ -119,7 +119,7 @@ export function roomsFromConfig(config: ScheduleConfig): RoomInfo[] {
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'subject' && r.subject) {
-        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), offSlots: r.offSlots ?? [], offNote: r.offNote ?? '' })
+        rooms.push({ id: r.id, label: roomLabel(r) || r.subject, subject: r.subject, managerIds: r.managerIds ?? [], zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.area, offSlots: r.offSlots ?? [], offNote: r.offNote ?? '' })
       }
     })
   })
@@ -586,7 +586,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   config.roomZones.forEach((z, zi) => {
     z.rooms.forEach((r, ri) => {
       if (r.kind === 'class' && r.classKey) {
-        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor) }
+        classRoom[r.classKey] = { zone: zi, index: ri, zoneSize: z.rooms.length, ring: z.ring, floor: floorNum(z.floor), area: z.area }
       }
     })
   })
@@ -1548,6 +1548,8 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
   const hourlySet = new Set(input.hourlyTeachers ?? [])
   const substituteSet = new Set(input.substituteTeachers ?? [])
   const homeroomSet = new Set(input.homeroomTeachers ?? [])
+  const classesOfTeacher = new Map<string, Set<string>>()   // 科任每天至少一節：判斷某天是否整天被不排課蓋住要看她教的班那天有哪些格
+  for (const l of input.lessons) (classesOfTeacher.get(l.teacherId) ?? classesOfTeacher.set(l.teacherId, new Set()).get(l.teacherId)!).add(l.classKey)
   st.teacherOcc.forEach((occ, tid) => {
     if (occ.size === 0) return
     for (const par of ['o', 'e'] as const) {
@@ -1622,6 +1624,18 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         const target = Math.ceil(total7 / 4)
         if (used > target) acc(map, 'lowLoadConcentrate', `少節數老師集中（≤${lc.n} 節）`, pen(lc.level) * sev(used - target), `${nameOf(tid)} ${total7} 節分散在 ${used} 天（目標 ${target} 天內）`)
       }
+      // 科任每天至少一節：非導師、非鐘點、一週 ≥ N 節的老師不該有整天沒課的日子（那天她教的班可排格全在她的不排課裡＝不算，如吳秉純週三）
+      const ed = w.teacherEveryDay
+      if (!isHr && !hourlySet.has(tid) && ed.level !== 'off' && total7 >= ed.n) {
+        const blocked = new Set(input.teacherBlocked[tid] ?? [])
+        const cks = classesOfTeacher.get(tid) ?? new Set<string>()
+        for (const d of SCHEDULE_DAYS) {
+          if (loads[d - 1] > 0) continue
+          const open = [...cks].flatMap(ck => (input.classSlots[ck] ?? []).filter(sl => sl.startsWith(`${d}-`) && !blocked.has(sl)))
+          if (!open.length) continue
+          acc(map, 'teacherEveryDay', `科任每天至少一節（≥${ed.n} 節）`, pen(ed.level), `${nameOf(tid)}（${total7} 節）週${DAY_ZH[d]}整天沒課`)
+        }
+      }
     }
   })
 
@@ -1642,6 +1656,24 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
             acc(map, 'bandAdjacent', '全單節老師相鄰同年級', pen(w.bandAdjacent), `${nameOf(tid)} 週${DAY_ZH[d]}第${prevQ}→${q}節 ${prev.classLabel}→${cur.classLabel}（跨年級）`)
           }
           if (cur) { prev = cur; prevQ = q }
+        }
+      }
+    })
+  }
+
+  // 同半天年級夾單節（權重）：上午（1-4）／下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級。
+  // 2→1→1→2（去別的年級上一整塊再回來）、隔空堂、跨午休都不算。114-2 人工課表 0 筆——學校真正守的是這條，不是「相鄰不跨年級」。
+  if (w.gradeSandwich !== 'off') {
+    st.teacherOcc.forEach((occ, tid) => {
+      for (const d of SCHEDULE_DAYS) {
+        const at = (q: number): EngineLesson | null => { const c = occ.get(`${d}-${q}`); const id = c?.w ?? c?.o ?? c?.e; return id ? st.lessonById.get(id)! : null }
+        for (const q of [1, 2, 5]) {   // 三連節完全落在上午或下午之內
+          const a = at(q), b = at(q + 1), c = at(q + 2)
+          if (!a || !b || !c) continue
+          if (a.grade === c.grade && a.grade !== b.grade) {
+            acc(map, 'gradeSandwich', '同半天年級夾單節', pen(w.gradeSandwich),
+              `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}→${q + 2}節 ${a.classLabel}→${b.classLabel}→${c.classLabel}（${a.grade}年→${b.grade}年→${a.grade}年）`)
+          }
         }
       }
     })
@@ -1729,6 +1761,30 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           const note = `${Number.isFinite(df) && df > 0 ? `、跨 ${df} 層` : ''}${relaxed ? '、有空檔' : ''}`
           acc(map, 'walkCost', '走動成本', pen(w.walkCost) * sev(Math.min(dist - 1, 9)) * (relaxed ? 0.5 : 1),
             `${nameOf(tid)} 週${DAY_ZH[d]}第${a2.q}→${b2.q}節跨教室（距離 ${dist}${note}）`)
+        }
+      }
+    })
+  }
+
+  // 同半天跨區來回（權重）：與「年級夾單節」同口徑，看教室設定的「區」（用實際分配到的教室；沒進專科教室＝原班教室）
+  if (w.zoneSandwich !== 'off') {
+    const areaOf = (l: EngineLesson): string | null => {
+      const rid = roomOf.get(l.id)
+      if (rid) return roomById.get(rid)?.area ?? null
+      return input.classRoom[l.classKey]?.area ?? null
+    }
+    st.teacherOcc.forEach((occ, tid) => {
+      if (hourlySet.has(tid)) return
+      for (const d of SCHEDULE_DAYS) {
+        const at = (q: number): EngineLesson | null => { const c = occ.get(`${d}-${q}`); const id = c?.w ?? c?.o ?? c?.e; return id ? st.lessonById.get(id)! : null }
+        for (const q of [1, 2, 5]) {
+          const a = at(q), b = at(q + 1), c = at(q + 2)
+          if (!a || !b || !c || a.id === b.id || b.id === c.id) continue
+          const za = areaOf(a), zb = areaOf(b), zc = areaOf(c)
+          if (za && zb && zc && za === zc && za !== zb) {
+            acc(map, 'zoneSandwich', '同半天跨區來回', pen(w.zoneSandwich),
+              `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}→${q + 2}節 ${za}區→${zb}區→${za}區（${a.classLabel}→${b.classLabel}→${c.classLabel}）`)
+          }
         }
       }
     })

@@ -74,7 +74,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 }
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
-type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate'
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
 type SpecialKey = 'lonelyDay' | 'homeroomRun'   // 有自己的附屬控制項
@@ -86,7 +86,7 @@ interface RuleRow { key: RuleKey; name: string; def: string; desc: string; hasN?
 const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
   { title: '導師', note: '為導師而設：留白落在哪裡、每天要上幾節、會不會被切碎', rows: [
     { key: 'homeroomMorning', name: '上午導師課下限', def: '中', hasN: true, nHint: '每天上午至少 N 節導師課', desc: '保障導師每天上午（1~4 節）有 N 節自己的課可排國數。刻意是「下限」不是「越多越好」——單調版本會把科任課全擠到下午、讓上午 4 格全成導師課而撞上「導師連上上限」' },
-    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '中', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。導師一週僅 14~15 節，N=3 等於強制用滿五天、形狀只剩 3/3/3/3/2——「每週平均分散」由這條涵蓋，不另設規則' },
+    { key: 'homeroomDailyMax', name: '導師每日節數上限', def: '高', hasN: true, nHint: '每班每日留白 ≤ N 格', desc: '導師單日最多上 N 節。課務組原則「導師一天不要超過 4 節」→ 預設 N=4、高（之前 N=3 比他要的還嚴一節，引擎為了守 3 到處付代價）。低年級只有週二整天，每班科任 7～8 堂要擺 3 堂在週二才守得住' },
     { key: 'homeroomRun', name: '導師連上上限', def: '高', desc: '班級同日連續留白不要超過 N 格（引擎用科任課／鎖課切開），導師不會整個上午連上、中間沒有一節可喘息／改作業。原為硬限制；人工課表 5% 班日導師連四、課務組手調也踩了 4 筆 → 權重' },
     { key: 'classCohesion', name: '科任課同日成塊', def: '中', desc: '同班同日（上、下午各自計）科任課與鎖課盡量連成一塊，導師課不被切碎。人工課表 9% 半天被切開、引擎 4%——引擎已比人工好，中即可' },
   ] },
@@ -96,7 +96,10 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'walkCost', name: '走動成本', def: '低', desc: '相鄰兩堂課跨教室，距離越遠扣越多（距離只當同分時的加分）；中間有空堂或跨午休減半。人工課表 79% 相鄰兩堂換場地、課務組手調完全不在意 → 預設低', link: { href: '/admin/schedule-config?tab=room', label: '樓層與相鄰關係在「4 教室設定」' } },
     { key: 'roomManagerFirst', name: '教室固定', def: '高', desc: '沒有管理教室的老師（如借用者）盡量整週固定在同一間專科教室，本週每多用一間扣一次。管理教師「一定在自己管理的教室」是固定硬限制（見下方），不歸這條管', link: { href: '/admin/schedule-config?tab=room', label: '管理教師在「4 教室設定」' } },
     { key: 'roomHalfDay', name: '專科教室老師集中', def: '中', desc: '一間專科教室一週從週一第 1 節看到週五第 7 節，老師「交接」越少越好——一位老師連續幾天用完再換下一位（甲＝週一二、乙＝週三四五），實驗器材不用每天收。多餘的交接（超過「老師數 − 1」的部分）每次扣 1；同一天走了又回來另扣 1（自然是硬限制）；真的得交接時寧可在上午／下午之間，2／3 節之間交接扣 ½', link: { href: '/admin/schedule-config?tab=room', label: '教室與管理教師在「4 教室設定」' } },
-    { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '低', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級——跨年級就是換教材換進度，五→六也算。人工課表 13% 跨年級；權重高時課務組仍手動打破 10 筆 → 預設低' },
+    { key: 'bandAdjacent', name: '全單節老師相鄰同年級', def: '低', desc: '課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同一個年級。人工課表 13% 跨年級、課務組手調也不在意 → 預設低；真正要擋的是下一條「夾單節」' },
+    { key: 'gradeSandwich', name: '同半天年級夾單節', def: '高', desc: '同一位老師上午（1-4）或下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級（2→1→2）。2→1→1→2（去別的年級上一整塊再回來）、隔空堂、跨午休都不算。人工課表 0 筆、課務組手調 1 筆、引擎原本 11 筆' },
+    { key: 'zoneSandwich', name: '同半天跨區來回', def: '中', desc: '同一口徑看教室設定的「區」：A→B→A 且 B 只一節（用實際分配到的教室，沒進專科教室＝原班）。走動成本罰的是距離，這條罰的是「跑去又跑回來」', link: { href: '/admin/schedule-config?tab=room', label: '區域在「4 教室設定」' } },
+    { key: 'teacherEveryDay', name: '科任每天至少一節', def: '高', hasN: true, nHint: '一週 ≥ N 節的老師', desc: '課務組原則「科任不能有一天完全沒課（不含鐘點）」：一週 ≥ N 節的非導師老師，每個上課日至少 1 節；那天她教的班可排格全在她的個人不排課裡（吳秉純週三）不算。行政兼課（< N 節）由「少節數老師集中」管' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '高', desc: '課間空堂越少越好（「上空上空」交錯已是固定硬限制）。課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，引擎原本只有 51%' },
@@ -104,7 +107,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'lowLoadConcentrate', name: '少節數老師集中', def: '高', hasN: true, nHint: '總節數 ≤ N 的老師', desc: '行政兼課、輔導團等節數少的老師壓到最少天（3 節→1 天、5～8 節→2 天）。人工課表 ≤6 節老師平均到校 2.1 天、引擎 2.7 天。鐘點另由「鐘點每週分布」管' },
   ] },
   { title: '鐘點', note: '鐘點老師多半希望少跑幾趟學校。上面「科任・行政」那組的規則同樣作用在鐘點身上，這裡只放身分專屬的', rows: [
-    { key: 'hourlyBalance', name: '鐘點每週分布', def: '高', spread: true, desc: '預設「集中」：一週五天不要都跑，盡量壓在設定的天數之內。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
+    { key: 'hourlyBalance', name: '鐘點每週分布', def: '高', spread: true, desc: '課務組原則「鐘點不要超過 3 天」→ 預設「集中 3 天內」、高。若某位鐘點老師只有固定幾天能到校，請改用「個人不排課時段」（硬限制）更可靠' },
   ] },
   { title: '其他', note: '不專屬於誰、對學生的學習節奏與全校都好的安排', rows: [
     { key: 'subjectApart', name: '科目互斥同日', def: '中', desc: '列出的幾科（如體育與健康、自然與社會）同班盡量不同一天出現。可加多組，各組可再調權重；勾「必須」則升為硬限制（絕不同日）——國際教育／英語在人工課表是 0／106 零例外，屬鐵律，預設已勾', master: 'subjectApart' },
@@ -112,7 +115,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
-const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate'
+const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate' || k === 'teacherEveryDay'
 const isSpread = (k: RuleKey): k is SpreadKey => k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']
