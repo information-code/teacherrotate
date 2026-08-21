@@ -824,7 +824,7 @@ ${head}確定撤回？`)) return
               <div className="text-sm font-semibold text-red-700">✕ 未達成功條件（未排 {result.unplaced.length}、必須級違反 {bigPenalty.reduce((s, p) => s + p.count, 0)}）——下方為最佳嘗試</div>
               {probePerfect === true && (
                 <div className="text-xs text-red-700 space-y-1">
-                  <p>純硬規則探測可以全部排入 → <b>是權重把搜尋牽住了</b>。建議降低（依影響大小排序）：</p>
+                  <p>純硬規則探測可以全部排入 → <b>不是配課結構卡死</b>，是權重或必須級把搜尋牽住了。建議（依影響大小排序）：</p>
                   <ul className="list-disc pl-5">{hints.map(h => <li key={h}>{h}</li>)}</ul>
                   <p className="text-zinc-500">到「排課設定 → 9 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
                 </div>

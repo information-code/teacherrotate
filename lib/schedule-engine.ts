@@ -2413,6 +2413,7 @@ export class EngineRun {
     for (let k = 0; k < this.mustTargets.length * 2; k++) this.tryCoverMustFill()
     // 連上修補在建構後多跑幾輪：科任課的「哪一天」在建構期就定調，越早切開越不必後面大搬風
     for (let k = 0; k < this.input.classes.length * 3; k++) this.tryFixHomeroomRun()
+    for (let k = 0; k < this.input.classes.length * 2; k++) this.tryFixHomeroomMin()
   }
 
   /** 還有未排課時，接受條件只看「未排＋必須級」、忽略軟分。
@@ -2883,6 +2884,50 @@ export class EngineRun {
     this.tryEjectAndCover(t.classKey, t.day, t.period, mustSet, lessons, off, 4)
   }
 
+  /** 導師每日下限定向修補：找出「整天導師不足 2／半天不足 1」的班日（單雙週取較少的一週），
+   *  把該班當天的一堂科任課搬到別天（直接搬或與同班別師同型態課互換）。沒有這一步時，這條必須級只會扣分、
+   *  搜尋靠隨機很難剛好把那一天清出導師格（5年10班 週一實測卡住）。 */
+  private tryFixHomeroomMin() {
+    const hm = this.input.weights.builtin.homeroomDailyMin
+    if (hm.level === 'off') return
+    const targets: { classKey: string; day: number }[] = []
+    for (const c of this.input.classes) {
+      const occ = this.st.classOcc.get(c.classKey)!
+      const avail = new Set(this.input.classSlots[c.classKey] ?? [])
+      const locks = this.input.lockedCells[c.classKey] ?? {}
+      const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
+      const mustFill = new Set(this.input.classMustFill[c.classKey] ?? [])
+      for (const d of SCHEDULE_DAYS) {
+        let possible = 0
+        const hrBy = { o: 0, e: 0 }
+        for (let q = 1; q <= 7; q++) {
+          const k = `${d}-${q}`
+          const teachable = avail.has(k) || (k in locks)
+          if (!teachable) continue
+          if (k in locks) { if (hrLock.has(k)) { possible++; hrBy.o++; hrBy.e++ } continue }
+          if (!mustFill.has(k)) possible++
+          const id = occ.get(k)
+          if (!id) { hrBy.o++; hrBy.e++; continue }
+          const p = this.st.lessonById.get(id)?.parity ?? 'weekly'
+          if (p === 'odd') hrBy.e++; else if (p === 'even') hrBy.o++
+        }
+        if (!possible) continue
+        const full = this.input.classDayFull[c.classKey]?.[d]
+        const need = Math.min(full ? hm.full : hm.half, possible)
+        if (Math.min(hrBy.o, hrBy.e) < need) targets.push({ classKey: c.classKey, day: d })
+      }
+    }
+    if (!targets.length) return
+    const t = targets[Math.floor(this.rnd() * targets.length)]
+    const lessons = (this.lessonsByClass.get(t.classKey) ?? []).filter(l => { const p = this.st.pos.get(l.id); return p && p.day === t.day && !this.frozen.has(l.id) })
+    if (!lessons.length) return
+    const off = Math.floor(this.rnd() * lessons.length)
+    for (let j = 0; j < lessons.length; j++) {
+      const l = lessons[(off + j) % lessons.length]
+      if (this.directedMove(l, p => p.day !== t.day)) return
+    }
+  }
+
   private tryCoverMustFill() {
     const n = this.mustTargets.length
     if (n === 0) return
@@ -2999,6 +3044,7 @@ export class EngineRun {
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
       if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
+      if (this.iterations % 16 === 9) { this.tryFixHomeroomMin(); continue }   // 9 % 8 = 1：不被上面 %8 的分支攔走
       if (this.iterations % 8 === 4) { this.tryPlaceUnplacedWithEject(); continue }
       if (this.iterations % 64 === 13 && this.st.pos.size < this.input.lessons.length) { this.tryResolveTeacher(); continue }   // 13 % 8 = 5：不被上面 %8 的分支攔走
       if (this.iterations % 16 === 7) { this.tryFixTeacherApart(); continue }   // 7 % 8 = 7

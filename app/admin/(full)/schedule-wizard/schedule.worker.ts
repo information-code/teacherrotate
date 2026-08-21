@@ -93,6 +93,10 @@ async function diagnose(input: EngineInput, best: EngineResult, seed: number): P
     .sort((a, b) => b.delta - a.delta)
     .slice(0, 5)
     .map(x => `「${x.label}」（放寬後多 ${x.delta} 筆違反即可全部排入）`)
+  // 卡住的若是「可勾選的必須級」（導師每日下限、鐘點天數、鐘點／代理孤堂日、導師連堂位）——純硬探測把它們關掉才排得完，
+  // 那不是權重問題，是這條必須級跟其他條件打架：直接點名是哪幾班／哪幾位，讓課務組決定放寬哪一邊
+  const mustItems = best.penalties.filter(p => p.points >= 1e6 && p.key !== 'unplaced')
+  for (const p of mustItems) hints.push(`必須級「${p.label}」${p.count} 筆：${p.items.slice(0, 6).join('；')}${p.items.length > 6 ? '…' : ''}——可於權重頁取消該條必須級，或調整相關設定（不排課／鎖課／配課）`)
   return { probePerfect: true, hints }
 }
 
