@@ -2414,6 +2414,8 @@ export class EngineRun {
     // 連上修補在建構後多跑幾輪：科任課的「哪一天」在建構期就定調，越早切開越不必後面大搬風
     for (let k = 0; k < this.input.classes.length * 3; k++) this.tryFixHomeroomRun()
     for (let k = 0; k < this.input.classes.length * 2; k++) this.tryFixHomeroomMin()
+    for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomDouble()
+    for (let k = 0; k < 6; k++) this.tryFixHourlyDays()
   }
 
   /** 還有未排課時，接受條件只看「未排＋必須級」、忽略軟分。
@@ -2928,6 +2930,60 @@ export class EngineRun {
     }
   }
 
+  /** 導師連堂位定向修補（必須級）：導師自上有連堂科目的班，科任課把留白切到連一組「同半天連續兩格」都不剩時，
+   *  找一堂「旁邊就是一格留白」的科任課搬去別的半天——搬走後那兩格就連成一組。 */
+  private tryFixHomeroomDouble() {
+    const targets: { classKey: string; lessons: EngineLesson[]; day: number; half: number[] }[] = []
+    for (const c of this.input.classes) {
+      const need = this.input.homeroomDoubleNeed?.[c.classKey]
+      if (!need?.pairs) continue
+      const occ = this.st.classOcc.get(c.classKey)!
+      const blank = new Set((this.input.classSlots[c.classKey] ?? []).filter(sl => !occ.has(sl)))
+      let pairs = 0
+      const singles: { day: number; half: number[]; q: number }[] = []   // 孤零零一格留白（旁邊搬走一堂就成對）
+      for (const d of SCHEDULE_DAYS) for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+        let run = 0, start = 0
+        for (const q of [...half, 0]) {
+          if (q && blank.has(`${d}-${q}`)) { if (!run) start = q; run++ }
+          else { pairs += Math.floor(run / 2); if (run === 1) singles.push({ day: d, half, q: start }); run = 0 }
+        }
+      }
+      if (pairs >= need.pairs) continue
+      for (const sg of singles) {
+        const nb = [sg.q - 1, sg.q + 1].filter(q => sg.half.includes(q))
+        const ls = nb.map(q => occ.get(`${sg.day}-${q}`)).filter((id): id is string => Boolean(id)).map(id => this.st.lessonById.get(id)!).filter(l => !this.frozen.has(l.id))
+        if (ls.length) targets.push({ classKey: c.classKey, lessons: ls, day: sg.day, half: sg.half })
+      }
+      if (!singles.length) {   // 連孤格都沒有（整半天塞滿）：隨便挑那班一堂課搬走也行
+        const any = (this.lessonsByClass.get(c.classKey) ?? []).filter(l => this.st.pos.has(l.id) && !this.frozen.has(l.id))
+        if (any.length) targets.push({ classKey: c.classKey, lessons: any, day: 0, half: [] })
+      }
+    }
+    if (!targets.length) return
+    const t = targets[Math.floor(this.rnd() * targets.length)]
+    const off = Math.floor(this.rnd() * t.lessons.length)
+    for (let j = 0; j < t.lessons.length; j++) {
+      const l = t.lessons[(off + j) % t.lessons.length]
+      if (this.directedMove(l, p => !(p.day === t.day && t.half.includes(p.period)))) return
+    }
+  }
+
+  /** 鐘點天數定向修補（必須級）：鐘點老師到校天數超過目標時，把課最少那一天的課搬到她已經有課的日子。 */
+  private tryFixHourlyDays() {
+    const cfg = this.input.weights.builtin.hourlyBalance
+    if (cfg.mode !== 'concentrate' || cfg.level === 'off') return
+    for (const tid of this.input.hourlyTeachers ?? []) {
+      const mine = this.input.lessons.filter(l => l.teacherId === tid && this.st.pos.has(l.id) && !this.frozen.has(l.id))
+      const byDay = new Map<number, EngineLesson[]>()
+      for (const l of mine) { const d = this.st.pos.get(l.id)!.day; byDay.set(d, [...(byDay.get(d) ?? []), l]) }
+      if (byDay.size <= Math.max(1, cfg.days)) continue
+      const days = [...byDay.entries()].sort((a, b) => a[1].length - b[1].length)
+      const [dMin, ls] = days[0]
+      const keep = new Set(days.slice(1).map(([d]) => d))
+      for (const l of ls) { if (this.directedMove(l, p => keep.has(p.day))) return }
+    }
+  }
+
   private tryCoverMustFill() {
     const n = this.mustTargets.length
     if (n === 0) return
@@ -3041,6 +3097,17 @@ export class EngineRun {
     const allLessons = this.input.lessons
     while (Date.now() < end) {
       this.iterations++
+      // 還有必須級沒清乾淨時，定向修補要比隨機搬動勤快得多：必須級是「留白形狀」類的條件（連堂位、每日下限、鐘點天數），
+      // 隨機搬一堂課很難剛好把形狀修對，輪流叫各條修補器直接對準目標
+      if (this.cur >= MUST && this.iterations % 2 === 1) {
+        const k = Math.floor(this.iterations / 2) % 5
+        if (k === 0) this.tryCoverMustFill()
+        else if (k === 1) this.tryFixHomeroomMin()
+        else if (k === 2) this.tryFixHomeroomDouble()
+        else if (k === 3) this.tryFixHourlyDays()
+        else this.tryFixHomeroomRun()
+        continue
+      }
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
       if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
