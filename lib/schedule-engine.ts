@@ -1842,6 +1842,47 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     })
   }
 
+  // 小下課跨區（權重）：相鄰兩節不同區、中間只有十分鐘小下課＝一筆；大下課（第 n 節後）、午休（第 4 節後）、隔空堂不罰。
+  // 一定得跨區的老師（同時教兩個年段），引擎會把跨區擺到大下課或午休，或中間留一堂——人工課表就是這樣排的。
+  if (w.shortBreakCross.level !== 'off') {
+    const areaOf = (l: EngineLesson): string | null => {
+      const rid = roomOf.get(l.id)
+      if (rid) return roomById.get(rid)?.area ?? null
+      return input.classRoom[l.classKey]?.area ?? null
+    }
+    const big = w.shortBreakCross.n
+    st.teacherOcc.forEach((occ, tid) => {
+      if (hourlySet.has(tid)) return
+      for (const d of SCHEDULE_DAYS) {
+        const at = (q: number): EngineLesson | null => { const c = occ.get(`${d}-${q}`); const id = c?.w ?? c?.o ?? c?.e; return id ? st.lessonById.get(id)! : null }
+        for (let q = 1; q <= 6; q++) {
+          if (q === big || q === MORNING_LAST) continue   // 大下課、午休：有時間走
+          const a = at(q), b = at(q + 1)
+          if (!a || !b || a.id === b.id) continue
+          const za = areaOf(a), zb = areaOf(b)
+          if (za && zb && za !== zb) acc(map, 'shortBreakCross', '小下課跨區', pen(w.shortBreakCross.level), `${nameOf(tid)} 週${DAY_ZH[d]}第${q}→${q + 1}節 ${za}→${zb}（${a.classLabel}→${b.classLabel}，只有十分鐘）`)
+        }
+      }
+    })
+  }
+
+  // 衝堂防護（必須級）：同師／同班同一格兩堂課。canPlace 本來就擋，但定向修補的「還原」若在別堂課占走原格後才發生，就會悄悄疊在一起
+  // （v21 實測 粘瑋竹 週三第 2 節 6年11班＋6年9班）。teacherOcc 一格只存一個 id、後放的會蓋掉先放的，所以要從 pos 反查。
+  {
+    const byT = new Map<string, string[]>(), byC = new Map<string, string[]>()
+    st.pos.forEach((p, id) => {
+      const l = st.lessonById.get(id); if (!l) return
+      for (let i = 0; i < l.size; i++) {
+        const k = `${p.day}-${p.period + i}|${l.parity}`
+        ;(byT.get(`${l.teacherId}|${k}`) ?? byT.set(`${l.teacherId}|${k}`, []).get(`${l.teacherId}|${k}`)!).push(id)
+        ;(byC.get(`${l.classKey}|${k}`) ?? byC.set(`${l.classKey}|${k}`, []).get(`${l.classKey}|${k}`)!).push(id)
+      }
+    })
+    // 同格的 weekly 與 odd／even 也衝；這裡先抓同 parity 的重疊（weekly 對 odd／even 的重疊由 canPlace 擋，實測未見漏網）
+    byT.forEach((ids, k) => { if (ids.length > 1) { const [tid, sl] = k.split('|'); acc(map, 'clash', '老師衝堂（引擎內部錯誤）', MUST * (ids.length - 1), `${nameOf(tid)} ${slotZh(...(sl.split('-').map(Number) as [number, number]))}：${ids.map(id => st.lessonById.get(id)!.classLabel).join('＋')}`) } })
+    byC.forEach((ids, k) => { if (ids.length > 1) { const [ck2, sl] = k.split('|'); acc(map, 'clash', '班級衝堂（引擎內部錯誤）', MUST * (ids.length - 1), `${ck2} ${slotZh(...(sl.split('-').map(Number) as [number, number]))}：${ids.map(id => st.lessonById.get(id)!.subject).join('＋')}`) } })
+  }
+
   // 未排課罰分（搜尋會優先把課塞回去）
   for (const l of input.lessons) {
     if (!st.pos.has(l.id)) acc(map, 'unplaced', '未排課', UNPLACED_PEN, `${l.classLabel} ${l.subject}（${l.teacherName}）`)
@@ -3213,6 +3254,29 @@ function buildResult(input: EngineInput, posMap: Map<string, Placement>, meta: {
 
     const placed: PlacedResult[] = []
     const unplaced: UnplacedResult[] = []
+    // 衝堂防護：同師／同班同格兩堂（canPlace 擋不到的內部錯誤）→ 後者退為未排，寧可少排一堂也不讓衝堂課表出門
+    {
+      const seen = new Map<string, string>()
+      const victims: { id: string; why: string }[] = []
+      const order = Array.from(st.pos.keys()).sort()
+      for (const id of order) {
+        const l = st.lessonById.get(id)!, p = st.pos.get(id)!
+        let hit: string | null = null
+        for (let i = 0; i < l.size && !hit; i++) {
+          for (const key of [`T|${l.teacherId}|${p.day}-${p.period + i}|${l.parity}`, `C|${l.classKey}|${p.day}-${p.period + i}|${l.parity}`]) {
+            const other = seen.get(key); if (other) { hit = other; break }
+          }
+        }
+        if (hit) { victims.push({ id, why: hit }); continue }
+        for (let i = 0; i < l.size; i++) { seen.set(`T|${l.teacherId}|${p.day}-${p.period + i}|${l.parity}`, id); seen.set(`C|${l.classKey}|${p.day}-${p.period + i}|${l.parity}`, id) }
+      }
+      for (const v of victims) {
+        const l = st.lessonById.get(v.id)!, o = st.lessonById.get(v.why)!
+        console.error('[engine] 衝堂防護：', l.classLabel, l.subject, l.teacherName, '與', o.classLabel, o.subject, '同格，退為未排')
+        st.remove(l)
+        meta.notes.push(`衝堂防護：${l.classLabel} ${l.subject}（${l.teacherName}）與 ${o.classLabel} ${o.subject} 同一格，已退為未排`)
+      }
+    }
     // 教室分配（與 scoreState 同邏輯：管理教師優先）
     const roomOf = assignRooms(input, st)
     const sorted: { l: EngineLesson; p: Placement }[] = []

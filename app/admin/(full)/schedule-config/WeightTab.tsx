@@ -74,7 +74,7 @@ function MultiSelect<T extends string | number>({ options, labels, selected, onC
 }
 
 // ── 規則表：依作用對象分組；有參數／子規則者，權重非關閉時內嵌顯示 ──
-type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay' | 'teacherSpread'
+type ParamKey = 'dailyMax' | 'consecMax' | 'homeroomDailyMax' | 'homeroomMorning' | 'lowLoadConcentrate' | 'teacherEveryDay' | 'teacherSpread' | 'shortBreakCross'
 type MasterKey = 'avoidPeriods' | 'timePrefer' | 'subjectApart' | 'teacherApart'
 type SpreadKey = 'hourlyBalance'
 type SpecialKey = 'lonelyDay' | 'homeroomRun'   // 有自己的附屬控制項
@@ -100,6 +100,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'gradeSandwich', name: '同半天年級夾單節', def: '高', desc: '同一位老師上午（1-4）或下午（5-7）內三節連續、年級 X→Y→X 且中間只夾一節別的年級（2→1→2）。2→1→1→2（去別的年級上一整塊再回來）、隔空堂、跨午休都不算。人工課表 0 筆、課務組手調 1 筆、引擎原本 11 筆' },
     { key: 'zoneSandwich', name: '同半天跨區來回', def: '高', desc: '課務組：千萬不要讓老師來回跨區。同一口徑看教室設定的「區」（幾棟合成一區）：甲區→乙區→甲區 且乙區只一節（用實際分配到的教室，沒進專科教室＝原班）。同一區內各棟之間跑班不算（A 棟↔B 棟同一區）。棟沒填「區」時自成一區。走動成本罰的是距離，這條罰的是「跑去又跑回來」', link: { href: '/admin/schedule-config?tab=room', label: '區在「4 教室設定」每一棟的第三欄' } },
     { key: 'teacherSpread', name: '科任每週平均', def: '高', hasN: true, nHint: '最重日 − 最輕日 ≤ N', desc: '課務組原則「正式／代理科任的課務要盡量平均、鐘點要集中」：總節數超過「少節數老師集中」門檻的非導師、非鐘點老師，各日課量盡量平均，最重日減最輕日超過 N 才罰（整天被個人不排課蓋住的日子不計）。人工課表 20 節老師多半是 4/4/4/4/4' },
+    { key: 'shortBreakCross', name: '小下課跨區', def: '高', hasN: true, nHint: '大下課在第 N 節後', desc: '相鄰兩節在不同區、中間只有十分鐘小下課（1→2、3→4、5→6、6→7）＝一筆；大下課（第 N 節後，預設第 2 節後的 20 分鐘）、午休、隔空堂不罰——一定得跨區的老師，跨在有時間走的地方。人工課表 75 次跨區有 73% 在大下課／午休／隔空堂；v21 引擎近半在小下課', link: { href: '/admin/schedule-config?tab=room', label: '區在「4 教室設定」' } },
     { key: 'teacherEveryDay', name: '科任每天至少一節', def: '高', hasN: true, nHint: '一週 ≥ N 節的老師', desc: '課務組原則「科任不能有一天完全沒課（不含鐘點）」：一週 ≥ N 節的非導師老師，每個上課日至少 1 節；那天她教的班可排格全在她的個人不排課裡（吳秉純週三）不算。行政兼課（< N 節）由「少節數老師集中」管' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
@@ -116,7 +117,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'timePrefer', name: '科目時段偏好', def: '關閉', desc: '指定科目偏好上午或下午。可加多組；母開關關閉＝全部不計', master: 'timePrefer' },
   ] },
 ]
-const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate' || k === 'teacherEveryDay' || k === 'teacherSpread'
+const isParam = (k: RuleKey): k is ParamKey => k === 'dailyMax' || k === 'consecMax' || k === 'homeroomDailyMax' || k === 'homeroomMorning' || k === 'lowLoadConcentrate' || k === 'teacherEveryDay' || k === 'teacherSpread' || k === 'shortBreakCross'
 const isSpread = (k: RuleKey): k is SpreadKey => k === 'hourlyBalance'
 
 const MODE_CYCLE: DoubleMode[] = ['auto', 'double', 'single']

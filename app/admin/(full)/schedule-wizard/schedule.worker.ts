@@ -35,7 +35,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         lonelyDay: { level: 'off', halfLevel: 'off', partTimeMust: false },
         lowLoadConcentrate: { ...b.lowLoadConcentrate, level: 'off' },
         homeroomRun: 'off', gradeSandwich: 'off', zoneSandwich: 'off',
-        teacherEveryDay: { ...b.teacherEveryDay, level: 'off' }, teacherSpread: { ...b.teacherSpread, level: 'off' },
+        teacherEveryDay: { ...b.teacherEveryDay, level: 'off' }, teacherSpread: { ...b.teacherSpread, level: 'off' }, shortBreakCross: { ...b.shortBreakCross, level: 'off' },
         walkCost: 'off', roomManagerFirst: 'off', roomHalfDay: 'off', homeroomMorning: { ...b.homeroomMorning, level: 'off' },
         avoidPeriods: 'off', timePrefer: 'off', subjectApart: 'off',
       },

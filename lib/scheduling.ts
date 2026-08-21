@@ -155,6 +155,9 @@ export interface BuiltinRules {
   // 科任每週平均：正式／代理科任（非導師、非鐘點、總節數 > 少節數門檻）各日課量盡量平均——最重日減最輕日 ≤ n 節才不罰
   //   （整天被個人不排課蓋住的日子不計）。課務組原則「正式和代理科任的課務要盡量平均、鐘點要集中」
   teacherSpread: { level: WeightLevel; n: number }
+  // 小下課跨區：同一位老師相鄰兩節在不同區，而中間只有十分鐘小下課＝一筆；大下課（第 n 節之後，預設第 2 節後的 20 分鐘）、午休、隔空堂不罰。
+  //   114-2 人工課表 75 次跨區有 73% 落在大下課／午休／隔空堂；v21 引擎近半落在小下課（林岱璇一人 5 次）
+  shortBreakCross: { level: WeightLevel; n: number }
   classCohesion: WeightLevel                      // 科任課同日成塊：同班同日（上/下午各計）科任課＋鎖課連成一塊、不被導師課切開（同上降為權重）
   bandAdjacent: WeightLevel                       // 全單節老師相鄰兩堂同年級：課全是一節一節的老師（音樂、英語、體育…），相鄰兩堂盡量同年級，
                                                   //   免得一下四年級一下六年級（跨年級＝換教材換進度）。114-2 人工課表 263 對相鄰課有 43 對跨年級（16%）→ 權重
@@ -303,7 +306,8 @@ export function defaultScheduleWeights(): ScheduleWeights {
       gradeSandwich: 'high',
       zoneSandwich: 'high',   // 課務組：千萬不要讓老師來回跨區
       teacherEveryDay: { level: 'high', n: 12 },
-      teacherSpread: { level: 'high', n: 2 },   // v20 實測中咬不住：20 節老師幾乎都是 6/6/2，一天 6 節的人日 21%（人工 15%）
+      teacherSpread: { level: 'high', n: 2 },
+      shortBreakCross: { level: 'high', n: 2 },   // v20 實測中咬不住：20 節老師幾乎都是 6/6/2，一天 6 節的人日 21%（人工 15%）
       avoidPeriods: 'mid',
       timePrefer: 'off',
       subjectApart: 'mid',     // 人工課表 體育↔健康同日 22%、自然↔社會同日 16%，不到絕對
@@ -374,6 +378,10 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       teacherSpread: (() => {
         const n = Number(b.teacherSpread?.n)
         return { level: normLevel(b.teacherSpread?.level, db.teacherSpread.level), n: Number.isInteger(n) && n >= 0 && n <= 7 ? n : db.teacherSpread.n }
+      })(),
+      shortBreakCross: (() => {
+        const n = Number(b.shortBreakCross?.n)
+        return { level: normLevel(b.shortBreakCross?.level, db.shortBreakCross.level), n: Number.isInteger(n) && n >= 1 && n <= 6 ? n : db.shortBreakCross.n }
       })(),
       classCohesion: normLevel(b.classCohesion, db.classCohesion),
       batchType: normLevel(b.batchType, db.batchType),
