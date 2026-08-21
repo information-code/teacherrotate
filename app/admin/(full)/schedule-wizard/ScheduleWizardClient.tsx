@@ -38,7 +38,7 @@ type ViewKey = 'class' | 'teacher' | 'room'
 // 每次排課完自動存一份快照到 schedule_plan_version，不佔用「目前採用的那一份」。
 interface VersionRule { key: string; label: string; count: number; points: number }
 interface VersionRow {
-  id: string; label: string | null; starred: boolean; source: string; base_hash: string
+  id: string; seq?: number | null; label: string | null; starred: boolean; source: string; base_hash: string
   created_at: string; created_by: string | null
   // note＝這份版本的分數為什麼不能直接跟現況比（回填的舊課表、規則改過等）；有 note 就取代通用的「基礎資料已變更」訊息
   summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; note?: string; rules?: VersionRule[]; scoring?: number }
@@ -206,7 +206,7 @@ export default function ScheduleWizardClient(props: Props) {
     if (!res?.ok) loadVersions()
   }
   async function deleteVersion(v: VersionRow) {
-    if (!confirm(`刪除版本「${v.label || new Date(v.created_at).toLocaleString('zh-TW')}」？此操作無法復原。`)) return
+    if (!confirm(`刪除版本「${v.seq ? `#${v.seq} ` : ''}${v.label || new Date(v.created_at).toLocaleString('zh-TW')}」？此操作無法復原。`)) return
     await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`, { method: 'DELETE' })
     loadVersions()
   }
@@ -851,7 +851,7 @@ ${head}確定撤回？`)) return
               <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${planStatus === 'published' || planStatus === 'final'
                 ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-zinc-50 border border-zinc-200 text-zinc-600'}`}>
                 <span>{planStatus === 'published' || planStatus === 'final' ? '正在預覽舊版本（唯讀、尚未套用）：' : '目前顯示版本：'}
-                  <b>{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
+                  <b>{v.seq ? `#${v.seq} ` : ''}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
                   {v.label && <span className="opacity-70 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
                 {(planStatus === 'published' || planStatus === 'final') && <>
                   <span className="opacity-80">版本只保存科任課，不含導師填的課。</span>
@@ -1059,7 +1059,7 @@ ${head}確定撤回？`)) return
                                   className={v.starred ? 'text-amber-500' : 'text-zinc-300 hover:text-amber-400'}>★</button>
                               </td>
                               <td>
-                                <div className="text-zinc-800">{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</div>
+                                <div className="text-zinc-800">{v.seq ? <span className="font-mono text-zinc-500 mr-1">#{v.seq}</span> : null}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</div>
                                 <div className="text-[10px] text-zinc-400">
                                   {v.label && `${new Date(v.created_at).toLocaleString('zh-TW')}　`}
                                   {isBest && <span className="text-green-700">軟分最低</span>}

@@ -6,7 +6,9 @@ import { hasPerms } from '@/lib/staff-server'
 
 const PERMS = ['schedule-config', 'schedule-wizard']
 /** 每年度保留的版本數上限（加星號者不計入、不會被自動刪除）。 */
-const KEEP = 20
+const KEEP = 30
+/** seq 欄位由 migration 039 新增；尚未跑 migration 時 select／insert 會因欄位不存在而失敗 → 自動退回沒有 seq 的版本，清單照常可用 */
+const isSeqMissing = (e: { message?: string } | null) => Boolean(e?.message && /seq/.test(e.message) && /column|schema cache/i.test(e.message))
 
 async function guard() {
   const supabase = await createClient()
@@ -24,10 +26,11 @@ export async function GET(request: NextRequest) {
 
   const id = request.nextUrl.searchParams.get('id')
   if (id) {
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('schedule_plan_version')
-      .select('id, year, label, starred, source, base_hash, summary, weights, plan, created_at, created_by')
+      .select('id, year, seq, label, starred, source, base_hash, summary, weights, plan, created_at, created_by')
       .eq('id', id).maybeSingle()
+    if (error && isSeqMissing(error)) ({ data, error } = await supabaseAdmin.from('schedule_plan_version').select('id, year, label, starred, source, base_hash, summary, weights, plan, created_at, created_by').eq('id', id).maybeSingle() as never)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: '找不到此版本' }, { status: 404 })
     return NextResponse.json(data)
@@ -36,10 +39,11 @@ export async function GET(request: NextRequest) {
   const year = Number(request.nextUrl.searchParams.get('year'))
   if (!Number.isInteger(year)) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
   // 清單刻意不 select plan：整份約 150～250KB，20 份會讓頁面載入變得很慢
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('schedule_plan_version')
-    .select('id, year, label, starred, source, base_hash, summary, created_at, created_by')
+    .select('id, year, seq, label, starred, source, base_hash, summary, created_at, created_by')
     .eq('year', year).order('created_at', { ascending: false })
+  if (error && isSeqMissing(error)) ({ data, error } = await supabaseAdmin.from('schedule_plan_version').select('id, year, label, starred, source, base_hash, summary, created_at, created_by').eq('year', year).order('created_at', { ascending: false }) as never)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 建立者姓名（清單要顯示「誰跑的」）
@@ -62,20 +66,25 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(year)) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
   if (!body.plan || !Array.isArray(body.plan.placed)) return NextResponse.json({ error: '缺少排課結果' }, { status: 400 })
 
-  const { data, error } = await supabaseAdmin
-    .from('schedule_plan_version')
-    .insert({
-      year,
-      label: typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 60) : null,
-      source: body.source === 'manual' ? 'manual' : 'engine',
-      base_hash: String(body.baseHash ?? ''),
-      summary: body.summary ?? {},
-      weights: body.weights ?? {},
-      plan: body.plan,
-      created_by: g.userId,
-    })
-    .select('id, created_at').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const row = {
+    year,
+    label: typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 60) : null,
+    source: body.source === 'manual' ? 'manual' : 'engine',
+    base_hash: String(body.baseHash ?? ''),
+    summary: body.summary ?? {},
+    weights: body.weights ?? {},
+    plan: body.plan,
+    created_by: g.userId,
+  }
+  // 流水號：該年度目前最大 seq + 1（刪了舊版本也不重用，課務組講「第 N 版」才對得上）
+  let seq: number | null = null
+  {
+    const { data: mx, error: e1 } = await supabaseAdmin.from('schedule_plan_version').select('seq').eq('year', year).order('seq', { ascending: false, nullsFirst: false }).limit(1)
+    if (!e1) seq = (Number(mx?.[0]?.seq) || 0) + 1
+  }
+  let { data, error } = await supabaseAdmin.from('schedule_plan_version').insert(seq !== null ? { ...row, seq } : row).select('id, created_at').single()
+  if (error && seq !== null && isSeqMissing(error)) ({ data, error } = await supabaseAdmin.from('schedule_plan_version').insert(row).select('id, created_at').single())
+  if (error || !data) return NextResponse.json({ error: error?.message ?? '存檔失敗' }, { status: 500 })
 
   // 保留上限：只刪沒加星號的舊版本
   const { data: olds } = await supabaseAdmin
@@ -85,7 +94,7 @@ export async function POST(request: NextRequest) {
   const over = (olds ?? []).slice(KEEP).map(v => v.id)
   if (over.length) await supabaseAdmin.from('schedule_plan_version').delete().in('id', over)
 
-  return NextResponse.json({ ok: true, id: data.id, created_at: data.created_at, pruned: over.length })
+  return NextResponse.json({ ok: true, id: data.id, seq, created_at: data.created_at, pruned: over.length })
 }
 
 /** 改名／加星號。body: { id, label?, starred? } */
