@@ -160,12 +160,12 @@ export type Database = {
       }
       schedule_plan_version: {
         Row: {
-          id: string; year: number; label: string | null; starred: boolean; source: string
+          id: string; year: number; seq: number | null; label: string | null; starred: boolean; source: string
           base_hash: string; summary: Json; weights: Json; plan: Json
           created_at: string; created_by: string | null
         }
         Insert: {
-          id?: string; year: number; label?: string | null; starred?: boolean; source?: string
+          id?: string; year: number; seq?: number | null; label?: string | null; starred?: boolean; source?: string
           base_hash?: string; summary?: Json; weights?: Json; plan?: Json
           created_at?: string; created_by?: string | null
         }
