@@ -100,19 +100,21 @@ async function diagnose(input: EngineInput, best: EngineResult, seed: number): P
   return { probePerfect: true, hints }
 }
 
-self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>) => {
+self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; seedBase?: number }>) => {
   if (e.data.type === 'stop') { stopRequested = true; return }
   if (!e.data.input) return
   stopRequested = false
   const input = e.data.input
+  // 換種子重排：前端給 seedBase 就用它衍生五個新種子（預設種子跑不成時，換一組起點再試，比調權重更接近課務組要的）
+  const seeds = typeof e.data.seedBase === 'number' ? SEEDS.map((_, i) => (e.data.seedBase! + i * 7919) % 1_000_003) : SEEDS
 
   let best: EngineResult | null = null
-  let bestSeed = SEEDS[0]
-  for (let i = 0; i < SEEDS.length; i++) {
-    const seed = SEEDS[i]
+  let bestSeed = seeds[0]
+  for (let i = 0; i < seeds.length; i++) {
+    const seed = seeds[i]
     const havePerfect = best !== null && isPerfect(best)
     const r = await runOne({ ...input, seed }, {
-      label: `種子 ${i + 1}/${SEEDS.length}${havePerfect ? '・比較中' : ''}`,
+      label: `種子 ${i + 1}/${seeds.length}${havePerfect ? '・比較中' : ''}`,
       budget: havePerfect ? BUDGET_MORE : BUDGET,
     })
     if (!best || betterThan(r, best)) { best = r; bestSeed = seed }

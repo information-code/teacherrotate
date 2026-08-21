@@ -238,7 +238,7 @@ export default function ScheduleWizardClient(props: Props) {
     } catch { setNativeSaving('error') }
   }
 
-  function run() {
+  function run(opts: { reseed?: boolean } = {}) {
     if (!confirmDropAdjust('重新排課')) return
     workerRef.current?.terminate()
     setAdjustUnsaved(0)
@@ -258,7 +258,8 @@ export default function ScheduleWizardClient(props: Props) {
         w.terminate()
       }
     }
-    w.postMessage({ input })
+    // 換種子：每次用不同的起點（預設種子排不成時最有效的一步，比調權重更接近課務組要的結果）
+    w.postMessage(opts.reseed ? { input, seedBase: Math.floor(Math.random() * 1_000_000) } : { input })
   }
   function stop() {
     // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
@@ -718,7 +719,7 @@ ${head}確定撤回？`)) return
         ) : (
           <>
             {!running
-              ? <button onClick={run} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
+              ? <button onClick={() => run()} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
               : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
             <span className="text-xs text-zinc-400">
               共 {input.lessons.length} 堂科任課待排。硬限制與權重一次跑、多種子多起點取最佳；<b>成功條件＝未排 0 且必須級 0</b>。
@@ -821,13 +822,18 @@ ${head}確定撤回？`)) return
           {/* 未達成功條件：診斷是權重牽制還是結構卡死 */}
           {runFailed && (
             <div className="card border-red-200 bg-red-50 p-3 space-y-1.5">
-              <div className="text-sm font-semibold text-red-700">✕ 未達成功條件（未排 {result.unplaced.length}、必須級違反 {bigPenalty.reduce((s, p) => s + p.count, 0)}）——下方為最佳嘗試</div>
-              {probePerfect === true && (
-                <div className="text-xs text-red-700 space-y-1">
-                  <p>純硬規則探測可以全部排入 → <b>不是配課結構卡死</b>，是權重或必須級把搜尋牽住了。建議（依影響大小排序）：</p>
-                  <ul className="list-disc pl-5">{hints.map(h => <li key={h}>{h}</li>)}</ul>
-                  <p className="text-zinc-500">到「排課設定 → 9 權重設定」調低後重排；也可先「停止並採用」再手動處理未排。</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-sm font-semibold text-red-700">✕ 這一輪沒排成（未排 {result.unplaced.length}、必須級違反 {bigPenalty.reduce((s, p) => s + p.count, 0)}）——下方為最佳嘗試，已存成版本</div>
+                {!running && <button onClick={() => run({ reseed: true })} className="btn btn-primary text-xs py-0.5 ml-auto" title="用另一組起點重跑一次：同樣的設定、同樣的規則，只是換種子；排不成時這是第一個該做的事">🎲 換種子重排</button>}
+              </div>
+              {bigPenalty.length > 0 && (
+                <div className="text-xs text-red-700 space-y-0.5">
+                  <div className="font-semibold">卡在：</div>
+                  {bigPenalty.map(p => <div key={p.key}>・{p.label} {p.count} 筆：{p.items.slice(0, 6).join('；')}{p.items.length > 6 ? '…' : ''}</div>)}
                 </div>
+              )}
+              {probePerfect === true && (
+                <p className="text-xs text-zinc-600">純硬規則探測排得進，代表配課結構沒有卡死，只是這一輪沒找到同時滿足所有條件的排法——先換種子再跑；連跑幾輪都卡在同一筆，再考慮調整那一筆相關的設定（不排課／鎖課／配課）。</p>
               )}
               {probePerfect === false && (
                 <p className="text-xs text-red-600">
