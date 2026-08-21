@@ -71,7 +71,8 @@ async function runOne(
     if (opts.perfectExit && pg.best === 0) break
     // 只差 1～2 節（未排／必須級合計 ≤2；軟分永遠 < 1e5）時多給一倍耐心
     const nearPerfect = pg.best < 2.1e6 && pg.best >= 1e5
-    if (run.sinceImprove >= opts.budget.converge * (nearPerfect ? 2.5 : 1) || run.elapsed >= opts.budget.cap) break
+    // 只差 1～2 節時不只多給耐心，上限也放寬一半：沙盒實測五個種子在 120s 都還在進步、各差 1～3 筆
+    if (run.sinceImprove >= opts.budget.converge * (nearPerfect ? 2.5 : 1) || run.elapsed >= opts.budget.cap * (nearPerfect ? 1.5 : 1)) break
     await new Promise(r => setTimeout(r, 0))
   }
   return run.finalize()
