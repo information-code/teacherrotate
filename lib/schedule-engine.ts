@@ -1199,6 +1199,12 @@ const MUST = 1e6
 function pen(level: WeightLevel): number {
   return level === 'must' ? MUST : WEIGHT_PENALTY[level]
 }
+/** 規則量級對齊（計分 v2）：任何規則違反一筆＝權重那個數字（低 1／中 3／高 9），
+ *  「嚴重程度」（走動距離、超過幾節、空堂幾格…）只當同分時的加分項，每多一級加 10%。
+ *  舊算法是權重 × 嚴重程度，走動距離 9 的一筆「中」＝27 分、空堂 1 格的一筆「低」＝1 分，
+ *  同樣叫「中」「低」卻差 27 倍，目標函數被走動成本吃掉一半——課務組在面板上調不到自己真正的偏好。 */
+export const SCORING_VERSION = 2
+function sev(n: number): number { return 1 + 0.1 * (Math.max(1, n) - 1) }
 
 interface Acc { count: number; points: number; items: string[] }
 function acc(map: Map<string, Acc & { label: string }>, key: string, label: string, points: number, item: string) {
@@ -1294,7 +1300,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       if (rid) (roomsOfTeacher.get(l.teacherId) ?? roomsOfTeacher.set(l.teacherId, new Set()).get(l.teacherId)!).add(rid)
     }
     roomsOfTeacher.forEach((set, tid) => {
-      if (set.size > 1) acc(map, 'roomManagerFirst', '教室固定（借用他人教室）', pen(w.roomManagerFirst) * (set.size - 1), `${nameOf(tid)} 本週用了 ${set.size} 間教室`)
+      if (set.size > 1) acc(map, 'roomManagerFirst', '教室固定（借用他人教室）', pen(w.roomManagerFirst) * sev(set.size - 1), `${nameOf(tid)} 本週用了 ${set.size} 間教室`)
     })
   }
 
@@ -1322,7 +1328,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       const teachers = new Set(runs.map(r => r.tid))
       const excess = Math.max(0, runs.length - teachers.size)
       if (w.roomHalfDay !== 'off' && excess > 0) {
-        acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * excess,
+        acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * sev(excess),
           `${rlabel} 一週交接 ${runs.length - 1} 次（${teachers.size} 位老師至少 ${teachers.size - 1} 次）：${runs.map(r => `${nameOf(r.tid)}@${r.from}`).join('→')}`)
       }
       // 每天：回頭（硬／權重另計）＋半天兩位（½）
@@ -1335,7 +1341,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (returns) {
           const hard = input.weights.hardParams.noReturnSubjects.includes(room?.subject ?? '')
           if (hard) acc(map, 'roomNoReturn', '專科教室老師不回頭（硬限制）', MUST * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
-          else if (w.roomHalfDay !== 'off') acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * returns, `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
+          else if (w.roomHalfDay !== 'off') acc(map, 'roomHalfDay', '專科教室老師集中', pen(w.roomHalfDay) * sev(returns), `${label} ${blocks.map(t => nameOf(t)).join('→')}（走了又回來）`)
         }
         if (w.roomHalfDay !== 'off') for (const [half, qs] of [['上午', [1, 2, 3, 4]], ['下午', [5, 6, 7]]] as const) {
           const ts = new Set(qs.map(q => m.get(`${d}-${q}`)).filter(Boolean) as string[])
@@ -1435,7 +1441,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       for (const t of tplApart) {
         if (t.grades.length && !t.grades.includes(c.grade)) continue
         const hit = t.subjects.filter(s => set.has(s))
-        if (hit.length > 1) acc(map, `tpl-apart-${t.id}`, `科目互斥同日：${t.subjects.join('／')}`, pen(t.level) * (hit.length - 1), `${c.label} 週${DAY_ZH[d]} ${hit.join('＋')}`)
+        if (hit.length > 1) acc(map, `tpl-apart-${t.id}`, `科目互斥同日：${t.subjects.join('／')}`, pen(t.level) * sev(hit.length - 1), `${c.label} 週${DAY_ZH[d]} ${hit.join('＋')}`)
       }
     }
   }
@@ -1482,7 +1488,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (morningSlots.length === 0) continue
         const hr = morningSlots.filter(q => !occ.has(`${d}-${q}`) && (!(`${d}-${q}` in locks) || hrLock.has(`${d}-${q}`))).length
         const want = Math.min(target, morningSlots.length)
-        if (hr < want) acc(map, 'homeroomMorning', `上午導師課下限 ${target}`, pen(w.homeroomMorning.level) * (want - hr), `${c.label} 週${DAY_ZH[d]}上午只有 ${hr} 節導師課`)
+        if (hr < want) acc(map, 'homeroomMorning', `上午導師課下限 ${target}`, pen(w.homeroomMorning.level) * sev(want - hr), `${c.label} 週${DAY_ZH[d]}上午只有 ${hr} 節導師課`)
       }
     }
   }
@@ -1505,7 +1511,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           else inBlock = false
         }
         if (blocks > 1) {
-          acc(map, 'classCohesion', '科任課同日成塊', pen(w.classCohesion) * (blocks - 1),
+          acc(map, 'classCohesion', '科任課同日成塊', pen(w.classCohesion) * sev(blocks - 1),
             `${c.label} 週${DAY_ZH[d]}${seg[0] === 1 ? '上午' : '下午'}科任課分成 ${blocks} 塊（與導師課交錯）`)
         }
       }
@@ -1526,7 +1532,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         // 導師當日節數＝留白 ＋ 由導師上的鎖課（種子班國數等）
         const free = daySlots.filter(s => !occ.has(s)).length + hrLocks.filter(s => parseSlotKey(s).day === d).length
         const over = free - w.homeroomDailyMax.n
-        if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${w.homeroomDailyMax.n}`, pen(w.homeroomDailyMax.level) * over, `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${w.homeroomDailyMax.n} 節`)
+        if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${w.homeroomDailyMax.n}`, pen(w.homeroomDailyMax.level) * sev(over), `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${w.homeroomDailyMax.n} 節`)
       }
     }
   }
@@ -1562,9 +1568,9 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         }
         const eo = evalDay(taughtO), ee = evalDay(taughtE)
         const worse = { over: Math.max(eo.over, ee.over), run: Math.max(eo.run, ee.run), gaps: Math.max(eo.gaps, ee.gaps), segs: Math.max(eo.segs, ee.segs) }
-        if (worse.over > 0 && w.dailyMax.level !== 'off') acc(map, 'dailyMax', `每日節數上限 ${w.dailyMax.n}`, pen(w.dailyMax.level) * worse.over, `${nameOf(tid)} 週${DAY_ZH[d]}超 ${worse.over} 節`)
-        if (worse.run > 0 && w.consecMax.level !== 'off') acc(map, 'consecMax', `連續授課上限 ${w.consecMax.n}`, pen(w.consecMax.level) * worse.run, `${nameOf(tid)} 週${DAY_ZH[d]}連續超 ${worse.run} 節`)
-        if (worse.gaps > 0 && w.compact !== 'off' && !hourlySet.has(tid)) acc(map, 'compact', '減少零碎空堂', pen(w.compact) * worse.gaps, `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
+        if (worse.over > 0 && w.dailyMax.level !== 'off') acc(map, 'dailyMax', `每日節數上限 ${w.dailyMax.n}`, pen(w.dailyMax.level) * sev(worse.over), `${nameOf(tid)} 週${DAY_ZH[d]}超 ${worse.over} 節`)
+        if (worse.run > 0 && w.consecMax.level !== 'off') acc(map, 'consecMax', `連續授課上限 ${w.consecMax.n}`, pen(w.consecMax.level) * sev(worse.run), `${nameOf(tid)} 週${DAY_ZH[d]}連續超 ${worse.run} 節`)
+        if (worse.gaps > 0 && w.compact !== 'off' && !hourlySet.has(tid)) acc(map, 'compact', '減少零碎空堂', pen(w.compact) * sev(worse.gaps), `${nameOf(tid)} 週${DAY_ZH[d]}有 ${worse.gaps} 節空堂夾在課間`)
         // 硬限制：課間空堂最多一段（禁止上空上空交錯）
         if (worse.segs > 1) acc(map, 'gapAlternate', '上午空堂交錯（硬限制）', MUST * (worse.segs - 1), `${nameOf(tid)} 週${DAY_ZH[d]}上午空堂分成 ${worse.segs} 段（上空上空上）`)
       }
@@ -1583,14 +1589,14 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         return n
       })
       const r = spreadOver(cfg, loads, 3)
-      if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * r.over, `${nameOf(tid)} ${r.why}`)
+      if (r) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * sev(r.over), `${nameOf(tid)} ${r.why}`)
       // 孤堂日：鐘點老師「來一趟只上 1 節」直接對準痛點加重罰（×3），逼引擎把零星課併進已有課的日子。
       // 只在集中模式且總節數 > 1 時計（總共就 1 節的人本來就只能來一天一堂）。
       if (cfg.mode === 'concentrate' && cfg.level !== 'off') {
         const total7 = loads.reduce((a2, b2) => a2 + b2, 0)
         if (total7 > 1) {
           const lonely = loads.filter(n => n === 1).length
-          if (lonely > 0) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * 3 * lonely, `${nameOf(tid)} 有 ${lonely} 天到校只上 1 節（孤堂日）`)
+          if (lonely > 0) acc(map, key, `${who}每週分布（${DAY_MODE_LABEL[cfg.mode]}）`, pen(cfg.level) * lonely, `${nameOf(tid)} 有 ${lonely} 天到校只上 1 節（孤堂日）`)
         }
       }
       }
@@ -1637,7 +1643,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           // 以「較少那一邊」的節數計次（同「同型態同日」）：混 3＋1 扣 1 次、混 3＋3 扣 3 次——一天只扣一次的話牽引力太弱
           const counts = hit.map(sb => subs.get(sb)!).sort((x, y) => x - y)
           const times = counts.slice(0, -1).reduce((x, y) => x + y, 0)
-          acc(map, `tpl-tapart-${t.id}`, `老師同日不混科目：${t.subjects.join('／')}`, pen(t.level) * times, `${nameOf(tid)} 週${DAY_ZH[Number(d)]} ${hit.map(sb => `${sb}${subs.get(sb)}`).join('＋')}`)
+          acc(map, `tpl-tapart-${t.id}`, `老師同日不混科目：${t.subjects.join('／')}`, pen(t.level) * sev(times), `${nameOf(tid)} 週${DAY_ZH[Number(d)]} ${hit.map(sb => `${sb}${subs.get(sb)}`).join('＋')}`)
         }
       })
     }
@@ -1660,7 +1666,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     byTeacherDay.forEach((e, k) => {
       if (e.dbl > 0 && e.sgl > 0) {
         const [tid, d] = k.split('|')
-        acc(map, 'batchType', '同型態同日', pen(w.batchType) * Math.min(e.dbl, e.sgl),
+        acc(map, 'batchType', '同型態同日', pen(w.batchType) * sev(Math.min(e.dbl, e.sgl)),
           `${nameOf(tid)} 週${DAY_ZH[Number(d)]}連堂 ${e.dbl} 組與單節 ${e.sgl} 堂混排`)
       }
     })
@@ -1699,7 +1705,7 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           const relaxed = b2.q - a2.q > 1 || (a2.q <= MORNING_LAST && b2.q > MORNING_LAST)
           const df = Math.abs(a2.pos.floor - b2.pos.floor)
           const note = `${Number.isFinite(df) && df > 0 ? `、跨 ${df} 層` : ''}${relaxed ? '、有空檔' : ''}`
-          acc(map, 'walkCost', '走動成本', pen(w.walkCost) * Math.min(dist - 1, 9) * (relaxed ? 0.5 : 1),
+          acc(map, 'walkCost', '走動成本', pen(w.walkCost) * sev(Math.min(dist - 1, 9)) * (relaxed ? 0.5 : 1),
             `${nameOf(tid)} 週${DAY_ZH[d]}第${a2.q}→${b2.q}節跨教室（距離 ${dist}${note}）`)
         }
       }

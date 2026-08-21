@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
-import { assembleEngineInput, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
+import { assembleEngineInput, SCORING_VERSION, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow, type AdjustExtras } from './OverviewAdjust'
 import { buildExportSheets, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
@@ -40,7 +40,7 @@ interface VersionRow {
   id: string; label: string | null; starred: boolean; source: string; base_hash: string
   created_at: string; created_by: string | null
   // note＝這份版本的分數為什麼不能直接跟現況比（回填的舊課表、規則改過等）；有 note 就取代通用的「基礎資料已變更」訊息
-  summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; note?: string; rules?: VersionRule[] }
+  summary: { placed?: number; unplaced?: number; uncovered?: number; mustCount?: number; softPenalty?: number; note?: string; rules?: VersionRule[]; scoring?: number }
 }
 /** FNV-1a：只用來判斷「基礎資料是否相同」「落點是否變過」，不需要密碼學強度。 */
 function fnv1a(s: string): string {
@@ -65,6 +65,7 @@ function summaryOf(r: EngineResult) {
     uncovered: r.uncoveredMustFill.length,
     mustCount: r.penalties.filter(p => p.points >= 1e6).reduce((s, p) => s + p.count, 0),
     softPenalty: Math.round(r.softPenalty),
+    scoring: SCORING_VERSION,   // 計分版本：不同版本的軟分不可比（v2 起「一筆就是一筆」，量級對齊）
     rules: r.penalties.filter(p => p.points > 0).map(p => ({ key: p.key, label: p.label, count: p.count, points: Math.round(p.points) })),
   }
 }
@@ -1031,7 +1032,7 @@ ${head}確定撤回？`)) return
                   // 「軟分最低」只在可發布（未排 0、必須級 0）的版本之間比，且必須是同一份基礎資料——
                   // 基礎資料變過的版本課本身就不一樣，分數不能拿來比。
                   const comparable = versions.filter(v =>
-                    v.base_hash === curBaseHash && !v.summary.unplaced && !v.summary.mustCount && typeof v.summary.softPenalty === 'number')
+                    v.base_hash === curBaseHash && v.summary.scoring === SCORING_VERSION && !v.summary.unplaced && !v.summary.mustCount && typeof v.summary.softPenalty === 'number')
                   const bestSoft = comparable.length ? Math.min(...comparable.map(v => v.summary.softPenalty as number)) : null
                   return (
                     <table className="table-base no-hover mt-1">
@@ -1046,6 +1047,7 @@ ${head}確定撤回？`)) return
                         {versions.map(v => {
                           const s = v.summary
                           const stale = v.base_hash !== curBaseHash
+                          const oldScoring = v.source === 'engine' && s.scoring !== SCORING_VERSION   // 手動版本本來就標「未重算」
                           const ok = !s.unplaced && !s.mustCount
                           const isBest = !stale && ok && bestSoft !== null && s.softPenalty === bestSoft && comparable.length > 1
                           return (
@@ -1061,6 +1063,7 @@ ${head}確定撤回？`)) return
                                   {v.label && `${new Date(v.created_at).toLocaleString('zh-TW')}　`}
                                   {isBest && <span className="text-green-700">軟分最低</span>}
                                   {stale && <span className="text-amber-600">{s.note ?? '基礎資料已變更（配課／鎖課／不排課有異動，分數不可與現況相比）'}</span>}
+                                  {!stale && oldScoring && <span className="text-amber-600">舊計分（量級對齊前的算法，軟分不可與新版本相比）</span>}
                                 </div>
                               </td>
                               <td className="text-center text-xs text-zinc-500">{v.source === 'manual' ? '手動調整' : '精靈'}</td>
