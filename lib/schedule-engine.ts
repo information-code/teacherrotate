@@ -45,6 +45,9 @@ export interface EngineInput {
   classDayFull: Record<string, Record<number, boolean>>  // classKey → day → 是否整天日
   lockedCells: Record<string, Record<string, string>>    // classKey → slotKey → 顯示文字（鎖課科目）
   homeroomLocks: Record<string, string[]>                 // classKey → 由導師授課的鎖課格（種子班國數／班級活動等：科目在導師配課裡）
+  /** classKey → 導師自上的連堂科目需要幾組「同半天連續兩格留白」（連堂科目 floor(節數/2) 組、單雙週科目 1 組）。
+   *  引擎不排導師課，但排科任課時必須留得下這些連堂位，否則導師的自然／社會／視藝連堂根本上不了（固定硬限制，算必須級）。 */
+  homeroomDoubleNeed: Record<string, { pairs: number; note: string }>
                                                           // 導師規則（不連四、上午下限、每日上限）與成塊要把這些格當導師課，而非「非導師」
   teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
@@ -218,6 +221,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   const classDayFull: Record<string, Record<number, boolean>> = {}
   const lockedCells: Record<string, Record<string, string>> = {}
   const homeroomLocks: Record<string, string[]> = {}
+  const homeroomDoubleNeed: Record<string, { pairs: number; note: string }> = {}
   const unassignedList: EngineInput['unassigned'] = []
   const lessons: EngineLesson[] = []
 
@@ -367,6 +371,17 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
       // 鎖課由誰上？科目在該班導師的配課裡（或科任配班標「導師自上」）＝導師課；否則（本土語鐘點、外聘）＝非導師。
       // 從配課推、不必另外勾選——種子班鎖課(國語/數學/班級活動/自主學習) 全命中、本土語鎖課全不命中。
       homeroomLocks[key] = homeroomLockSlots(config, g, i, a.homeroomHours?.[key])
+      // 導師自上的連堂科目（自然／社會 3 節＝1 組、生活 4 節＝2 組、視藝單雙週＝1 組）需要的連堂位
+      {
+        let pairs = 0; const notes: string[] = []
+        for (const [subj, h] of Object.entries(a.homeroomHours?.[key] ?? {})) {
+          const n = Number(h); if (!(n > 0)) continue
+          const m = dmode(subj, g)
+          if (m === 'double') { const p = Math.floor(n / 2); if (p) { pairs += p; notes.push(`${subj} ${n} 節→${p} 組`) } }
+          else if (m === 'biweekly') { pairs += 1; notes.push(`${subj}（單雙週）→1 組`) }
+        }
+        if (pairs) homeroomDoubleNeed[key] = { pairs, note: notes.join('、') }
+      }
       const slots: string[] = []
       const dayFull: Record<number, boolean> = {}
       for (const d of SCHEDULE_DAYS) {
@@ -738,7 +753,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
 
   return {
     input: {
-      classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks,
+      classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks, homeroomDoubleNeed,
       teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, unassigned: unassignedList, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
       substituteTeachers: a.substituteTeacherIds ?? [],
       homeroomTeachers: Array.from(new Set(Object.values(config.classTeacher).filter((t): t is string => Boolean(t)))),
@@ -1478,6 +1493,21 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
       }
       if (best > maxRun && bestHasBlank) acc(map, 'homeroomRun', `導師連上超過 ${maxRun} 節`, pen(w.homeroomRun) * sev(best - maxRun), `${c.label} 週${DAY_ZH[d]}連續 ${best} 格導師課`)
     }
+  }
+
+  // 硬限制：導師連堂位——導師自上的連堂科目（自然／社會／生活連堂、視藝單雙週）需要同半天連續兩格留白；
+  // 科任課把留白切得一格一格的，導師的連堂就上不了（4年10班 吳佩容 視藝單雙週 v21 實測 0 組）。不足幾組＝幾筆必須級。
+  for (const c of input.classes) {
+    const need = input.homeroomDoubleNeed?.[c.classKey]
+    if (!need?.pairs) continue
+    const occ = st.classOcc.get(c.classKey)!
+    const blank = new Set((input.classSlots[c.classKey] ?? []).filter(sl => !occ.has(sl)))
+    let pairs = 0
+    for (const d of SCHEDULE_DAYS) for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+      let run = 0
+      for (const q of [...half, 0]) { if (q && blank.has(`${d}-${q}`)) run++; else { pairs += Math.floor(run / 2); run = 0 } }
+    }
+    if (pairs < need.pairs) acc(map, 'homeroomDouble', '導師連堂位不足（硬限制）', MUST * (need.pairs - pairs), `${c.label} 需 ${need.pairs} 組連續兩格留白（${need.note}），只剩 ${pairs} 組`)
   }
 
   // 上午導師課下限：每天上午（1~4 節）至少 N 節導師課，不足才罰。
