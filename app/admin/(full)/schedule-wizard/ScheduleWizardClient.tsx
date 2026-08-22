@@ -743,6 +743,12 @@ ${head}確定撤回？`)) return
             </span>
           </>
         )}
+        {running && !progress && (
+          <span className="text-xs text-zinc-500 ml-auto flex items-center gap-2">
+            <span className="px-1.5 py-0.5 rounded-sm border text-[11px] font-medium bg-zinc-100 text-zinc-600 border-zinc-200">準備中</span>
+            <span>正在把設定送進排課引擎…（第一次會停幾秒，屬正常）</span>
+          </span>
+        )}
         {running && progress && (
           <span className="text-xs text-zinc-500 ml-auto flex items-center gap-2">
             {progress.label && (

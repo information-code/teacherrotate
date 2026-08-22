@@ -62,6 +62,10 @@ async function runOne(
   input: EngineInput,
   opts: { label: string; budget: { converge: number; cap: number }; perfectExit?: boolean; initial?: { id: string; day: number; period: number }[] },
 ): Promise<EngineResult> {
+  // EngineRun 的建構子會把 638 堂課整份排一次（含教室優先求解、定向修補），是同步的、要好幾秒；
+  // 先送一則進度出去，畫面才不會從按下按鈕到第一次 step 之間一片空白、看起來像當機
+  self.postMessage({ type: 'progress', label: `${opts.label}・建立初始課表…`, iter: 0, best: 0, softBest: 0, elapsed: 0, placed: 0, unplaced: input.lessons.length, sinceImproveMs: 0 })
+  await new Promise(r => setTimeout(r, 0))
   const run = new EngineRun(input, opts.initial)
   for (;;) {
     run.step(CHUNK_MS)
