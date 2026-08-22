@@ -1598,6 +1598,22 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
+  // 同半天兩組專科連堂（權重）：同一班同一個半天有 ≥2 組需要專科教室的連堂，每多一組扣一次。
+  // 5年6班 週一上午 科技 1-2＋視藝 3-4 → 導師只剩第 5 節；磚位滿了之後引擎搬不動，得在拼的時候就避開
+  if (w.specialDoublesHalf !== 'off') for (const c of input.classes) {
+    const occ = st.classOcc.get(c.classKey)!
+    for (const d of SCHEDULE_DAYS) for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+      const ids = new Set<string>()
+      for (const q of half) {
+        const id = occ.get(`${d}-${q}`); if (!id) continue
+        const l = st.lessonById.get(id); if (!l || l.size !== 2) continue
+        if ((st.roomPool.get(id)?.length ?? 0) > 0) ids.add(id)
+      }
+      if (ids.size >= 2) acc(map, 'specialDoublesHalf', '同半天兩組專科連堂', pen(w.specialDoublesHalf) * sev(ids.size - 1),
+        `${c.label} 週${DAY_ZH[d]}${half[0] === 1 ? '上午' : '下午'} ${[...ids].map(id => st.lessonById.get(id)!.subject).join('＋')}`)
+    }
+  }
+
   // 科任課同日成塊（權重）——同班同日（上、下午各自計）科任課＋鎖課連成一塊，每多一塊扣一次
   if (w.classCohesion !== 'off') for (const c of input.classes) {
     const occ = st.classOcc.get(c.classKey)!

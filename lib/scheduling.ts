@@ -184,6 +184,9 @@ export interface BuiltinRules {
   // 上午導師課上限：每天上午（1-4 節）導師最多 n 節（預設 3）；導師自己的鎖課（種子班國數）若在上午就超過 n，以鎖課數為準（鎖課逼的可以）。
   //   must＝超過升必須級。課務組：沒有鎖課的老師上午最多 3 節，但可以連 3
   homeroomMorningMax: { level: WeightLevel; n: number; must: boolean }
+  // 同半天兩組專科連堂：同一班同一個半天不要同時有兩組需要專科教室的連堂（自然＋科技、科技＋視藝…）——
+  //   那個半天導師就只剩 0～1 格，每日下限／上午下限會直接被擠爆，而磚位滿了又搬不動。人工課表每期只有 1～3 班日 → 權重高
+  specialDoublesHalf: WeightLevel
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
   avoidPeriods: WeightLevel
@@ -310,6 +313,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomMorning: { level: 'high', n: 2 },   // v19 上午 0 節導師課的班日 12→23，課務組定為高
       homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7, hardN: 5 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5；絕不 6」
       homeroomMorningMax: { level: 'high', n: 3, must: true },
+      specialDoublesHalf: 'high',
       homeroomRun: 'high',
       homeroomDailyMin: { level: 'high', full: 2, half: 1, must: true },   // 課務組：半天至少 1 節、整天至少 2 節導師課
       gradeSandwich: 'high',
@@ -412,6 +416,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         const num = (v: unknown, d: number, lo: number, hi: number) => { const x = Number(v); return Number.isInteger(x) && x >= lo && x <= hi ? x : d }
         return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35), hardN: num(h.hardN, db.homeroomDailyMax.hardN, 1, 7) }
       })(),
+      specialDoublesHalf: normLevel(b.specialDoublesHalf, db.specialDoublesHalf),
       homeroomMorningMax: (() => {
         const h = (b.homeroomMorningMax ?? {}) as Partial<BuiltinRules['homeroomMorningMax']>
         const n = Number(h.n)
