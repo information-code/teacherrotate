@@ -3468,6 +3468,13 @@ export class EngineRun {
         else this.tryFixHomeroomRun()
         continue
       }
+      // 還有課沒排進去時，把「安插未排課」的力氣加重：原本只有 %8===4（逐出）與 %16===11（逐出鏈）約 1/5 的步數，
+      // 前端實測會看到迭代一直跑、已排卻停在 636/638——最後那一兩堂要連鎖搬好幾堂才騰得出位子，機會太少就一直卡著
+      if (this.st.pos.size < this.input.lessons.length && this.iterations % 4 === 1) {
+        if (Math.floor(this.iterations / 4) % 2 === 0) this.tryPlaceUnplacedWithEject()
+        else this.tryEjectionChain()
+        continue
+      }
       if (this.iterations % 8 === 0) { this.tryCoverMustFill(); continue }
       if (this.iterations % 8 === 6) { this.tryFixCohesion(); continue }
       if (this.iterations % 8 === 2) { this.tryFixHomeroomRun(); continue }
