@@ -8,7 +8,7 @@ import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, SCORING_VERSION, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow, type AdjustExtras } from './OverviewAdjust'
-import { buildExportSheets, buildImportRows, buildSchoolCsvRows, rowsToCsv, rowsToXlsx, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
+import { buildExportSheets, buildImportRows, buildSchoolCsvRows, rowsToXlsx, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -484,7 +484,8 @@ ${head}確定撤回？`)) return
     const base = `${year}學年度課表（班級＋科任教師＋科任教室）`
     try {
       if (kind === 'school') {
-        saveBlob(new Blob([rowsToCsv(buildSchoolCsvRows(args))], { type: 'text/csv;charset=utf-8' }), `${year}學年度課程資料（校務系統）.csv`)
+        setExportStatus('產生 Excel 中…')
+        saveBlob(await rowsToXlsx(buildSchoolCsvRows(args), '課程資料'), `${year}學年度課程資料（校務系統）.xlsx`)
         return
       }
       if (kind === 'import') {
@@ -688,7 +689,7 @@ ${head}確定撤回？`)) return
                 <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.docx）</button>
                 <button onClick={() => doExport('csv')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📊 CSV（一列一格，Excel 用）</button>
                 <button onClick={() => doExport('school')} title="欄位：class_no／班級／科目／科目名稱／星期／節次／教師／教師名稱／教室／教室名稱。科目與教師代碼本系統沒有，留空；不列入本土語其他語別的場次老師與英語外師；單雙週依校務系統慣例——單週寫在奇數節、雙週寫在偶數節"
-                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600 border-t border-zinc-100">🏫 校務系統課程資料（.csv）</button>
+                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600 border-t border-zinc-100">🏫 校務系統課程資料（.xlsx）</button>
                 <button onClick={() => doExport('import')} title="欄位：週次／節次／年級／班級／教師姓名／校訂課程名稱／上課頻率；一列一堂課，連堂兩列，單雙週標「單週上課」「雙週上課」"
                   className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-500 text-xs">🏫 舊格式：校訂課程（.xlsx）</button>
                 <div className="px-3 pt-1 text-[11px] text-zinc-400 border-t border-zinc-100 mt-1">{(planStatus === 'published' || planStatus === 'final') ? '內容＝已發布的正式課表（含微調與導師已填）' : '內容＝目前預覽的這份（含微調）'}</div>
