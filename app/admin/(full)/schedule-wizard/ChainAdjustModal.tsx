@@ -17,7 +17,7 @@ export type ChainSeed = { kind: 'class'; classKey: string } | { kind: 'teacher';
 
 type Item = { kind: 'lesson'; id: string } | { kind: 'hr'; classKey: string; slot: string }
 type Board = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string }
-type Move = { n: number; classKey: string; from: string; to: string; what: string; who: string; item: Item }
+type Move = { n: number; classKey: string; from: string; to: string; what: string; who: string; item: Item; h: number }   // h＝這一步之前的 history 索引
 type Pending = { item: Item; classKey: string; why: string; subject?: string }   // subject：導師課被擠出時要記住科目（導師課只是字串）
 type Snap = { placed: PlacedResult[]; hr: Record<string, HomeroomRow>; moves: Move[]; boards: Board[]; pending: Pending[]; splitIds: string[] }
 
@@ -286,7 +286,7 @@ export default function ChainAdjustModal({
     setPlaced(nextPlaced)
     setHr(nextHr)
     setBoards(addBoard(nextBoards, { kind: 'class', classKey: ck }))
-    setMoves(m => [...m, { n: m.length + 1, classKey: ck, from: fromSlot, to: toSlot, what: lbl.what, who: lbl.who, item }])
+    setMoves(m => [...m, { n: m.length + 1, classKey: ck, from: fromSlot, to: toSlot, what: lbl.what, who: lbl.who, item, h: history.length }])
     setPending(p => [...p.filter(x => itemKey(x.item) !== selfKey), ...newPending])
     setPick(null)
   }
@@ -302,6 +302,17 @@ export default function ChainAdjustModal({
     setPlaced(ps => ps.flatMap(x => x.id === l.id ? splitOf(x) : [x]))
     setPending(ps => ps.filter(x => itemKey(x.item) !== `l:${pid}`))
     setPick({ item: { kind: 'lesson', id: `${l.id}~a` }, classKey: l.classKey, slot: `${l.day}-${l.period}` })
+  }
+
+  /** 退回某一支箭頭（點箭頭的任一端就會走到這裡）。它之後還有步驟的話，一起退掉。 */
+  function undoMove(m: Move) {
+    const later = moves.length - m.n
+    if (later > 0 && !confirm(`第 ${m.n} 步之後還有 ${later} 步，會一起退回。確定嗎？`)) return
+    const back = history[m.h]
+    if (!back) return
+    setPlaced(back.placed); setHr(back.hr); setMoves(back.moves); setBoards(back.boards); setPending(back.pending); setSplitIds(back.splitIds)
+    setHistory(h => h.slice(0, m.h))
+    setPick({ item: m.item, classKey: m.classKey, slot: m.from })
   }
 
   function undo() {
@@ -504,11 +515,17 @@ export default function ChainAdjustModal({
       : comesIn ? ' ring-2 ring-rose-400 z-10'
       : asTarget ? ' ring-1 ring-sky-400 cursor-pointer' : ''
 
-    const clickable = Boolean(!frozen && !tOff && (asTarget || (item && (item.kind !== 'hr' || !fillOpen))))
-    const title = frozen ?? (tOff ? '不排課時段' : targetWhy || (item ? `${itemLabel(item).what}（${itemLabel(item).who}）${mustFill ? '｜導師不排課時段' : ''}` : '空格'))
+    const hasArrow = goesOut || comesIn
+    const clickable = Boolean(!frozen && !tOff && (hasArrow || asTarget || (item && (item.kind !== 'hr' || !fillOpen))))
+    const title = frozen ?? (tOff ? '不排課時段'
+      : hasArrow ? '點一下取消這一步'
+      : targetWhy || (item ? `${itemLabel(item).what}（${itemLabel(item).who}）${mustFill ? '｜導師不排課時段' : ''}` : '空格'))
 
     function onClick() {
       if (!clickable) return
+      // 點箭頭的任一端（要搬走的那格、或箭頭指到的那格）＝取消這一步，不必特地去按「退回一步」
+      const mine = moves.find(m => (item && itemKey(m.item) === itemKey(item)) || (isClass && m.classKey === ck && m.to === slot))
+      if (mine) { undoMove(mine); return }
       // 再點一次已選中的課＝取消選取。原本會被當成「搬到它現在的位置」，連點就一直記無效步驟
       if (pick && item && itemKey(item) === itemKey(pick.item)) { setPick(null); return }
       if (pick && asTarget) { move(pick.item, ck, slot); return }
@@ -562,7 +579,7 @@ export default function ChainAdjustModal({
         <div className="px-4 py-2 border-b border-zinc-200 bg-white flex items-center gap-3 flex-none">
           <span className="font-medium text-sm">連鎖調課</span>
           <span className="text-xs text-zinc-500">
-            點一格不妥的課 → 再點想搬去的位置，畫面上只畫箭頭做標記，課要按「套用」才真的動。被擠掉的課列在右側，全部安置好才能套用。
+            點一格不妥的課 → 再點想搬去的位置，畫面上只畫箭頭做標記，課要按「套用」才真的動。點箭頭兩端可取消該步；被擠掉的課列在右側，全部安置好才能套用。
           </span>
           <span className="ml-auto flex items-center gap-2">
             <button onClick={undo} disabled={!history.length}
