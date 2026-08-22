@@ -148,11 +148,18 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; se
       }
     }
     // ① 從最佳解熱啟動純硬補完（幾秒）：差一兩堂沒排進時最有效
+    // 純硬補完回傳的是「純硬」計分（必須級全關），直接拿來比較或採用會誤判（沙盒實測：回報成功、其實藏著 3 筆必須級）
+    // → 先用真正的輸入熱啟動重新計分（不搜尋）再往下用
+    const rescore = (r: EngineResult, seed: number) => {
+      const out = new EngineRun({ ...input, seed }, r.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName }))).finalize()
+      if (!out.notes?.length && r.notes?.length) out.notes = r.notes
+      return out
+    }
     const fixed = await runOne({ ...hardOnlyInput(input), seed: bestSeed }, {
       label: '5 個種子沒排成 → 保底：從最佳解補完', budget: RESCUE_FIX, perfectExit: true,
       initial: best.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
     })
-    if (isPerfect(fixed)) await polish(fixed, bestSeed, '保底：加權優化')
+    if (isPerfect(fixed)) await polish(rescore(fixed, bestSeed), bestSeed, '保底：加權優化')
     // ② 仍有「未排」→ 從零純硬多試幾個種子。只剩必須級沒過（未排已 0）就不跑：純硬會把可勾選的必須級關掉求可行解，
     //    之後加權優化多半救不回來，跑三輪只是讓課務組多等四分鐘——直接報失敗、讓他換種子重排更實在
     for (let k = 0; k < RESCUE_SEEDS.length && !isPerfect(best) && best.unplaced.length > 0 && !stopRequested; k++) {
@@ -160,7 +167,7 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; se
       const feasible = await runOne({ ...hardOnlyInput(input), seed }, {
         label: `保底 ${k + 1}/${RESCUE_SEEDS.length}：純硬從零`, budget: RESCUE_HARD, perfectExit: true,
       })
-      if (isPerfect(feasible)) await polish(feasible, seed, `保底 ${k + 1}/${RESCUE_SEEDS.length}：加權優化`)
+      if (isPerfect(feasible)) await polish(rescore(feasible, seed), seed, `保底 ${k + 1}/${RESCUE_SEEDS.length}：加權優化`)
     }
   }
 
