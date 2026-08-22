@@ -168,6 +168,13 @@ export default function ChainAdjustModal({
   function addBoard(bs: Board[], b: Board) {
     return bs.some(x => boardKey(x) === boardKey(b)) ? bs : [...bs, b]
   }
+  /** 這張課表還有沒有留下來的理由：起始那張、有箭頭的、有課待安置的都要留；
+   *  純粹因為「點過一堂課」才打開的，換個目標就該收掉，不然畫面很快就塞滿看過即棄的課表。 */
+  function keepBoard(b: Board) {
+    if (seed && boardKey(b) === boardKey(seed as Board)) return true
+    if (b.kind === 'teacher') return true
+    return moves.some(m => m.classKey === b.classKey) || pending.some(x => x.classKey === b.classKey)
+  }
 
   /** 把 item 搬到 (ck, toSlot)。回傳新的狀態；被擠掉的課會成為新的不妥位置。 */
   function move(item: Item, ck: string, toSlot: string) {
@@ -438,7 +445,8 @@ export default function ChainAdjustModal({
       if (pick && asTarget) { move(pick.item, ck, slot); return }
       if (item) {
         setPick({ item, classKey: cls })
-        if (cls) setBoards(bs => addBoard(bs, { kind: 'class', classKey: cls }))   // 目標只能點在班級課表上，先把它打開
+        // 目標只能點在班級課表上，先把它打開；同時把「看過即棄」的課表收掉
+        if (cls) setBoards(bs => addBoard(bs.filter(keepBoard), { kind: 'class', classKey: cls }))
       }
     }
 
@@ -533,7 +541,7 @@ export default function ChainAdjustModal({
                         <button
                           onClick={() => {
                             setPick({ item: p.item, classKey: p.classKey })
-                            setBoards(bs => addBoard(bs, { kind: 'class', classKey: p.classKey }))
+                            setBoards(bs => addBoard(bs.filter(keepBoard), { kind: 'class', classKey: p.classKey }))
                           }}
                           className={`w-full text-left px-1.5 py-1 rounded-sm border ${on
                             ? 'bg-rose-600 text-white border-rose-600'
