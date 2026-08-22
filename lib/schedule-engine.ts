@@ -1557,10 +1557,11 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if (!need) continue
         let have = 99
         for (const par of PARS) { const m = hrMask(c.classKey, d, par); have = Math.min(have, m.hr.filter(Boolean).length) }
-        if (have < need) {
-          if (hm.must) acc(map, 'homeroomDailyMinMust', `導師每日下限（整天 ${hm.full}／半天 ${hm.half}，必須級）`, MUST * (need - have), `${c.label} 週${DAY_ZH[d]}（${full ? '整天' : '半天'}）導師只有 ${have} 節`)
-          else acc(map, 'homeroomDailyMin', '導師每日下限', pen(hm.level) * sev(need - have), `${c.label} 週${DAY_ZH[d]}導師只有 ${have} 節（${full ? '整天' : '半天'}至少 ${need}）`)
-        }
+        // 必須級只守「絕不 0 節」（人工課表四期 0 例外）；整天 2 節是權重高（人工四期有 4 班日只有 1 節、課務組手調 v18 有 5 班日）——
+        // 3年3班 週二、4年3班 週二、5年1／10／11班 週一那種被鎖課＋不排課＋共同不排課扣到只剩 3 格的班日才排得過
+        const hardNeed = Math.min(1, possible)
+        if (hm.must && have < hardNeed) acc(map, 'homeroomDailyMinMust', '導師整天沒課（必須級）', MUST * (hardNeed - have), `${c.label} 週${DAY_ZH[d]}（${full ? '整天' : '半天'}）導師 0 節`)
+        if (have < need && have >= hardNeed) acc(map, 'homeroomDailyMin', `導師每日下限（整天 ${hm.full}／半天 ${hm.half}）`, pen(hm.level) * sev(need - have), `${c.label} 週${DAY_ZH[d]}（${full ? '整天' : '半天'}）導師只有 ${have} 節`)
       }
     }
   }
