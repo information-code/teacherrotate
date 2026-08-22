@@ -975,15 +975,20 @@ class State {
       const hrLock = new Set(this.input.homeroomLocks[l.classKey] ?? [])
       const cOcc2 = this.classOcc.get(l.classKey)!
       const avail = this.input.classSlots[l.classKey] ?? []
-      const dayFree = avail.filter(x => x.startsWith(`${p.day}-`))
+      // 導師自己宣告不排課的格不算「導師的格」——那些格本來就該是科任課（6年3班 楊淨伃 週三 1-4 全公假進修）
+      const mustFill = this.input.classMustFill[l.classKey] ?? []
+      const dayFree = avail.filter(x => x.startsWith(`${p.day}-`) && !mustFill.includes(x))
       const lockSlots = Object.keys(locks).filter(x => x.startsWith(`${p.day}-`))
       const hrLocksHere = lockSlots.filter(x => hrLock.has(x)).length
-      // 放上去之後，這個半天還剩幾格是導師的（空著的可排格）
-      const left = dayFree.filter(x => !slots.includes(x) && !cOcc2.has(x)).length
-      if (l.parity !== 'weekly') {
-        // 單雙週：導師那一週連區塊本身也是導師課，所以只要「其餘格全是導師鎖課」就整個半天都是導師
-        if (!dayFree.some(x => !slots.includes(x)) && lockSlots.every(x => hrLock.has(x))) return false
-      } else if (left === 0 && hrLocksHere === 0) return false
+      // 這個半天完全沒有「導師可上的格」（整個半天都宣告不排課）→ 本來就該全是科任，不受此限
+      if (dayFree.length || hrLocksHere) {
+        // 放上去之後，這個半天還剩幾格是導師的（空著、且非不排課的可排格）
+        const left = dayFree.filter(x => !slots.includes(x) && !cOcc2.has(x)).length
+        if (l.parity !== 'weekly') {
+          // 單雙週：導師那一週連區塊本身也是導師課，所以只要「其餘格全是導師鎖課」就整個半天都是導師
+          if (!dayFree.some(x => !slots.includes(x)) && lockSlots.every(x => hrLock.has(x))) return false
+        } else if (left === 0 && hrLocksHere === 0) return false
+      }
     }
     // 需要專科教室的連堂只能落在磚位 1-2／3-4／5-6／6-7，不可 2-3：上午放 2-3 會讓那間教室那個上午只剩一組位子，
     // 自然／科技教室 42 磚位對 42 組連堂用滿的情況下，一塊擺歪全校就少一格（人工課表 0 組起始於第 2 節）
