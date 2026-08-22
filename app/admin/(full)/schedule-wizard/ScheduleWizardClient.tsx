@@ -276,6 +276,8 @@ export default function ScheduleWizardClient(props: Props) {
         setRunFailed(Boolean(e.data.failed))
         setHints(Array.isArray(e.data.hints) ? e.data.hints : [])
         setProbePerfect(typeof e.data.probePerfect === 'boolean' ? e.data.probePerfect : null)
+        // 排成功了就把種子紀錄收起來，畫面留給課表預覽（沒排成才攝開讓人看差在哪）
+        if (!e.data.failed) setSeedLogOpen(false)
         setRunning(false)
         w.terminate()
       }
