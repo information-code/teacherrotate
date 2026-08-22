@@ -85,7 +85,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [sel, setSel] = useState<Sel>(null)
   const [gradeSelState, setGradeSel] = useState<number>(GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1)
   const gradeSel = gradeSelProp ?? gradeSelState
-  const adjustMode = true   // 點課即調：不再有「進入調整模式」這一層（選一堂課→點彩格才會動，誤觸風險低、且有復原）
+  // 預覽就是預覽：點課即調、亮燈建議、自由編輯與待排區全部關閉，調整一律走「連鎖調課」modal（標題列的 ⇄）。
+  // 課務組的習慣是「不妥位置 → 妥適位置 → 連鎖」，跟這裡的「選一堂課 → 點彩格」是兩套思路，並存只會混淆。
+  // 這一行是總開關：改回 true 就能救回舊的互動（相關程式碼都還在，等 modal 在課務組手上跑順再刪）。
+  const adjustMode = false
   const [note, setNote] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [snapState, setSnapState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -778,7 +781,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     for (const [sl, lock] of Object.entries(lockOf(ck))) { const t = lockTypeMap[lock]; cells.set(sl, [{ text: t?.subject || t?.label || '鎖課', kind: 'extra' }]) }
     return { title: `${selLesson.classLabel} 班級課表`, cells, off: new Set<string>(), selSlots, periods: config.bands[bandOf(g)].periodsPerDay }
   })()
-  const trayPanel = (freeMode || tray.length > 0) && (
+  const trayPanel = adjustMode && (freeMode || tray.length > 0) && (
     <div className="card p-3 w-64 shrink-0 sticky top-2 space-y-2">
       <div className="text-sm font-semibold text-zinc-700">待排區
         <span className="ml-1 text-xs font-normal text-zinc-400">{tray.length} 堂</span>
@@ -876,7 +879,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             <button onClick={saveFreeVersion} disabled={saveState === 'saving' || snapState === 'saving'} className="btn btn-primary text-xs py-0.5"
               title="自由編輯的結果只另存成版本，不會寫進正式課表">📌 另存為版本</button>
           )}
-          {planStatus !== 'final' && (
+          {adjustMode && planStatus !== 'final' && (
             <button onClick={() => {
               if (!freeMode && !confirm('開啟自由編輯？\n\n這個模式下所有硬規則與權重都不檢查——鎖課格、非可排時段、老師衝堂都放行，完全由你決定。\n結果只能「另存為版本」，不會直接寫進正式課表。')) return
               setFreeMode(v => !v); setSel(null)
@@ -1286,8 +1289,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           const rooms2 = roomsFromConfig(config)
           const re = reassignRooms(next.placed, rooms2, config.weights)
           const desc = next.moves.map(m => `${classLabelOf(m.classKey)} ${m.what} ${slotZh(m.from)}→${slotZh(m.to)}`).join('；')
+          const adj: Adjustment[] = [...adjustments,
+            { at: new Date().toISOString(), desc: `連鎖調課 ${next.moves.length} 步：${desc}` }]
           applyAdjust(re, next.hr, `連鎖調課 ${next.moves.length} 步：${desc}`,
             Array.from(new Set(next.moves.map(m => m.classKey))))
+          // 每次套用就留一份版本：人工調整的每一輪都要能回頭找，不必記得按「存為版本」
+          const cls = Array.from(new Set(next.moves.map(m => classLabelOf(m.classKey)))).join('、')
+          void saveVersion({ placed: re, adjustments: adj, silent: true,
+            label: `連鎖調課 ${next.moves.length} 步（${cls}）` })
           setChainSeed(null)
         }}
       />
