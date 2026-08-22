@@ -167,6 +167,8 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
 //   輪到導師的那一週另寫兩列（導師填的科目）。鎖課（種子班國數、本土語、游泳）也會列出，導師自上的填導師姓名。
 const PERIOD_ZH = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節']
 export const IMPORT_HEADER = ['週次', '節次', '年級', '班級', '教師姓名', '校訂課程名稱', '上課頻率']
+/** 校務系統課程資料匯入（CSV）欄位。科目／教師／教室三個「代碼」欄本系統沒有，留空給課務組貼上或由校務系統以名稱比對。 */
+export const SCHOOL_CSV_HEADER = ['class_no', '班級', '科目', '科目名稱', '星期', '節次', '教師', '教師名稱', '教室', '教室名稱']
 const FREQ_WEEKLY = '每週上課', FREQ_ODD = '單週上課', FREQ_EVEN = '雙週上課'
 
 export function buildImportRows(a: BuildArgs): string[][] {
@@ -236,6 +238,86 @@ export function buildImportRows(a: BuildArgs): string[][] {
     GRADE_LABEL[r.g] ?? `${r.g}年級`, `第${String(r.i + 1).padStart(2, '0')}班`,
     r.teacher, r.subject, r.freq,
   ])]
+}
+
+/** 校務系統課程資料（CSV）：一列一堂課。
+ *  class_no／班級＝班級代碼（年級×100＋班序，如 1年1班＝101）；星期、節次為數字；
+ *  科目／教師／教室代碼本系統沒有（留空）；教室代碼取教室設定的「編號」欄。
+ *  不列入：本土語其他語別的場次老師（只列原班閩南語的授課老師）、英語外師（協同者不另列一行）。
+ *  單雙週（視藝）：該區塊兩節各列一行，科目名稱後加註（單週）／（雙週），輪到導師的那一週另列導師的課。 */
+export function buildSchoolCsvRows(a: BuildArgs): string[][] {
+  const { placed, config, input, teacherNames, classCounts, hrCells } = a
+  const nameOf = (id: string) => teacherNames[id] ?? ''
+  const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+  const roomById = new Map(input.rooms.map(r => [r.id, r]))
+  const roomNoById = new Map<string, string>()
+  for (const z of config.roomZones) for (const r of z.rooms) if (r.no) roomNoById.set(r.id, r.no)
+  type Row = { g: number; i: number; day: number; period: number; subject: string; teacher: string; roomNo: string; roomName: string }
+  const out: Row[] = []
+  for (const g of GRADES) {
+    for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+      const ck = `${g}-${i}`
+      const homeroom = nameOf(config.classTeacher[ck] ?? '')
+      const hlocks = new Set(input.homeroomLocks[ck] ?? [])
+      const hr = hrCells[ck] ?? {}
+      const used = new Set<string>()
+      const push = (day: number, period: number, subject: string, teacher: string, roomId?: string | null) => {
+        const r = roomId ? roomById.get(roomId) : undefined
+        out.push({ g, i, day, period, subject, teacher, roomNo: roomId ? (roomNoById.get(roomId) ?? '') : '', roomName: r?.label ?? '' })
+      }
+      for (const p of placed) {
+        if (p.classKey !== ck) continue
+        if (p.parity !== 'weekly') {
+          const wk = p.parity === 'odd' ? '單週' : '雙週'
+          const owk = p.parity === 'odd' ? '雙週' : '單週'
+          const other = `${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`
+          const hrSubj = hr[other]
+          for (const q of [p.period, p.period + 1]) {
+            used.add(`${p.day}-${q}`)
+            push(p.day, q, `${p.subject}（${wk}）`, p.teacherName, p.roomId)
+            if (hrSubj) push(p.day, q, `${hrSubj}（${owk}）`, homeroom)
+          }
+          used.add(other)
+          continue
+        }
+        for (const q of p.size === 2 ? [p.period, p.period + 1] : [p.period]) {
+          used.add(`${p.day}-${q}`)
+          push(p.day, q, p.subject, p.teacherName, p.roomId)
+        }
+      }
+      for (const [slot, tid] of Object.entries(config.lockCells[ck] ?? {})) {
+        if (used.has(slot)) continue
+        const t = lockTypeMap[tid]
+        const subject = t ? (t.subject || t.label || '鎖課') : '鎖課'
+        let teacher = ''
+        if (hlocks.has(slot)) teacher = homeroom
+        else if (t?.isNative) {
+          // 本土語：只列原班（閩南語）的授課老師；其他語別的場次老師不列入
+          const nt = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
+          teacher = nt === HOMEROOM_SELF ? homeroom : nameOf(nt)
+        }
+        const [day, period] = slot.split('-').map(Number)
+        used.add(slot)
+        push(day, period, subject, teacher)
+      }
+      for (const [slot, subject] of Object.entries(hr)) {
+        if (used.has(slot)) continue
+        const [day, period] = slot.split('-').map(Number)
+        push(day, period, subject, homeroom)
+      }
+    }
+  }
+  out.sort((x, y) => x.g - y.g || x.i - y.i || x.day - y.day || x.period - y.period || x.subject.localeCompare(y.subject, 'zh-Hant'))
+  return [SCHOOL_CSV_HEADER, ...out.map(r => {
+    const no = String(r.g * 100 + r.i + 1)
+    return [no, no, '', r.subject, String(r.day), String(r.period), '', r.teacher, r.roomNo, r.roomName]
+  })]
+}
+
+/** 列陣列 → CSV（Excel 用 BOM）。 */
+export function rowsToCsv(rows: string[][]): string {
+  const esc = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  return '\ufeff' + rows.map(r => r.map(esc).join(',')).join('\r\n')
 }
 
 /** 列陣列 → .xlsx（SheetJS，按下時才載入）。 */
