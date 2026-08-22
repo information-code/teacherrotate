@@ -751,6 +751,26 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   if (agg.onOffConflict.length) preflight.push({ level: 'warn', text: `排課與不排課標記同格衝突（該格兩者皆忽略）：${joinCap(agg.onOffConflict)}`, tab: 'off' })
   if (agg.onNoLesson.length) preflight.push({ level: 'warn', text: `標了排課但無科任課、標記無作用：${joinCap(agg.onNoLesson)}`, tab: 'off' })
   if (agg.onBadSlot.length) preflight.push({ level: 'warn', text: `排課標記時段不可行（非其授課班可排格或與不排課衝突，已忽略）：${joinCap(agg.onBadSlot)}`, tab: 'off' })
+  // 結構極緊的班日：扣掉非導師鎖課（游泳、本土語）、導師不排課、年段共同不排課後，導師當天可用格只比「每日下限」多 ≤1 格——
+  // 這種班日只有一兩種排法（5年10班 週一：游泳 3-4＋五年級共同不排課 6-7，導師只剩 1、2、5 三格），
+  // 引擎很容易在這裡卡住；先點名，讓課務組決定是接受那天導師少一節，還是動游泳／共同不排課
+  {
+    const hm = config.weights.builtin.homeroomDailyMin
+    const tight: string[] = []
+    if (hm.level !== 'off') for (const c of classes) {
+      const slots = new Set(classSlots[c.classKey] ?? [])
+      const hrLocks = new Set(homeroomLocks[c.classKey] ?? [])
+      const mustFill = new Set(classMustFill[c.classKey] ?? [])
+      for (const d of SCHEDULE_DAYS) {
+        let possible = 0
+        for (let q = 1; q <= 7; q++) { const k = `${d}-${q}`; if ((slots.has(k) && !mustFill.has(k)) || hrLocks.has(k)) possible++ }
+        if (!possible) continue
+        const need = Math.min(classDayFull[c.classKey]?.[d] ? hm.full : hm.half, possible)
+        if (possible - need <= 1) tight.push(`${c.label} 週${DAY_ZH[d]}（導師可用 ${possible} 格、下限 ${need}）`)
+      }
+    }
+    if (tight.length) preflight.push({ level: 'warn', tab: 'lock', text: `結構極緊的班日（鎖課／不排課／共同不排課扣完後，導師當天可用格只比每日下限多 ≤1 格，引擎只有一兩種排法、最容易卡在這裡）：${joinCap(tight)}——若一再排不成，可考慮接受那天導師少一節（調低每日下限或取消必須級），或調整游泳／共同不排課時段。` })
+  }
 
   return {
     input: {
