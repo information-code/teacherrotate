@@ -1616,6 +1616,23 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           if (mm.must) acc(map, 'homeroomMorningMaxMust', `上午導師課上限 ${mm.n}（必須級）`, MUST * (am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節${lockAm > mm.n ? `（鎖課 ${lockAm}）` : ''}`)
           else acc(map, 'homeroomMorningMax', `上午導師課上限 ${mm.n}`, pen(mm.level) * sev(am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節`)
         }
+        // 半天日整天都是導師課（那天一堂科任都沒有、導師連上四節）＝必須級：
+        // 上面取科任週是為了不誤罰單雙週，但半天日的導師週會整個半天連上（405／406 週三、407 週五實測）——
+        // 人工課表四期 566 個半天日只有 1 個這樣。導師鎖課本來就排滿整個半天的不算（引擎動不了）
+        if (!input.classDayFull[c.classKey]?.[d] && mm.must) {
+          let worstAm = 0, teachable = 0, lockAll = true
+          for (const par of PARS) {
+            const m = hrMask(c.classKey, d, par)
+            const qs = [1, 2, 3, 4].filter(q => m.teachable[q])
+            teachable = qs.length
+            worstAm = Math.max(worstAm, qs.filter(q => m.hr[q]).length)
+            if (qs.some(q => m.blank[q])) lockAll = false
+          }
+          if (teachable >= 3 && worstAm === teachable && !lockAll) {
+            acc(map, 'homeroomHalfDayAll', '半天日整天都是導師課（必須級）', MUST,
+              `${c.label} 週${DAY_ZH[d]}（半天）導師連上 ${teachable} 節、一堂科任課都沒有`)
+          }
+        }
       }
     }
   }
