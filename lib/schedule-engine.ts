@@ -1274,6 +1274,8 @@ function pen(level: WeightLevel): number {
  *  舊算法是權重 × 嚴重程度，走動距離 9 的一筆「中」＝27 分、空堂 1 格的一筆「低」＝1 分，
  *  同樣叫「中」「低」卻差 27 倍，目標函數被走動成本吃掉一半——課務組在面板上調不到自己真正的偏好。 */
 export const SCORING_VERSION = 2
+/** 除錯用：第零步 A0（必排格整段回溯）的追蹤紀錄。沙盒把 on 打開才會寫，正式跑完全不動。 */
+export const A0_TRACE = { on: false, lines: [] as string[] }
 function sev(n: number): number { return 1 + 0.1 * (Math.max(1, n) - 1) }
 
 interface Acc { count: number; points: number; items: string[] }
@@ -2443,8 +2445,13 @@ export class EngineRun {
       }
     }
 
+    // 第零步 A0：必排格「整段」回溯（見 solveMustRuns）。
+    // 試過把這一步提前到專科教室階段之前（全部提前、只提前最搶手的組都試過）：
+    // 必須級確實降下來，但教室的位子被吃掉，未排反而升到 1～4、一顆都沒成功——所以維持在教室階段之後。
+    this.solveMustRuns(1)
+
     // 第零步 A：必排格覆蓋——同一時段多班互搶老師是配對問題，
-    // 用二部圖最大匹配（Kuhn 增廣路徑）保證可配就配到
+    // 用二部圖最大匹配（Kuhn 增廣路徑）保證可配就配到（A0 解不掉的殘局才輪到這裡）
     const bySlot = new Map<string, string[]>()
     for (const t of this.mustTargets) bySlot.set(t.slot, [...(bySlot.get(t.slot) ?? []), t.classKey])
     bySlot.forEach((classKeys, slot) => {
@@ -2745,6 +2752,100 @@ export class EngineRun {
       }
       return same > 0
     })
+  }
+
+  /** 必排格「整段」回溯：把每班的必排格切成連續段，同一天節次重疊的段（＝搶同一批老師與專科教室）一起解。
+   *  @param minClasses 只處理班數 ≥ 這個數的組——最搶手的組要在專科教室階段之前先配掉，其餘留到之後。 */
+  private solveMustRuns(minClasses: number) {
+      // 每組各自的預算（一組難解不能把別組餓死——種子 42 就是週一 6-7 那組吃光全域預算，六年級那組根本沒輪到）
+      const G_NODES = 60_000, G_MS = 600, A_MS = 6000
+      const aT0 = Date.now()
+      type MustRun = { classKey: string; day: number; periods: number[] }
+      const runs: MustRun[] = []
+      this.mustSetByClass.forEach((set, ck) => {
+        const occ0 = this.st.classOcc.get(ck)
+        const list = Array.from(set).map(parseSlotKey).sort((a, b) => a.day - b.day || a.period - b.period)
+        let cur: MustRun | null = null
+        for (const q of list) {
+          if (occ0?.has(`${q.day}-${q.period}`)) { cur = null; continue }   // 已被鎖課／熱啟動蓋掉
+          if (cur && cur.day === q.day && q.period === cur.periods[cur.periods.length - 1] + 1) cur.periods.push(q.period)
+          else { cur = { classKey: ck, day: q.day, periods: [q.period] }; runs.push(cur) }
+        }
+      })
+      // 分組：同一天、節次有重疊的段併成一組——它們在搶同一批老師與專科教室，分開解等於各自為政
+      // （六年級有的班是 週四 6-7、有的只剩 週四 7，照段型分會拆成兩組，那正是排不出來的原因）
+      const groups: MustRun[][] = []
+      const byDay = new Map<number, MustRun[]>()
+      for (const r of runs) byDay.set(r.day, [...(byDay.get(r.day) ?? []), r])
+      byDay.forEach(list => {
+        const comp: MustRun[][] = []
+        for (const r of list) {
+          const hit = comp.filter(c => c.some(x => x.periods.some(q => r.periods.includes(q))))
+          for (const h of hit) comp.splice(comp.indexOf(h), 1)
+          comp.push([r, ...hit.flat()])
+        }
+        for (const c of comp) groups.push(c)
+      })
+      groups.sort((a, b) => b.length - a.length)
+      if (A0_TRACE.on) A0_TRACE.lines.push(`A0 ${groups.length} 組：` + groups.slice(0, 6).map(g => `${g[0].day}/${Array.from(new Set(g.flatMap(r => r.periods))).sort().join('-')}×${g.length}班`).join('、'))
+      for (const g of groups) {
+        if (g.length < minClasses) continue
+        if (Date.now() - aT0 > A_MS) { if (A0_TRACE.on) A0_TRACE.lines.push('A0 總時間用完，剩餘組未處理'); break }
+        const before = new Set(this.st.pos.keys())
+        const gT0 = Date.now()
+        let nodes = 0
+        const over = () => nodes > G_NODES || Date.now() - gT0 > G_MS
+        const poolOf = (ck: string) => (this.lessonsByClass.get(ck) ?? []).filter(l => !this.st.pos.has(l.id) && !this.frozen.has(l.id))
+        /** 這一段目前第一個還沒蓋到的節次；全蓋到回 null */
+        const nextGap = (r: MustRun) => r.periods.find(q => !this.st.classOcc.get(r.classKey)?.has(`${r.day}-${q}`)) ?? null
+        /** 這一段眼前有幾種放法（給「選擇最少的先決定」用） */
+        const optionCount = (r: MustRun) => {
+          const per = nextGap(r)
+          if (per === null) return Infinity   // 已解決，排到最後
+          let n = 0
+          for (const l of poolOf(r.classKey)) {
+            const tries: Placement[] = l.size === 2 ? [{ day: r.day, period: per }, { day: r.day, period: per - 1 }] : [{ day: r.day, period: per }]
+            for (const q of tries) if (q.period >= 1 && this.st.canPlace(l, q)) n++
+          }
+          return n
+        }
+        const cover = (r: MustRun, then: () => boolean): boolean => {
+          if (over()) return false
+          const per = nextGap(r)
+          if (per === null) return then()
+          nodes++
+          const nextAlso = r.periods.includes(per + 1)
+          // 下一節也在同段 → 連堂先試（一次蓋兩格）；否則單節先試，把連堂的彈性留給別班
+          const pool = poolOf(r.classKey).sort((a, b) => (nextAlso ? b.size - a.size : a.size - b.size) || (this.rnd() - 0.5))
+          for (const l of pool) {
+            const tries: Placement[] = l.size === 2 ? [{ day: r.day, period: per }, { day: r.day, period: per - 1 }] : [{ day: r.day, period: per }]
+            for (const q of tries) {
+              if (q.period < 1 || !this.st.canPlace(l, q)) continue
+              this.st.place(l, q)
+              if (cover(r, then)) return true
+              this.st.remove(l)
+              if (over()) return false
+            }
+          }
+          return false
+        }
+        // 最受限的段先決定（每一層重算）：選擇少的先做，死路才會早點被發現，不會像原本那樣一路試到預算燒光
+        const solve = (rest: MustRun[]): boolean => {
+          if (!rest.length) return true
+          if (over()) return false
+          let bi = -1, bn = Infinity
+          for (let i = 0; i < rest.length; i++) {
+            const c = optionCount(rest[i])
+            if (c === 0) return false            // 有段已經沒得放 → 立刻回溯
+            if (c !== Infinity && c < bn) { bn = c; bi = i }
+          }
+          if (bi < 0) return true                // 全部都已被蓋掉
+          return cover(rest[bi], () => solve(rest.filter((_, i) => i !== bi)))
+        }
+        const okA0 = solve(g)
+        if (A0_TRACE.on && g.length > 1) A0_TRACE.lines.push(`  ${g[0].day}/${Array.from(new Set(g.flatMap(r => r.periods))).sort().join('-')} ×${g.length}班 → ${okA0 ? '解出' : '失敗'}（節點 ${nodes}、${Date.now() - gT0}ms）`)
+        if (!okA0) for (const id of Array.from(this.st.pos.keys())) if (!before.has(id)) this.st.remove(this.st.lessonById.get(id)!)
+      }
   }
 
   /** 自然／科技教室優先求解（見建構子註解）。每間教室：老師順序的排列 × 每位老師年級順序的排列 → 依序列
@@ -3375,6 +3476,7 @@ export class EngineRun {
   /** 逐出式補洞：本班課 l 想進必排格但老師在該時段有別班的課 → 先把那堂課搬到別處。 */
   private tryEjectAndCover(classKey2: string, day: number, period: number, mustSet: Set<string>, lessons: EngineLesson[], off: number, depth = this.ejectDepth()): boolean {
     const avail = this.input.classSlots[classKey2] ?? []
+    let rescoreBudget = 40   // 這一輪最多重新計分幾次（挑逐出者的新位子用）
     for (let j = 0; j < lessons.length; j++) {
       const l = lessons[(off + j) % lessons.length]
       if (this.frozen.has(l.id)) continue
@@ -3427,7 +3529,21 @@ export class EngineRun {
             return !ss.some(s => slots.includes(s))
           })
           if (!cands.length) { fail = true; break }
-          this.st.place(bl, cands[Math.floor(this.rnd() * cands.length)])
+          // 挑最不傷分的落點，不要只賭一個隨機格：這一步賭輸整條鏈就白做了。
+          // 重新計分很貴（整份重算），所以只試少數幾格、而且整輪有次數上限
+          let bp = cands[Math.floor(this.rnd() * cands.length)]
+          if (rescoreBudget > 0 && cands.length > 1) {
+            let bs = Infinity
+            const off2 = Math.floor(this.rnd() * cands.length)
+            for (let z = 0; z < Math.min(cands.length, 4) && rescoreBudget > 0; z++, rescoreBudget--) {
+              const pp = cands[(off2 + z) % cands.length]
+              this.st.place(bl, pp)
+              const sc2 = scoreState(this.st).total
+              this.st.remove(bl)
+              if (sc2 < bs) { bs = sc2; bp = pp }
+            }
+          }
+          this.st.place(bl, bp)
         }
         if (!fail && this.st.canPlace(l, p)) {
           this.st.place(l, p)
