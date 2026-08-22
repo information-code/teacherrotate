@@ -5,6 +5,7 @@ import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, OFF_CATEGORY_LABEL, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
+import ChainAdjustModal, { type ChainSeed } from './ChainAdjustModal'
 
 export interface HomeroomRow { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }
 /** 不進引擎的固定課（本土語原班／語別場次）：教師／教室檢視要一併顯示，唯讀 */
@@ -96,6 +97,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [freeTouched, setFreeTouched] = useState(false)
   // 待排區（自由編輯用）：從課表拿下來、還沒放回去的課。點課＝拿下來，點空格＝放回去。
   const [tray, setTray] = useState<TrayItem[]>([])
+  const [chainSeed, setChainSeed] = useState<ChainSeed | null>(null)    // 連鎖調課 modal 的起始課表
   const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
   const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
@@ -1041,6 +1043,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         <div className="card p-3 max-w-md flex-1 space-y-1">
           <div className="text-sm font-semibold text-zinc-700">
             {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
+            {mode === 'teacher' && (
+              <button onClick={() => setChainSeed({ kind: 'teacher', teacherId: focusId })}
+                className="text-[11px] text-zinc-400 hover:text-rose-600 ml-2 font-normal"
+                title="連鎖調課：從這張課表開始，一步一步把課搬到你要的位置">⇄</button>
+            )}
             <span className="text-xs font-normal text-zinc-400 ml-2">{freeMode
               ? '自由編輯中：點課＝拿到待排區、點空格＝放回（不檢查任何規則）'
               : mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
@@ -1145,6 +1152,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 {!embedded && hrRow?.confirmed_at && (
                   <button onClick={() => unconfirmClass(ck)} className="text-[10px] text-zinc-400 hover:text-red-600 ml-auto">退回確認</button>
                 )}
+                <button onClick={() => setChainSeed({ kind: 'class', classKey: ck })}
+                  className={`text-[11px] text-zinc-400 hover:text-rose-600 ${!embedded && hrRow?.confirmed_at ? '' : 'ml-auto'}`}
+                  title="連鎖調課：從這張課表開始，一步一步把課搬到你要的位置">⇄</button>
               </div>
               <table className="w-full table-fixed border-collapse text-[10px]">
                 <thead>
@@ -1265,6 +1275,22 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           </ul>
         </details>
       )}
-    </div>
+    
+      {/* 連鎖調課：課務組的人工作法——不妥位置 → 妥適位置，被擠掉的繼續找位置，最後一次套用 */}
+      <ChainAdjustModal
+        open={Boolean(chainSeed)} seed={chainSeed}
+        placed={placed} hr={hr} config={config} classCounts={classCounts}
+        teacherNames={teacherNames} engineInput={engineInput} fillOpen={fillOpen}
+        onClose={() => setChainSeed(null)}
+        onApply={next => {
+          const rooms2 = roomsFromConfig(config)
+          const re = reassignRooms(next.placed, rooms2, config.weights)
+          const desc = next.moves.map(m => `${classLabelOf(m.classKey)} ${m.what} ${slotZh(m.from)}→${slotZh(m.to)}`).join('；')
+          applyAdjust(re, next.hr, `連鎖調課 ${next.moves.length} 步：${desc}`,
+            Array.from(new Set(next.moves.map(m => m.classKey))))
+          setChainSeed(null)
+        }}
+      />
+</div>
   )
 }
