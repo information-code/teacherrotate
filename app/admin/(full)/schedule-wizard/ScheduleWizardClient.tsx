@@ -1045,9 +1045,6 @@ ${head}確定撤回？`)) return
                 </select>
               )}
             </div>
-            <p className="text-[11px] text-zinc-400">
-              藍格＝科任課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節；區塊的另一格由導師填課、同科兩節）、深灰格＝鎖課、虛線格＝導師自排留白、紅虛線＝導師不排課但未排入科任課、<b>格子左緣紅條＝導師該節不排課</b>（滑過看原因）；教師課表的<b>淡紅虛線格＝該位老師不排課</b>。
-            </p>
 
             {planStatus !== 'published' && planStatus !== 'final' && draftPlanObj && (
               <OverviewAdjust

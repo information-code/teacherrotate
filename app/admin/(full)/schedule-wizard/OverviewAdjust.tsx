@@ -854,9 +854,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">{adjustMode
-          ? <>點一堂課就能調（會上色）；改動先<b>暫存在畫面上</b>，按「💾 儲存微調」才寫入課表。沒儲存就離開＝全部捨棄（會先問你），課表維持原樣</>
-          : <>這裡是<b>預覽</b>，課表不會被點到。要調整請按課表標題列的 <b>⇄</b> 開啟「連鎖調課」——套用後會自動存成一份版本</>}</span> : '年級總覽與調整'}
+        <div className="text-sm font-semibold text-zinc-700">{embedded ? (adjustMode ? <span className="text-xs font-normal text-zinc-500">點一堂課就能調（會上色）；改動先<b>暫存在畫面上</b>，按「💾 儲存微調」才寫入課表。沒儲存就離開＝全部捨棄（會先問你），課表維持原樣</span> : null) : '年級總覽與調整'}
           {!embedded && (planStatus === 'draft'
             ? <span className="text-xs font-normal text-amber-600 ml-2">草稿（尚未發布）</span>
             : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>)}
@@ -946,7 +944,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
               : adjustMode
                 ? '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'
-                : '預覽模式：課表唯讀。要調整請按各班標題列的 ⇄ 開啟「連鎖調課」。'}
+                : ''}
           </span>
           {sel && detailOpt && (
             <span className="basis-full text-zinc-600 flex items-start gap-2">
@@ -1052,12 +1050,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
             {mode === 'teacher' && (
               <button onClick={() => setChainSeed({ kind: 'teacher', teacherId: focusId })}
-                className="text-[11px] text-zinc-400 hover:text-rose-600 ml-2 font-normal"
-                title="連鎖調課：從這張課表開始，一步一步把課搬到你要的位置">⇄</button>
+                className="text-[10px] px-1.5 py-0.5 rounded-sm border border-zinc-200 text-zinc-500 hover:border-rose-300 hover:text-rose-600 ml-2 font-normal align-middle"
+                title="從這張課表開始，一步一步把課搬到你要的位置；套用後會自動存成一份版本">⇄ 調課</button>
             )}
             <span className="text-xs font-normal text-zinc-400 ml-2">{freeMode
               ? '自由編輯中：點課＝拿到待排區、點空格＝放回（不檢查任何規則）'
-              : !adjustMode ? '預覽模式：課表唯讀。要調整請按上方的 ⇄ 開啟「連鎖調課」。'
+              : !adjustMode ? ''
               : mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
           </div>
           <table className="w-full table-fixed border-collapse text-[10px]">
@@ -1162,8 +1160,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                   <button onClick={() => unconfirmClass(ck)} className="text-[10px] text-zinc-400 hover:text-red-600 ml-auto">退回確認</button>
                 )}
                 <button onClick={() => setChainSeed({ kind: 'class', classKey: ck })}
-                  className={`text-[11px] text-zinc-400 hover:text-rose-600 ${!embedded && hrRow?.confirmed_at ? '' : 'ml-auto'}`}
-                  title="連鎖調課：從這張課表開始，一步一步把課搬到你要的位置">⇄</button>
+                  className={`text-[10px] px-1.5 py-0.5 rounded-sm border border-zinc-200 text-zinc-500 hover:border-rose-300 hover:text-rose-600 ${!embedded && hrRow?.confirmed_at ? '' : 'ml-auto'}`}
+                  title="從這張課表開始，一步一步把課搬到你要的位置；套用後會自動存成一份版本">⇄ 調課</button>
               </div>
               <table className="w-full table-fixed border-collapse text-[10px]">
                 <thead>
