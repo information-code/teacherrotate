@@ -3034,7 +3034,8 @@ export class EngineRun {
   private tryFixHalfDayAllHomeroom() {
     const mm = this.input.weights.builtin.homeroomMorningMax
     if (mm.level === 'off' || !mm.must) return
-    const targets: EngineLesson[] = []
+    const moveTargets: EngineLesson[] = []                                   // 半天裡的單雙週區塊：搬去整天日
+    const coverTargets: { classKey: string; day: number; period: number }[] = []   // 半天裡有真空格：塞一堂科任課進去
     for (const c of this.input.classes) {
       for (const d of SCHEDULE_DAYS) {
         if (this.input.classDayFull[c.classKey]?.[d]) continue
@@ -3042,35 +3043,42 @@ export class EngineRun {
         const avail = new Set(this.input.classSlots[c.classKey] ?? [])
         const locks = this.input.lockedCells[c.classKey] ?? {}
         const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
+        const mustLeave = this.input.classMustLeave?.[c.classKey] ?? []
         const qs = [1, 2, 3, 4].filter(q => avail.has(`${d}-${q}`) || (`${d}-${q}` in locks))
         if (qs.length < 3) continue
-        let allHr = false; let anyBlank = false
+        let allHr = false
+        const blanks: number[] = []
         for (const par of ['o', 'e'] as const) {
           let n = 0
           for (const q of qs) {
             const k = `${d}-${q}`
             if (k in locks) { if (hrLock.has(k)) n++; continue }
             const id = occ.get(k)
-            if (!id) { n++; anyBlank = true; continue }
+            if (!id) { n++; if (par === 'o' && !mustLeave.includes(k)) blanks.push(q); continue }
             const p = this.st.lessonById.get(id)?.parity ?? 'weekly'
             if (p !== 'weekly' && p[0] !== par) n++
           }
           if (n === qs.length) allHr = true
         }
-        if (!allHr || anyBlank) continue
-        // 這個半天裡的單雙週區塊＝元凶，搬去整天日
+        if (!allHr) continue
+        let bi: EngineLesson | null = null
         for (const q of qs) {
           const id = occ.get(`${d}-${q}`); if (!id) continue
           const l = this.st.lessonById.get(id)
-          if (l && l.parity !== 'weekly' && !this.frozen.has(l.id)) { targets.push(l); break }
+          if (l && l.parity !== 'weekly' && !this.frozen.has(l.id)) { bi = l; break }
         }
+        if (bi) moveTargets.push(bi)
+        else if (blanks.length) coverTargets.push({ classKey: c.classKey, day: d, period: blanks[Math.floor(this.rnd() * blanks.length)] })
       }
     }
-    if (!targets.length) return
-    const l = targets[Math.floor(this.rnd() * targets.length)]
-    const wantFull = (p: Placement) => Boolean(this.input.classDayFull[l.classKey]?.[p.day])
-    if (this.directedMove(l, wantFull)) return
-    this.relocateWithEject(l, wantFull)
+    if (moveTargets.length && (!coverTargets.length || this.rnd() < 0.6)) {
+      const l = moveTargets[Math.floor(this.rnd() * moveTargets.length)]
+      const wantFull = (p: Placement) => Boolean(this.input.classDayFull[l.classKey]?.[p.day])
+      if (this.directedMove(l, wantFull)) return
+      this.relocateWithEject(l, wantFull)
+      return
+    }
+    if (coverTargets.length) this.coverTarget(coverTargets[Math.floor(this.rnd() * coverTargets.length)])
   }
 
   /** 把 t 班的某一堂科任課放進 (t.day, t.period)：先直接搬，搬不動再逐出式。導師連上／上午上限的修補共用。 */
