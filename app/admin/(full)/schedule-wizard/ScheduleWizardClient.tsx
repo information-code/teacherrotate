@@ -31,6 +31,8 @@ interface Props {
 }
 
 type Progress = { iter: number; best: number; softBest: number; elapsed: number; placed: number; unplaced: number; sinceImproveMs: number; label?: string }
+/** 一顆種子跑完的結果。跑起來要二十分鐘，人不一定在畫面前，所以每顆都記下來並存進瀏覽器。 */
+type SeedRow = { no: number; seed: number; ok: boolean; unplaced: number; musts: number; soft: number; ms: number; at: number; stopped?: boolean }
 type ViewKey = 'class' | 'teacher' | 'room'
 
 // ── 版本紀錄 ──
@@ -76,6 +78,8 @@ export default function ScheduleWizardClient(props: Props) {
   const { year, scheduleConfig, classCounts, gradeSubjects, gradeHomeroomBase, teacherNames, hourlyTeacherIds, substituteTeacherIds, homeroomHours, extraCourses, hoursByTeacher, supplyByTeacher } = props
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<Progress | null>(null)
+  const [seedLog, setSeedLog] = useState<SeedRow[]>([])
+  const [seedLogOpen, setSeedLogOpen] = useState(false)
   // 草稿階段沒有「正式課表」這回事：畫面上顯示的一律是某一個版本快照。
   // 初始為空，版本清單載入後自動帶入最新的那一份（見下方 autoPreview）。
   const [result, setResult] = useState<EngineResult | null>(null)
@@ -238,15 +242,33 @@ export default function ScheduleWizardClient(props: Props) {
     } catch { setNativeSaving('error') }
   }
 
+  // 種子紀錄存在瀏覽器：關掉分頁、重新整理都還在，回來才看得到剛才試了幾顆
+  const seedLogKey = `trotate:seedlog:${year}`
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(seedLogKey)
+      if (raw) setSeedLog(JSON.parse(raw))
+    } catch { /* 無痕視窗或封鎖儲存：沒有紀錄就算了 */ }
+  }, [seedLogKey])
+  function pushSeed(row: SeedRow) {
+    setSeedLog(prev => {
+      const next = [...prev, row].slice(-60)
+      try { localStorage.setItem(seedLogKey, JSON.stringify(next)) } catch { /* 同上 */ }
+      return next
+    })
+  }
+
   function run() {
     if (!confirmDropAdjust('重新排課')) return
     workerRef.current?.terminate()
     setAdjustUnsaved(0)
+    setSeedLog([]); try { localStorage.removeItem(seedLogKey) } catch { /* 同上 */ }
     setResult(null); setProgress(null); setRunning(true); setRunFailed(false); setHints([]); setProbePerfect(null); setPreviewVersionId(null); setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)
     const w = new Worker(new URL('./schedule.worker.ts', import.meta.url))
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'progress') setProgress(e.data as Progress)
+      else if (e.data.type === 'seed') { pushSeed(e.data as SeedRow); setSeedLogOpen(true) }
       else if (e.data.type === 'done') {
         const done = e.data.result as EngineResult
         setResult(done)
@@ -775,6 +797,62 @@ ${head}確定撤回？`)) return
           </span>
         )}
       </div>
+
+      {/* 種子紀錄：跑一輪要十幾二十分鐘，人不一定在畫面前，回來要能一眼看出試了幾顆、每顆差在哪 */}
+      {seedLog.length > 0 && (
+        <div className="mt-2 text-xs">
+          <button onClick={() => setSeedLogOpen(o => !o)}
+            className="flex items-center gap-2 text-zinc-500 hover:text-zinc-700">
+            <span className="text-[10px]">{seedLogOpen ? '▼' : '▶'}</span>
+            <span>種子紀錄</span>
+            <span className="text-zinc-400">
+              已試 {seedLog.length} 顆・成功 {seedLog.filter(r => r.ok).length} 顆
+              {seedLog.some(r => r.ok) ? '' : `・目前最好：未排 ${Math.min(...seedLog.map(r => r.unplaced))}、必須級 ${Math.min(...seedLog.map(r => r.musts))}`}
+            </span>
+          </button>
+          {seedLogOpen && (
+            <div className="mt-1.5 border border-zinc-200 rounded-sm overflow-x-auto">
+              <table className="w-full text-[11px] tabular-nums">
+                <thead>
+                  <tr className="bg-zinc-50 text-zinc-500">
+                    <th className="text-left font-medium px-2 py-1">第幾顆</th>
+                    <th className="text-left font-medium px-2 py-1">結果</th>
+                    <th className="text-right font-medium px-2 py-1">未排</th>
+                    <th className="text-right font-medium px-2 py-1">必須級</th>
+                    <th className="text-right font-medium px-2 py-1">軟規則罰分</th>
+                    <th className="text-right font-medium px-2 py-1">耗時</th>
+                    <th className="text-right font-medium px-2 py-1">結束於</th>
+                    <th className="text-right font-medium px-2 py-1 text-zinc-400">種子</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...seedLog].reverse().map(r => (
+                    <tr key={r.no} className="border-t border-zinc-100">
+                      <td className="px-2 py-1">第 {r.no} 顆</td>
+                      <td className="px-2 py-1">
+                        {r.ok
+                          ? <span className="text-green-700 font-medium">✓ 成功</span>
+                          : <span className="text-zinc-500">✕ 沒排成</span>}
+                      </td>
+                      <td className={`px-2 py-1 text-right ${r.unplaced ? 'text-red-600' : 'text-zinc-400'}`}>{r.unplaced}</td>
+                      <td className={`px-2 py-1 text-right ${r.musts ? 'text-red-600 font-medium' : 'text-zinc-400'}`}>{r.musts}</td>
+                      <td className="px-2 py-1 text-right text-zinc-600">{r.soft.toLocaleString()}</td>
+                      <td className="px-2 py-1 text-right text-zinc-500">{Math.round(r.ms / 1000)} 秒</td>
+                      <td className="px-2 py-1 text-right text-zinc-500">
+                        {new Date(r.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-2 py-1 text-right text-zinc-300">{r.seed}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-zinc-400">
+            「未排」和「必須級」都要是 0 才算成功。紀錄留在這台電腦的瀏覽器裡，重新整理或關掉分頁都還在，按「開始排課」才會清空。
+          </p>
+        </div>
+      )}
 
       {/* 發布後：年級總覽與調整模式。正在預覽舊版本時先讓位——同一畫面只出現一份課表，免得看錯 */}
       {(planStatus === 'published' || planStatus === 'final') && !previewVersionId && props.savedPlan && Array.isArray(props.savedPlan.placed) ? (

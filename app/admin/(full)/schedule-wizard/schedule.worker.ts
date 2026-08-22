@@ -123,7 +123,14 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
   for (let i = 0; i < MAX_SEEDS && !stopRequested; i++) {
     if (i > 0 && Date.now() - t0 > MAX_MS) break
     const seed = i < SEEDS.length ? SEEDS[i] : (SEEDS[0] + (i + 1) * 7919 + Math.floor(Math.random() * 5000)) % 1_000_003
+    const sT0 = Date.now()
     const r = await runOne({ ...input, seed }, { label: `第 ${i + 1} 個種子`, budget: BUDGET })
+    // 每顆種子的結果都回報一筆：跑二十分鐘沒人看著，回來要能一眼看出試了幾顆、差在哪
+    self.postMessage({
+      type: 'seed', no: i + 1, seed, ok: isPerfect(r),
+      unplaced: r.unplaced.length, musts: mustCountOf(r), soft: Math.round(r.softPenalty),
+      ms: Date.now() - sT0, at: Date.now(), stopped: stopRequested,
+    })
     if (!best || betterThan(r, best)) { best = r; bestSeed = seed }
     if (isPerfect(r)) break
   }
