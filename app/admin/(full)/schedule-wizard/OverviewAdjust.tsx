@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef } from 'react'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, OFF_CATEGORY_LABEL, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
 
@@ -280,6 +280,16 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     return m
   }, [config])
   // 科任個人不排課（mode='on' 是排課標記，不算封鎖）
+  // 不排課備註：教師 → slot → 「類別・說明」，滑過格子時看得到為什麼（輔導團／進修／處理行政…）
+  const offNote = useMemo(() => {
+    const m: Record<string, Record<string, string>> = {}
+    for (const p of config.personalOff) {
+      if (!p.teacherId || p.mode === 'on') continue
+      const txt = [OFF_CATEGORY_LABEL[p.category] ?? '', p.note?.trim()].filter(Boolean).join('・')
+      for (const s2 of p.slots) (m[p.teacherId] ??= {})[s2] = txt
+    }
+    return m
+  }, [config])
   const teacherBlocked = useMemo(() => {
     const m: Record<string, Set<string>> = {}
     for (const p of config.personalOff) {
@@ -1058,7 +1068,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     const ring = isSelSrc ? 'ring-2 ring-zinc-700' : isPartner ? 'ring-2 ring-amber-500 ring-offset-1' : ringKind
                     const dim = sel && !isSelSrc && !isPartner && !opt ? 'opacity-40' : ''
                     const hoverProps = opt ? { onMouseEnter: () => setHoverOpt(opt), onMouseLeave: () => setHoverOpt(null) } : {}
-                    const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${bdZh(opt) ? `（${bdZh(opt)}）` : ''}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? '不排課時段' : '教室不開放') : undefined)
+                    const offTxt = mode === 'teacher' && focusId ? offNote[focusId]?.[k] : ''
+                    const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${bdZh(opt) ? `（${bdZh(opt)}）` : ''}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? `不排課時段${offTxt ? `（${offTxt}）` : ''}` : '教室不開放') : undefined)
                     const onClick = () => {
                       if (freeMode) {
                         // 自由編輯：點有課的格＝拿到待排區；點空格＝放入選中的待排課（班級由那堂課自己帶）
@@ -1081,7 +1092,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             freeMode && slotPick?.classKey === ANY_CLASS && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700'
                             : ls.length ? (ls[0].parity !== 'weekly' ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900')
                             : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700'
-                            : off ? 'bg-zinc-100 border-zinc-200 text-zinc-300'
+                            : off ? 'bg-rose-50/70 border-rose-200 border-dashed text-rose-300'
                             : freeMode && trayPick ? 'border-dashed border-amber-400 text-amber-500'   // ex（鎖課）已於上一條擋掉，不會亮成可放
                             : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${ls.length || opt || freeMode ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
@@ -1157,6 +1168,17 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         }
                         const occ = cm?.get(k)
                         const hrSubj = hrRow?.cells?.[k]
+                        // 導師不排課（學年共同 or 個人申報）：不論這格排了什麼都標出來，讓導師一眼看到自己那幾節不在
+                        const hrId = config.classTeacher[ck] ?? ''
+                        const offSelf = Boolean(hrId && teacherBlocked[hrId]?.has(k))
+                        const offCommon = (config.gradeCommonOff[String(Number(ck.split('-')[0]))] ?? []).includes(k)
+                        const offHere = offSelf || offCommon
+                        const offWhy = offHere
+                          ? `${nameOf(hrId) || '導師'}不排課${offSelf && offNote[hrId]?.[k] ? `（${offNote[hrId][k]}）` : offCommon && !offSelf ? '（學年共同）' : ''}：這一節必須是科任課`
+                          : undefined
+                        const offMark = offHere
+                          ? <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 rounded-l-sm pointer-events-none" />
+                          : null
                         const isSelSrc = (sel?.type === 'lesson' && occ?.id === sel.id) || (sel?.type === 'hr' && sel.classKey === ck && sel.slot === k)
                         const st = adjustMode && sel && !isSelSrc ? targetState(ck, k) : null
                         const opt = sel?.type === 'lesson' && selLesson?.classKey === ck ? optByCell.get(k) : undefined
@@ -1185,8 +1207,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                           }
                           return (
                             <td key={d} className="p-0.5">
-                              <button onClick={() => clickCell(ck, k)} title={title} {...hoverProps}
+                              <button onClick={() => clickCell(ck, k)} title={[title, offWhy].filter(Boolean).join('｜') || undefined} {...hoverProps}
                                 className={`relative w-full h-9 rounded-sm border px-0.5 leading-tight overflow-hidden flex flex-col items-center justify-center ${bi ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-sky-50 border-sky-200 text-sky-900'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                                {offMark}
                                 {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                                 <span className="truncate w-full font-medium">{occ.subject}{occ.coTeacherId && <span className="text-rose-700">★</span>}</span>
                                 <span className="truncate w-full text-[8px] opacity-70">{occ.teacherName}{occ.coTeacherId && `＋${occ.coTeacherName ?? '外師'}`}</span>
@@ -1198,9 +1221,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         if (hrSubj) {
                           return (
                             <td key={d} className="p-0.5">
-                              <button onClick={() => clickCell(ck, k)} title={title}
-                                className={`w-full h-9 rounded-sm border bg-emerald-50 border-emerald-200 text-emerald-800 px-0.5 truncate ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
-                                {hrSubj}
+                              <button onClick={() => clickCell(ck, k)} title={[title, offWhy].filter(Boolean).join('｜') || undefined}
+                                className={`relative w-full h-9 rounded-sm border bg-emerald-50 border-emerald-200 text-emerald-800 px-0.5 truncate ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                                {offMark}{hrSubj}
                               </button>
                             </td>
                           )
@@ -1208,7 +1231,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                         const must = mustFillOf[ck]?.has(k)
                         return (
                           <td key={d} className="p-0.5">
-                            <button onClick={() => clickCell(ck, k)} title={freeMode && trayPick ? '放進這一格' : title ?? (must ? '導師不排課時段（僅科任課可入）' : undefined)} {...hoverProps}
+                            <button onClick={() => clickCell(ck, k)} title={freeMode && trayPick ? '放進這一格' : title ?? offWhy} {...hoverProps}
                               className={`relative w-full h-9 rounded-sm border border-dashed ${slotPick?.classKey === ck && slotPick?.slot === k ? 'border-amber-500 bg-amber-50 text-amber-700' : freeMode && trayPick ? 'border-amber-400 text-amber-500' : must ? 'border-red-300 text-red-300' : 'border-zinc-200 text-zinc-300'} ${ring} ${dim} ${adjustMode ? 'cursor-pointer' : 'cursor-default'}`}>
                               {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                               {must ? '需科任' : ''}
