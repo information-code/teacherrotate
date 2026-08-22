@@ -854,7 +854,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">點一堂課就能調（會上色）；改動先<b>暫存在畫面上</b>，按「💾 儲存微調」才寫入課表。沒儲存就離開＝全部捨棄（會先問你），課表維持原樣</span> : '年級總覽與調整'}
+        <div className="text-sm font-semibold text-zinc-700">{embedded ? <span className="text-xs font-normal text-zinc-500">{adjustMode
+          ? <>點一堂課就能調（會上色）；改動先<b>暫存在畫面上</b>，按「💾 儲存微調」才寫入課表。沒儲存就離開＝全部捨棄（會先問你），課表維持原樣</>
+          : <>這裡是<b>預覽</b>，課表不會被點到。要調整請按課表標題列的 <b>⇄</b> 開啟「連鎖調課」——套用後會自動存成一份版本</>}</span> : '年級總覽與調整'}
           {!embedded && (planStatus === 'draft'
             ? <span className="text-xs font-normal text-amber-600 ml-2">草稿（尚未發布）</span>
             : <span className="text-xs font-normal text-zinc-400 ml-2">導師確認 {confirmedCount}/{allClassKeys.length} 班</span>)}
@@ -942,7 +944,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400 align-middle mx-0.5 ml-2" />與導師課互換
                     ；灰格滑過看原因；滑過彩格會標出牽動到的課（虛線框）。<b className="text-emerald-700">綠色「更好 −N」＝比現在更好，建議採用</b>；沒數字＝不影響分數（微調用）；會變差的預設隱藏{fillOpen && <b className="text-amber-700 ml-2">導師填課開放中：只能科任課之間互換</b>}</>
                 : <>已選：<b className="text-zinc-700">{classLabelOf(sel.classKey)} 導師課「{hr[sel.classKey]?.cells?.[sel.slot]}」</b></>
-              : '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'}
+              : adjustMode
+                ? '點一堂課（科任或導師課）開始：本班格子會上色——綠＝可直接搬、藍＝兩角互換、橘＝三角、紫＝與導師課互換、灰＝不行（滑過看原因）；再點彩格就完成。教室會自動重新分配。'
+                : '預覽模式：課表唯讀。要調整請按各班標題列的 ⇄ 開啟「連鎖調課」。'}
           </span>
           {sel && detailOpt && (
             <span className="basis-full text-zinc-600 flex items-start gap-2">
@@ -1053,6 +1057,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             )}
             <span className="text-xs font-normal text-zinc-400 ml-2">{freeMode
               ? '自由編輯中：點課＝拿到待排區、點空格＝放回（不檢查任何規則）'
+              : !adjustMode ? '預覽模式：課表唯讀。要調整請按上方的 ⇄ 開啟「連鎖調課」。'
               : mode === 'teacher' ? '點一堂課可調；彩格＝這堂課可以落到的時段；灰底＝本土語（鎖課時段，不可調）' : '點一堂課可調；彩格＝這堂課可以落到的時段（教室由系統重配，未必還在這間）；灰底＝本土語場次'}</span>
           </div>
           <table className="w-full table-fixed border-collapse text-[10px]">
@@ -1081,6 +1086,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                     const offTxt = mode === 'teacher' && focusId ? offNote[focusId]?.[k] : ''
                     const title = opt ? `${KIND_ZH[opt.kind]}・${deltaZh(opt.softDelta)}${bdZh(opt) ? `（${bdZh(opt)}）` : ''}${opt.kind !== 'move' ? '：' + opt.desc : ''}` : why ?? (off ? (mode === 'teacher' ? `不排課時段${offTxt ? `（${offTxt}）` : ''}` : '教室不開放') : undefined)
                     const onClick = () => {
+                      if (!adjustMode) return   // 預覽就是預覽：調整走「連鎖調課」modal
                       if (freeMode) {
                         // 自由編輯：點有課的格＝拿到待排區；點空格＝放入選中的待排課（班級由那堂課自己帶）
                         const mine = ls[0]
@@ -1104,7 +1110,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                             : ex.length ? 'bg-zinc-200 border-zinc-300 text-zinc-700'
                             : off ? 'bg-rose-50/70 border-rose-200 border-dashed text-rose-300'
                             : freeMode && trayPick ? 'border-dashed border-amber-400 text-amber-500'   // ex（鎖課）已於上一條擋掉，不會亮成可放
-                            : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${ls.length || opt || freeMode ? 'cursor-pointer' : 'cursor-default'}`}>
+                            : 'border-dashed border-zinc-200 text-zinc-300'} ${ring} ${freeMode ? '' : dim} ${adjustMode && (ls.length || opt || freeMode) ? 'cursor-pointer' : 'cursor-default'}`}>
                           {opt && opt.softDelta !== 0 && <span onClick={e => { e.stopPropagation(); setDetailOpt(opt) }} title="看是哪條規則變的" className={`absolute top-0 right-0 text-[8px] leading-none px-0.5 rounded-bl-sm text-white cursor-help ${opt.softDelta < 0 ? 'bg-emerald-600' : 'bg-red-400'}`}>{deltaBadge(opt.softDelta)} ⓘ</span>}
                           {ls.length === 0 && ex.length === 0 && off && <span className="text-[8px]">—</span>}
                           {ls.length === 0 && ex.slice(0, 2).map((e, i) => (
