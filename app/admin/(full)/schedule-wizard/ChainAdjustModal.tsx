@@ -178,6 +178,8 @@ export default function ChainAdjustModal({
 
   /** 把 item 搬到 (ck, toSlot)。回傳新的狀態；被擠掉的課會成為新的不妥位置。 */
   function move(item: Item, ck: string, toSlot: string) {
+    const at = item.kind === 'hr' ? item.slot : (() => { const q = lessonById.get(item.id); return q && q.day > 0 ? `${q.day}-${q.period}` : '' })()
+    if (at === toSlot) { setPick(null); return }   // 搬到原位＝沒事發生
     const before = snap()
     let nextPlaced = [...placed]
     let nextHr = { ...hr }
@@ -422,7 +424,9 @@ export default function ChainAdjustModal({
     let asTarget = false
     let targetWhy = ''
     if (pick && isClass && !frozen) {
-      const canMoveHere = pick.classKey === ck
+      const srcSlot = pick.item.kind === 'hr' ? pick.item.slot
+        : (() => { const q = lessonById.get(pick.item.id); return q && q.day > 0 ? `${q.day}-${q.period}` : '' })()
+      const canMoveHere = pick.classKey === ck && slot !== srcSlot
       if (canMoveHere) {
         asTarget = true
         if (l && itemKey({ kind: 'lesson', id: l.id }) !== itemKey(pick.item)) targetWhy = `會擠掉 ${l.subject}`
@@ -445,6 +449,8 @@ export default function ChainAdjustModal({
 
     function onClick() {
       if (!clickable) return
+      // 再點一次已選中的課＝取消選取。原本會被當成「搬到它現在的位置」，連點就一直記無效步驟
+      if (pick && item && itemKey(item) === itemKey(pick.item)) { setPick(null); return }
       if (pick && asTarget) { move(pick.item, ck, slot); return }
       if (item) {
         setPick({ item, classKey: cls })
@@ -489,7 +495,7 @@ export default function ChainAdjustModal({
         <div className="px-4 py-2 border-b border-zinc-200 bg-white flex items-center gap-3 flex-none">
           <span className="font-medium text-sm">連鎖調課</span>
           <span className="text-xs text-zinc-500">
-            點一格不妥的課 → 再點想搬去的位置。被擠掉的課會變成紅色，繼續幫它找位置，全部安置好才能套用。
+            點一格不妥的課 → 再點想搬去的位置（再點自己一次＝取消選取）。被擠掉的課列在右側，全部安置好才能套用。
           </span>
           <span className="ml-auto flex items-center gap-2">
             <button onClick={undo} disabled={!history.length}
