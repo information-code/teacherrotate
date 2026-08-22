@@ -179,8 +179,10 @@ export interface BuiltinRules {
   // 導師每日節數上限：每班每日留白 ≤ N（科任課至少補到 每日格數−N）。
   //   fullDayLowN＝低年段整天日（週二）的上限（低年級只有週二整天，每班科任 7～8 堂擺不滿，課務組接受 5）；
   //   offBonusFrom＝導師個人不排課／進修加總達此格數者上限 +1（可排格少、其餘日子必然多上）
-  //   hardN＝絕對上限（必須級）：人工課表四期整天導師 ≥6 節只有 3 班日 → 預設 5，不論例外都不得超過
-  homeroomDailyMax: { level: WeightLevel; n: number; fullDayLowN: number; offBonusFrom: number; hardN: number }
+  //   hardN＝絕對上限（必須級）：中高年級人工課表四期 0 筆 → 預設 5；
+  //   hardFullDayLowN＝低年段整天日（週二）的絕對上限：低年級只有週二是整天，一週 7～8 堂科任分五天、週二只分到 1～2 堂，
+  //     導師必然被推到 6 節（114-1／114-2 人工課表 2年9班 週二就是 6 節）→ 預設 6
+  homeroomDailyMax: { level: WeightLevel; n: number; fullDayLowN: number; offBonusFrom: number; hardN: number; hardFullDayLowN: number }
   // 上午導師課上限：每天上午（1-4 節）導師最多 n 節（預設 3）；導師自己的鎖課（種子班國數）若在上午就超過 n，以鎖課數為準（鎖課逼的可以）。
   //   must＝超過升必須級。課務組：沒有鎖課的老師上午最多 3 節，但可以連 3
   homeroomMorningMax: { level: WeightLevel; n: number; must: boolean }
@@ -314,8 +316,9 @@ export function defaultScheduleWeights(): ScheduleWeights {
       roomManagerFirst: 'high',   // 管理教師沒用到自己的教室／老師本週用了多間——中的話咬不住，引擎寧可讓人跑
       roomHalfDay: 'mid',
       homeroomMorning: { level: 'high', n: 2 },   // v19 上午 0 節導師課的班日 12→23，課務組定為高
-      homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7, hardN: 5 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5；絕不 6」
-      homeroomMorningMax: { level: 'high', n: 3, must: true },
+      homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7, hardN: 5, hardFullDayLowN: 6 },   // 「一天不超過 4；低年級週二 5；不排課≥7 格者 5」；絕對上限 5（低年級整天日 6）
+      // 上午導師課上限：人工課表四期每期有 6～15 個班日是「上午四節全導師」→ 不是鐵律，預設權重高、不勾必須級
+      homeroomMorningMax: { level: 'high', n: 3, must: false },
       specialDoublesHalf: 'high',
       biweeklyHalfDay: 'high',
       homeroomRun: 'high',
@@ -418,7 +421,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       homeroomDailyMax: (() => {
         const h = (b.homeroomDailyMax ?? {}) as Partial<BuiltinRules['homeroomDailyMax']>
         const num = (v: unknown, d: number, lo: number, hi: number) => { const x = Number(v); return Number.isInteger(x) && x >= lo && x <= hi ? x : d }
-        return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35), hardN: num(h.hardN, db.homeroomDailyMax.hardN, 1, 7) }
+        return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35), hardN: num(h.hardN, db.homeroomDailyMax.hardN, 1, 7), hardFullDayLowN: num(h.hardFullDayLowN, db.homeroomDailyMax.hardFullDayLowN, 1, 7) }
       })(),
       specialDoublesHalf: normLevel(b.specialDoublesHalf, db.specialDoublesHalf),
       biweeklyHalfDay: normLevel(b.biweeklyHalfDay, db.biweeklyHalfDay),

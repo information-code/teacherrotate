@@ -1616,10 +1616,10 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           if (mm.must) acc(map, 'homeroomMorningMaxMust', `上午導師課上限 ${mm.n}（必須級）`, MUST * (am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節${lockAm > mm.n ? `（鎖課 ${lockAm}）` : ''}`)
           else acc(map, 'homeroomMorningMax', `上午導師課上限 ${mm.n}`, pen(mm.level) * sev(am - allowed), `${c.label} 週${DAY_ZH[d]}上午導師 ${am} 節`)
         }
-        // 半天日整天都是導師課（那天一堂科任都沒有、導師連上四節）＝必須級：
-        // 上面取科任週是為了不誤罰單雙週，但半天日的導師週會整個半天連上（405／406 週三、407 週五實測）——
-        // 人工課表四期 566 個半天日只有 1 個這樣。導師鎖課本來就排滿整個半天的不算（引擎動不了）
-        if (!input.classDayFull[c.classKey]?.[d] && mm.must) {
+        // 半天日整天都是導師課（那天一堂科任都沒有、導師連上四節）＝必須級，與上面的「上午上限」各自獨立：
+        // 上午上限人工課表每期破 6～15 次（只給權重），但「半天全是導師課」四期 566 個半天日只有 1 個 → 維持必須級。
+        // 導師鎖課本來就排滿整個半天的不算（引擎動不了）
+        if (!input.classDayFull[c.classKey]?.[d]) {
           let worstAm = 0, teachable = 0, lockAll = true
           for (const par of PARS) {
             const m = hrMask(c.classKey, d, par)
@@ -1706,8 +1706,10 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
         if ((input.classMustFill[c.classKey]?.length ?? 0) >= hm.offBonusFrom) limit += 1
         const over = free - limit
         if (over > 0) acc(map, 'homeroomDailyMax', `導師每日上限 ${hm.n}`, pen(hm.level) * sev(over), `${c.label} 週${DAY_ZH[d]}留白 ${free} 格，導師恐上超過 ${limit} 節`)
-        // 絕對上限（必須級）：不論低年級整天日、不排課例外，導師一天都不得超過 hardN（課務組：絕不 6）
-        if (free > hm.hardN) acc(map, 'homeroomDailyMaxMust', `導師每日絕對上限 ${hm.hardN}（必須級）`, MUST * (free - hm.hardN), `${c.label} 週${DAY_ZH[d]}導師 ${free} 節`)
+        // 絕對上限（必須級）：中高年級絕不超過 hardN；低年段整天日（週二＝低年級唯一的整天）放寬到 hardFullDayLowN——
+        // 低年級一週 7～8 堂科任分五天，週二只分到 1～2 堂，導師必然多上（114 人工課表 2年9班 週二就是 6 節）
+        const hardLimit = bandOf(c.grade) === 'low' && input.classDayFull[c.classKey]?.[d] ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
+        if (free > hardLimit) acc(map, 'homeroomDailyMaxMust', `導師每日絕對上限 ${hardLimit}（必須級）`, MUST * (free - hardLimit), `${c.label} 週${DAY_ZH[d]}導師 ${free} 節`)
       }
     }
   }
@@ -2999,6 +3001,7 @@ export class EngineRun {
   /** 導師每日絕對上限定向修補：導師一天超過 hardN 的班日（低年級週二 6 節最常見），挑一格當天留白把該班一堂科任課放進去。 */
   private tryFixHomeroomDailyMax() {
     const hm = this.input.weights.builtin.homeroomDailyMax
+    const hardOf = (g: number, d: number, ck: string) => bandOf(g) === 'low' && this.input.classDayFull[ck]?.[d] ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
     const targets: { classKey: string; day: number; period: number }[] = []
     for (const c of this.input.classes) {
       const occ = this.st.classOcc.get(c.classKey)!
@@ -3022,7 +3025,7 @@ export class EngineRun {
           }
           if (n > worst) { worst = n; blanks = bl }
         }
-        if (worst > hm.hardN && blanks.length) targets.push({ classKey: c.classKey, day: d, period: blanks[Math.floor(this.rnd() * blanks.length)] })
+        if (worst > hardOf(c.grade, d, c.classKey) && blanks.length) targets.push({ classKey: c.classKey, day: d, period: blanks[Math.floor(this.rnd() * blanks.length)] })
       }
     }
     if (!targets.length) return
@@ -3033,7 +3036,7 @@ export class EngineRun {
    *  半天內一格空的都沒有，塞不進科任課——只能把那組單雙週區塊整組搬到整天日。 */
   private tryFixHalfDayAllHomeroom() {
     const mm = this.input.weights.builtin.homeroomMorningMax
-    if (mm.level === 'off' || !mm.must) return
+    if (mm.level === 'off') return
     const moveTargets: EngineLesson[] = []                                   // 半天裡的單雙週區塊：搬去整天日
     const coverTargets: { classKey: string; day: number; period: number }[] = []   // 半天裡有真空格：塞一堂科任課進去
     for (const c of this.input.classes) {

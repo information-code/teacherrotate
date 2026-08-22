@@ -29,7 +29,7 @@ function hardOnlyInput(input: EngineInput): EngineInput {
         ...b,
         dailyMax: { ...b.dailyMax, level: 'off' },
         consecMax: { ...b.consecMax, level: 'off' },
-        homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off', hardN: 99 },
+        homeroomDailyMax: { ...b.homeroomDailyMax, level: 'off', hardN: 99, hardFullDayLowN: 99 },
         homeroomMorningMax: { ...b.homeroomMorningMax, level: 'off', must: false }, specialDoublesHalf: 'off', biweeklyHalfDay: 'off',
         compact: 'off', classCohesion: 'off', batchType: 'off', bandAdjacent: 'off', teacherApart: 'off',
         hourlyBalance: { ...b.hourlyBalance, level: 'off', must: false },
