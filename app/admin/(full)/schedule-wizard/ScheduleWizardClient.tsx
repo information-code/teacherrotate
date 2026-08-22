@@ -238,7 +238,7 @@ export default function ScheduleWizardClient(props: Props) {
     } catch { setNativeSaving('error') }
   }
 
-  function run(opts: { reseed?: boolean } = {}) {
+  function run() {
     if (!confirmDropAdjust('重新排課')) return
     workerRef.current?.terminate()
     setAdjustUnsaved(0)
@@ -258,8 +258,7 @@ export default function ScheduleWizardClient(props: Props) {
         w.terminate()
       }
     }
-    // 換種子：每次用不同的起點（預設種子排不成時最有效的一步，比調權重更接近課務組要的結果）
-    w.postMessage(opts.reseed ? { input, seedBase: Math.floor(Math.random() * 1_000_000) } : { input })
+    w.postMessage({ input })
   }
   function stop() {
     // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
@@ -858,7 +857,7 @@ ${head}確定撤回？`)) return
             <div className="card border-red-200 bg-red-50 p-3 space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="text-sm font-semibold text-red-700">✕ 這一輪沒排成（未排 {result.unplaced.length}、必須級違反 {bigPenalty.reduce((s, p) => s + p.count, 0)}）——下方為最佳嘗試，已存成版本</div>
-                {!running && <button onClick={() => run({ reseed: true })} className="btn btn-primary text-xs py-0.5 ml-auto" title="用另一組起點重跑一次：同樣的設定、同樣的規則，只是換種子；排不成時這是第一個該做的事">🎲 換種子重排</button>}
+                {!running && <button onClick={() => run()} className="btn btn-primary text-xs py-0.5 ml-auto" title="同樣的設定重跑一輪：引擎會一顆一顆換種子，直到排出「未排 0、必須級 0」為止">▶ 重新排課</button>}
               </div>
               {bigPenalty.length > 0 && (
                 <div className="text-xs text-red-700 space-y-0.5">
