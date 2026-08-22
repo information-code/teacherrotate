@@ -687,7 +687,7 @@ ${head}確定撤回？`)) return
                 <button onClick={() => doExport('pdf')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 font-medium text-zinc-800">📄 PDF（整份）</button>
                 <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.docx）</button>
                 <button onClick={() => doExport('csv')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📊 CSV（一列一格，Excel 用）</button>
-                <button onClick={() => doExport('school')} title="欄位：class_no／班級／科目／科目名稱／星期／節次／教師／教師名稱／教室／教室名稱。科目與教師代碼本系統沒有，留空；不列入本土語其他語別的場次老師與英語外師"
+                <button onClick={() => doExport('school')} title="欄位：class_no／班級／科目／科目名稱／星期／節次／教師／教師名稱／教室／教室名稱。科目與教師代碼本系統沒有，留空；不列入本土語其他語別的場次老師與英語外師；單雙週依校務系統慣例——單週寫在奇數節、雙週寫在偶數節"
                   className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600 border-t border-zinc-100">🏫 校務系統課程資料（.csv）</button>
                 <button onClick={() => doExport('import')} title="欄位：週次／節次／年級／班級／教師姓名／校訂課程名稱／上課頻率；一列一堂課，連堂兩列，單雙週標「單週上課」「雙週上課」"
                   className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-500 text-xs">🏫 舊格式：校訂課程（.xlsx）</button>

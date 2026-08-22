@@ -268,16 +268,15 @@ export function buildSchoolCsvRows(a: BuildArgs): string[][] {
       for (const p of placed) {
         if (p.classKey !== ck) continue
         if (p.parity !== 'weekly') {
-          const wk = p.parity === 'odd' ? '單週' : '雙週'
-          const owk = p.parity === 'odd' ? '雙週' : '單週'
-          const other = `${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`
-          const hrSubj = hr[other]
-          for (const q of [p.period, p.period + 1]) {
-            used.add(`${p.day}-${q}`)
-            push(p.day, q, `${p.subject}（${wk}）`, p.teacherName, p.roomId)
-            if (hrSubj) push(p.day, q, `${hrSubj}（${owk}）`, homeroom)
-          }
-          used.add(other)
+          // 單雙週：校務系統用「節次的奇偶」分辨——單週寫在奇數節、雙週寫在偶數節。
+          // 區塊一律對齊 (1-2)(3-4)(5-6)，所以起始節是奇數、次節是偶數；每一週各一列，不加註（單週）／（雙週）。
+          const oddQ = p.period, evenQ = p.period + 1
+          const mineQ = p.parity === 'odd' ? oddQ : evenQ
+          const hrQ = p.parity === 'odd' ? evenQ : oddQ
+          const hrSubj = hr[`${p.day}-${p.parity === 'odd' ? evenQ : oddQ}`]
+          push(p.day, mineQ, p.subject, p.teacherName, p.roomId)
+          if (hrSubj) push(p.day, hrQ, hrSubj, homeroom)
+          used.add(`${p.day}-${oddQ}`); used.add(`${p.day}-${evenQ}`)
           continue
         }
         for (const q of p.size === 2 ? [p.period, p.period + 1] : [p.period]) {
