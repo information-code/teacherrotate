@@ -3292,6 +3292,12 @@ export class EngineRun {
           const ids = [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]
           for (const id of ids) if (id && id !== l.id) blockers.add(id)
         }
+        // 教室阻擋者：目標格的專科教室被別班占住（必排格要放專科連堂時常見）
+        if (blockers.size <= depth) {
+          const rb = this.roomBlockersFor(l, slots, depth - blockers.size)
+          if (rb === undefined) { if (oldP) this.st.place(l, oldP); continue }
+          if (rb) for (const id of rb) blockers.add(id)
+        }
         if (blockers.size === 0 || blockers.size > depth) {
           if (oldP) this.st.place(l, oldP)
           continue
