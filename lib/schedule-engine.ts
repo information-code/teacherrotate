@@ -2511,6 +2511,7 @@ export class EngineRun {
     for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomDouble()
     for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomMorningMax()
     for (let k = 0; k < this.input.classes.length; k++) this.tryFixHomeroomDailyMax()
+    for (let k = 0; k < this.input.classes.length; k++) this.tryFixHalfDayAllHomeroom()
     for (let k = 0; k < 6; k++) this.tryFixHourlyDays()
   }
 
@@ -3028,6 +3029,50 @@ export class EngineRun {
     this.coverTarget(targets[Math.floor(this.rnd() * targets.length)])
   }
 
+  /** 半天日整個半天都是導師課（必須級）定向修補：這種半天多半是「單雙週區塊 1-2＋種子班鎖課 3-4」，
+   *  半天內一格空的都沒有，塞不進科任課——只能把那組單雙週區塊整組搬到整天日。 */
+  private tryFixHalfDayAllHomeroom() {
+    const mm = this.input.weights.builtin.homeroomMorningMax
+    if (mm.level === 'off' || !mm.must) return
+    const targets: EngineLesson[] = []
+    for (const c of this.input.classes) {
+      for (const d of SCHEDULE_DAYS) {
+        if (this.input.classDayFull[c.classKey]?.[d]) continue
+        const occ = this.st.classOcc.get(c.classKey)!
+        const avail = new Set(this.input.classSlots[c.classKey] ?? [])
+        const locks = this.input.lockedCells[c.classKey] ?? {}
+        const hrLock = new Set(this.input.homeroomLocks[c.classKey] ?? [])
+        const qs = [1, 2, 3, 4].filter(q => avail.has(`${d}-${q}`) || (`${d}-${q}` in locks))
+        if (qs.length < 3) continue
+        let allHr = false; let anyBlank = false
+        for (const par of ['o', 'e'] as const) {
+          let n = 0
+          for (const q of qs) {
+            const k = `${d}-${q}`
+            if (k in locks) { if (hrLock.has(k)) n++; continue }
+            const id = occ.get(k)
+            if (!id) { n++; anyBlank = true; continue }
+            const p = this.st.lessonById.get(id)?.parity ?? 'weekly'
+            if (p !== 'weekly' && p[0] !== par) n++
+          }
+          if (n === qs.length) allHr = true
+        }
+        if (!allHr || anyBlank) continue
+        // 這個半天裡的單雙週區塊＝元凶，搬去整天日
+        for (const q of qs) {
+          const id = occ.get(`${d}-${q}`); if (!id) continue
+          const l = this.st.lessonById.get(id)
+          if (l && l.parity !== 'weekly' && !this.frozen.has(l.id)) { targets.push(l); break }
+        }
+      }
+    }
+    if (!targets.length) return
+    const l = targets[Math.floor(this.rnd() * targets.length)]
+    const wantFull = (p: Placement) => Boolean(this.input.classDayFull[l.classKey]?.[p.day])
+    if (this.directedMove(l, wantFull)) return
+    this.relocateWithEject(l, wantFull)
+  }
+
   /** 把 t 班的某一堂科任課放進 (t.day, t.period)：先直接搬，搬不動再逐出式。導師連上／上午上限的修補共用。 */
   private coverTarget(t: { classKey: string; day: number; period: number }) {
     const mustSet = this.mustSetByClass.get(t.classKey) ?? new Set<string>()
@@ -3377,13 +3422,14 @@ export class EngineRun {
       // 節奏：只拿 1/8 的步數（奇數步之一，避開下面 %8 的偶數分支）——上一版拿走全部奇數步，隨機搬動與交換完全沒機會跑，
       // 反而讓未排從 0 暴增到 8～15 堂
       if (this.cur >= MUST && this.iterations % 8 === 1) {
-        const k = Math.floor(this.iterations / 8) % 7
+        const k = Math.floor(this.iterations / 8) % 8
         if (k === 0) this.tryCoverMustFill()
         else if (k === 1) this.tryFixHomeroomMin()
         else if (k === 2) this.tryFixHomeroomDouble()
         else if (k === 3) this.tryFixHourlyDays()
         else if (k === 4) this.tryFixHomeroomMorningMax()
         else if (k === 5) this.tryFixHomeroomDailyMax()
+        else if (k === 6) this.tryFixHalfDayAllHomeroom()
         else this.tryFixHomeroomRun()
         continue
       }
