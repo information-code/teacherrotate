@@ -1046,11 +1046,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       {mode !== 'class' && focusId && (
         <div className="flex gap-3 items-start">
         <div className="card p-3 max-w-md flex-1 space-y-1">
-          <div className="text-sm font-semibold text-zinc-700">
-            {mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}
+          <div className="text-sm font-semibold text-zinc-700 flex items-center gap-2">
+            <span>{mode === 'teacher' ? (teacherOptions.find(t => t.id === focusId)?.name ?? nameOf(focusId)) : (rooms.find(r => r.id === focusId)?.label ?? extras?.roomNames[focusId] ?? '教室')}</span>
             {mode === 'teacher' && (
               <button onClick={() => setChainSeed({ kind: 'teacher', teacherId: focusId })}
-                className="text-[10px] px-1.5 py-0.5 rounded-sm border border-zinc-200 text-zinc-500 hover:border-rose-300 hover:text-rose-600 ml-2 font-normal align-middle"
+                className="text-[10px] px-1.5 py-0.5 rounded-sm border border-zinc-200 text-zinc-500 hover:border-rose-300 hover:text-rose-600 font-normal ml-auto"
                 title="從這張課表開始，一步一步把課搬到你要的位置；套用後會自動存成一份版本">⇄ 調課</button>
             )}
             <span className="text-xs font-normal text-zinc-400 ml-2">{freeMode
