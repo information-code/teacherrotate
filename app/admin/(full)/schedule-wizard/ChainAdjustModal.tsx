@@ -240,7 +240,9 @@ export default function ChainAdjustModal({
       const occ = sClass.get(ck)?.get(s)
       if (occ && `l:${occ.id}` !== self) {
         nextPlaced = nextPlaced.map(x => x.id === occ.id ? { ...x, day: 0, period: 0 } : x)
-        newPending.push({ item: { kind: 'lesson', id: occ.id }, why: `${ckZh(ck)} ${slotZh(s)} 讓給了 ${labelOf(it).what}`,
+        const back = moves.some(m => iKey(m.item) === `l:${occ.id}`)
+        newPending.push({ item: { kind: 'lesson', id: occ.id },
+          why: `${ckZh(ck)} ${slotZh(s)} 讓給了 ${labelOf(it).what}${back ? '——這是前面才安置好的課，鏈繞回來了' : ''}`,
           board: { kind: 'teacher', teacherId: occ.teacherId } })
       }
       const sub = nextHr[ck]?.cells?.[s]
@@ -279,15 +281,16 @@ export default function ChainAdjustModal({
     setMoves(m => [...m, { n: m.length + 1, board, from: pick.slot, to: toSlot, item: it, what: lb.what, who: lb.who, cls: ck, h: history.length }])
 
     // 4) 衝突所在的那張課表這時候才出現，被卡住的那堂課自動成為下一支箭頭的起點
-    const rest = pending.filter(x => iKey(x.item) !== self)
-    const next = newPending[0]
-    if (next) {
-      setBoards(bs => addBoard(bs, next.board))
-      setPick({ item: next.item, board: next.board, slot: displaySlot(next.item) })
-    } else {
-      setPick(null)
-    }
-    setPending([...rest, ...newPending])
+    // 去重：同一堂課被擠掉兩次只算一筆（以最新的理由為準）
+    const merged = new Map<string, Pending>()
+    for (const x of pending) if (iKey(x.item) !== self) merged.set(iKey(x.item), x)
+    for (const x of newPending) merged.set(iKey(x.item), x)
+    const nextPending = Array.from(merged.values())
+    // 每一筆待安置的課表都開出來，不然使用者只看得到第一筆
+    if (newPending.length) setBoards(bs => newPending.reduce((acc, x) => addBoard(acc, x.board), bs))
+    const next = newPending[0] ?? nextPending[0]
+    setPick(next ? { item: next.item, board: next.board, slot: displaySlot(next.item) } : null)
+    setPending(nextPending)
   }
 
   function undoMove(m: Move) {
@@ -514,8 +517,11 @@ export default function ChainAdjustModal({
           <span className="ml-auto flex items-center gap-2">
             <button onClick={undo} disabled={!history.length} className="btn-ghost text-xs disabled:opacity-40">← 退回一步</button>
             <button onClick={onClose} className="btn-ghost text-xs">全部取消</button>
+            {pending.length > 0 && (
+              <span className="text-xs text-rose-600">還有 {pending.length} 堂課沒安置，安置完才能套用</span>
+            )}
             <button onClick={apply} disabled={!canApply} className="btn text-xs disabled:opacity-40"
-              title={!moves.length ? '還沒有任何調動' : pending.length ? '還有課沒安置好' : '套用這些調動'}>
+              title={!moves.length ? '還沒有任何調動' : pending.length ? `還有 ${pending.length} 堂課沒安置` : '套用這些調動'}>
               套用 {moves.length ? `（${moves.length} 步）` : ''}
             </button>
           </span>
