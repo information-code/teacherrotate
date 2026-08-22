@@ -187,6 +187,9 @@ export interface BuiltinRules {
   // 同半天兩組專科連堂：同一班同一個半天不要同時有兩組需要專科教室的連堂（自然＋科技、科技＋視藝…）——
   //   那個半天導師就只剩 0～1 格，每日下限／上午下限會直接被擠爆，而磚位滿了又搬不動。人工課表每期只有 1～3 班日 → 權重高
   specialDoublesHalf: WeightLevel
+  // 單雙週區塊避開半天日：半天只有 4 節，其中兩節常是種子班鎖課（國數）——單雙週區塊放進另外兩節，
+  //   輪到導師的那一週整個半天連上四節（405／406 週三、407 週五實測）。114-2 人工課表 21 組只有 2 組在半天日
+  biweeklyHalfDay: WeightLevel
   // 母開關：科目避開節次／科目時段偏好——各自可新增多組子規則（TemplateRule），母開關「關閉」＝全部子規則不計；
   // 母開關的權重＝新增子規則的預設權重（子規則各自可再調）
   avoidPeriods: WeightLevel
@@ -314,6 +317,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomDailyMax: { level: 'high', n: 4, fullDayLowN: 5, offBonusFrom: 7, hardN: 5 },   // 課務組原則「導師一天不要超過 4 節；低年級週二 5；不排課≥7 格者 5；絕不 6」
       homeroomMorningMax: { level: 'high', n: 3, must: true },
       specialDoublesHalf: 'high',
+      biweeklyHalfDay: 'high',
       homeroomRun: 'high',
       homeroomDailyMin: { level: 'high', full: 2, half: 1, must: true },   // 課務組：半天至少 1 節、整天至少 2 節導師課
       gradeSandwich: 'high',
@@ -417,6 +421,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
         return { level: normLevel(h.level, db.homeroomDailyMax.level), n: num(h.n, db.homeroomDailyMax.n, 1, 7), fullDayLowN: num(h.fullDayLowN, db.homeroomDailyMax.fullDayLowN, 1, 7), offBonusFrom: num(h.offBonusFrom, db.homeroomDailyMax.offBonusFrom, 1, 35), hardN: num(h.hardN, db.homeroomDailyMax.hardN, 1, 7) }
       })(),
       specialDoublesHalf: normLevel(b.specialDoublesHalf, db.specialDoublesHalf),
+      biweeklyHalfDay: normLevel(b.biweeklyHalfDay, db.biweeklyHalfDay),
       homeroomMorningMax: (() => {
         const h = (b.homeroomMorningMax ?? {}) as Partial<BuiltinRules['homeroomMorningMax']>
         const n = Number(h.n)

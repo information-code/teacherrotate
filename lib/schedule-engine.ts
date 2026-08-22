@@ -1620,6 +1620,17 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
     }
   }
 
+  // 單雙週區塊避開半天日（權重）：半天只有 4 節、其中兩節常是種子班鎖課，單雙週區塊放進另外兩節，
+  // 輪到導師的那一週整個半天就是導師連上四節。114-2 人工課表 4／6 年級 21 組只有 2 組在半天日。
+  if (w.biweeklyHalfDay !== 'off') {
+    for (const { l, p } of placedLessons) {
+      if (l.parity === 'weekly') continue
+      if (input.classDayFull[l.classKey]?.[p.day]) continue
+      acc(map, 'biweeklyHalfDay', '單雙週區塊排在半天日', pen(w.biweeklyHalfDay),
+        `${l.classLabel} 週${DAY_ZH[p.day]}第${p.period}-${p.period + 1}節 ${l.subject}（半天日；輪到導師的那一週整個半天都是導師課）`)
+    }
+  }
+
   // 同半天兩組專科連堂（權重）：同一班同一個半天有 ≥2 組需要專科教室的連堂，每多一組扣一次。
   // 5年6班 週一上午 科技 1-2＋視藝 3-4 → 導師只剩第 5 節；磚位滿了之後引擎搬不動，得在拼的時候就避開
   if (w.specialDoublesHalf !== 'off') for (const c of input.classes) {
