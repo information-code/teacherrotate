@@ -109,6 +109,18 @@ export default function ChainAdjustModal({
     }
     return m
   }, [config])
+  // 各班必留導師格（該班導師的個人「排課標記」：科任課不可放）
+  const mustLeaveOf = useMemo(() => {
+    const on: Record<string, Set<string>> = {}
+    for (const p of config.personalOff) {
+      if (!p.teacherId || p.mode !== 'on') continue
+      const set = (on[p.teacherId] ??= new Set())
+      for (const s2 of p.slots) set.add(s2)
+    }
+    const m: Record<string, Set<string>> = {}
+    for (const [ck, tid] of Object.entries(config.classTeacher)) if (tid && on[tid]) m[ck] = on[tid]
+    return m
+  }, [config])
   const mustFillOf = useMemo(() => {
     const m: Record<string, Set<string>> = {}
     for (const g of GRADES) {
@@ -236,42 +248,82 @@ export default function ChainAdjustModal({
     setHistory(h => h.slice(0, -1)); setPick(null)
   }
 
-  /* ── 套用前檢查：硬限制擋不住人工，但要講清楚會破壞什麼 ── */
-  const issues = useMemo(() => {
-    const out: string[] = []
+  /* ── 套用前檢查：擋不住人工，但要講清楚會破壞什麼 ──
+     必須級＝課務組畫的紅線（不排課時段一定要有科任、導師不能整天沒課…）；
+     硬限制＝物理上不該發生的（老師衝堂、教室撞班、排進老師的不排課時段）。
+     只報「這次調動新造成的」：原本就有的違規不是課務組現在弄的，跳出來只會吵。 */
+  function computeIssues(px: PlacedResult[], hx: Record<string, HomeroomRow>) {
+    const must: string[] = []
+    const hard: string[] = []
+    const live = px.filter(x => x.day > 0)
+    const ckZh = (ck: string) => classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1]))
     const rooms = roomsFromConfig(config)
-    const re = reassignRooms(placed.filter(x => x.day > 0), rooms, config.weights)
-    // 老師衝堂
+    const re = reassignRooms(live, rooms, config.weights)
+    const cellsX = new Map<string, Map<string, PlacedResult>>()
+    for (const q of live) {
+      const cm = cellsX.get(q.classKey) ?? new Map<string, PlacedResult>()
+      for (const s2 of slotsOf(q)) cm.set(s2, q)
+      cellsX.set(q.classKey, cm)
+    }
+
     const seen = new Map<string, PlacedResult>()
-    for (const p of re) for (const tid of [p.teacherId, ...(p.coTeacherId ? [p.coTeacherId] : [])]) {
-      for (const s of slotsOf(p)) {
-        const k = `${tid}|${s}|${p.parity}`
+    for (const q of re) for (const tid of [q.teacherId, ...(q.coTeacherId ? [q.coTeacherId] : [])]) {
+      for (const s2 of slotsOf(q)) {
+        const k = `${tid}|${s2}|${q.parity}`
         const prev = seen.get(k)
-        if (prev && prev.id !== p.id) out.push(`${nameOf(tid)} ${slotZh(s)} 同時要上 ${prev.classLabel} 與 ${p.classLabel}`)
-        seen.set(k, p)
+        if (prev && prev.id !== q.id) hard.push(`${nameOf(tid)} ${slotZh(s2)} 同時要上 ${prev.classLabel} 與 ${q.classLabel}`)
+        seen.set(k, q)
       }
     }
-    // 教室衝突
     const rseen = new Map<string, PlacedResult>()
-    for (const p of re) {
-      if (!p.roomId) continue
-      for (const s of slotsOf(p)) {
-        const k = `${p.roomId}|${s}|${p.parity}`
+    for (const q of re) {
+      if (!q.roomId) continue
+      for (const s2 of slotsOf(q)) {
+        const k = `${q.roomId}|${s2}|${q.parity}`
         const prev = rseen.get(k)
-        if (prev && prev.id !== p.id) out.push(`教室衝突 ${slotZh(s)}：${prev.classLabel} 與 ${p.classLabel}`)
-        rseen.set(k, p)
+        if (prev && prev.id !== q.id) hard.push(`教室衝突 ${slotZh(s2)}：${prev.classLabel} 與 ${q.classLabel}`)
+        rseen.set(k, q)
       }
     }
-    // 老師個人不排課時段被排課
-    for (const p of re) for (const s of slotsOf(p)) {
-      if (teacherBlocked[p.teacherId]?.has(s)) out.push(`${p.teacherName} ${slotZh(s)} 是不排課時段，卻排了 ${p.classLabel} ${p.subject}`)
+    for (const q of re) for (const s2 of slotsOf(q)) {
+      if (teacherBlocked[q.teacherId]?.has(s2)) hard.push(`${q.teacherName} ${slotZh(s2)} 是不排課時段，卻排了 ${q.classLabel} ${q.subject}`)
     }
-    // 導師不排課格變成導師課
-    for (const [ck, row] of Object.entries(hr)) for (const s of Object.keys(row?.cells ?? {})) {
-      if (mustFillOf[ck]?.has(s)) out.push(`${classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1]))} ${slotZh(s)} 是導師不排課時段，卻排了導師課`)
+
+    const hm = config.weights.builtin.homeroomDailyMax
+    for (const g of GRADES) for (let i2 = 0; i2 < (classCounts[g] ?? 0); i2++) {
+      const ck = `${g}-${i2}`
+      const teach = teachableOf.get(ck) ?? new Set<string>()
+      const cm = cellsX.get(ck) ?? new Map<string, PlacedResult>()
+      const locks = lockOf(ck)
+      for (const s2 of Array.from(mustFillOf[ck] ?? [])) {
+        if (!teach.has(s2)) continue
+        if (cm.has(s2) || locks[s2]) continue
+        must.push(`${ckZh(ck)} ${slotZh(s2)} 是導師不排課時段，卻沒有科任課`)
+      }
+      for (const s2 of Array.from(mustLeaveOf[ck] ?? [])) {
+        if (cm.has(s2)) must.push(`${ckZh(ck)} ${slotZh(s2)} 是導師排課標記格，卻排了 ${cm.get(s2)!.subject}`)
+      }
+      for (const d of SCHEDULE_DAYS) {
+        const daySlots = Array.from(teach).filter(x => x.startsWith(`${d}-`))
+        if (!daySlots.length) continue
+        const hrN = daySlots.filter(x => !locks[x] && !cm.has(x)).length
+        const fullDay = daySlots.some(x => Number(x.split('-')[1]) > 4)
+        const cap = bandOf(g) === 'low' && fullDay ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
+        if (hrN === 0) must.push(`${ckZh(ck)} 週${DAY_ZH[d]} 導師整天沒課`)
+        else if (hrN > cap) must.push(`${ckZh(ck)} 週${DAY_ZH[d]} 導師 ${hrN} 節，超過絕對上限 ${cap}`)
+      }
     }
-    return Array.from(new Set(out))
-  }, [placed, hr, config, mustFillOf, teacherBlocked])
+    void hx
+    return { must: Array.from(new Set(must)), hard: Array.from(new Set(hard)) }
+  }
+  // 起點的違規（開啟 modal 當下）：拿來扣掉，只留新造成的
+  const baseIssues = useMemo(() => computeIssues(placed0, hr0), [placed0, hr0, config, classCounts])
+  const issues = useMemo(() => {
+    const now = computeIssues(placed, hr)
+    const wasMust = new Set(baseIssues.must), wasHard = new Set(baseIssues.hard)
+    return { must: now.must.filter(x => !wasMust.has(x)), hard: now.hard.filter(x => !wasHard.has(x)) }
+  }, [placed, hr, baseIssues, config, classCounts])
+  const issueCount = issues.must.length + issues.hard.length
 
   if (!open || !seed) return null
 
@@ -405,6 +457,20 @@ export default function ChainAdjustModal({
 
   const canApply = moves.length > 0 && pending.length === 0
 
+  /** 套用：有違規先跳出來讓人看清楚，但確認後照樣套用——人工權力最大。 */
+  function apply() {
+    if (issueCount > 0) {
+      const list = (title: string, arr: string[]) => arr.length
+        ? `${title}（${arr.length}）\n` + arr.slice(0, 8).map(x => `・${x}`).join('\n') + (arr.length > 8 ? `\n・…另外 ${arr.length - 8} 筆` : '') + '\n\n'
+        : ''
+      const txt = `這 ${moves.length} 步調動會違反以下規則：\n\n`
+        + list('必須級', issues.must) + list('硬限制', issues.hard)
+        + '系統不會阻止（人工調課權力最大），仍要套用嗎？'
+      if (!confirm(txt)) return
+    }
+    onApply({ placed, hr, moves })
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center p-3" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-zinc-50 rounded-sm shadow-xl w-full max-w-[1800px] flex flex-col overflow-hidden">
@@ -418,7 +484,7 @@ export default function ChainAdjustModal({
             <button onClick={undo} disabled={!history.length}
               className="btn-ghost text-xs disabled:opacity-40">← 退回一步</button>
             <button onClick={onClose} className="btn-ghost text-xs">全部取消</button>
-            <button onClick={() => onApply({ placed, hr, moves })} disabled={!canApply}
+            <button onClick={apply} disabled={!canApply}
               className="btn text-xs disabled:opacity-40"
               title={!moves.length ? '還沒有任何調動' : pending.length ? '還有課沒安置好' : '套用這些調動'}>
               套用 {moves.length ? `（${moves.length} 步）` : ''}
@@ -486,17 +552,31 @@ export default function ChainAdjustModal({
 
             <div>
               <div className="font-medium text-zinc-700 mb-1">
-                套用後會違反的規則{issues.length ? `（${issues.length}）` : ''}
+                這次調動新造成的違規{issueCount ? `（${issueCount}）` : ''}
               </div>
-              {issues.length === 0
-                ? <p className="text-green-700">目前沒有偵測到衝突。</p>
-                : (<>
-                  <ul className="space-y-1 text-amber-800">
-                    {issues.slice(0, 20).map((s, i) => <li key={i}>・{s}</li>)}
-                  </ul>
-                  {issues.length > 20 && <p className="text-zinc-400">…另外 {issues.length - 20} 筆</p>}
-                  <p className="mt-1 text-zinc-500">人工調課不受硬限制阻擋，這裡只是提醒。</p>
-                </>)}
+              {issueCount === 0
+                ? <p className="text-green-700">目前沒有偵測到違規。</p>
+                : (<div className="space-y-2">
+                  {issues.must.length > 0 && (
+                    <div>
+                      <div className="text-rose-700 font-medium">必須級（{issues.must.length}）</div>
+                      <ul className="space-y-0.5 text-rose-800">
+                        {issues.must.slice(0, 12).map((x, i) => <li key={i}>・{x}</li>)}
+                      </ul>
+                      {issues.must.length > 12 && <p className="text-zinc-400">…另外 {issues.must.length - 12} 筆</p>}
+                    </div>
+                  )}
+                  {issues.hard.length > 0 && (
+                    <div>
+                      <div className="text-amber-700 font-medium">硬限制（{issues.hard.length}）</div>
+                      <ul className="space-y-0.5 text-amber-800">
+                        {issues.hard.slice(0, 12).map((x, i) => <li key={i}>・{x}</li>)}
+                      </ul>
+                      {issues.hard.length > 12 && <p className="text-zinc-400">…另外 {issues.hard.length - 12} 筆</p>}
+                    </div>
+                  )}
+                  <p className="text-zinc-500">系統不阻止，套用前會再確認一次。</p>
+                </div>)}
             </div>
 
             <div className="pt-2 border-t border-zinc-100 text-zinc-400 leading-relaxed">
