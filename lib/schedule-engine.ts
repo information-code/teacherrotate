@@ -966,6 +966,16 @@ class State {
     if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) return false
     // 硬限制：連堂不跨午休（114-2 人工課表 178 組連堂，0 組起始於第 4 節）
     if (l.size === 2 && p.period === MORNING_LAST) return false
+    // 單雙週區塊不得占滿「半天日扣掉導師鎖課後的所有格」——那樣輪到導師的那一週整個半天都是導師課、一堂科任都沒有。
+    // 種子班的週三就是這個形狀（國數鎖課在 3-4，只剩 1-2 可排）；純結構判斷，與其他課的落點無關，故列為硬限制。
+    if (l.parity !== 'weekly' && !this.input.classDayFull[l.classKey]?.[p.day]) {
+      const locks = this.input.lockedCells[l.classKey] ?? {}
+      const hrLock = new Set(this.input.homeroomLocks[l.classKey] ?? [])
+      const avail = this.input.classSlots[l.classKey] ?? []
+      const free = avail.filter(x => x.startsWith(`${p.day}-`) && !slots.includes(x))
+      const lockSlots = Object.keys(locks).filter(x => x.startsWith(`${p.day}-`))
+      if (!free.length && lockSlots.every(x => hrLock.has(x))) return false
+    }
     // 需要專科教室的連堂只能落在磚位 1-2／3-4／5-6／6-7，不可 2-3：上午放 2-3 會讓那間教室那個上午只剩一組位子，
     // 自然／科技教室 42 磚位對 42 組連堂用滿的情況下，一塊擺歪全校就少一格（人工課表 0 組起始於第 2 節）
     if (l.size === 2 && p.period === 2 && (this.roomPool.get(l.id)?.length ?? 0) > 0) return false
