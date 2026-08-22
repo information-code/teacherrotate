@@ -161,6 +161,94 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
   return sheets
 }
 
+// ───────────── 校務系統匯入格式（Excel）─────────────
+// 一列一堂課：週次／節次／年級／班級／教師姓名／校訂課程名稱／上課頻率
+//   連堂＝兩列（第 N 節、第 N+1 節）；單雙週區塊＝該區塊兩節各一列，科任那一週寫「單週上課」或「雙週上課」，
+//   輪到導師的那一週另寫兩列（導師填的科目）。鎖課（種子班國數、本土語、游泳）也會列出，導師自上的填導師姓名。
+const PERIOD_ZH = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節']
+export const IMPORT_HEADER = ['週次', '節次', '年級', '班級', '教師姓名', '校訂課程名稱', '上課頻率']
+const FREQ_WEEKLY = '每週上課', FREQ_ODD = '單週上課', FREQ_EVEN = '雙週上課'
+
+export function buildImportRows(a: BuildArgs): string[][] {
+  const { placed, config, input, teacherNames, classCounts, hrCells } = a
+  const nameOf = (id: string) => teacherNames[id] ?? ''
+  const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+  type Row = { g: number; i: number; day: number; period: number; teacher: string; subject: string; freq: string }
+  const out: Row[] = []
+  for (const g of GRADES) {
+    for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+      const ck = `${g}-${i}`
+      const homeroom = nameOf(config.classTeacher[ck] ?? '')
+      const hlocks = new Set(input.homeroomLocks[ck] ?? [])
+      const hr = hrCells[ck] ?? {}
+      const used = new Set<string>()   // 已由科任課（含單雙週配對）佔用的格
+      const push = (day: number, period: number, teacher: string, subject: string, freq: string) => {
+        out.push({ g, i, day, period, teacher, subject, freq })
+      }
+      for (const p of placed) {
+        if (p.classKey !== ck) continue
+        if (p.parity !== 'weekly') {
+          // 單雙週區塊：整塊兩節，這一週科任、另一週導師
+          const wk = p.parity === 'odd' ? FREQ_ODD : FREQ_EVEN
+          const owk = p.parity === 'odd' ? FREQ_EVEN : FREQ_ODD
+          const disp = `${p.day}-${p.parity === 'odd' ? p.period : p.period + 1}`
+          const other = `${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`
+          const hrSubj = hr[other]
+          for (const q of [p.period, p.period + 1]) {
+            used.add(`${p.day}-${q}`)
+            push(p.day, q, p.teacherName, p.subject, wk)
+            if (hrSubj) push(p.day, q, homeroom, hrSubj, owk)
+          }
+          used.add(disp); used.add(other)
+          continue
+        }
+        for (const q of p.size === 2 ? [p.period, p.period + 1] : [p.period]) {
+          used.add(`${p.day}-${q}`)
+          push(p.day, q, p.teacherName, p.subject, FREQ_WEEKLY)
+        }
+      }
+      // 鎖課（種子班國數、班級活動、本土語、游泳…）
+      for (const [slot, tid] of Object.entries(config.lockCells[ck] ?? {})) {
+        if (used.has(slot)) continue
+        const t = lockTypeMap[tid]
+        const subject = t ? (t.subject || t.label || '鎖課') : '鎖課'
+        let teacher = ''
+        if (hlocks.has(slot)) teacher = homeroom
+        else if (t?.isNative) {
+          const nt = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
+          teacher = nt === HOMEROOM_SELF ? homeroom : nameOf(nt)
+        }
+        const [day, period] = slot.split('-').map(Number)
+        used.add(slot)
+        push(day, period, teacher, subject, FREQ_WEEKLY)
+      }
+      // 導師填的課（單雙週配對格已在上面處理）
+      for (const [slot, subject] of Object.entries(hr)) {
+        if (used.has(slot)) continue
+        const [day, period] = slot.split('-').map(Number)
+        push(day, period, homeroom, subject, FREQ_WEEKLY)
+      }
+    }
+  }
+  out.sort((x, y) => x.g - y.g || x.i - y.i || x.day - y.day || x.period - y.period || x.subject.localeCompare(y.subject, 'zh-Hant'))
+  return [IMPORT_HEADER, ...out.map(r => [
+    `週${DAY_ZH[r.day]}`, PERIOD_ZH[r.period] ?? `第${r.period}節`,
+    GRADE_LABEL[r.g] ?? `${r.g}年級`, `第${String(r.i + 1).padStart(2, '0')}班`,
+    r.teacher, r.subject, r.freq,
+  ])]
+}
+
+/** 列陣列 → .xlsx（SheetJS，按下時才載入）。 */
+export async function rowsToXlsx(rows: string[][], sheetName = '課程'): Promise<Blob> {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 24 }, { wch: 12 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+  return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}
+
 // ───────────── CSV ─────────────
 export function sheetsToCsv(sheets: ExportSheet[]): string {
   const esc = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s

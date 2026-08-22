@@ -8,7 +8,7 @@ import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, SCORING_VERSION, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow, type AdjustExtras } from './OverviewAdjust'
-import { buildExportSheets, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
+import { buildExportSheets, buildImportRows, rowsToXlsx, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
 interface Props {
@@ -474,14 +474,21 @@ ${head}確定撤回？`)) return
     : (planStatus === 'published' || planStatus === 'final') && Array.isArray(props.savedPlan?.placed)
       ? (props.savedPlan!.placed as PlacedResult[])
       : result?.placed ?? null
-  async function doExport(kind: 'pdf' | 'doc' | 'csv') {
+  async function doExport(kind: 'pdf' | 'doc' | 'csv' | 'import') {
     setExportOpen(false)
     if (!exportPlaced) return
     const hrCells: Record<string, Record<string, string>> = {}
     for (const r of props.homeroomRows) if (r.cells && Object.keys(r.cells).length) hrCells[r.class_key] = r.cells
-    const sheets = buildExportSheets({ year, placed: exportPlaced, config: scheduleConfig, input, teacherNames, classCounts, hrCells, nativeSessions: nativeDerived.sessions, nativeRoomNames })
+    const args = { year, placed: exportPlaced, config: scheduleConfig, input, teacherNames, classCounts, hrCells, nativeSessions: nativeDerived.sessions, nativeRoomNames }
+    const sheets = buildExportSheets(args)
     const base = `${year}學年度課表（班級＋科任教師＋科任教室）`
     try {
+      if (kind === 'import') {
+        setExportStatus('產生 Excel 中…')
+        const rows = buildImportRows(args)
+        saveBlob(await rowsToXlsx(rows), `${year}學年度課程資料（校務系統匯入）.xlsx`)
+        return
+      }
       if (kind === 'csv') { saveBlob(new Blob([sheetsToCsv(sheets)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
       if (kind === 'doc') { setExportStatus('產生 Word 中…'); const blob = await sheetsToDocx(sheets); saveBlob(blob, `${base}.docx`); return }
       setExportStatus('準備中…')
@@ -676,6 +683,8 @@ ${head}確定撤回？`)) return
                 <button onClick={() => doExport('pdf')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 font-medium text-zinc-800">📄 PDF（整份）</button>
                 <button onClick={() => doExport('doc')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📝 Word（.docx）</button>
                 <button onClick={() => doExport('csv')} className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600">📊 CSV（一列一格，Excel 用）</button>
+                <button onClick={() => doExport('import')} title="欄位：週次／節次／年級／班級／教師姓名／校訂課程名稱／上課頻率；一列一堂課，連堂兩列，單雙週標「單週上課」「雙週上課」"
+                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 text-zinc-600 border-t border-zinc-100">🏫 校務系統匯入（.xlsx）</button>
                 <div className="px-3 pt-1 text-[11px] text-zinc-400 border-t border-zinc-100 mt-1">{(planStatus === 'published' || planStatus === 'final') ? '內容＝已發布的正式課表（含微調與導師已填）' : '內容＝目前預覽的這份（含微調）'}</div>
               </span>
             )}
