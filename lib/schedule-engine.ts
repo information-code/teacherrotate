@@ -945,6 +945,9 @@ class State {
     if (l.parity !== 'weekly' && ![1, 3, 5].includes(p.period)) return false
     // 硬限制：連堂不跨午休（114-2 人工課表 178 組連堂，0 組起始於第 4 節）
     if (l.size === 2 && p.period === MORNING_LAST) return false
+    // 需要專科教室的連堂只能落在磚位 1-2／3-4／5-6／6-7，不可 2-3：上午放 2-3 會讓那間教室那個上午只剩一組位子，
+    // 自然／科技教室 42 磚位對 42 組連堂用滿的情況下，一塊擺歪全校就少一格（人工課表 0 組起始於第 2 節）
+    if (l.size === 2 && p.period === 2 && (this.roomPool.get(l.id)?.length ?? 0) > 0) return false
     for (const s of slots) {
       if (!avail.includes(s)) return false
       if (cOcc.has(s)) return false
@@ -2094,8 +2097,11 @@ export class EngineRun {
     const pairTight = new Set(Array.from(pairRatio.entries()).filter(([, r]) => r >= 0.85).map(([tid]) => tid))
     this.pairTight = pairTight
     for (const l of input.lessons) if (blockedOf(l.teacherId) >= 10 || teacherRatio(l.teacherId) >= 0.85 || pairTight.has(l.teacherId)) this.anchored.add(l.id)
+    // 專科教室連堂（自然／科技）是最稀缺的資源：三間教室 42 個磚位對 42 組連堂，100% 用滿——
+    // 一定要先排（像人工先拼磚），不然節數少的老師（如陳慧嘉 6 節）排到最後磚位全沒了，每個種子都剩她那堂
     const difficulty = (l: EngineLesson) =>
       (l.size === 2 ? 100 : 0) + (l.parity !== 'weekly' ? 50 : 0)
+      + (l.size === 2 && (this.st.roomPool.get(l.id)?.length ?? 0) > 0 ? 400 : 0)
       + blockedOf(l.teacherId) * 3
       + (input.teacherMustTeach[l.teacherId]?.length ?? 0) * 3
       + (input.classMustFill[l.classKey]?.length ?? 0) * 2
@@ -3097,6 +3103,32 @@ export class EngineRun {
     }
   }
 
+  /** 教室阻擋者：l 需要專科教室、而 slots 上它能用的教室都被別堂課占住時，挑占用最少的一間，回傳那些占用課的 id（要被逐出去換位子）。
+   *  已有教室可用回 null（不需要逐出）；每間都有管理者的課／不排課占住 → 回 undefined（逐出不了）。
+   *  自然／科技教室連堂位 42／42 全用滿：最後一堂連堂排不進去時，擋路的不是老師也不是班級，是教室——逐出鏈要看得到它才接得上。 */
+  private roomBlockersFor(l: EngineLesson, slots: string[], depth: number): Set<string> | null | undefined {
+    const pool = this.st.roomPool.get(l.id)
+    if (!pool || !pool.length) return null
+    let best: Set<string> | undefined
+    for (const r of pool) {
+      const occ = this.st.roomOcc.get(r.id); if (!occ) continue
+      const ids = new Set<string>(); let bad = false
+      for (const sl of slots) {
+        const cell = occ.get(sl); if (!cell) continue
+        for (const id of [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]) {
+          if (!id || id === l.id) continue
+          if (id === ROOM_OFF || isMgrLesson(this.st, id, r.id)) { bad = true; break }
+          ids.add(id)
+        }
+        if (bad) break
+      }
+      if (bad) continue
+      if (ids.size === 0) return null   // 這間就空著
+      if (ids.size <= depth && (!best || ids.size < best.size)) best = ids
+    }
+    return best
+  }
+
   /** 逐出式搬家：把已排的 l 搬到符合 want 的某格；格子被占（老師衝堂／班級格有別堂課）就把擋路的 1～depth 堂先搬走再放。
    *  直接搬找不到位子時的第二招——5年10班 週一那種「視藝連堂要整組搬走、但別天都沒有班空＋師空＋教室空的位置」就要靠它。 */
   private relocateWithEject(l: EngineLesson, want: (p: Placement) => boolean, depth = 3): boolean {
@@ -3123,6 +3155,10 @@ export class EngineRun {
         if (cell) for (const id of [cell.w, l.parity !== 'even' ? cell.o : undefined, l.parity !== 'odd' ? cell.e : undefined]) if (id && id !== l.id) blockers.add(id)
         const occId = cOcc.get(x); if (occId && occId !== l.id) blockers.add(occId)
       }
+      if (blockers.size > depth) continue
+      const rb = this.roomBlockersFor(l, slots, depth - blockers.size)
+      if (rb === undefined) continue
+      if (rb) for (const id of rb) blockers.add(id)
       if (blockers.size > depth) continue
       if (!this.anchored.has(l.id) && Array.from(blockers).some(id => this.anchored.has(id))) continue
       const moved: { bl: EngineLesson; from: Placement }[] = []
@@ -3416,6 +3452,12 @@ export class EngineRun {
         }
         const occId = cOcc.get(x)
         if (occId && occId !== l.id) blockers.add(occId)
+      }
+      if (blockers.size > this.ejectDepth()) continue
+      {
+        const rb = this.roomBlockersFor(l, slots, this.ejectDepth() - blockers.size)
+        if (rb === undefined) continue
+        if (rb) for (const id of rb) blockers.add(id)
       }
       if (blockers.size === 0 || blockers.size > this.ejectDepth()) continue
       if (!this.anchored.has(l.id) && Array.from(blockers).some(id => this.anchored.has(id))) continue   // 錨定課不被非錨定課逐出
