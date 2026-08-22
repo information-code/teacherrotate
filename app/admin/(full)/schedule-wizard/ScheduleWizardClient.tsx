@@ -748,7 +748,19 @@ ${head}確定撤回？`)) return
             {progress.label && (
               <span className="px-1.5 py-0.5 rounded-sm border text-[11px] font-medium bg-zinc-100 text-zinc-600 border-zinc-200">{progress.label}</span>
             )}
-            <span>已排 {progress.placed}/{input.lessons.length}｜軟規則罰分 {Math.round(progress.softBest)}｜迭代 {progress.iter.toLocaleString()}</span>
+            {(() => {
+              // 必須級筆數：總分扣掉未排（1e5/堂）與軟分後，剩下的就是必須級（1e6/筆）——課都排進去不代表成功，這個也要 0
+              const musts = Math.max(0, Math.round((progress.best - progress.unplaced * 1e5 - progress.softBest) / 1e6))
+              return (
+                <span className="flex items-center gap-2">
+                  <span className={progress.unplaced ? 'text-red-600' : 'text-green-700'}>已排 {progress.placed}/{input.lessons.length}</span>
+                  <span className={musts ? 'text-red-600 font-medium' : 'text-green-700'} title={musts ? '必須級規則被違反，這一版不算成功、也不能發布' : '目前沒有違反必須級規則'}>
+                    必須級 {musts}
+                  </span>
+                  <span>軟規則罰分 {Math.round(progress.softBest)}｜迭代 {progress.iter.toLocaleString()}</span>
+                </span>
+              )
+            })()}
             <span className="text-zinc-400">
               {progress.sinceImproveMs < 1500 ? '持續進步中…' : `${Math.floor(progress.sinceImproveMs / 1000)} 秒無進步`}
             </span>
