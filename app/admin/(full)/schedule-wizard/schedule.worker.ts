@@ -1,5 +1,6 @@
 // 排課引擎 Web Worker：硬限制＋權重一次跑，成功條件＝未排 0 且必須級 0。
-//   一個種子一個種子跑，跑到成功就立刻收尾榨乾、不再跑其他種子；沒跑到就換新的種子繼續
+//   一個種子一個種子跑（硬限制＋權重全開，不做任何「關掉權重先塞進去」的補救——那樣塞出來的位置不是權重選的），
+//   跑到成功就立刻收尾榨乾、不再跑其他種子；沒跑到就換新的種子繼續
 //   （前五個是固定種子、結果可重現，之後改用衍生的隨機種子），直到成功／使用者停止／安全上限（40 個種子或 30 分鐘）。
 //   罰分字典序：未排（1e5/堂）→ 必須級（1e6/筆）→ 軟權重——引擎天生先求排入、再求好看，不需分兩階段。
 //   每個種子跑到收斂（只差 1～2 節時多給耐心）；已有完整解後其餘種子縮短預算、只為多起點比軟分。
@@ -15,8 +16,6 @@ const MAX_SEEDS = 40                      // 安全上限：真的排不出來�
 const MAX_MS = 30 * 60 * 1000             // 同上，時間上限 30 分鐘
 const BUDGET = { converge: 25000, cap: 120000 }       // 尚未有完整解：每種子收斂/上限（必須級條件變多後，沙盒實測成功的種子要跑滿 90s，上限放寬到 120s）
 const PROBE_MS = 20000
-const RESCUE_FIX = { converge: 20000, cap: 30000 }    // 從最佳解熱啟動純硬補完：實測幾秒
-const RESCUE_SOFT = { converge: 15000, cap: 60000 }   // 從可行解出發做加權優化
 
 let stopRequested = false
 
@@ -111,14 +110,6 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; se
   // 換種子重排：前端給 seedBase 就用它衍生五個新種子（預設種子跑不成時，換一組起點再試，比調權重更接近課務組要的）
   const seeds = typeof e.data.seedBase === 'number' ? SEEDS.map((_, i) => (e.data.seedBase! + i * 7919) % 1_000_003) : SEEDS
 
-  // 純硬補完回傳的是「純硬」計分（必須級全關），直接拿來比較或採用會誤判（沙盒實測：回報成功、其實藏著 3 筆必須級）
-  // → 先用真正的輸入熱啟動重新計分（不搜尋）再往下用
-  const rescore = (r: EngineResult, seed: number) => {
-    const out = new EngineRun({ ...input, seed }, r.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName }))).finalize()
-    if (!out.notes?.length && r.notes?.length) out.notes = r.notes
-    return out
-  }
-
   // ── 一個種子一個種子跑，跑到「未排 0、必須級 0」就立刻收尾，不跑完剩下的種子 ──
   // 沒跑到就換新種子繼續（固定的五個用完之後改用衍生的隨機種子），直到成功、或使用者按停止、或碰到安全上限。
   let best: EngineResult | null = null
@@ -130,22 +121,6 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; se
     const r = await runOne({ ...input, seed }, { label: `第 ${i + 1} 個種子`, budget: BUDGET })
     if (!best || betterThan(r, best)) { best = r; bestSeed = seed }
     if (isPerfect(r)) break
-    if (stopRequested) break
-    // 只差一兩堂：從這個種子的結果熱啟動「純硬補完 → 加權優化」，通常幾十秒就補起來（比再跑一個種子划算）
-    if (r.unplaced.length + mustCountOf(r) <= 3) {
-      const fixed = await runOne({ ...hardOnlyInput(input), seed }, {
-        label: `第 ${i + 1} 個種子・差一點 → 補完`, budget: RESCUE_FIX, perfectExit: true,
-        initial: r.placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
-      })
-      if (isPerfect(fixed) && !stopRequested) {
-        const polished = await runOne({ ...input, seed }, {
-          label: `第 ${i + 1} 個種子・補完後優化`, budget: RESCUE_SOFT,
-          initial: rescore(fixed, seed).placed.map(p => ({ id: p.id, day: p.day, period: p.period, teacherId: p.teacherId, teacherName: p.teacherName })),
-        })
-        if (betterThan(polished, best)) { best = polished; bestSeed = seed }
-        if (isPerfect(polished)) break
-      }
-    }
   }
   if (!best) return
 
