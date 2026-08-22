@@ -1061,17 +1061,22 @@ ${head}確定撤回？`)) return
                           const ok = !s.unplaced && !s.mustCount
                           const isBest = !stale && ok && bestSoft !== null && s.softPenalty === bestSoft && comparable.length > 1
                           return (
-                            <tr key={v.id}>
+                            <tr key={v.id} className={ok ? undefined : 'bg-red-50/60'}>
                               <td className="text-center">
                                 <button onClick={() => patchVersion(v.id, { starred: !v.starred })}
                                   title={v.starred ? '取消星號（可能被保留上限自動刪除）' : '加星號（永久保留）'}
                                   className={v.starred ? 'text-amber-500' : 'text-zinc-300 hover:text-amber-400'}>★</button>
                               </td>
                               <td>
-                                <div className="text-zinc-800">{v.seq ? <span className="font-mono text-zinc-500 mr-1">#{v.seq}</span> : null}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</div>
+                                <div className={ok ? 'text-zinc-800' : 'text-red-700'}>
+                                  {v.seq ? <span className={`font-mono mr-1 ${ok ? 'text-zinc-500' : 'text-red-500'}`}>#{v.seq}</span> : null}
+                                  {v.label || new Date(v.created_at).toLocaleString('zh-TW')}
+                                  {!ok && <span className="ml-1.5 px-1 py-0.5 rounded-sm bg-red-100 text-red-700 text-[10px] align-middle">✕ 沒排成</span>}
+                                </div>
                                 <div className="text-[10px] text-zinc-400">
                                   {v.label && `${new Date(v.created_at).toLocaleString('zh-TW')}　`}
                                   {isBest && <span className="text-green-700">軟分最低</span>}
+                                  {!ok && <span className="text-red-600">{[s.unplaced ? `未排 ${s.unplaced} 堂` : '', s.mustCount ? `必須級違反 ${s.mustCount} 筆` : ''].filter(Boolean).join('、')}——不可發布，僅供參考</span>}
                                   {stale && <span className="text-amber-600">{s.note ?? '基礎資料已變更（配課／鎖課／不排課有異動，分數不可與現況相比）'}</span>}
                                   {!stale && oldScoring && <span className="text-amber-600">舊計分（量級對齊前的算法，軟分不可與新版本相比）</span>}
                                 </div>
