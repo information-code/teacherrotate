@@ -2500,6 +2500,9 @@ export class EngineRun {
     // 專科教室優先序：0＝有管理教室者（鎖進自己那間，容錯空間最小，必須先排）
     //                 1＝要用專科教室但沒有管理教室者（撿剩下的，仍比一般課優先）
     //                 2＝其餘。教室數量固定且常常剛好夠用，排在後面就再也塞不進去了。
+    // 註：課務組口述的人工順序是「有教室的連堂 → 英語 → 表藝 → 社會連堂 → 單節」按科目層級橫掃全校。
+    //     拿它當主排序實測過：8 顆種子 0 顆成功（原本 2 顆），連原本穩定成功的 17、63 都掛掉——
+    //     人工掃科目時是邊掃邊回頭改，我們這一步是一次性貪婪，硬套會把「洞少的班先排完」這個補償機制拆掉。
     const roomRank = (l: EngineLesson) => this.st.mgrRooms.has(l.id) ? 0 : this.st.roomPool.has(l.id) ? 1 : 2
     // 錨定課最先（整批、跨班），接著專科教室課，其餘依 班級餘裕 → 老師負載比 → 課本身難度
     const ordered = [...input.lessons].filter(l => !this.st.pos.has(l.id)).sort((a, b) =>
@@ -2815,8 +2818,15 @@ export class EngineRun {
           if (per === null) return then()
           nodes++
           const nextAlso = r.periods.includes(per + 1)
-          // 下一節也在同段 → 連堂先試（一次蓋兩格）；否則單節先試，把連堂的彈性留給別班
-          const pool = poolOf(r.classKey).sort((a, b) => (nextAlso ? b.size - a.size : a.size - b.size) || (this.rnd() - 0.5))
+          // 不佔專科教室的科目先試。人工課表四期都是這個形狀：共同不排課那一格的主力是
+          // 社會／體育／英語／健康，需教室的科目只補到剛好等於教室數。逆推沙盒也一樣：
+          // 成功的種子在六年級週四第 7 節一組 6-7 連堂都沒用（音樂、表藝、自然各只 1 班），
+          // 失敗的種子用了三組連堂把資訊教室、自然教室塔滿，三年級的智慧連堂就塔不進去了。
+          // （專科教室的使用率本來就接近 100%，多占兩節就是別人排不進去。）
+          const roomy = (l: EngineLesson) => Number((this.st.roomPool.get(l.id)?.length ?? 0) > 0)
+          const pool = poolOf(r.classKey).sort((a, b) =>
+            (roomy(a) - roomy(b))
+            || (nextAlso ? b.size - a.size : a.size - b.size) || (this.rnd() - 0.5))
           for (const l of pool) {
             const tries: Placement[] = l.size === 2 ? [{ day: r.day, period: per }, { day: r.day, period: per - 1 }] : [{ day: r.day, period: per }]
             for (const q of tries) {
