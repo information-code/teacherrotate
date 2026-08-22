@@ -17,7 +17,7 @@ export type ChainSeed = { kind: 'class'; classKey: string } | { kind: 'teacher';
 
 type Item = { kind: 'lesson'; id: string } | { kind: 'hr'; classKey: string; slot: string }
 type Board = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string }
-type Move = { n: number; classKey: string; from: string; to: string; what: string; who: string }
+type Move = { n: number; classKey: string; from: string; to: string; what: string; who: string; item: Item }
 type Pending = { item: Item; classKey: string; why: string; subject?: string }   // subject：導師課被擠出時要記住科目（導師課只是字串）
 type Snap = { placed: PlacedResult[]; hr: Record<string, HomeroomRow>; moves: Move[]; boards: Board[]; pending: Pending[] }
 
@@ -243,7 +243,7 @@ export default function ChainAdjustModal({
     setPlaced(nextPlaced)
     setHr(nextHr)
     setBoards(addBoard(nextBoards, { kind: 'class', classKey: ck }))
-    setMoves(m => [...m, { n: m.length + 1, classKey: ck, from: fromSlot, to: toSlot, what: lbl.what, who: lbl.who }])
+    setMoves(m => [...m, { n: m.length + 1, classKey: ck, from: fromSlot, to: toSlot, what: lbl.what, who: lbl.who, item }])
     setPending(p => [...p.filter(x => itemKey(x.item) !== selfKey), ...newPending])
     setPick(null)
   }
@@ -251,8 +251,11 @@ export default function ChainAdjustModal({
   function undo() {
     const last = history[history.length - 1]
     if (!last) return
+    const undone = moves[moves.length - 1]        // 被退回的那一步
     setPlaced(last.placed); setHr(last.hr); setMoves(last.moves); setBoards(last.boards); setPending(last.pending)
-    setHistory(h => h.slice(0, -1)); setPick(null)
+    setHistory(h => h.slice(0, -1))
+    // 退回之後把那一步的來源重新選起來：多半是「位置選錯了想改點別的」，不該連選取一起清掉
+    setPick(undone ? { item: undone.item, classKey: undone.classKey } : null)
   }
 
   /* ── 套用前檢查：擋不住人工，但要講清楚會破壞什麼 ──
