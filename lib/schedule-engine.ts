@@ -769,7 +769,8 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
         if (possible - need <= 1) tight.push(`${c.label} 週${DAY_ZH[d]}（導師可用 ${possible} 格、下限 ${need}）`)
       }
     }
-    if (tight.length) preflight.push({ level: 'warn', tab: 'lock', text: `結構極緊的班日（鎖課／不排課／共同不排課扣完後，導師當天可用格只比每日下限多 ≤1 格，引擎只有一兩種排法、最容易卡在這裡）：${joinCap(tight)}——若一再排不成，可考慮接受那天導師少一節（調低每日下限或取消必須級），或調整游泳／共同不排課時段。` })
+    // 課務組不需要看這個：結構極緊班日只留在 console 供除錯，不進前置檢核
+    if (tight.length) console.debug('[engine] 結構極緊的班日：', tight.join('、'))
   }
 
   return {
