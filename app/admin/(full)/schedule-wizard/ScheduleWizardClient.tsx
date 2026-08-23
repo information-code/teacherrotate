@@ -752,7 +752,7 @@ ${head}確定撤回？`)) return
             這裡補一個入口，免得版本紀錄變成進不去的頁面 */}
         {!result && (
           <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1 order-last ml-auto">
-            🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}
+            🗂 版本紀錄{versions.length > 0 && `（${versions.length} 版）`}
           </button>
         )}
         {planStatus === 'published' || planStatus === 'final' ? (
@@ -993,7 +993,7 @@ ${head}確定撤回？`)) return
             <span className="ml-auto flex gap-2 items-center">
               <button onClick={() => setHealthOpen(true)} className="btn btn-primary text-xs py-1" title="導師／科任／鐘點三張熱力圖，並和本校人工課表對照">🩺 課表體檢</button>
               <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分（給工程判讀用）">📊 罰分明細</button>
-              <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}</button>
+              <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（${versions.length} 版）`}</button>
             </span>
           </div>
 
