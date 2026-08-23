@@ -25,6 +25,14 @@ const HAND = {
 } as const
 const HAND_TERMS = '112-1、113-1、114-1、114-2 四期'
 
+/* 色階門檻的依據——人工課表四期的實際比例（不是我自訂的）：
+ *   科任空堂：28% 的老師日有空堂（空 1 節 15%、空 2 節 10%、空 3 節以上只有 3%，最大 4 節）
+ *   導師上午：上午 0 節 2%、上午 1 節 16%
+ *   孤堂日 6%、半天只上 1 節 21%
+ * 所以「有空堂就標紅」會染紅四分之一的格子，等於沒有訊息；紅色留給人工也罕見的情況。 */
+const RED_GAP = 3      // 空堂 ≥3 節才紅（人工僅 3%）
+const AMBER_GAP = 2    // 空 2 節橙（人工 10%）
+
 type Extra = { slot: string; main: string; sub: string }
 
 interface Props {
@@ -277,15 +285,19 @@ export default function ScheduleHealth({
               <p className="text-[11px] text-zinc-400 mb-1.5">
                 每格＝那天導師自己上幾節。
                 <span className="text-red-600 ml-1">紅＝0 節或超過上限</span>
-                <span className="text-amber-600 ml-1">橙＝上午不足 2 節</span>
+                <span className="text-amber-600 ml-1">橙＝上午 0 節</span>
+                <span className="text-amber-500/80 ml-1">淡橙＝上午 1 節</span>
                 <span className="text-violet-600 ml-1">紫框＝連上 4 節以上</span>
+                <br />門檻取自人工課表：上午 0 節僅占 2%、上午 1 節占 16%。
               </p>
             )}
             {tab === 'teacher' && (
               <p className="text-[11px] text-zinc-400 mb-1.5">
                 每格＝那天上幾節，零碎空堂多的排前面。
-                <span className="text-red-600 ml-1">紅＝有空堂夾在課中間</span>
-                <span className="text-amber-600 ml-1">橙＝孤堂日或半天只上 1 節</span>
+                <span className="text-red-600 ml-1">紅＝空 3 節以上或整天只 1 節</span>
+                <span className="text-amber-600 ml-1">橙＝空 2 節</span>
+                <span className="text-amber-500/80 ml-1">淡橙＝空 1 節或半天只 1 節</span>
+                <br />門檻取自人工課表：28% 的老師日本來就有空堂，空 3 節以上才只占 3%。
               </p>
             )}
             {tab === 'hourly' && <p className="text-[11px] text-zinc-400 mb-1.5">鐘點老師在乎的是要跑幾趟，到校天數越少越好。</p>}
@@ -309,7 +321,8 @@ export default function ScheduleHealth({
                       </td>
                       {r.days.map(d => {
                         const tone = d.n === 0 || d.n > d.cap ? 'bg-red-100 text-red-800 border-red-300'
-                          : d.am < 2 ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : d.am === 0 ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : d.am === 1 ? 'bg-amber-50/50 text-amber-700 border-amber-100'
                           : 'bg-white text-zinc-500 border-zinc-200'
                         return (
                           <td key={d.d} className="p-0.5">
@@ -328,8 +341,9 @@ export default function ScheduleHealth({
                         </button>
                       </td>
                       {r.days.map(d => {
-                        const tone = d.gap ? 'bg-red-100 text-red-800 border-red-300'
-                          : (d.lonely || d.half1) ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        const tone = d.gap >= RED_GAP || d.lonely ? 'bg-red-100 text-red-800 border-red-300'
+                          : d.gap >= AMBER_GAP ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : d.gap || d.half1 ? 'bg-amber-50/50 text-amber-700 border-amber-100'
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
                         const why = d.n === 0 ? '這天沒課'
