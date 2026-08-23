@@ -520,10 +520,14 @@ export default function ScheduleHealth({
                   )}
                 </div>
                 <div className="p-2 overflow-x-auto">
-                  <table className="w-full text-[11px] border-collapse min-w-[420px]">
+                  <table className="w-full table-fixed text-[11px] border-collapse min-w-[460px]">
+                    <colgroup>
+                      <col style={{ width: 26 }} />
+                      {SCHEDULE_DAYS.map(d => <col key={d} style={{ width: `${(100 - 5) / 5}%` }} />)}
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th className="w-6" />
+                        <th />
                         {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 py-0.5">{DAY_LABEL[d]}</th>)}
                       </tr>
                     </thead>
