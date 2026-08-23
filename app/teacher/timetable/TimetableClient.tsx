@@ -189,6 +189,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-1 mb-1">
             導師正在填排自己班的課，這裡看到的是<b>目前進度</b>，還會變動。
             提供給大家先看看誰哪一節有空、方便談調課；<b>要調課請和對方談好後洽教務處</b>，不要以這一版安排正式事務。
+            {myClassKey && <>　您是班級導師——這一頁是唯讀的，要填排自己班的課請到左側「<a href="/teacher/schedule-fill" className="underline font-medium">排課選填</a>」。</>}
           </p>
         )}
         <p className="text-xs text-zinc-400">
