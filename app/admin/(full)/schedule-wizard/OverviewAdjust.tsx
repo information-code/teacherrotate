@@ -187,7 +187,6 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (res.ok) {
         const d = await res.json().catch(() => ({}))
         onVersionSaved?.({ id: d.id, seq: d.seq })
-        lastVerSeq.current = (d.seq as number | null | undefined) ?? null
         return (d.id as string | undefined) ?? true
       }
       return res.ok
@@ -630,7 +629,6 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     }])
   }
 
-  const lastVerSeq = useRef<number | null>(null)
   async function persist(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, nextAdj: Adjustment[], changedHrClasses: string[], versionId?: string) {
     setSaveState('saving')
     try {
@@ -647,13 +645,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         setSaveState('error')
         // 不一定是「有人同時在改」：這一頁開太久、另一個分頁存過、後台做過修復都會撞到。
         // 重點是給出路——被擋下後每按一次都會再擋一次，不講清楚就只能乾等。
-        const seq = versionId && lastVerSeq.current ? `#${lastVerSeq.current}` : null
         const when = d.currentAt ? new Date(d.currentAt).toLocaleString('zh-TW') : '（時間不明）'
         if (confirm(`存檔已擋下：你這一頁的課表不是最新的。\n\n`
           + `資料庫最後一次修改是 ${when}，比你開這一頁的時間還新。\n`
           + `可能是別人同時在調課，也可能是你另一個分頁存過、或這一頁開太久了。\n`
           + `（直接存下去會把那次修改整份蓋掉，所以系統先擋住。）\n\n`
-          + (seq ? `你剛剛這一步已經存成版本 ${seq}，不會不見。\n重新整理後如果確定要用它，到版本紀錄按「回到這一版」。\n\n` : `你畫面上的調整還沒存進去，重新整理會消失。\n\n`)
+          + `你剛剛這一步沒有留下來（課表和版本紀錄都沒有），重新整理後請重調一次。\n\n`
           + `要現在重新整理，載入最新的課表嗎？`)) location.reload()
         return
       }
@@ -1405,6 +1402,11 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           // 「套用」就是套用：直接寫進課表，不要再叫人去按「儲存微調」（那顆已經拿掉了）
           const ok = await persist(re, next.hr, adj, cks, typeof vid === 'string' ? vid : undefined)
           if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
+          else if (typeof vid === 'string') {
+            // 課表沒寫成，那這一版就不算數：留著只會變成版本紀錄裡有它、課表卻沒有
+            await fetch(`/api/admin/schedule-plan-versions?id=${vid}`, { method: 'DELETE' }).catch(() => null)
+            onVersionSaved?.({})
+          }
         }}
       />
 </div>
