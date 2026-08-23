@@ -496,10 +496,15 @@ export default function ChainAdjustModal({
       for (const d of SCHEDULE_DAYS) {
         const day = Array.from(teach).filter(x => x.startsWith(`${d}-`))
         if (!day.length) continue
+        const full = day.some(x => Number(x.split('-')[1]) > 4)   // 有下午的課格＝整天日，否則是半天
+        const zh = full ? '整天' : '半天'
         const n = day.filter(x => !locks[x] && !cm.has(x)).length
-        const cap = bandOf(g) === 'low' && day.some(x => Number(x.split('-')[1]) > 4) ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
-        if (n === 0) must.push(`${ckZh(ck)} 週${DAY_ZH[d]} 導師整天沒課`)
+        const cap = bandOf(g) === 'low' && full ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
+        if (n === 0) must.push(`${ckZh(ck)} 週${DAY_ZH[d]}（${zh}）導師一節課都沒有`)
         else if (n > cap) must.push(`${ckZh(ck)} 週${DAY_ZH[d]} 導師 ${n} 節，超過絕對上限 ${cap}`)
+        // 半天日整個半天都是導師課：連上四節、一堂科任都沒有。低年級半天日多，最容易踩到
+        // （人工課表四期 566 個半天日只有 1 個，所以引擎裡是無條件的必須級）
+        if (!full && n === day.length) must.push(`${ckZh(ck)} 週${DAY_ZH[d]}（半天）整個半天都是導師課，連上 ${n} 節、一堂科任都沒有`)
       }
     }
     void hx
