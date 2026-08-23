@@ -186,6 +186,13 @@ export default function ChainAdjustModal({
     }
     return m
   }, [config])
+  // 外師（協同英語／國際教育）不可到校的時段。外師同時段唯一也是硬規則，
+  // 目標格判定不看的話會亮綠框，按下去才發現外師撞課。
+  const foreignOff = useMemo(() => {
+    const m: Record<string, Set<string>> = {}
+    for (const f of config.foreignTeachers) m[f.teacherId] = new Set(f.offSlots)
+    return m
+  }, [config])
   const mustLeaveOf = useMemo(() => {
     const on: Record<string, Set<string>> = {}
     for (const p of config.personalOff) {
@@ -272,6 +279,15 @@ export default function ChainAdjustModal({
       return { ok: true, why: want.length > 1 ? '標記搬到這裡（這位老師這兩節都有空）' : '標記搬到這裡（這位老師這一節有空）' }
     }
     if (board.classKey !== ck) return { ok: false, why: '只能搬到這堂課自己班上的時段' }
+    // 掛外師的課（英語主題、國際教育）：外師同時段唯一、不可到校時段也擋——
+    // 班級課表上看不到外師，不在這裡檢查就會亮綠框、按下去才撞
+    const co = l?.coTeacherId
+    if (co) for (const s2 of want) {
+      if (foreignOff[co]?.has(s2)) return { ok: false, why: `外師 ${nameOf(co)} ${slotZh(s2)} 不可到校` }
+      const busy = dTeacher.get(co)?.get(s2)
+      if (busy && busy.id !== l?.id && !leaving({ kind: 'lesson', id: busy.id }))
+        return { ok: false, why: `外師 ${nameOf(co)} ${slotZh(s2)} 已在 ${busy.classLabel}` }
+    }
     // 班級課表：兩節之中只要有人就是「換掉他」，全空才是直接放
     const hit: string[] = []
     for (const s2 of want) {
@@ -485,8 +501,12 @@ export default function ChainAdjustModal({
         rs.set(k, q)
       }
     }
-    for (const q of re) for (const s of spanOf(q)) if (tBlocked[q.teacherId]?.has(s))
-      hard.push(`${q.teacherName} ${slotZh(s)} 是不排課時段，卻排了 ${q.classLabel} ${q.subject}`)
+    for (const q of re) for (const s of spanOf(q)) {
+      if (tBlocked[q.teacherId]?.has(s))
+        hard.push(`${q.teacherName} ${slotZh(s)} 是不排課時段，卻排了 ${q.classLabel} ${q.subject}`)
+      if (q.coTeacherId && foreignOff[q.coTeacherId]?.has(s))
+        hard.push(`外師 ${nameOf(q.coTeacherId)} ${slotZh(s)} 不可到校，卻掛了 ${q.classLabel} ${q.subject}`)
+    }
     const hm = config.weights.builtin.homeroomDailyMax
     for (const g of GRADES) for (let i = 0; i < (classCounts[g] ?? 0); i++) {
       const ck = `${g}-${i}`, teach = teachOf.get(ck) ?? new Set<string>()
@@ -625,7 +645,7 @@ export default function ChainAdjustModal({
       ? (!teachOf.get(ck)?.has(slot) ? '非可排課時段' : lock ? `鎖課：${lockTypeMap[lock]?.label ?? ''}` : null)
       : b.kind === 'room' ? null
       : (ex ? `固定課：${normalizeSubject(ex.main)}（${ex.sub}）` : null)
-    const tOff = b.kind === 'teacher' && tBlocked[b.teacherId]?.has(slot)
+    const tOff = b.kind === 'teacher' && (tBlocked[b.teacherId]?.has(slot) || foreignOff[b.teacherId]?.has(slot))
 
     const picked = Boolean(pick && item && iKey(pick.item) === iKey(item) && bKey(pick.board) === bKey(b))
     const arrowOut = item ? moves.some(m => iKey(m.item) === iKey(item) && bKey(m.board) === bKey(b)) : false
@@ -662,7 +682,8 @@ export default function ChainAdjustModal({
     // picked＝再點一次取消；item＝改選別堂課。原本兩者都被 `!pick` 擋掉，選中之後整張課表就點不動了
     const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick
       && (hasArrow || picked || tgt?.ok || tgtTail || (item && (item.kind !== 'hr' || !fillOpen)))))
-    const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff ? '不排課時段'
+    const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff
+      ? (b.kind === 'teacher' && foreignOff[b.teacherId]?.has(slot) ? '外師不可到校' : '不排課時段')
       : hasArrow ? '點一下取消這一步'
       : tgt ? tgt.why
       : item ? `${labelOf(item).what}（${labelOf(item).who}）` : '空格')
