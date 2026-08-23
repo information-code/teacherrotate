@@ -109,6 +109,25 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
   const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
+  // 防守：外面換了一份課表（換版本預覽、發布後重載…）就跟著更新。
+  // placed／hr 是在掛載時從 props 抄進 state 的，只靠外面記得換 key 太脆弱——
+  // 少換一次就會停在上一版，而且之後怎麼切都不會動。有未存的微調時不覆蓋，免得洗掉使用者的工作。
+  const lastPlanRef = useRef(savedPlan)
+  const lastHrRef = useRef(homeroomRows)
+  useEffect(() => {
+    if (savedPlan === lastPlanRef.current && homeroomRows === lastHrRef.current) return
+    const planChanged = savedPlan !== lastPlanRef.current
+    lastPlanRef.current = savedPlan
+    lastHrRef.current = homeroomRows
+    if (unsaved > 0) return
+    if (planChanged) {
+      setPlaced((savedPlan.placed as PlacedResult[] | undefined) ?? [])
+      setAdjustments((savedPlan.adjustments as Adjustment[] | undefined) ?? [])
+      setTray([]); setTrayPick(null); setSlotPick(null); setSel(null); setUndoStack([])
+    }
+    setHr(Object.fromEntries(homeroomRows.map(r => [r.class_key, { ...r, cells: { ...r.cells } }])))
+  }, [savedPlan, homeroomRows, unsaved])
+
   // 用 effect 不用 render 期間處理：這是一次性的外部指令，開過就要通知外面清掉
   useEffect(() => {
     if (!chainRequest || chainRequest.nonce === chainNonce) return

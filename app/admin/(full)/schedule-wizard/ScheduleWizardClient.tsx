@@ -116,9 +116,10 @@ export default function ScheduleWizardClient(props: Props) {
       status: 'draft', ...slim(result), adjustments: [] as unknown[],
       base: slim(base),   // 微調前的起點：重新整理後「放棄全部微調」還回得去
     }
-    // 只在換一份（adjustSession）時重建：微調回報的 placed 變動不該讓內嵌元件重掛而失去復原堆疊
+    // 換一份（adjustSession）或換了結果（result）時才重建：微調回報的 placed 變動走的是元件自己的 state，
+    // 不該讓內嵌元件重掛而失去復原堆疊
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adjustSession, result !== null])
+  }, [adjustSession, result])
   const [phaseBusy, setPhaseBusy] = useState(false)
   const [runFailed, setRunFailed] = useState(false)          // 全部種子跑完仍有未排／必須級違反
   const [hints, setHints] = useState<string[]>([])           // 未排診斷：建議降低的權重
@@ -470,7 +471,7 @@ ${head}確定撤回？`)) return
     if (!confirmDropAdjust('切換到別的版本')) return
     setVersionBusy(v.id)
     setAdjustUnsaved(0)
-    setDraftDirty(false); setAdjustSession(n => n + 1); setResumedAdjustments(null)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
+    setDraftDirty(false); setResumedAdjustments(null)
     try {
       const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
       if (!res.ok) { alert('載入版本失敗'); return }
@@ -487,6 +488,9 @@ ${head}確定撤回？`)) return
       })
       lastVerSig.current = sigOfPlaced(p.placed)   // 預覽既有版本不該再存成新版本
       setPreviewVersionId(v.id)
+      // 重掛內嵌元件一定要在 setResult 之後：它會把 savedPlan.placed 抄進自己的 state，
+      // 先重掛就會抄到「上一版」的課表，畫面看起來像沒切過去（而且之後怎麼切都不會更新）。
+      setAdjustSession(n => n + 1)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
       setRunFailed(false); setHints([]); setProbePerfect(null)
       setVersionsOpen(false)
     } finally { setVersionBusy(null) }
