@@ -39,6 +39,9 @@ interface Props {
   teacherNames: Record<string, string>
   engineInput: EngineInput
   fillOpen: boolean
+  /** 不進引擎的固定課（本土語原班／語別場次）：教師課表要畫出來，而且那幾節不能當目標——
+   *  看不到就會把課排到本土語上面，變成同一節要上兩堂。 */
+  extraByTeacher: Map<string, { slot: string; main: string; sub: string }[]>
   onClose: () => void
   onApply: (next: { placed: PlacedResult[]; hr: Record<string, HomeroomRow>; moves: { classKey: string; from: string; to: string; what: string }[] }) => void
 }
@@ -52,7 +55,7 @@ const ckZh = (ck: string) => ck ? classLabel(Number(ck.split('-')[0]), Number(ck
 const CELL_W = 92, CELL_H = 42, HEAD_H = 24, LABEL_W = 40
 
 export default function ChainAdjustModal({
-  open, seed, placed: placed0, hr: hr0, config, classCounts, teacherNames, engineInput, fillOpen, onClose, onApply,
+  open, seed, placed: placed0, hr: hr0, config, classCounts, teacherNames, engineInput, fillOpen, extraByTeacher, onClose, onApply,
 }: Props) {
   const [placed, setPlaced] = useState<PlacedResult[]>(placed0)
   const [hr, setHr] = useState<Record<string, HomeroomRow>>(hr0)
@@ -202,6 +205,8 @@ export default function ChainAdjustModal({
 
     if (board.kind === 'teacher') {
       if (tBlocked[board.teacherId]?.has(slot)) return { ok: false, why: `${nameOf(board.teacherId)} 這一節不排課` }
+      const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === slot)
+      if (ex) return { ok: false, why: `${nameOf(board.teacherId)} 這一節有 ${ex.main}（固定課，不可調）` }
       const occ = dTeacher.get(board.teacherId)?.get(slot)
       if (occ && !leaving({ kind: 'lesson', id: occ.id })) return { ok: false, why: `${nameOf(board.teacherId)} 這一節已有 ${occ.classLabel} ${occ.subject}` }
       return { ok: true, why: '標記搬到這裡（這位老師這一節有空）' }
@@ -450,10 +455,13 @@ export default function ChainAdjustModal({
     const isClass = b.kind === 'class'
     const ck = isClass ? b.classKey : ''
     const l = isClass ? dClass.get(ck)?.get(slot) : dTeacher.get(b.teacherId)?.get(slot)
+    const ex = !isClass && !l ? (extraByTeacher.get(b.teacherId) ?? []).find(x => x.slot === slot) : undefined
     const sub = isClass ? hr0[ck]?.cells?.[slot] : undefined
     const item: Item | null = l ? { kind: 'lesson', id: l.id } : (sub && isClass ? { kind: 'hr', classKey: ck, slot } : null)
     const lock = isClass ? lockOf(ck)[slot] : undefined
-    const frozen = isClass ? (!teachOf.get(ck)?.has(slot) ? '非可排課時段' : lock ? `鎖課：${lockTypeMap[lock]?.label ?? ''}` : null) : null
+    const frozen = isClass
+      ? (!teachOf.get(ck)?.has(slot) ? '非可排課時段' : lock ? `鎖課：${lockTypeMap[lock]?.label ?? ''}` : null)
+      : (ex ? `固定課：${ex.main}（${ex.sub}）` : null)
     const tOff = !isClass && tBlocked[b.teacherId]?.has(slot)
 
     const picked = Boolean(pick && item && iKey(pick.item) === iKey(item) && bKey(pick.board) === bKey(b))
@@ -494,7 +502,7 @@ export default function ChainAdjustModal({
         className={`relative w-full text-[10.5px] leading-tight overflow-hidden flex flex-col items-center justify-center border ${tone}${ring} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         style={{ height: CELL_H }}>
         {isClass && mustFillOf[ck]?.has(slot) && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 pointer-events-none" />}
-        {frozen ? <span className="opacity-70">{frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
+        {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? ex.main : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
           : l ? (<>
             <span className="font-medium truncate w-full text-center px-0.5">{l.subject}</span>
             <span className="opacity-70 truncate w-full text-center px-0.5">{isClass ? l.teacherName : l.classLabel}</span>

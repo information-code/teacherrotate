@@ -42,6 +42,7 @@ interface Props {
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
 
+const EMPTY_EXTRAS = new Map<string, ExtraCell[]>()   // 穩定引用：避免每次 render 產生新 Map 讓子元件重算
 type Sel = { type: 'lesson'; id: string } | { type: 'hr'; classKey: string; slot: string } | null
 interface Adjustment { at: string; desc: string; note?: string }
 
@@ -1300,6 +1301,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         open={Boolean(chainSeed)} seed={chainSeed}
         placed={placed} hr={hr} config={config} classCounts={classCounts}
         teacherNames={teacherNames} engineInput={engineInput} fillOpen={fillOpen}
+        extraByTeacher={extras?.teacher ?? EMPTY_EXTRAS}
         onClose={() => setChainSeed(null)}
         onApply={next => {
           const rooms2 = roomsFromConfig(config)
