@@ -272,8 +272,13 @@ export default function ScheduleWizardClient(props: Props) {
     })
   }
 
-  function run() {
+  function run(freshSeeds = false) {
     if (!confirmDropAdjust('重新排課')) return
+    // 「換一批種子」：把固定的前五顆先記成試過的，這一輪直接從沒跑過的開始。
+    // 引擎是決定性的，同一顆種子永遠給同一張課表——想換一版比較就得換種子。
+    if (freshSeeds) {
+      try { localStorage.setItem(triedKey, JSON.stringify(Array.from(new Set([...readTried(), 42, 7, 17, 63, 3])))) } catch { /* 無痕視窗：跳過 */ }
+    }
     workerRef.current?.terminate()
     setAdjustUnsaved(0)
     setSeedLog([]); try { localStorage.removeItem(seedLogKey) } catch { /* 同上 */ }
@@ -778,10 +783,16 @@ ${head}確定撤回？`)) return
         ) : (
           <>
             {!running
-              ? <button onClick={() => run()} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
+              ? (<>
+                <button onClick={() => run()} disabled={errors.length > 0 || input.lessons.length === 0} className="btn btn-primary text-sm py-1">▶ 開始排課</button>
+                <button onClick={() => run(true)} disabled={errors.length > 0 || input.lessons.length === 0}
+                  className="btn btn-secondary text-sm py-1"
+                  title="跳過固定的前五顆種子，直接用沒跑過的。同一顆種子永遠排出同一張課表，想換一版比較就用這個">🎲 換一批種子</button>
+              </>)
               : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
             <span className="text-xs text-zinc-400">
               共 {input.lessons.length} 堂科任課待排。硬限制與權重一次跑、多種子多起點取最佳；<b>成功條件＝未排 0 且必須級 0</b>。
+              排出來的課表由種子決定，同一顆種子永遠一樣；系統會自動跳過試過的，想直接換一批可按右邊那顆。
               排不完會診斷是哪些權重牽住了搜尋、建議降低。發布門檻：未排、必排未覆蓋與必須級違反皆須為 0。
             </span>
           </>
