@@ -52,6 +52,18 @@ interface Props {
 }
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
+
+/** 圖例：一格一個意思。原本一個紅色色塊寫「整天沒課、整天只 1 節或連上 7 節」，
+ *  三種狀況擠在一起，看到紅格子還要自己回想是哪一種。 */
+function Legend({ items }: { items: { cls: string; text: string }[] }) {
+  return (
+    <div className="flex flex-wrap gap-x-2 gap-y-1 mb-1.5">
+      {items.map(x => (
+        <span key={x.text} className={`px-1 rounded-sm text-[11px] ${x.cls}`}>{x.text}</span>
+      ))}
+    </div>
+  )
+}
 const MORNING_LAST = 4
 type Sel = { kind: 'class'; ck: string } | { kind: 'teacher'; tid: string }
 
@@ -365,23 +377,33 @@ export default function ScheduleHealth({
           {/* 左：熱力圖（固定寬，三個分頁版面一致，不會擠到右邊的課表） */}
           <div className="flex-none w-[430px]">
             {tab === 'homeroom' && (
-              <p className="text-[11px] text-zinc-400 mb-1.5">
-                每格＝那天導師自己上幾節。
-                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝0 節或超過上限</span>
-                <span className="px-1 rounded-sm bg-amber-100 text-amber-900 ml-1">深橙＝上午 0 節</span>
-                <span className="px-1 rounded-sm bg-violet-100 text-violet-800 ml-1">紫＝連上 4 節以上</span>
-                <span className="px-1 rounded-sm bg-amber-50 text-amber-700 ml-1">淡橙＝上午 1 節</span>
-                <br />門檻取自人工課表：上午 0 節僅占 2%、上午 1 節占 16%。
-              </p>
+              <>
+                <p className="text-[11px] text-zinc-400 mb-1">每格＝那天導師自己上幾節。</p>
+                <Legend items={[
+                  { cls: 'bg-red-100 text-red-800', text: '整天 0 節' },
+                  { cls: 'bg-red-100 text-red-800', text: '超過每日上限' },
+                  { cls: 'bg-amber-100 text-amber-900', text: '上午 0 節' },
+                  { cls: 'bg-violet-100 text-violet-800', text: '連上 4 節以上' },
+                  { cls: 'bg-amber-50 text-amber-700', text: '上午 1 節' },
+                ]} />
+                <p className="text-[11px] text-zinc-400 mb-1.5">門檻取自人工課表：上午 0 節僅占 2%、上午 1 節占 16%。</p>
+              </>
             )}
             {tab === 'teacher' && (
-              <p className="text-[11px] text-zinc-400 mb-1.5">
-                每格＝那天上幾節，要處理的排前面。
-                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝整天沒課、整天只 1 節或連上 7 節</span>
-                <span className="px-1 rounded-sm bg-amber-100 text-amber-900 ml-1">橙＝小下課跨年段或連上 6 節</span>
-                <br />人工課表四期：孤堂日占 6%、跨年段占 3%、連 7 只出現過 1 次，都罕見所以值得抓。
-                零碎空堂不上色——人工有 28% 的老師日本來就有空堂，標了等於沒標。
-              </p>
+              <>
+                <p className="text-[11px] text-zinc-400 mb-1">每格＝那天上幾節，要處理的排前面。</p>
+                <Legend items={[
+                  { cls: 'bg-red-100 text-red-800', text: '整天沒課' },
+                  { cls: 'bg-red-100 text-red-800', text: '整天只 1 節' },
+                  { cls: 'bg-red-100 text-red-800', text: '連上 7 節' },
+                  { cls: 'bg-amber-100 text-amber-900', text: '小下課跨年段' },
+                  { cls: 'bg-amber-100 text-amber-900', text: '連上 6 節' },
+                ]} />
+                <p className="text-[11px] text-zinc-400 mb-1.5">
+                  人工課表四期：孤堂日占 6%、跨年段占 3%、連 7 只出現過 1 次，都罕見所以值得抓。
+                  零碎空堂不上色——人工有 28% 的老師日本來就有空堂，標了等於沒標。
+                </p>
+              </>
             )}
             {tab === 'hourly' && <p className="text-[11px] text-zinc-400 mb-1.5">鐘點老師在乎的是要跑幾趟，到校天數越少越好。</p>}
 
