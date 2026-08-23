@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, normalizeSubject, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, normalizeSubject, shouldUseRoom, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, type PlacedResult, type EngineInput } from '@/lib/schedule-engine'
 import type { HomeroomRow } from './OverviewAdjust'
@@ -375,7 +375,9 @@ export default function ChainAdjustModal({
 
     // 4) 專科教室：同科還有別間空著就靜靜換一間（套用時會自動重配），全滿才是真衝突
     let roomNeed: { slots: string[]; roomIds: string[]; subject: string } | null = null
-    if (it.kind === 'lesson' && l) {
+    // 不是每堂課都要進專科教室：自然／智慧設定成「連堂才用教室」，單節在原班上。
+    // 不問這一句就會對單節自然也去搶教室，然後跳出「教室都滿了」要人選一班讓出來。
+    if (it.kind === 'lesson' && l && shouldUseRoom(config.weights, l.subject, l.grade, l.size)) {
       // 教室設定裡有管理老師的，只認自己管理的那一間（和引擎的 roomPool 同一條規則）；
       // 沒有管理教室的老師才是該科任一間皆可。不分這一層就會把她根本不會用的教室也攤出來。
       const own = engineInput.rooms.filter(r => r.subject === l.subject && (r.managerIds ?? []).includes(l.teacherId))
