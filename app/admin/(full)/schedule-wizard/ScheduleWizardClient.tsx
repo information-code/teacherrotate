@@ -1376,9 +1376,6 @@ ${head}確定撤回？`)) return
                               <td className={`text-center ${isBest ? 'text-green-700 font-semibold' : 'text-zinc-600'}`}>{s.softPenalty ?? '—'}</td>
                               <td className="text-xs text-zinc-500">{v.created_by ? (versionNames[v.created_by] ?? '') : ''}</td>
                               <td className="text-right whitespace-nowrap">
-                                <button onClick={() => restoreVersion(v)} disabled={versionBusy === v.id}
-                                  title="把目前課表換成這一版（會真的寫進去，重新整理看到的也是它）"
-                                  className="btn btn-secondary text-xs py-0.5">↩ 回到這一版</button>
                                 <button onClick={() => previewVersion(v)} disabled={versionBusy === v.id}
                                   title="把預覽畫面切成這一份（不會動到正式課表）"
                                   className="btn btn-secondary text-xs py-0.5">{versionBusy === v.id ? '載入中…' : '預覽'}</button>
