@@ -912,7 +912,7 @@ ${head}確定撤回？`)) return
           planGeneratedAt={props.planGeneratedAt}
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
-          onVersionSaved={loadVersions}
+          onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}
@@ -1110,7 +1110,7 @@ ${head}確定撤回？`)) return
                 planGeneratedAt={props.planGeneratedAt}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
-                onVersionSaved={loadVersions}
+                onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}
                 baseHash={curBaseHash}
                 engineInput={input}
                 config={scheduleConfig}

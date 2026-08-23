@@ -39,7 +39,9 @@ interface Props {
   /** 外部（課表體檢的熱力圖）要求開啟連鎖調課；nonce 變了就開一次。 */
   chainRequest?: { seed: ChainSeed; nonce: number }
   onChainConsumed?: () => void   // 開過了就通知外面清掉，否則換版本預覽重新掛載時會再開一次
-  onVersionSaved?: () => void    // 存了新版本：外層要重抓版本清單，否則新版本要重新整理才看得到
+  /** 存了新版本：外層要重抓版本清單，並把「目前顯示版本」切到這一份
+   *  （不然畫面上寫的還是上一版，但看到的內容已經是新的） */
+  onVersionSaved?: (v: { id?: string; seq?: number | null }) => void
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -174,7 +176,10 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         }),
       })
       if (!opts.silent) setSnapState(res.ok ? 'saved' : 'error')
-      if (res.ok) onVersionSaved?.()
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}))
+        onVersionSaved?.({ id: d.id, seq: d.seq })
+      }
       return res.ok
     } catch { if (!opts.silent) setSnapState('error'); return false }
   }
@@ -935,14 +940,14 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           {saveState === 'saving' && <span className="text-xs text-zinc-500">儲存中…</span>}
           {saveState === 'saved' && unsaved === 0 && <span className="text-xs text-green-600">✓ 已儲存</span>}
           {saveState === 'error' && <span className="text-xs text-red-600">⚠ 儲存失敗</span>}
-          {unsaved > 0 && (
+          {adjustMode && unsaved > 0 && (
             <span className="text-xs text-amber-600 font-medium">⚠ {unsaved} 筆尚未儲存</span>
           )}
-          {unsaved > 0 && !freeTouched && (
+          {adjustMode && unsaved > 0 && !freeTouched && (
             <button onClick={saveAdjust} disabled={saveState === 'saving'} className="btn btn-primary text-xs py-0.5"
               title="寫入課表；同時自動留一份版本，之後可從版本紀錄回到這裡">💾 儲存微調</button>
           )}
-          {freeTouched && (
+          {adjustMode && freeTouched && (
             <button onClick={saveFreeVersion} disabled={saveState === 'saving' || snapState === 'saving'} className="btn btn-primary text-xs py-0.5"
               title="自由編輯的結果只另存成版本，不會寫進正式課表">📌 另存為版本</button>
           )}
@@ -955,12 +960,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           )}
           {snapState === 'saved' && <span className="text-xs text-green-600">✓ 已存為版本</span>}
           {snapState === 'error' && <span className="text-xs text-red-600">⚠ 存版本失敗</span>}
-          {adjustments.length > 0 && (
+          {adjustMode && adjustments.length > 0 && (
             <button onClick={snapshot} disabled={snapState === 'saving'} title="把目前微調後的課表另存成一份版本，之後可在版本紀錄找回"
               className="btn btn-secondary text-xs py-0.5">📌 存為版本</button>
           )}
-          {undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
-          {embedded && onDiscard && adjustments.length > 0 && (
+          {adjustMode && undoStack.length > 0 && <button onClick={undo} className="btn btn-secondary text-xs py-0.5">↩ 復原</button>}
+          {adjustMode && embedded && onDiscard && adjustments.length > 0 && (
             <button onClick={onDiscard} className="btn btn-danger text-xs py-0.5" title="回到這份課表微調前的樣子；資料庫裡的草稿微調一併清掉">✕ 放棄全部微調（{adjustments.length} 筆）</button>
           )}
           {!embedded && planStatus === 'published' && (
@@ -1363,19 +1368,22 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         teacherNames={teacherNames} engineInput={engineInput} fillOpen={fillOpen}
         extraByTeacher={extras?.teacher ?? EMPTY_EXTRAS}
         onClose={() => setChainSeed(null)}
-        onApply={next => {
+        onApply={async next => {
           const rooms2 = roomsFromConfig(config)
           const re = reassignRooms(next.placed, rooms2, config.weights)
           const desc = next.moves.map(m => `${classLabelOf(m.classKey)} ${m.what} ${slotZh(m.from)}→${slotZh(m.to)}`).join('；')
-          const adj: Adjustment[] = [...adjustments,
-            { at: new Date().toISOString(), desc: `連鎖調課 ${next.moves.length} 步：${desc}` }]
-          applyAdjust(re, next.hr, `連鎖調課 ${next.moves.length} 步：${desc}`,
-            Array.from(new Set(next.moves.map(m => m.classKey))))
-          // 每次套用就留一份版本：人工調整的每一輪都要能回頭找，不必記得按「存為版本」
+          const note2 = `連鎖調課 ${next.moves.length} 步：${desc}`
+          const adj: Adjustment[] = [...adjustments, { at: new Date().toISOString(), desc: note2 }]
+          const cks = Array.from(new Set(next.moves.map(m => m.classKey)))
+          applyAdjust(re, next.hr, note2, cks)
+          setChainSeed(null)
+          // 「套用」就是套用：直接寫進課表，不要再叫人去按「儲存微調」（那顆已經拿掉了）
+          const ok = await persist(re, next.hr, adj, cks)
+          if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
+          // 每次套用留一份版本：人工調整的每一輪都要能回頭找
           const cls = Array.from(new Set(next.moves.map(m => classLabelOf(m.classKey)))).join('、')
           void saveVersion({ placed: re, adjustments: adj, silent: true,
             label: `連鎖調課 ${next.moves.length} 步（${cls}）` })
-          setChainSeed(null)
         }}
       />
 </div>
