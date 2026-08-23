@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, homeroomLockSlots, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
 import type { PlacedResult } from '@/lib/schedule-engine'
@@ -22,7 +22,7 @@ import type { ChainSeed } from './ChainAdjustModal'
 const HAND = {
   hrNoDay: [0, 5], hr5: [7, 15], hr6: [0, 1], hrAm: [35, 88], run4: [10, 23], run5: [0, 2],
   lonely: [11, 18], gapSlots: [85, 133], gapDays: [55, 82], half1: [44, 58],
-  crossDay: [6, 10],
+  crossDay: [6, 10], come5: [35, 36], sub3: [0, 4], spread3: [20, 31],
 } as const
 /** 小下課只有十分鐘，跨年段等於跨棟。人工課表四期只有 3% 的老師日發生（每期 6～10 個），確實罕見。 */
 const SHORT_BREAK_PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6]]
@@ -132,8 +132,17 @@ export default function ScheduleHealth({
     extraByTeacher.forEach((cells, tid) => {
       for (const c of cells) { const [d, q] = c.slot.split('-').map(Number); put(tid, d, [q]) }
     })
-    const rows: { tid: string; name: string; total: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number }[] }[] = []
-    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0 }
+    // 老師 → 日 → 科目集合（一天教幾科：人工四期只有 0～4 個老師日達到 3 科，很能分辨科任的忙亂程度）
+    const subjAt = new Map<string, Set<string>>()
+    const addSubj = (tid: string, d: number | string, name: string) => {
+      const k = `${tid}|${d}`
+      const set = subjAt.get(k) ?? new Set<string>()
+      set.add(name); subjAt.set(k, set)
+    }
+    for (const p of placed) addSubj(p.teacherId, p.day, p.subject)
+    extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.slot.split('-')[0], c.main) })
+    const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; subj: number }[] }[] = []
+    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, come5: 0, sub3: 0, spread3: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
       const days = SCHEDULE_DAYS.map(d => {
@@ -153,9 +162,14 @@ export default function ScheduleHealth({
           if (cross) tally.crossDay++
           tally.half1 += (am === 1 ? 1 : 0) + (pm === 1 ? 1 : 0)
         }
-        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross }
+        const subj = subjAt.get(`${tid}|${d}`)?.size ?? 0
+        if (qs.length && subj >= 3) tally.sub3++
+        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross, subj }
       })
-      rows.push({ tid, name: nameOf(tid), total, days })
+      const active = days.filter(x => x.n > 0)
+      if (active.length >= 5) tally.come5++
+      if (active.length && Math.max(...active.map(x => x.n)) - Math.min(...active.map(x => x.n)) >= 3) tally.spread3++
+      rows.push({ tid, name: nameOf(tid), total, comeDays: active.length, days })
     })
     // 要處理的排前面：先看跨年段，再看孤堂日
     const score = (r: typeof rows[number]) => r.days.reduce((s, x) => s + x.cross * 10 + (x.lonely ? 5 : 0), 0)
@@ -166,25 +180,26 @@ export default function ScheduleHealth({
   /* ── 鐘點：到校天數（他們在乎的是要跑幾趟，不是幾節） ── */
   const hourly = useMemo(() => {
     const set = new Set(hourlyTeacherIds)
-    return teachers.rows.filter(r => set.has(r.tid))
-      .map(r => ({ ...r, comeDays: r.days.filter(d => d.n > 0).length }))
-      .sort((a, b) => b.comeDays - a.comeDays)
+    return teachers.rows.filter(r => set.has(r.tid)).sort((a, b) => b.comeDays - a.comeDays)
   }, [teachers, hourlyTeacherIds])
 
   /* ── 體檢表 ── */
-  const CD = '班日', TD = '老師日'
-  const checks = [
-    { name: '導師整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay },
-    { name: '導師一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5 },
-    { name: '導師一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6 },
-    { name: '導師上午不足 2 節', unit: CD, v: homeroom.tally.hrAm, hand: HAND.hrAm },
-    { name: '導師連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4 },
-    { name: '導師連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5 },
-    { name: '老師孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely },
-    { name: '老師小下課跨年段', unit: TD, v: teachers.tally.crossDay, hand: HAND.crossDay },
-    { name: '老師零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
-    { name: '老師有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
-    { name: '老師半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1 },
+  const CD = '班日', TD = '老師日', TN = '人'
+  const checks: { g: '導師' | '科任'; name: string; unit: string; v: number; hand: readonly number[] }[] = [
+    { g: '導師', name: '整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay },
+    { g: '導師', name: '一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5 },
+    { g: '導師', name: '一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6 },
+    { g: '導師', name: '上午不足 2 節', unit: CD, v: homeroom.tally.hrAm, hand: HAND.hrAm },
+    { g: '導師', name: '連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4 },
+    { g: '導師', name: '連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5 },
+    { g: '科任', name: '孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely },
+    { g: '科任', name: '小下課跨年段', unit: TD, v: teachers.tally.crossDay, hand: HAND.crossDay },
+    { g: '科任', name: '一天要教 3 科以上', unit: TD, v: teachers.tally.sub3, hand: HAND.sub3 },
+    { g: '科任', name: '整週五天都要到校', unit: TN, v: teachers.tally.come5, hand: HAND.come5 },
+    { g: '科任', name: '每天節數落差 3 節以上', unit: TN, v: teachers.tally.spread3, hand: HAND.spread3 },
+    { g: '科任', name: '零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
+    { g: '科任', name: '有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
+    { g: '科任', name: '半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1 },
   ]
   const verdict = (v: number, [lo, hi]: readonly number[]) =>
     v < lo ? { txt: '優於人工', cls: 'text-green-700 bg-green-50 border-green-200' }
@@ -268,15 +283,36 @@ export default function ScheduleHealth({
               </tr>
             </thead>
             <tbody>
-              {checks.map(c => {
-                const vd = verdict(c.v, c.hand)
+              {(['導師', '科任'] as const).map(g => {
+                const list = checks.filter(c => c.g === g)
+                const win = list.filter(c => verdict(c.v, c.hand).txt === '優於人工').length
+                const lose = list.filter(c => verdict(c.v, c.hand).txt === '比人工差').length
                 return (
-                  <tr key={c.name} className="border-b border-zinc-100 last:border-0">
-                    <td className="py-1 text-zinc-700">{c.name}</td>
-                    <td className="py-1 text-right font-medium">{c.v} <span className="font-normal text-zinc-400">{c.unit}</span></td>
-                    <td className="py-1 text-right text-zinc-400">{c.hand[0]}～{c.hand[1]} {c.unit}</td>
-                    <td className="py-1 pl-3"><span className={`px-1.5 py-0.5 rounded-sm border text-[11px] ${vd.cls}`}>{vd.txt}</span></td>
-                  </tr>
+                  <Fragment key={g}>
+                    <tr className="bg-zinc-50">
+                      <td colSpan={4} className="py-1 px-1 font-medium text-zinc-600">
+                        {g}端
+                        <span className="ml-2 font-normal text-[11px]">
+                          <span className="text-green-700">優於人工 {win}</span>
+                          <span className="text-zinc-300 mx-1">·</span>
+                          <span className="text-zinc-500">在範圍內 {list.length - win - lose}</span>
+                          <span className="text-zinc-300 mx-1">·</span>
+                          <span className={lose ? 'text-red-700 font-medium' : 'text-zinc-400'}>比人工差 {lose}</span>
+                        </span>
+                      </td>
+                    </tr>
+                    {list.map(c => {
+                      const vd = verdict(c.v, c.hand)
+                      return (
+                        <tr key={c.name} className="border-b border-zinc-100">
+                          <td className="py-1 pl-3 text-zinc-700">{c.name}</td>
+                          <td className="py-1 text-right font-medium">{c.v} <span className="font-normal text-zinc-400">{c.unit}</span></td>
+                          <td className="py-1 text-right text-zinc-400">{c.hand[0]}～{c.hand[1]} {c.unit}</td>
+                          <td className="py-1 pl-3"><span className={`px-1.5 py-0.5 rounded-sm border text-[11px] ${vd.cls}`}>{vd.txt}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -297,8 +333,8 @@ export default function ScheduleHealth({
         </div>
 
         <div className="flex gap-4 items-start">
-          {/* 左：熱力圖 */}
-          <div className="flex-none">
+          {/* 左：熱力圖（固定寬，三個分頁版面一致，不會擠到右邊的課表） */}
+          <div className="flex-none w-[430px]">
             {tab === 'homeroom' && (
               <p className="text-[11px] text-zinc-400 mb-1.5">
                 每格＝那天導師自己上幾節。
@@ -357,7 +393,7 @@ export default function ScheduleHealth({
                     <tr key={r.tid}>
                       <td className="px-0.5 py-0.5">
                         <button onClick={() => setSel({ kind: 'teacher', tid: r.tid })} className={rowBtn(selKey === `t:${r.tid}`)}>
-                          {r.name}<span className="text-zinc-300 ml-1">{r.total} 節</span>
+                          {r.name}<span className="text-zinc-300 ml-1">{r.total} 節・到校 {r.comeDays} 天</span>
                         </button>
                       </td>
                       {r.days.map(d => {
@@ -366,7 +402,7 @@ export default function ScheduleHealth({
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
                         const why = d.n === 0 ? '這天沒課'
-                          : [`${d.n} 節`, d.lonely ? '整天只有 1 節' : '', d.cross ? `小下課跨年段 ${d.cross} 次` : '',
+                          : [`${d.n} 節`, `${d.subj} 科`, d.lonely ? '整天只有 1 節' : '', d.cross ? `小下課跨年段 ${d.cross} 次` : '',
                              d.gap ? `${d.gap} 節空堂夾在課中間` : ''].filter(Boolean).join('｜')
                         return (
                           <td key={d.d} className="p-0.5">
@@ -401,7 +437,7 @@ export default function ScheduleHealth({
           </div>
 
           {/* 右：整週課表 */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[430px]">
             {!board ? (
               <div className="h-full min-h-[320px] flex items-center justify-center text-xs text-zinc-400 border border-dashed border-zinc-200 rounded-sm">
                 點左邊的班級或老師，這裡會顯示整週課表
