@@ -36,6 +36,8 @@ type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
 export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus, exportArgs, updatedAt }: Props) {
+  // 導師還在填自己班的課：內容會變動，這裡看到的是進度而不是定案
+  const filling = planStatus === 'published'
   const [dlOpen, setDlOpen] = useState(false)
   const [dlScope, setDlScope] = useState<'all' | '班級' | '教師' | '教室'>('all')
   const [dlStatus, setDlStatus] = useState<string | null>(null)
@@ -178,17 +180,26 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       <div>
         <h2 className="page-title mb-1">我的課表
           <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度</span>
-          <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded-sm bg-green-100 text-green-700 border border-green-200 align-middle">全校課表</span>
+          <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded-sm border align-middle ${filling
+            ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-green-100 text-green-700 border-green-200'}`}>
+            {filling ? '尚未定案' : '全校課表'}</span>
           {updatedAt && <span className="ml-2 text-[11px] text-zinc-400 align-middle">最後更新：{new Date(updatedAt).toLocaleString('zh-TW')}</span>}
         </h2>
+        {filling && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-1 mb-1">
+            導師正在填排自己班的課，這裡看到的是<b>目前進度</b>，還會變動。
+            提供給大家先看看誰哪一節有空、方便談調課；<b>要調課請和對方談好後洽教務處</b>，不要以這一版安排正式事務。
+          </p>
+        )}
         <p className="text-xs text-zinc-400">
-          可查看全校班級、教師與科任教室課表（唯讀），也可下載。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
+          可查看全校班級、教師與科任教室課表（唯讀）{filling ? '' : '，也可下載'}。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
           如需調整請洽教務處。
         </p>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="relative">
+        {/* 還沒定案就不給下載：一份 PDF 流出去，之後改了也追不回來 */}
+        <span className={`relative${filling ? ' hidden' : ''}`}>
           <button onClick={() => setDlOpen(o => !o)} disabled={dlStatus !== null} className="btn btn-secondary text-sm py-1"
             title="下載全校課表：可選整份或只要班級／教師／教室">{dlStatus ?? '⬇ 下載課表 ▾'}</button>
           {dlOpen && (
@@ -266,7 +277,16 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
                     const k = `${d}-${q}`
                     if (grid && !grid.teachable[k]) return <td key={d} className="p-0.5"><div className="h-11 rounded-sm bg-zinc-50" /></td>
                     const c = cells.get(k)
-                    if (!c) return <td key={d} className="p-0.5"><div className="h-11 rounded-sm border border-dashed border-zinc-100" /></td>
+                    // 填課期間班級課表的空白＝導師還沒填，不是「這一節沒課」。
+                    // 想找人調課的人最需要分清楚這兩種，不標的話會看成對方有空。
+                    if (!c) return (
+                      <td key={d} className="p-0.5">
+                        <div className={`h-11 rounded-sm border border-dashed flex items-center justify-center ${filling && view === 'class'
+                          ? 'border-amber-200 bg-amber-50/50' : 'border-zinc-100'}`}>
+                          {filling && view === 'class' && <span className="text-[9px] text-amber-600/80">導師未填</span>}
+                        </div>
+                      </td>
+                    )
                     const cls = c.kind === 'lock' ? 'bg-zinc-200 border-zinc-300 text-zinc-600'
                       : c.kind === 'hr' ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : c.bi ? 'bg-violet-50 border-violet-200 text-violet-800'

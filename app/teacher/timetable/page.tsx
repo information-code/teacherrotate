@@ -48,19 +48,15 @@ export default async function TimetablePage() {
   const config = normalizeScheduleConfig(schRow?.config)
   const plan = (planRow?.plan ?? null) as { status?: string; placed?: TTPlaced[] } | null
 
-  // 全校課表只在「定案（發布全校課表）」後公開。發布導師排課（published）階段只開放導師到「排課選填」
-  // 填自己班的課，不對外顯示任何課表——避免未定案的內容被當成正式版流出。
-  if (!plan || plan.status !== 'final') {
-    const homeroomNow = plan?.status === 'published'
-      && Object.entries(normalizeScheduleConfig(schRow?.config).classTeacher).some(([, tid]) => tid === user.id)
+  // 發布導師排課（published）起就開放全校看，唯讀。原本要等定案才公開，但老師需要
+  // 提前知道誰哪一節有空才好談調課——等定案才看得到，等於沒有商量的時間。
+  // 未定案的內容會在畫面上標明，下載也關掉，避免被當成正式版流出。
+  if (!plan || (plan.status !== 'final' && plan.status !== 'published')) {
     return (
       <div className="max-w-2xl">
         <h2 className="page-title mb-2">課表</h2>
-        <div className="card text-sm text-zinc-500 py-8 text-center space-y-1">
-          <p>{plan?.status === 'published'
-            ? `${year} 學年度課表正在請導師填排班級課務，尚未對全校公開。`
-            : `${year} 學年度課表尚未發布，請等候教務處公告。`}</p>
-          {homeroomNow && <p className="text-zinc-600">您是班級導師——請至左側「<b>排課選填</b>」填排自己班的課。</p>}
+        <div className="card text-sm text-zinc-500 py-8 text-center">
+          {year} 學年度課表尚未發布，請等候教務處公告。
         </div>
       </div>
     )
