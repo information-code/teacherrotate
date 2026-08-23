@@ -129,6 +129,9 @@ export default function ScheduleWizardClient(props: Props) {
   const [versions, setVersions] = useState<VersionRow[]>([])
   const [versionNames, setVersionNames] = useState<Record<string, string>>({})
   const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
+  // 畫面上這一份是「只是看看」還是「真的就是課表」。預覽不寫資料庫，重新整理就沒了，
+  // 但畫面跟真的套用完全一樣——不標出來，人會以為已經改好了。
+  const [previewOnly, setPreviewOnly] = useState(false)
   /** 按鈕上的標示。存版本和寫課表是兩件事（存檔被擋下時只留下版本），
    *  所以最新一版不一定就是目前課表——不同時把兩個標出來會被誤讀。 */
   const verBadge = () => {
@@ -292,7 +295,7 @@ export default function ScheduleWizardClient(props: Props) {
         iterations: 0, elapsedMs: 0,
       })
       lastVerSig.current = sigOfPlaced(p.placed as EngineResult['placed'])
-      setPreviewVersionId(v.id)
+      setPreviewVersionId(v.id); setPreviewOnly(false)
       setAdjustUnsaved(0); setDraftDirty(false); setResumedAdjustments(null)
       setAdjustSession(n => n + 1)
       setRunFailed(false); setHints([]); setProbePerfect(null)
@@ -563,6 +566,7 @@ ${head}確定撤回？`)) return
     lastVerSig.current = sigOfPlaced(p.placed)
     // 草稿記得自己是哪一版就直接標出來；舊資料沒這欄，交給下面的比對兜底
     setPreviewVersionId(typeof p.versionId === 'string' ? p.versionId : null)
+    setPreviewOnly(false)
     const b = sp.base as Record<string, unknown> | undefined
     if (b && Array.isArray(b.placed)) {
       const bp = (Array.isArray(b.penalties) ? b.penalties : []) as EngineResult['penalties']
@@ -613,7 +617,7 @@ ${head}確定撤回？`)) return
         iterations: 0, elapsedMs: 0,
       })
       lastVerSig.current = sigOfPlaced(p.placed)   // 預覽既有版本不該再存成新版本
-      setPreviewVersionId(v.id)
+      setPreviewVersionId(v.id); setPreviewOnly(true)
       // 重掛內嵌元件一定要在 setResult 之後：它會把 savedPlan.placed 抄進自己的 state，
       // 先重掛就會抄到「上一版」的課表，畫面看起來像沒切過去（而且之後怎麼切都不會更新）。
       setAdjustSession(n => n + 1)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
@@ -1106,16 +1110,25 @@ ${head}確定撤回？`)) return
           {previewVersionId && (() => {
             const v = versions.find(x => x.id === previewVersionId)
             if (!v) return null
+            // ro＝畫面上這份不是課表本身（預覽舊版本，或發布後只是看看）
+            const ro = previewOnly || planStatus === 'published' || planStatus === 'final'
             return (
-              <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${planStatus === 'published' || planStatus === 'final'
+              <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${ro
                 ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-zinc-50 border border-zinc-200 text-zinc-600'}`}>
-                <span>{planStatus === 'published' || planStatus === 'final' ? '正在預覽舊版本（唯讀、尚未套用）：' : '目前顯示版本：'}
+                <span>{ro ? '👀 正在預覽（只是看看，課表沒有改）：' : '目前課表＝'}
                   <b>{v.seq ? `#${v.seq} ` : ''}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
                   {v.label && <span className="opacity-70 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
-                {(planStatus === 'published' || planStatus === 'final') && <>
+                {ro && <>
                   <span className="opacity-80">版本只保存科任課，不含導師填的課。</span>
-                  <button onClick={() => { setPreviewVersionId(null); setResult(null) }}
-                    className="btn btn-secondary text-xs py-0.5 ml-auto">↩ 回到目前課表</button>
+                  <span className="ml-auto flex gap-1.5">
+                    {planStatus !== 'published' && planStatus !== 'final' && (
+                      <button onClick={() => restoreVersion(v)} disabled={versionBusy === v.id}
+                        title="把目前課表真的換成這一版，重新整理看到的也是它"
+                        className="btn btn-primary text-xs py-0.5">↩ 套用這一版</button>
+                    )}
+                    <button onClick={() => location.reload()}
+                      className="btn btn-secondary text-xs py-0.5">✕ 不看了，回目前課表</button>
+                  </span>
                 </>}
               </div>
             )
