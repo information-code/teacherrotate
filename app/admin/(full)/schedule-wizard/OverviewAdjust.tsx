@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, OFF_CATEGORY_LABEL, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
@@ -37,6 +37,7 @@ interface Props {
   onDirtyChange?: (unsaved: number) => void            // 未儲存的微調筆數（外層據此攔截重跑／換版本）
   /** 外部（課表體檢的熱力圖）要求開啟連鎖調課；nonce 變了就開一次。 */
   chainRequest?: { seed: ChainSeed; nonce: number }
+  onChainConsumed?: () => void   // 開過了就通知外面清掉，否則換版本預覽重新掛載時會再開一次
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -56,7 +57,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -107,7 +108,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
   const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
-  if (chainRequest && chainRequest.nonce !== chainNonce) { setChainNonce(chainRequest.nonce); setChainSeed(chainRequest.seed) }
+  // 用 effect 不用 render 期間處理：這是一次性的外部指令，開過就要通知外面清掉
+  useEffect(() => {
+    if (!chainRequest || chainRequest.nonce === chainNonce) return
+    setChainNonce(chainRequest.nonce)
+    setChainSeed(chainRequest.seed)
+    onChainConsumed?.()
+  }, [chainRequest, chainNonce, onChainConsumed])
 
   const markDirty = (changedHrClasses: string[]) => {
     for (const ck of changedHrClasses) pendingHrRef.current.add(ck)

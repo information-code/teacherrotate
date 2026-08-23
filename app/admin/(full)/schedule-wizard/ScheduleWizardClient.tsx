@@ -871,6 +871,7 @@ ${head}確定撤回？`)) return
           extras={adjustExtras}
           homeroomRows={props.homeroomRows}
           chainRequest={chainReq ?? undefined}
+          onChainConsumed={() => setChainReq(null)}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}
@@ -1066,6 +1067,7 @@ ${head}確定撤回？`)) return
                 savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
                 homeroomRows={props.homeroomRows}
                 chainRequest={chainReq ?? undefined}
+                onChainConsumed={() => setChainReq(null)}
                 baseHash={curBaseHash}
                 engineInput={input}
                 config={scheduleConfig}
