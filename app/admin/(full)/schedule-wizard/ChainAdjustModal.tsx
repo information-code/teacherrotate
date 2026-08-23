@@ -70,6 +70,8 @@ export default function ChainAdjustModal({
   const [splitIds, setSplitIds] = useState<string[]>([])
   const [history, setHistory] = useState<Snap[]>([])
   const [booted, setBooted] = useState('')
+  // 教室全滿時的「請選一個讓出來」：候選就是那幾間教室在那一格的使用者，直接點課表上的格子選
+  const [roomPick, setRoomPick] = useState<{ slots: string[]; roomIds: string[]; step: number; subject: string } | null>(null)
   const [scale, setScale] = useState(1)
   const [perRow, setPerRow] = useState<number>(0)
   const [layoutLoaded, setLayoutLoaded] = useState(false)
@@ -101,6 +103,7 @@ export default function ChainAdjustModal({
   if (open && seedKey && booted !== seedKey) {
     setPlaced(placed0); setHr(hr0); setMoves([]); setPending([]); setPick(null); setHistory([]); setSplitIds([])
     setBoards(seed ? [seed as Board] : [])
+    setRoomPick(null)
     setBooted(seedKey)
   }
   if (!open && booted) setBooted('')
@@ -337,6 +340,18 @@ export default function ChainAdjustModal({
       nextHr = { ...nextHr, [it.classKey]: { ...nextHr[it.classKey], cells } }
     }
 
+    // 4) 專科教室：同科還有別間空著就靜靜換一間（套用時會自動重配），全滿才是真衝突
+    let roomNeed: { slots: string[]; roomIds: string[]; subject: string } | null = null
+    if (it.kind === 'lesson' && l) {
+      const rooms = engineInput.rooms.filter(r => r.subject === l.subject)
+      if (rooms.length) {
+        const busy = (rid: string, s2: string) => nextPlaced.some(x =>
+          x.id !== l.id && x.day > 0 && x.roomId === rid && spanOf(x).includes(s2))
+        const free = rooms.filter(r => !(r.offSlots ?? []).some(o => slots.includes(o)) && !slots.some(s2 => busy(r.id, s2)))
+        if (!free.length) roomNeed = { slots, roomIds: rooms.map(r => r.id), subject: l.subject }
+      }
+    }
+
     const lb = labelOf(it)
     setHistory(h => [...h, before])
     setPlaced(nextPlaced); setHr(nextHr)
@@ -344,6 +359,11 @@ export default function ChainAdjustModal({
 
     // 4) 衝突所在的那張課表這時候才出現，被卡住的那堂課自動成為下一支箭頭的起點
     // 去重：同一堂課被擠掉兩次只算一筆（以最新的理由為準）
+    // 教室全滿：開出該科所有教室的課表，讓課務組自己點一個班請他讓出來
+    if (roomNeed) {
+      setBoards(bs => roomNeed!.roomIds.reduce((acc, rid) => addBoard(acc, { kind: 'room', roomId: rid }), bs))
+      setRoomPick({ ...roomNeed, step: stepNo })
+    }
     const merged = new Map<string, Pending>()
     for (const x of pending) if (iKey(x.item) !== self) merged.set(iKey(x.item), x)
     for (const x of newPending) merged.set(iKey(x.item), x)
@@ -351,7 +371,7 @@ export default function ChainAdjustModal({
     // 每一筆待安置的課表都開出來，不然使用者只看得到第一筆
     if (newPending.length) setBoards(bs => newPending.reduce((acc, x) => addBoard(acc, x.board), bs))
     const next = newPending[0] ?? nextPending[0]
-    setPick(next ? { item: next.item, board: next.board, slot: displaySlot(next.item) } : null)
+    setPick(roomNeed ? null : next ? { item: next.item, board: next.board, slot: displaySlot(next.item) } : null)
     setPending(nextPending)
   }
 
@@ -362,6 +382,7 @@ export default function ChainAdjustModal({
     if (!back) return
     setPlaced(back.placed); setHr(back.hr); setMoves(back.moves); setBoards(back.boards); setPending(back.pending); setSplitIds(back.splitIds)
     setHistory(h => h.slice(0, m.h))
+    setRoomPick(null)
     setPick({ item: m.item, board: m.board, slot: m.from })
   }
   function undo() {
@@ -370,6 +391,7 @@ export default function ChainAdjustModal({
     const undone = moves[moves.length - 1]
     setPlaced(last.placed); setHr(last.hr); setMoves(last.moves); setBoards(last.boards); setPending(last.pending); setSplitIds(last.splitIds)
     setHistory(h => h.slice(0, -1))
+    setRoomPick(null)
     setPick(undone ? { item: undone.item, board: undone.board, slot: undone.from } : null)
   }
 
@@ -487,7 +509,7 @@ export default function ChainAdjustModal({
     return { must: now.must.filter(x => !wm.has(x)), hard: now.hard.filter(x => !wh.has(x)) }
   }, [placed, hr, baseIssues, config, classCounts])
   const issueCount = issues.must.length + issues.hard.length
-  const canApply = moves.length > 0 && pending.length === 0
+  const canApply = moves.length > 0 && pending.length === 0 && !roomPick
 
   function apply() {
     if (issueCount > 0) {
@@ -576,6 +598,9 @@ export default function ChainAdjustModal({
     const isPending = item ? pending.some(x => iKey(x.item) === iKey(item)) : false
     const tgt = !frozen && !tOff ? targetOf(b, slot) : null
 
+    // 教室全滿等你選一個讓出來：那幾間教室在那幾格的使用者就是候選
+    const roomCand = Boolean(roomPick && b.kind === 'room' && roomPick.roomIds.includes(b.roomId)
+      && roomPick.slots.includes(slot) && l)
     let tone = 'bg-white border-zinc-200 text-zinc-400'
     if (frozen) tone = 'bg-amber-50 border-amber-200 text-amber-700'
     else if (tOff) tone = 'bg-rose-50 border-rose-200 border-dashed text-rose-300'
@@ -583,19 +608,32 @@ export default function ChainAdjustModal({
     else if (sub) tone = fillOpen ? 'bg-emerald-50/60 border-emerald-200 text-emerald-700/70' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
     if (isPending) tone = 'bg-rose-100 border-rose-300 text-rose-900'
     else if (arrowOut) tone += ' opacity-45 line-through decoration-rose-400'
-    const ring = picked ? ' ring-2 ring-rose-500 z-10'
+    const ring = roomCand ? ' ring-2 ring-orange-500 z-10'
+      : picked ? ' ring-2 ring-rose-500 z-10'
       : arrowIn ? ' ring-2 ring-rose-400 z-10'
       : tgt?.ok ? ' ring-1 ring-emerald-400' : ''
 
     const hasArrow = arrowOut || arrowIn
-    const clickable = Boolean(!frozen && !tOff && (hasArrow || tgt?.ok || (!pick && item && (item.kind !== 'hr' || !fillOpen))))
-    const title = frozen ?? (tOff ? '不排課時段'
+    const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick && (hasArrow || tgt?.ok || (!pick && item && (item.kind !== 'hr' || !fillOpen)))))
+    const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff ? '不排課時段'
       : hasArrow ? '點一下取消這一步'
       : tgt ? tgt.why
       : item ? `${labelOf(item).what}（${labelOf(item).who}）` : '空格')
 
     function onClick() {
       if (!clickable) return
+      if (roomCand && l && roomPick) {
+        // 選定讓出教室的那一班：它變成待安置，接著到那位老師的課表上找新位置
+        setHistory(h => [...h, snap()])
+        setPlaced(ps => ps.map(x => x.id === l.id ? { ...x, day: 0, period: 0 } : x))
+        setPending(ps => [...ps.filter(x => iKey(x.item) !== `l:${l.id}`),
+          { item: { kind: 'lesson', id: l.id }, step: roomPick.step, board: { kind: 'teacher', teacherId: l.teacherId },
+            why: `${roomPick.subject} 的教室都滿了，這一班讓出教室` }])
+        setBoards(bs => addBoard(bs, { kind: 'teacher', teacherId: l.teacherId }))
+        setPick({ item: { kind: 'lesson', id: l.id }, board: { kind: 'teacher', teacherId: l.teacherId }, slot: displaySlot({ kind: 'lesson', id: l.id }) })
+        setRoomPick(null)
+        return
+      }
       const m = moves.find(x => bKey(x.board) === bKey(b) && ((item && iKey(x.item) === iKey(item)) || x.to === slot))
       if (m) { undoMove(m); return }
       if (picked) { setPick(null); return }
@@ -648,7 +686,10 @@ export default function ChainAdjustModal({
             </span>
             <button onClick={undo} disabled={!history.length} className="btn-ghost text-xs disabled:opacity-40">← 退回一步</button>
             <button onClick={onClose} className="btn-ghost text-xs">全部取消</button>
-            {pending.length > 0 && (
+            {roomPick && (
+              <span className="text-xs text-orange-600">請在教室課表上點一班讓出教室</span>
+            )}
+            {!roomPick && pending.length > 0 && (
               <span className="text-xs text-rose-600">還有 {pending.length} 堂課沒安置，安置完才能套用</span>
             )}
             <button onClick={apply} disabled={!canApply} className="btn text-xs disabled:opacity-40"
@@ -687,7 +728,15 @@ export default function ChainAdjustModal({
               </ol>
             </div>
 
-            {pick && (
+            {roomPick && (
+              <div className="px-1.5 py-1 rounded-sm border border-orange-300 bg-orange-50 text-orange-800">
+                <div className="font-medium">{roomPick.subject} 的教室都滿了</div>
+                <p>{roomPick.slots.map(slotZh).join('、')} 這幾間教室都有課。請在下面的教室課表上，
+                  點一班請他讓出教室——那一班會變成待安置，接著幫他找新位置。</p>
+              </div>
+            )}
+
+            {pick && !roomPick && (
               <div>
                 <div className="font-medium text-zinc-700 mb-1">目前選中</div>
                 <p className="text-zinc-700">{labelOf(pick.item).what}<span className="text-zinc-400">（{labelOf(pick.item).who}・{ckZh(classOfItem(pick.item))}）</span></p>
