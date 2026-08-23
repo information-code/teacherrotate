@@ -48,6 +48,11 @@ interface Props {
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH[Number(d)]}第${p}節` }
+/** 連堂寫成範圍：「週五第2-3節」。只寫起始節看不出它佔兩節。 */
+const spanZh = (s: string, size: number) => {
+  const [d, p] = s.split('-').map(Number)
+  return size === 2 ? `週${DAY_ZH[d]}第${p}-${p + 1}節` : `週${DAY_ZH[d]}第${p}節`
+}
 const bKey = (b: Board) => b.kind === 'class' ? `c:${b.classKey}` : b.kind === 'teacher' ? `t:${b.teacherId}` : `r:${b.roomId}`
 const iKey = (i: Item) => i.kind === 'lesson' ? `l:${i.id}` : `h:${i.classKey}|${i.slot}`
 const ckZh = (ck: string) => ck ? classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1])) : ''
@@ -767,7 +772,10 @@ export default function ChainAdjustModal({
                         : `${ckZh(m.board.classKey)} 課表`}</span><br />
                       <span className="font-medium text-zinc-800">{m.what}</span>
                       <span className="text-zinc-400">（{m.who}・{ckZh(m.cls)}）</span><br />
-                      {slotZh(m.from)} → {slotZh(m.to)}
+                      {(() => {
+                        const sz = m.item.kind === 'lesson' ? (dById.get(m.item.id)?.size ?? 1) : 1
+                        return `${spanZh(m.from, sz)} → ${spanZh(m.to, sz)}`
+                      })()}
                     </span>
                   </li>
                 ))}
