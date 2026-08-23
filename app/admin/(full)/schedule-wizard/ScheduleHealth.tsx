@@ -22,7 +22,7 @@ import type { ChainSeed } from './ChainAdjustModal'
 const HAND = {
   hrNoDay: [0, 5], hr5: [7, 15], hr6: [0, 1], hrAm: [35, 88], run4: [10, 23], run5: [0, 2],
   lonely: [11, 18], gapSlots: [85, 133], gapDays: [55, 82], half1: [44, 58],
-  crossDay: [6, 10], come5: [35, 36], sub3: [0, 4], spread3: [20, 31],
+  crossDay: [6, 10], sub3: [0, 4], spread3: [20, 31],
 } as const
 /** 小下課只有十分鐘，跨年段等於跨棟。人工課表四期只有 3% 的老師日發生（每期 6～10 個），確實罕見。 */
 const SHORT_BREAK_PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6]]
@@ -142,7 +142,7 @@ export default function ScheduleHealth({
     for (const p of placed) addSubj(p.teacherId, p.day, p.subject)
     extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.slot.split('-')[0], c.main) })
     const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; subj: number }[] }[] = []
-    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, come5: 0, sub3: 0, spread3: 0 }
+    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, sub3: 0, spread3: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
       const days = SCHEDULE_DAYS.map(d => {
@@ -167,7 +167,6 @@ export default function ScheduleHealth({
         return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross, subj }
       })
       const active = days.filter(x => x.n > 0)
-      if (active.length >= 5) tally.come5++
       if (active.length && Math.max(...active.map(x => x.n)) - Math.min(...active.map(x => x.n)) >= 3) tally.spread3++
       rows.push({ tid, name: nameOf(tid), total, comeDays: active.length, days })
     })
@@ -184,8 +183,13 @@ export default function ScheduleHealth({
   }, [teachers, hourlyTeacherIds])
 
   /* ── 體檢表 ── */
+  // 鐘點老師的目標到校天數（權重設定裡的「鐘點集中」）：人工課表分不出誰是鐘點，只能拿學校自己的目標當基準
+  const hourlyTarget = config.weights.builtin.hourlyBalance?.days ?? 3
+  const hourlyOver = hourly.filter(r => r.comeDays > hourlyTarget).length
+  const hourlyDays = hourly.reduce((a, r) => a + r.comeDays, 0)
+
   const CD = '班日', TD = '老師日', TN = '人'
-  const checks: { g: '導師' | '科任'; name: string; unit: string; v: number; hand: readonly number[] }[] = [
+  const checks: { g: '導師' | '科任' | '鐘點'; name: string; unit: string; v: number; hand: readonly number[] | null; note?: string }[] = [
     { g: '導師', name: '整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay },
     { g: '導師', name: '一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5 },
     { g: '導師', name: '一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6 },
@@ -195,16 +199,26 @@ export default function ScheduleHealth({
     { g: '科任', name: '孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely },
     { g: '科任', name: '小下課跨年段', unit: TD, v: teachers.tally.crossDay, hand: HAND.crossDay },
     { g: '科任', name: '一天要教 3 科以上', unit: TD, v: teachers.tally.sub3, hand: HAND.sub3 },
-    { g: '科任', name: '整週五天都要到校', unit: TN, v: teachers.tally.come5, hand: HAND.come5 },
     { g: '科任', name: '每天節數落差 3 節以上', unit: TN, v: teachers.tally.spread3, hand: HAND.spread3 },
     { g: '科任', name: '零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
     { g: '科任', name: '有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
     { g: '科任', name: '半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1 },
+    // 科任是專任、本來就天天到校，「到校幾天」只對鐘點有意義（他們在乎跑幾趟）
+    { g: '鐘點', name: `到校超過目標（${hourlyTarget} 天）`, unit: TN, v: hourlyOver, hand: null, note: '目標取自權重設定的「鐘點集中」' },
+    { g: '鐘點', name: '到校天數合計', unit: '天', v: hourlyDays, hand: null, note: '人工課表分不出誰是鐘點，沒有基準可比' },
   ]
-  const verdict = (v: number, [lo, hi]: readonly number[]) =>
-    v < lo ? { txt: '優於人工', cls: 'text-green-700 bg-green-50 border-green-200' }
+  const verdict = (v: number, hand: readonly number[] | null, name = '') => {
+    if (!hand) {
+      if (!name.startsWith('到校超過目標')) return { txt: '—', cls: 'text-zinc-400 bg-white border-zinc-200' }
+      return v === 0
+        ? { txt: '都在目標內', cls: 'text-green-700 bg-green-50 border-green-200' }
+        : { txt: `${v} 人超過`, cls: 'text-red-700 bg-red-50 border-red-200' }
+    }
+    const [lo, hi] = hand
+    return v < lo ? { txt: '優於人工', cls: 'text-green-700 bg-green-50 border-green-200' }
       : v <= hi ? { txt: '在人工範圍內', cls: 'text-zinc-600 bg-zinc-50 border-zinc-200' }
       : { txt: '比人工差', cls: 'text-red-700 bg-red-50 border-red-200' }
+  }
 
   /* ── 右側：選中那一位／那一班的整週課表 ── */
   const board = useMemo(() => {
@@ -283,31 +297,36 @@ export default function ScheduleHealth({
               </tr>
             </thead>
             <tbody>
-              {(['導師', '科任'] as const).map(g => {
+              {(['導師', '科任', '鐘點'] as const).map(g => {
                 const list = checks.filter(c => c.g === g)
-                const win = list.filter(c => verdict(c.v, c.hand).txt === '優於人工').length
-                const lose = list.filter(c => verdict(c.v, c.hand).txt === '比人工差').length
+                if (!list.length) return null
+                const graded = list.filter(c => c.hand)
+                const win = graded.filter(c => verdict(c.v, c.hand).txt === '優於人工').length
+                const lose = graded.filter(c => verdict(c.v, c.hand).txt === '比人工差').length
                 return (
                   <Fragment key={g}>
                     <tr className="bg-zinc-50">
                       <td colSpan={4} className="py-1 px-1 font-medium text-zinc-600">
                         {g}端
-                        <span className="ml-2 font-normal text-[11px]">
-                          <span className="text-green-700">優於人工 {win}</span>
-                          <span className="text-zinc-300 mx-1">·</span>
-                          <span className="text-zinc-500">在範圍內 {list.length - win - lose}</span>
-                          <span className="text-zinc-300 mx-1">·</span>
-                          <span className={lose ? 'text-red-700 font-medium' : 'text-zinc-400'}>比人工差 {lose}</span>
-                        </span>
+                        {graded.length > 0 && (
+                          <span className="ml-2 font-normal text-[11px]">
+                            <span className="text-green-700">優於人工 {win}</span>
+                            <span className="text-zinc-300 mx-1">·</span>
+                            <span className="text-zinc-500">在範圍內 {graded.length - win - lose}</span>
+                            <span className="text-zinc-300 mx-1">·</span>
+                            <span className={lose ? 'text-red-700 font-medium' : 'text-zinc-400'}>比人工差 {lose}</span>
+                          </span>
+                        )}
                       </td>
                     </tr>
                     {list.map(c => {
-                      const vd = verdict(c.v, c.hand)
+                      const vd = verdict(c.v, c.hand, c.name)
                       return (
                         <tr key={c.name} className="border-b border-zinc-100">
-                          <td className="py-1 pl-3 text-zinc-700">{c.name}</td>
+                          <td className="py-1 pl-3 text-zinc-700">{c.name}
+                            {c.note && <span className="text-[10px] text-zinc-400 ml-1">{c.note}</span>}</td>
                           <td className="py-1 text-right font-medium">{c.v} <span className="font-normal text-zinc-400">{c.unit}</span></td>
-                          <td className="py-1 text-right text-zinc-400">{c.hand[0]}～{c.hand[1]} {c.unit}</td>
+                          <td className="py-1 text-right text-zinc-400">{c.hand ? `${c.hand[0]}～${c.hand[1]} ${c.unit}` : '—'}</td>
                           <td className="py-1 pl-3"><span className={`px-1.5 py-0.5 rounded-sm border text-[11px] ${vd.cls}`}>{vd.txt}</span></td>
                         </tr>
                       )
