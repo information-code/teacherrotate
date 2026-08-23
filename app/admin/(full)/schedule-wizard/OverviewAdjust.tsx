@@ -45,9 +45,9 @@ interface Props {
   /** 存檔成功後回報資料庫的新戳記。這個元件會被重掛（切版本、換微調起點），
    *  戳記只放在自己身上的話會被重設成頁面剛載入時的舊值，下次存檔就自己撞自己。 */
   onPlanAt?: (at: string) => void
-  /** 目前顯示的是預覽的舊版本：套用時導師課要整份寫回去。只寫這次動到的班，
-   *  會變成「舊版科任＋今天的導師課」的混合體。 */
-  syncAllHr?: boolean
+  /** 畫面上這份是預覽來的版本，而這些班的導師課和資料庫不同：套用時要一起寫回去，
+   *  只寫這次動到的班會變成「這一版的科任＋今天的導師課」的混合體。 */
+  hrForceClasses?: string[]
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -68,7 +68,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, onPlanAt, syncAllHr, planGeneratedAt }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, onPlanAt, hrForceClasses, planGeneratedAt }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -1394,8 +1394,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           const desc = next.moves.map(m => `${classLabelOf(m.classKey)} ${m.what} ${slotZh(m.from)}→${slotZh(m.to)}`).join('；')
           const note2 = `連鎖調課 ${next.moves.length} 步：${desc}`
           const adj: Adjustment[] = [...adjustments, { at: new Date().toISOString(), desc: note2 }]
-          // 預覽舊版時是整份換掉，導師課也要整份寫，不能只寫這次動到的班
-          const cks = syncAllHr ? Object.keys(next.hr) : Array.from(new Set(next.moves.map(m => m.classKey)))
+          // 預覽來的版本：它和資料庫不同的那些班，導師課也要一起寫回去
+          const cks = Array.from(new Set([...next.moves.map(m => m.classKey), ...(hrForceClasses ?? [])]))
           applyAdjust(re, next.hr, note2, cks)
           setChainSeed(null)
           // 先存版本、再寫課表：課表要把版本 id 一起記下來，重新整理才標得出「目前顯示版本」

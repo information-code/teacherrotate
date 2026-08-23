@@ -131,11 +131,18 @@ export default function ScheduleWizardClient(props: Props) {
   const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
   // 畫面上這一份是「只是看看」還是「真的就是課表」。預覽不寫資料庫，重新整理就沒了，
   // 但畫面跟真的套用完全一樣——不標出來，人會以為已經改好了。
-  const [previewOnly, setPreviewOnly] = useState(false)
+  const [previewOnly, setPreviewOnly] = useState(false)   // 畫面上是預覽來的版本
   // 預覽舊版時一併換上那一版的導師課。不換的話畫面是「舊科任＋今天的導師課」，
   // 在上面調課等於在一份從來不存在的課表上調。舊版本沒存導師課就維持現狀並提示。
   const [previewHr, setPreviewHr] = useState<HomeroomRow[] | null>(null)
   const [previewHrMissing, setPreviewHrMissing] = useState(false)
+  /** 預覽的那一版，導師課和資料庫不同的班。套用時這些班要一起寫回去，
+   *  不然存下來的會是「這一版的科任＋今天的導師課」。只挑不同的，別對全部班發請求。 */
+  const hrForce = useMemo(() => {
+    if (!previewOnly || !previewHr) return []
+    const now = new Map(props.homeroomRows.map(r => [r.class_key, JSON.stringify(r.cells ?? {})]))
+    return previewHr.filter(r => JSON.stringify(r.cells ?? {}) !== now.get(r.class_key)).map(r => r.class_key)
+  }, [previewOnly, previewHr, props.homeroomRows])
   /** 按鈕上的標示。存版本和寫課表是兩件事（存檔被擋下時只留下版本），
    *  所以最新一版不一定就是目前課表——不同時把兩個標出來會被誤讀。 */
   const verBadge = () => {
@@ -1057,22 +1064,18 @@ ${head}確定撤回？`)) return
             const v = versions.find(x => x.id === previewVersionId)
             if (!v) return null
             // ro＝畫面上這份不是課表本身（預覽舊版本，或發布後只是看看）
-            const ro = previewOnly || planStatus === 'published' || planStatus === 'final'
+            const isPub = planStatus === 'published' || planStatus === 'final'
             return (
-              <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${ro
+              <div className={`text-xs rounded-sm px-3 py-1.5 flex items-center gap-2 flex-wrap ${isPub
                 ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-zinc-50 border border-zinc-200 text-zinc-600'}`}>
-                <span>{ro ? '👀 正在預覽（只是看看，課表沒有改）：' : '目前課表＝'}
+                <span>{isPub ? '正在預覽舊版本（唯讀、尚未套用）：' : '目前顯示：'}
                   <b>{v.seq ? `#${v.seq} ` : ''}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
                   {v.label && <span className="opacity-70 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
-                {ro && <>
-                  <span className="opacity-80">
-                    {planStatus === 'published' || planStatus === 'final'
-                      ? '版本只保存科任課，不含導師填的課。'
-                      : '要用它就直接按班級上的「⇄ 調課」在它上面調，套用後會成為最新版本與目前課表。'}
-                    {previewHrMissing && '（這一版沒有存導師課，畫面上的導師課是目前的。）'}
-                  </span>
-                  <button onClick={() => location.reload()}
-                    className="btn btn-secondary text-xs py-0.5 ml-auto">✕ 不看了，回目前課表</button>
+                {previewHrMissing && <span className="text-amber-700">⚠ 這一版沒有存導師課，畫面上的導師課是目前的</span>}
+                {isPub && <>
+                  <span className="opacity-80">版本只保存科任課，不含導師填的課。</span>
+                  <button onClick={() => { setPreviewVersionId(null); setResult(null) }}
+                    className="btn btn-secondary text-xs py-0.5 ml-auto">↩ 回到目前課表</button>
                 </>}
               </div>
             )
@@ -1165,7 +1168,7 @@ ${head}確定撤回？`)) return
                 homeroomRows={previewHr ?? props.homeroomRows}
                 planGeneratedAt={planAt}
                 onPlanAt={setPlanAt}
-                syncAllHr={previewOnly}
+                hrForceClasses={hrForce}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
                 onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id); setPreviewOnly(false); setPreviewHr(null); setPreviewHrMissing(false) }}
