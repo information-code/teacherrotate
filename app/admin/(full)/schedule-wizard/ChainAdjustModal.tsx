@@ -580,12 +580,22 @@ export default function ChainAdjustModal({
             <svg className="absolute inset-0 pointer-events-none" style={{ width: LW + 5 * CW + 8, height: HH + periods * CH + 8 }}>
               <defs><marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#e11d48" /></marker></defs>
               {mine.map(m => {
-                const a = at(m.from), z = at(m.to)
+                // 連堂佔兩節＝兩節各搬各的，畫兩支箭頭比畫一支清楚（看得出第二節也跟著走）
+                const size = m.item.kind === 'lesson' ? (dById.get(m.item.id)?.size ?? 1) : 1
+                const next = (sl: string) => { const [d2, q2] = sl.split('-').map(Number); return `${d2}-${q2 + 1}` }
+                const pairs = size === 2 ? [[m.from, m.to], [next(m.from), next(m.to)]] : [[m.from, m.to]]
                 return (
                   <g key={m.n}>
-                    <line x1={a.x} y1={a.y} x2={z.x} y2={z.y} stroke="#e11d48" strokeWidth="1.6" markerEnd="url(#ah)" opacity="0.85" />
-                    <circle cx={a.x} cy={a.y} r={8 * scale} fill="#e11d48" />
-                    <text x={a.x} y={a.y + 3.5 * scale} textAnchor="middle" fontSize={10 * scale} fill="#fff">{m.n}</text>
+                    {pairs.map(([f, t], i) => {
+                      const a = at(f), z = at(t)
+                      return (
+                        <g key={i}>
+                          <line x1={a.x} y1={a.y} x2={z.x} y2={z.y} stroke="#e11d48" strokeWidth="1.6" markerEnd="url(#ah)" opacity={i ? 0.5 : 0.85} />
+                          <circle cx={a.x} cy={a.y} r={8 * scale} fill="#e11d48" opacity={i ? 0.5 : 1} />
+                          <text x={a.x} y={a.y + 3.5 * scale} textAnchor="middle" fontSize={10 * scale} fill="#fff">{m.n}</text>
+                        </g>
+                      )
+                    })}
                   </g>
                 )
               })}
