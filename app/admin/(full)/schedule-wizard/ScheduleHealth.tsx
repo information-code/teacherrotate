@@ -22,7 +22,7 @@ import type { ChainSeed } from './ChainAdjustModal'
 const HAND = {
   hrNoDay: [0, 5], hr5: [7, 15], hr6: [0, 1], hrAm: [35, 88], run4: [10, 23], run5: [0, 2],
   lonely: [11, 18], gapSlots: [85, 133], gapDays: [55, 82], half1: [44, 58],
-  crossDay: [6, 10], sub3: [0, 4], spread3: [20, 31], tRun6: [12, 25], tRun7: [0, 1],
+  crossDay: [6, 10], sub3: [0, 4], spread3: [20, 31], tRun6: [12, 25], tRun7: [0, 1], emptyDay: [6, 15],
 } as const
 /** 小下課只有十分鐘，跨年段等於跨棟。人工課表四期只有 3% 的老師日發生（每期 6～10 個），確實罕見。 */
 const SHORT_BREAK_PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6]]
@@ -142,7 +142,7 @@ export default function ScheduleHealth({
     for (const p of placed) addSubj(p.teacherId, p.day, p.subject)
     extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.slot.split('-')[0], c.main) })
     const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; subj: number; run: number }[] }[] = []
-    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, sub3: 0, spread3: 0, tRun6: 0, tRun7: 0 }
+    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, sub3: 0, spread3: 0, tRun6: 0, tRun7: 0, emptyDay: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
       const days = SCHEDULE_DAYS.map(d => {
@@ -171,7 +171,9 @@ export default function ScheduleHealth({
         if (best >= 7) tally.tRun7++
         return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross, subj, run: best }
       })
+      // 整天沒課：只看課夠多的老師（鐘點與行政減課者本來就要集中，沒課的日子是好事）
       const active = days.filter(x => x.n > 0)
+      if (total >= 12) tally.emptyDay += 5 - active.length
       if (active.length && Math.max(...active.map(x => x.n)) - Math.min(...active.map(x => x.n)) >= 3) tally.spread3++
       rows.push({ tid, name: nameOf(tid), total, comeDays: active.length, days })
     })
@@ -205,6 +207,7 @@ export default function ScheduleHealth({
     { g: '科任', name: '小下課跨年段', unit: TD, v: teachers.tally.crossDay, hand: HAND.crossDay },
     { g: '科任', name: '連上 6 節以上', unit: TD, v: teachers.tally.tRun6, hand: HAND.tRun6 },
     { g: '科任', name: '連上 7 節（整天沒空堂）', unit: TD, v: teachers.tally.tRun7, hand: HAND.tRun7 },
+    { g: '科任', name: '整天沒課（≥12 節的老師）', unit: TD, v: teachers.tally.emptyDay, hand: HAND.emptyDay },
     { g: '科任', name: '一天要教 3 科以上', unit: TD, v: teachers.tally.sub3, hand: HAND.sub3 },
     { g: '科任', name: '每天節數落差 3 節以上', unit: TN, v: teachers.tally.spread3, hand: HAND.spread3 },
     { g: '科任', name: '零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
@@ -374,7 +377,7 @@ export default function ScheduleHealth({
             {tab === 'teacher' && (
               <p className="text-[11px] text-zinc-400 mb-1.5">
                 每格＝那天上幾節，要處理的排前面。
-                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝整天只 1 節或連上 7 節</span>
+                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝整天沒課、整天只 1 節或連上 7 節</span>
                 <span className="px-1 rounded-sm bg-amber-100 text-amber-900 ml-1">橙＝小下課跨年段或連上 6 節</span>
                 <br />人工課表四期：孤堂日占 6%、跨年段占 3%、連 7 只出現過 1 次，都罕見所以值得抓。
                 零碎空堂不上色——人工有 28% 的老師日本來就有空堂，標了等於沒標。
@@ -415,7 +418,11 @@ export default function ScheduleHealth({
                       })}
                     </tr>
                   ))}
-                  {tab === 'teacher' && teachers.rows.map(r => (
+                  {tab === 'teacher' && teachers.rows.map(r => {
+                    // 整天沒課要不要當問題：鐘點與少節數者（行政減課）本來就要集中，沒課的日子是好事；
+                    // 課夠多的專任科任整天沒課才是該處理的——標紅提醒課務組考慮重跑種子
+                    const watchEmpty = r.total >= 12 && !hourlyTeacherIds.includes(r.tid)
+                    return (
                     <tr key={r.tid}>
                       <td className="px-0.5 py-0.5">
                         <button onClick={() => setSel({ kind: 'teacher', tid: r.tid })} className={rowBtn(selKey === `t:${r.tid}`)}>
@@ -423,11 +430,11 @@ export default function ScheduleHealth({
                         </button>
                       </td>
                       {r.days.map(d => {
-                        const tone = d.lonely || d.run >= 7 ? 'bg-red-100 text-red-800 border-red-300'
+                        const tone = d.lonely || d.run >= 7 || (d.n === 0 && watchEmpty) ? 'bg-red-100 text-red-800 border-red-300'
                           : d.cross || d.run >= 6 ? 'bg-amber-100 text-amber-900 border-amber-300'
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
-                        const why = d.n === 0 ? '這天沒課'
+                        const why = d.n === 0 ? (watchEmpty ? '整天沒課——這位老師課夠多，不該空著一天' : '這天沒課')
                           : [`${d.n} 節`, `${d.subj} 科`, d.run >= 4 ? `連上 ${d.run} 節` : '', d.lonely ? '整天只有 1 節' : '',
                              d.cross ? `小下課跨年段 ${d.cross} 次` : '', d.gap ? `${d.gap} 節空堂夾在課中間` : ''].filter(Boolean).join('｜')
                         return (
@@ -438,7 +445,8 @@ export default function ScheduleHealth({
                         )
                       })}
                     </tr>
-                  ))}
+                    )
+                  })}
                   {tab === 'hourly' && (hourly.length === 0
                     ? <tr><td colSpan={7} className="text-zinc-400 px-1 py-2">沒有鐘點老師。</td></tr>
                     : hourly.map(r => (

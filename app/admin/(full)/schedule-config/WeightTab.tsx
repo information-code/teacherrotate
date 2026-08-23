@@ -105,7 +105,7 @@ const GROUPS: { title: string; note: string; rows: RuleRow[] }[] = [
     { key: 'zoneSandwich', name: '同半天跨區來回', def: '高', desc: '課務組：千萬不要讓老師來回跨區。同一口徑看教室設定的「區」（幾棟合成一區）：甲區→乙區→甲區 且乙區只一節（用實際分配到的教室，沒進專科教室＝原班）。同一區內各棟之間跑班不算（A 棟↔B 棟同一區）。棟沒填「區」時自成一區。走動成本罰的是距離，這條罰的是「跑去又跑回來」', link: { href: '/admin/schedule-config?tab=room', label: '區在「4 教室設定」每一棟的第三欄' } },
     { key: 'teacherSpread', name: '科任每週平均', def: '高', hasN: true, nHint: '最重日 − 最輕日 ≤ N', desc: '課務組原則「正式／代理科任的課務要盡量平均、鐘點要集中」：總節數超過「少節數老師集中」門檻的非導師、非鐘點老師，各日課量盡量平均，最重日減最輕日超過 N 才罰（整天被個人不排課蓋住的日子不計）。人工課表 20 節老師多半是 4/4/4/4/4' },
     { key: 'shortBreakCross', name: '小下課跨區', def: '高', hasN: true, nHint: '大下課在第 N 節後', desc: '相鄰兩節在不同區、中間只有十分鐘小下課（1→2、3→4、5→6、6→7）＝一筆；大下課（第 N 節後，預設第 2 節後的 20 分鐘）、午休、隔空堂不罰——一定得跨區的老師，跨在有時間走的地方。人工課表 75 次跨區有 73% 在大下課／午休／隔空堂；v21 引擎近半在小下課', link: { href: '/admin/schedule-config?tab=room', label: '區在「4 教室設定」' } },
-    { key: 'teacherEveryDay', name: '科任每天至少一節', def: '高', hasN: true, nHint: '一週 ≥ N 節的老師', desc: '課務組原則「科任不能有一天完全沒課（不含鐘點）」：一週 ≥ N 節的非導師老師，每個上課日至少 1 節；那天她教的班可排格全在她的個人不排課裡（吳秉純週三）不算。行政兼課（< N 節）由「少節數老師集中」管' },
+    { key: 'teacherEveryDay', name: '科任每天至少一節', def: '高', hasN: true, nHint: '一週 ≥ N 節的老師', desc: '課務組原則「科任不能有一天完全沒課（不含鐘點）」：一週 ≥ N 節的非導師老師，每個上課日至少 1 節；那天她教的班可排格全在她的個人不排課裡（吳秉純週三）不算。行政兼課（< N 節）由「少節數老師集中」管。預設勾「必須級」；但人工課表四期每期都有 4～6 位老師整天沒課（合計 37 個沒課日），勾了比人工還嚴，排不出來就取消' },
     { key: 'teacherApart', name: '老師同日不混科目', def: '高', desc: '子規則列的幾科，同一位老師同一天只上其中一種——例如英語老師週一都國際教育、週二都英語，不穿插。114-2 人工課表 30 人日混排 2（7%），故為權重。可加多組', master: 'teacherApart' },
     { key: 'batchType', name: '同型態同日', def: '高', desc: '同一天盡量不混排連堂與單節（連堂日／單節日分開）。人工課表 14/235 組混排，且兼教連堂科目與單節科目的老師結構上無法避免，故為權重' },
     { key: 'compact', name: '減少零碎空堂', def: '高', desc: '課間空堂越少越好（「上空上空」交錯已是固定硬限制）。課務組手調 97 堂的主旋律：人工課表 77% 人日零空堂，引擎原本只有 51%' },
@@ -235,6 +235,13 @@ export default function WeightTab({ config, setConfig, gradeSubjects }: Props) {
                       <input type="number" min={1} max={7} value={w.builtin[r.key as ParamKey].n}
                         onChange={e => setBuiltin({ [r.key]: { ...w.builtin[r.key as ParamKey], n: Number(e.target.value) } } as Partial<BuiltinRules>)}
                         className="input w-14 text-center py-0.5 text-xs" />
+                    </label>
+                  )}
+                  {r.key === 'teacherEveryDay' && on && (
+                    <label className="flex items-center gap-1 text-xs text-zinc-500 flex-shrink-0 self-center cursor-pointer"
+                      title="勾了＝科任整天沒課就卡成功條件並點名。鐘點與少節數者（行政減課）本來就排除在外——他們要的是集中">
+                      <input type="checkbox" checked={w.builtin.teacherEveryDay.must}
+                        onChange={e => setBuiltin({ teacherEveryDay: { ...w.builtin.teacherEveryDay, must: e.target.checked } })} />必須級
                     </label>
                   )}
                   {r.key === 'homeroomDailyMax' && on && (

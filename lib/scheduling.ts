@@ -154,7 +154,9 @@ export interface BuiltinRules {
   zoneSandwich: WeightLevel
   // 科任每天至少一節：非導師、非鐘點、一週 ≥ n 節的老師，每個上課日至少 1 節（整天被個人不排課蓋住的日子不算）。
   //   課務組原則「科任不能有一天完全沒課」；行政兼課（<n 節）不受此限，由「少節數老師集中」管
-  teacherEveryDay: { level: WeightLevel; n: number }
+  //   must＝勾了就是必須級（導師與科任都不該整天沒課）。鐘點與少節數者（行政減課後多半低於 n 節）
+  //   本來就排除在外——他們要的是集中，跑越少趟越好
+  teacherEveryDay: { level: WeightLevel; n: number; must: boolean }
   // 科任每週平均：正式／代理科任（非導師、非鐘點、總節數 > 少節數門檻）各日課量盡量平均——最重日減最輕日 ≤ n 節才不罰
   //   （整天被個人不排課蓋住的日子不計）。課務組原則「正式和代理科任的課務要盡量平均、鐘點要集中」
   teacherSpread: { level: WeightLevel; n: number }
@@ -325,7 +327,7 @@ export function defaultScheduleWeights(): ScheduleWeights {
       homeroomDailyMin: { level: 'high', full: 2, half: 1, must: true },   // 課務組：半天至少 1 節、整天至少 2 節導師課
       gradeSandwich: 'high',
       zoneSandwich: 'high',   // 課務組：千萬不要讓老師來回跨區
-      teacherEveryDay: { level: 'high', n: 12 },
+      teacherEveryDay: { level: 'high', n: 12, must: false },   // 勾必須級實測：6 顆種子 4 顆卡在這條，成功率從約 25% 掉到約 8%，改用課表體檢的紅格提醒
       teacherSpread: { level: 'high', n: 2 },
       shortBreakCross: { level: 'high', n: 2 },   // v20 實測中咬不住：20 節老師幾乎都是 6/6/2，一天 6 節的人日 21%（人工 15%）
       avoidPeriods: 'mid',
@@ -398,7 +400,7 @@ export function normalizeScheduleWeights(raw: unknown): ScheduleWeights {
       zoneSandwich: normLevel(b.zoneSandwich, db.zoneSandwich),
       teacherEveryDay: (() => {
         const n = Number(b.teacherEveryDay?.n)
-        return { level: normLevel(b.teacherEveryDay?.level, db.teacherEveryDay.level), n: Number.isInteger(n) && n >= 1 && n <= 30 ? n : db.teacherEveryDay.n }
+        return { level: normLevel(b.teacherEveryDay?.level, db.teacherEveryDay.level), n: Number.isInteger(n) && n >= 1 && n <= 30 ? n : db.teacherEveryDay.n, must: b.teacherEveryDay?.must ?? db.teacherEveryDay.must }
       })(),
       teacherSpread: (() => {
         const n = Number(b.teacherSpread?.n)

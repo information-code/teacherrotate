@@ -1841,7 +1841,9 @@ export function scoreState(st: State): { total: number; soft: number; penalties:
           if (loads[d - 1] > 0) continue
           const open = [...cks].flatMap(ck => (input.classSlots[ck] ?? []).filter(sl => sl.startsWith(`${d}-`) && !blocked.has(sl)))
           if (!open.length) continue
-          acc(map, 'teacherEveryDay', `科任每天至少一節（≥${ed.n} 節）`, pen(ed.level), `${nameOf(tid)}（${total7} 節）週${DAY_ZH[d]}整天沒課`)
+          // 勾必須級＝科任不得有整天沒課的日子（鐘點與少節數者已在上面排除，他們要的是集中）
+          acc(map, 'teacherEveryDay', `科任每天至少一節（≥${ed.n} 節）${ed.must ? '（必須級）' : ''}`,
+            ed.must ? MUST : pen(ed.level), `${nameOf(tid)}（${total7} 節）週${DAY_ZH[d]}整天沒課`)
         }
       }
       // 科任每週平均：正式／代理科任（總節數 > 少節數門檻）最重日減最輕日 ≤ N；整天被不排課蓋住的日子不計
