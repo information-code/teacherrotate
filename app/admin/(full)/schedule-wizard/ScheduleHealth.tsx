@@ -22,7 +22,7 @@ import type { ChainSeed } from './ChainAdjustModal'
 const HAND = {
   hrNoDay: [0, 5], hr5: [7, 15], hr6: [0, 1], hrAm: [35, 88], run4: [10, 23], run5: [0, 2],
   lonely: [11, 18], gapSlots: [85, 133], gapDays: [55, 82], half1: [44, 58],
-  crossDay: [6, 10], sub3: [0, 4], spread3: [20, 31], tRun6: [12, 25], tRun7: [0, 1], emptyDay: [6, 15],
+  crossDay: [6, 10], spread3: [20, 31], tRun6: [12, 25], tRun7: [0, 1], emptyDay: [6, 15],
 } as const
 /** 小下課只有十分鐘，跨年段等於跨棟。人工課表四期只有 3% 的老師日發生（每期 6～10 個），確實罕見。 */
 const SHORT_BREAK_PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6]]
@@ -144,17 +144,8 @@ export default function ScheduleHealth({
     extraByTeacher.forEach((cells, tid) => {
       for (const c of cells) { const [d, q] = c.slot.split('-').map(Number); put(tid, d, [q]) }
     })
-    // 老師 → 日 → 科目集合（一天教幾科：人工四期只有 0～4 個老師日達到 3 科，很能分辨科任的忙亂程度）
-    const subjAt = new Map<string, Set<string>>()
-    const addSubj = (tid: string, d: number | string, name: string) => {
-      const k = `${tid}|${d}`
-      const set = subjAt.get(k) ?? new Set<string>()
-      set.add(name); subjAt.set(k, set)
-    }
-    for (const p of placed) addSubj(p.teacherId, p.day, p.subject)
-    extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.slot.split('-')[0], c.main) })
-    const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; subj: number; run: number }[] }[] = []
-    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, sub3: 0, spread3: 0, tRun6: 0, tRun7: 0, emptyDay: 0 }
+    const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; run: number }[] }[] = []
+    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, spread3: 0, tRun6: 0, tRun7: 0, emptyDay: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
       const days = SCHEDULE_DAYS.map(d => {
@@ -174,14 +165,12 @@ export default function ScheduleHealth({
           if (cross) tally.crossDay++
           tally.half1 += (am === 1 ? 1 : 0) + (pm === 1 ? 1 : 0)
         }
-        const subj = subjAt.get(`${tid}|${d}`)?.size ?? 0
-        if (qs.length && subj >= 3) tally.sub3++
         // 連續授課（含本土語）：人工四期 974 個老師日只有 1 次連 7，連 6 也只有 8%
         let run = 0, best = 0, prev = -9
         for (const q of qs) { run = q === prev + 1 ? run + 1 : 1; prev = q; best = Math.max(best, run) }
         if (best >= 6) tally.tRun6++
         if (best >= 7) tally.tRun7++
-        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross, subj, run: best }
+        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross, run: best }
       })
       // 整天沒課：只看課夠多的老師（鐘點與行政減課者本來就要集中，沒課的日子是好事）
       const active = days.filter(x => x.n > 0)
@@ -220,7 +209,6 @@ export default function ScheduleHealth({
     { g: '科任', name: '連上 6 節以上', unit: TD, v: teachers.tally.tRun6, hand: HAND.tRun6 },
     { g: '科任', name: '連上 7 節（整天沒空堂）', unit: TD, v: teachers.tally.tRun7, hand: HAND.tRun7 },
     { g: '科任', name: '整天沒課（≥12 節的老師）', unit: TD, v: teachers.tally.emptyDay, hand: HAND.emptyDay },
-    { g: '科任', name: '一天要教 3 科以上', unit: TD, v: teachers.tally.sub3, hand: HAND.sub3 },
     { g: '科任', name: '每天節數落差 3 節以上', unit: TN, v: teachers.tally.spread3, hand: HAND.spread3 },
     { g: '科任', name: '零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
     { g: '科任', name: '有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
@@ -457,7 +445,7 @@ export default function ScheduleHealth({
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
                         const why = d.n === 0 ? (watchEmpty ? '整天沒課——這位老師課夠多，不該空著一天' : '這天沒課')
-                          : [`${d.n} 節`, `${d.subj} 科`, d.run >= 4 ? `連上 ${d.run} 節` : '', d.lonely ? '整天只有 1 節' : '',
+                          : [`${d.n} 節`, d.run >= 4 ? `連上 ${d.run} 節` : '', d.lonely ? '整天只有 1 節' : '',
                              d.cross ? `小下課跨年段 ${d.cross} 次` : '', d.gap ? `${d.gap} 節空堂夾在課中間` : ''].filter(Boolean).join('｜')
                         return (
                           <td key={d.d} className="p-0.5">
