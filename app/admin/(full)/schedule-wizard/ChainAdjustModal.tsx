@@ -571,13 +571,45 @@ export default function ChainAdjustModal({
   const issueCount = issues.must.length + issues.hard.length
   const canApply = moves.length > 0 && pending.length === 0 && !roomPick
 
+  /** 拆過的連堂，套用時若又貼在一起就併回一塊。
+   *  「拆連堂」是用來把連堂換個時段（社會 2連堂＋1單節 → 想改成 1單節＋2連堂），
+   *  拆完通常會跟原本的單節湊成新的連堂。不併回去的話課表上看起來是連著的，
+   *  資料裡卻是兩個單節：堂數會多算一塊，連堂相關的規則也全部看不到它。 */
+  function remerge(arr: PlacedResult[]): PlacedResult[] {
+    const need = new Map<string, number>()
+    for (const l of engineInput.lessons) {
+      if (l.size !== 2 || l.parity !== 'weekly') continue
+      const k = `${l.classKey}|${l.subject}`
+      need.set(k, (need.get(k) ?? 0) + 1)
+    }
+    const out = [...arr]
+    for (const [k, n] of need) {
+      const [ck, subj] = k.split('|')
+      const mine = () => out.filter(l => l.classKey === ck && l.subject === subj && l.parity === 'weekly' && l.day >= 1)
+      let guard = 4
+      while (mine().filter(l => l.size === 2).length < n && guard-- > 0) {
+        const singles = mine().filter(l => l.size === 1).sort((a, b) => a.day - b.day || a.period - b.period)
+        const i = singles.findIndex((a, idx) => {
+          const b = singles[idx + 1]
+          return b && a.day === b.day && b.period === a.period + 1 && a.period !== MORNING_LAST && a.teacherId === b.teacherId
+        })
+        if (i < 0) break
+        const a = singles[i], b = singles[i + 1]
+        const ia = out.indexOf(a), ib = out.indexOf(b)
+        out[ia] = { ...a, size: 2 }
+        out.splice(ib, 1)
+      }
+    }
+    return out
+  }
+
   function apply() {
     if (issueCount > 0) {
       const list = (t: string, a: string[]) => a.length
         ? `${t}（${a.length}）\n` + a.slice(0, 8).map(x => `・${x}`).join('\n') + (a.length > 8 ? `\n・…另外 ${a.length - 8} 筆` : '') + '\n\n' : ''
       if (!confirm(`這 ${moves.length} 步調動會違反以下規則：\n\n${list('必須級', issues.must)}${list('硬限制', issues.hard)}系統不會阻止（人工調課權力最大），仍要套用嗎？`)) return
     }
-    onApply({ placed, hr, moves: moves.map(m => ({ classKey: m.cls, from: m.from, to: m.to, what: m.what })) })
+    onApply({ placed: remerge(placed), hr, moves: moves.map(m => ({ classKey: m.cls, from: m.from, to: m.to, what: m.what })) })
   }
 
   if (!open || !seed) return null
