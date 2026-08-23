@@ -1118,6 +1118,7 @@ ${head}確定撤回？`)) return
               config={scheduleConfig} classCounts={classCounts} teacherNames={teacherNames}
               hourlyTeacherIds={hourlyTeacherIds}
               homeroomHours={homeroomHours}
+              extraByTeacher={adjustExtras.teacher}
               onOpenChain={seed => { setChainReq({ seed, nonce: Date.now() }); setHealthOpen(false) }}
             />
           </div>

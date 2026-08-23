@@ -33,13 +33,15 @@ interface Props {
   hourlyTeacherIds: string[]
   /** 各班導師自己要上的科目節數：用來判斷哪些鎖課（種子班國數）是導師的課 */
   homeroomHours: Record<string, Record<string, number>>
+  /** 不進引擎的固定課（本土語原班／語別場次）：老師照樣要到校上課，不算進去空堂與到校天數都會錯 */
+  extraByTeacher: Map<string, { slot: string }[]>
   onOpenChain?: (seed: ChainSeed) => void
 }
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 const MORNING_LAST = 4
 
-export default function ScheduleHealth({ placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, homeroomHours, onOpenChain }: Props) {
+export default function ScheduleHealth({ placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, homeroomHours, extraByTeacher, onOpenChain }: Props) {
   const [tab, setTab] = useState<'homeroom' | 'teacher' | 'hourly'>('homeroom')
   const nameOf = (id: string) => teacherNames[id] ?? '？'
 
@@ -92,13 +94,17 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
   /* ── 科任端：每位老師每天的節數、零碎空堂、孤堂日、半天只上 1 節 ── */
   const teachers = useMemo(() => {
     const byT = new Map<string, Map<number, number[]>>()
-    for (const p of placed) {
-      const tid = p.teacherId
+    const put = (tid: string, day: number, qs: number[]) => {
       const dm = byT.get(tid) ?? new Map<number, number[]>()
-      const arr = dm.get(p.day) ?? []
-      for (const q of (p.size === 2 ? [p.period, p.period + 1] : [p.period])) arr.push(q)
-      dm.set(p.day, arr); byT.set(tid, dm)
+      dm.set(day, [...(dm.get(day) ?? []), ...qs])
+      byT.set(tid, dm)
     }
+    for (const p of placed) put(p.teacherId, p.day, p.size === 2 ? [p.period, p.period + 1] : [p.period])
+    // 本土語不進引擎，但老師照樣要到校上那一節。不算進來的話：空堂會多算（其實被本土語填住了）、
+    // 孤堂日會多算、鐘點的到校天數會少算——而人工課表的基準線是有把本土語算進去的，不補就不是同一個標準。
+    extraByTeacher.forEach((cells, tid) => {
+      for (const c of cells) { const [d, q] = c.slot.split('-').map(Number); put(tid, d, [q]) }
+    })
     const rows: { tid: string; name: string; total: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean }[] }[] = []
     const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0 }
     byT.forEach((dm, tid) => {
@@ -121,7 +127,7 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
     })
     rows.sort((a, b) => b.days.reduce((s, x) => s + x.gap, 0) - a.days.reduce((s, x) => s + x.gap, 0) || b.total - a.total)
     return { rows, tally }
-  }, [placed, teacherNames])
+  }, [placed, teacherNames, extraByTeacher])
 
   /* ── 鐘點：到校天數（他們在乎的是要跑幾趟，不是幾節） ── */
   const hourly = useMemo(() => {
@@ -163,7 +169,7 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
         <div className="text-sm font-semibold text-zinc-700 mb-1">課表體檢</div>
         <p className="text-[11px] text-zinc-400 mb-2">
           和本校 {HAND_TERMS}人工排的課表比。「在人工範圍內」代表這一版跟老師們過去幾年實際上到的課表差不多。
-          <br />班日＝一個班的一天（62 班 × 5 天＝310）；老師日＝一位科任的一天。
+          <br />班日＝一個班的一天（62 班 × 5 天＝310）；老師日＝一位科任的一天。本土語（不進引擎的固定課）已計入老師的節數。
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs tabular-nums min-w-[520px]">
