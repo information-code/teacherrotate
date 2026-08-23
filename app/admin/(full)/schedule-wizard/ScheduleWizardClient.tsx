@@ -876,6 +876,7 @@ ${head}確定撤回？`)) return
           homeroomRows={props.homeroomRows}
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
+          onVersionSaved={loadVersions}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}
@@ -1072,6 +1073,7 @@ ${head}確定撤回？`)) return
                 homeroomRows={props.homeroomRows}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
+                onVersionSaved={loadVersions}
                 baseHash={curBaseHash}
                 engineInput={input}
                 config={scheduleConfig}

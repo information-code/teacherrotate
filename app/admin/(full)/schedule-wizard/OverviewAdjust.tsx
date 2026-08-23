@@ -38,6 +38,7 @@ interface Props {
   /** 外部（課表體檢的熱力圖）要求開啟連鎖調課；nonce 變了就開一次。 */
   chainRequest?: { seed: ChainSeed; nonce: number }
   onChainConsumed?: () => void   // 開過了就通知外面清掉，否則換版本預覽重新掛載時會再開一次
+  onVersionSaved?: () => void    // 存了新版本：外層要重抓版本清單，否則新版本要重新整理才看得到
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -58,7 +59,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -170,6 +171,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         }),
       })
       if (!opts.silent) setSnapState(res.ok ? 'saved' : 'error')
+      if (res.ok) onVersionSaved?.()
       return res.ok
     } catch { if (!opts.silent) setSnapState('error'); return false }
   }
