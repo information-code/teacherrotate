@@ -195,6 +195,9 @@ export default function ScheduleWizardClient(props: Props) {
 
   // 版本清單載入後自動帶入最新的一份：草稿階段畫面上顯示的一律是某個版本，
   // 使用者不必先開 modal 挑一次才看得到課表。只做一次，之後由使用者自己切換。
+  // 課表在資料庫的最後修改戳記。放在上層才跨得過 OverviewAdjust 的重掛（切版本、
+  // 換微調起點都會重掛），否則會退回頁面載入時的舊值，下次存檔就被樂觀鎖擋下。
+  const [planAt, setPlanAt] = useState(props.planGeneratedAt)
   const autoPreviewed = useRef(false)
   // 資料庫裡有微調過的草稿 → 開頁直接接續它（上次調到哪就從哪繼續），不另外挑版本
   useEffect(() => {
@@ -263,6 +266,8 @@ export default function ScheduleWizardClient(props: Props) {
           adjustments: [{ at: new Date().toISOString(), desc: `回到版本 ${verZh(v)}` }] } }),
       })
       if (!put.ok) { alert('寫回課表失敗，請稍後再試。'); return false }
+      const putData = await put.json().catch(() => ({}))
+      if (putData.generatedAt) setPlanAt(putData.generatedAt)
       for (const [ck, cells] of Object.entries(hrMap ?? {})) {
         await fetch('/api/admin/schedule-homeroom', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -994,7 +999,8 @@ ${head}確定撤回？`)) return
           savedPlan={props.savedPlan}
           extras={adjustExtras}
           homeroomRows={props.homeroomRows}
-          planGeneratedAt={props.planGeneratedAt}
+          planGeneratedAt={planAt}
+          onPlanAt={setPlanAt}
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
           onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}
@@ -1192,7 +1198,8 @@ ${head}確定撤回？`)) return
                 setPlanStatus={setPlanStatus}
                 savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
                 homeroomRows={props.homeroomRows}
-                planGeneratedAt={props.planGeneratedAt}
+                planGeneratedAt={planAt}
+                onPlanAt={setPlanAt}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
                 onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}

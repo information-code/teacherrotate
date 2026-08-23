@@ -42,6 +42,9 @@ interface Props {
   /** 存了新版本：外層要重抓版本清單，並把「目前顯示版本」切到這一份
    *  （不然畫面上寫的還是上一版，但看到的內容已經是新的） */
   onVersionSaved?: (v: { id?: string; seq?: number | null }) => void
+  /** 存檔成功後回報資料庫的新戳記。這個元件會被重掛（切版本、換微調起點），
+   *  戳記只放在自己身上的話會被重設成頁面剛載入時的舊值，下次存檔就自己撞自己。 */
+  onPlanAt?: (at: string) => void
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -62,7 +65,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, planGeneratedAt }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, onPlanAt, planGeneratedAt }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -181,6 +184,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (res.ok) {
         const d = await res.json().catch(() => ({}))
         onVersionSaved?.({ id: d.id, seq: d.seq })
+        lastVerSeq.current = (d.seq as number | null | undefined) ?? null
         return (d.id as string | undefined) ?? true
       }
       return res.ok
@@ -623,6 +627,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     }])
   }
 
+  const lastVerSeq = useRef<number | null>(null)
   async function persist(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, nextAdj: Adjustment[], changedHrClasses: string[], versionId?: string) {
     setSaveState('saving')
     try {
@@ -637,15 +642,21 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (res.status === 409) {
         const d = await res.json().catch(() => ({}))
         setSaveState('error')
-        alert(`存檔已擋下：${d.error ?? '這份課表被別人改過了'}\n\n`
-          + `對方最後修改於 ${d.currentAt ? new Date(d.currentAt).toLocaleString('zh-TW') : '（時間不明）'}。\n`
-          + `你畫面上的調整還在，但還沒存進去。請重新整理看對方改了什麼，再決定要不要重做。\n`
-          + `（直接存下去會把對方的成果整份蓋掉，所以系統先擋住。）`)
+        // 不一定是「有人同時在改」：這一頁開太久、另一個分頁存過、後台做過修復都會撞到。
+        // 重點是給出路——被擋下後每按一次都會再擋一次，不講清楚就只能乾等。
+        const seq = versionId && lastVerSeq.current ? `#${lastVerSeq.current}` : null
+        const when = d.currentAt ? new Date(d.currentAt).toLocaleString('zh-TW') : '（時間不明）'
+        if (confirm(`存檔已擋下：你這一頁的課表不是最新的。\n\n`
+          + `資料庫最後一次修改是 ${when}，比你開這一頁的時間還新。\n`
+          + `可能是別人同時在調課，也可能是你另一個分頁存過、或這一頁開太久了。\n`
+          + `（直接存下去會把那次修改整份蓋掉，所以系統先擋住。）\n\n`
+          + (seq ? `你剛剛這一步已經存成版本 ${seq}，不會不見。\n重新整理後如果確定要用它，到版本紀錄按「回到這一版」。\n\n` : `你畫面上的調整還沒存進去，重新整理會消失。\n\n`)
+          + `要現在重新整理，載入最新的課表嗎？`)) location.reload()
         return
       }
       if (!res.ok) throw new Error()
       const okData = await res.json().catch(() => ({}))
-      if (okData.generatedAt) planAtRef.current = okData.generatedAt
+      if (okData.generatedAt) { planAtRef.current = okData.generatedAt; onPlanAt?.(okData.generatedAt) }
       for (const ck of changedHrClasses) {
         const r = await fetch('/api/admin/schedule-homeroom', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
