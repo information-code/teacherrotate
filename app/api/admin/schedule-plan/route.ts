@@ -92,13 +92,30 @@ export async function PUT(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await hasPerms(user.id, ['schedule-config','schedule-wizard']))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { year, plan } = await request.json()
+  const { year, plan, expectedAt } = await request.json()
   if (!Number.isInteger(Number(year))) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
+
+  // 樂觀鎖：兩台電腦同時開排課精靈時，這裡是唯一會「無聲弄丟別人成果」的地方——
+  // 草稿是整份覆寫，後存的會把前一台的手動調課全部蓋掉，而且雙方都不會收到任何提示。
+  // 前端讀取時拿到的 generated_at 要一起送回來；對不上就擋下，讓人先看過對方改了什麼。
+  // （expectedAt 省略＝不檢查，供沒有並行風險的呼叫端沿用。）
+  const now = new Date().toISOString()
+  if (typeof expectedAt === 'string') {
+    const { data: cur } = await supabaseAdmin
+      .from('schedule_plan').select('generated_at').eq('year', Number(year)).maybeSingle()
+    const at = cur?.generated_at ?? ''
+    if (at && at !== expectedAt) {
+      return NextResponse.json({
+        error: '這份課表在你編輯期間被別人改過了',
+        conflict: true, currentAt: at,
+      }, { status: 409 })
+    }
+  }
 
   const { error } = await supabaseAdmin
     .from('schedule_plan')
-    .upsert({ year: Number(year), plan: plan ?? {}, generated_at: new Date().toISOString() }, { onConflict: 'year' })
+    .upsert({ year: Number(year), plan: plan ?? {}, generated_at: now }, { onConflict: 'year' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, generatedAt: now })
 }

@@ -17,6 +17,7 @@ interface Props {
   planStatus: string
   setPlanStatus: (s: string) => void
   savedPlan: Record<string, unknown>
+  planGeneratedAt?: string | null   // 草稿版本令牌的起點（見 persist 的 409 處理）
   homeroomRows: HomeroomRow[]
   config: ScheduleConfig
   classCounts: Record<number, number>
@@ -59,7 +60,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, planGeneratedAt }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -95,6 +96,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // 這一行是總開關：改回 true 就能救回舊的互動（相關程式碼都還在，等 modal 在課務組手上跑順再刪）。
   const adjustMode = false
   const [note, setNote] = useState('')
+  // 草稿的版本令牌：讀到的 generated_at 一起送回去，對不上代表別人在你編輯期間改過（兩台電腦同開）
+  const planAtRef = useRef<string | undefined>(planGeneratedAt ?? undefined)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [snapState, setSnapState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   // 微調＝暫存：改動只在記憶體，按「儲存微調」才寫入課表。未儲存時離開頁面會攔截確認，
@@ -599,9 +602,20 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       const plan = { ...savedPlan, placed: nextPlaced, adjustments: nextAdj, status: planStatus }
       const res = await fetch('/api/admin/schedule-plan', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, plan }),
+        body: JSON.stringify({ year, plan, expectedAt: planAtRef.current }),
       })
+      if (res.status === 409) {
+        const d = await res.json().catch(() => ({}))
+        setSaveState('error')
+        alert(`存檔已擋下：${d.error ?? '這份課表被別人改過了'}\n\n`
+          + `對方最後修改於 ${d.currentAt ? new Date(d.currentAt).toLocaleString('zh-TW') : '（時間不明）'}。\n`
+          + `你畫面上的調整還在，但還沒存進去。請重新整理看對方改了什麼，再決定要不要重做。\n`
+          + `（直接存下去會把對方的成果整份蓋掉，所以系統先擋住。）`)
+        return
+      }
       if (!res.ok) throw new Error()
+      const okData = await res.json().catch(() => ({}))
+      if (okData.generatedAt) planAtRef.current = okData.generatedAt
       for (const ck of changedHrClasses) {
         const r = await fetch('/api/admin/schedule-homeroom', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },

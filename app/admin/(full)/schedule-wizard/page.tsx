@@ -87,6 +87,7 @@ export default async function ScheduleWizardPage() {
       lastGeneratedAt={planRow?.generated_at ?? null}
       initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
       savedPlan={(planRow?.plan ?? null) as Record<string, unknown> | null}
+      planGeneratedAt={planRow?.generated_at ?? null}
       homeroomRows={(hrRows ?? []) as { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }[]}
     />
   )

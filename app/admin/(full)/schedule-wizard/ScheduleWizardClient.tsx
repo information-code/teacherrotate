@@ -29,6 +29,8 @@ interface Props {
   lastGeneratedAt: string | null
   initialPlanStatus: string | null
   savedPlan: Record<string, unknown> | null
+  /** 草稿的最後寫入時間：當版本令牌用，兩台電腦同時編輯時擋下覆蓋（見 schedule-plan PUT） */
+  planGeneratedAt?: string | null
   homeroomRows: HomeroomRow[]
 }
 
@@ -876,6 +878,7 @@ ${head}確定撤回？`)) return
           savedPlan={props.savedPlan}
           extras={adjustExtras}
           homeroomRows={props.homeroomRows}
+          planGeneratedAt={props.planGeneratedAt}
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
           onVersionSaved={loadVersions}
@@ -1073,6 +1076,7 @@ ${head}確定撤回？`)) return
                 setPlanStatus={setPlanStatus}
                 savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
                 homeroomRows={props.homeroomRows}
+                planGeneratedAt={props.planGeneratedAt}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
                 onVersionSaved={loadVersions}
