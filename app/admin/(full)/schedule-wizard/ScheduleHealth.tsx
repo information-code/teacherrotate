@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, homeroomLockSlots, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
 import type { PlacedResult } from '@/lib/schedule-engine'
 import type { HomeroomRow } from './OverviewAdjust'
@@ -31,13 +31,15 @@ interface Props {
   classCounts: Record<number, number>
   teacherNames: Record<string, string>
   hourlyTeacherIds: string[]
+  /** 各班導師自己要上的科目節數：用來判斷哪些鎖課（種子班國數）是導師的課 */
+  homeroomHours: Record<string, Record<string, number>>
   onOpenChain?: (seed: ChainSeed) => void
 }
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 const MORNING_LAST = 4
 
-export default function ScheduleHealth({ placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, onOpenChain }: Props) {
+export default function ScheduleHealth({ placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, homeroomHours, onOpenChain }: Props) {
   const [tab, setTab] = useState<'homeroom' | 'teacher' | 'hourly'>('homeroom')
   const nameOf = (id: string) => teacherNames[id] ?? '？'
 
@@ -56,11 +58,18 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
       const ck = `${g}-${i}`
       const grid = config.bands[bandOf(g)]
       const locks = config.lockCells[ck] ?? {}
+      // 種子班的國語、數學鎖課本來就是導師自己上的，要算進導師節數；本土語那種才是別人的課
+      const hrLocks = new Set(homeroomLockSlots(config, g, i, homeroomHours[ck]))
       const cm = cells.get(ck) ?? new Map<string, PlacedResult>()
       const days = SCHEDULE_DAYS.map(d => {
         const slots: number[] = []
         for (let p = 1; p <= grid.periodsPerDay; p++) if (grid.teachable[`${d}-${p}`]) slots.push(p)
-        const mine = slots.filter(p => !locks[`${d}-${p}`] && !cm.has(`${d}-${p}`))
+        const mine = slots.filter(p => {
+          const k = `${d}-${p}`
+          if (cm.has(k)) return false                    // 科任課
+          if (locks[k] && !hrLocks.has(k)) return false  // 別人的鎖課（本土語…）
+          return true                                     // 空白或導師自己的鎖課
+        })
         const full = slots.some(p => p > MORNING_LAST)
         const cap = bandOf(g) === 'low' && full ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
         let run = 0, best = 0, prev = -9
@@ -78,7 +87,7 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
       rows.push({ ck, label: classLabel(g, i), teacher: nameOf(config.classTeacher[ck] ?? ''), days })
     }
     return { rows, tally }
-  }, [placed, config, classCounts, teacherNames])
+  }, [placed, config, classCounts, teacherNames, homeroomHours])
 
   /* ── 科任端：每位老師每天的節數、零碎空堂、孤堂日、半天只上 1 節 ── */
   const teachers = useMemo(() => {
@@ -123,17 +132,18 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
   }, [teachers, hourlyTeacherIds])
 
   /* ── 體檢表：跟人工課表比 ── */
+  const CD = '班日', TD = '老師日'
   const checks = [
-    { name: '導師整天沒課', v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay, bad: (v: number) => v > 0 },
-    { name: '導師一天 5 節以上', v: homeroom.tally.hr5, hand: HAND.hr5, bad: () => false },
-    { name: '導師一天 6 節以上', v: homeroom.tally.hr6, hand: HAND.hr6, bad: () => false },
-    { name: '導師上午不足 2 節', v: homeroom.tally.hrAm, hand: HAND.hrAm, bad: () => false },
-    { name: '導師連上 4 節以上', v: homeroom.tally.run4, hand: HAND.run4, bad: () => false },
-    { name: '導師連上 5 節以上', v: homeroom.tally.run5, hand: HAND.run5, bad: () => false },
-    { name: '老師孤堂日（一天只 1 節）', v: teachers.tally.lonely, hand: HAND.lonely, bad: () => false },
-    { name: '老師零碎空堂（節）', v: teachers.tally.gapSlots, hand: HAND.gapSlots, bad: () => false },
-    { name: '老師有零碎空堂的日數', v: teachers.tally.gapDays, hand: HAND.gapDays, bad: () => false },
-    { name: '老師半天只上 1 節', v: teachers.tally.half1, hand: HAND.half1, bad: () => false },
+    { name: '導師整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay, bad: (v: number) => v > 0 },
+    { name: '導師一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5, bad: () => false },
+    { name: '導師一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6, bad: () => false },
+    { name: '導師上午不足 2 節', unit: CD, v: homeroom.tally.hrAm, hand: HAND.hrAm, bad: () => false },
+    { name: '導師連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4, bad: () => false },
+    { name: '導師連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5, bad: () => false },
+    { name: '老師孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely, bad: () => false },
+    { name: '老師零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots, bad: () => false },
+    { name: '老師有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays, bad: () => false },
+    { name: '老師半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1, bad: () => false },
   ]
   const verdict = (v: number, [lo, hi]: readonly [number, number] | number[]) =>
     v < lo ? { txt: '優於人工', cls: 'text-green-700 bg-green-50 border-green-200' }
@@ -153,6 +163,7 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
         <div className="text-sm font-semibold text-zinc-700 mb-1">課表體檢</div>
         <p className="text-[11px] text-zinc-400 mb-2">
           和本校 {HAND_TERMS}人工排的課表比。「在人工範圍內」代表這一版跟老師們過去幾年實際上到的課表差不多。
+          <br />班日＝一個班的一天（62 班 × 5 天＝310）；老師日＝一位科任的一天。
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs tabular-nums min-w-[520px]">
@@ -170,8 +181,8 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
                 return (
                   <tr key={c.name} className="border-b border-zinc-100 last:border-0">
                     <td className="py-1 text-zinc-700">{c.name}</td>
-                    <td className="py-1 text-right font-medium">{c.v}</td>
-                    <td className="py-1 text-right text-zinc-400">{c.hand[0]}～{c.hand[1]}</td>
+                    <td className="py-1 text-right font-medium">{c.v} <span className="font-normal text-zinc-400">{c.unit}</span></td>
+                    <td className="py-1 text-right text-zinc-400">{c.hand[0]}～{c.hand[1]} {c.unit}</td>
                     <td className="py-1 pl-3"><span className={`px-1.5 py-0.5 rounded-sm border text-[11px] ${vd.cls}`}>{vd.txt}</span></td>
                   </tr>
                 )

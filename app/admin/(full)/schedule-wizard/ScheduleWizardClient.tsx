@@ -1117,6 +1117,7 @@ ${head}確定撤回？`)) return
               placed={result.placed} hr={Object.fromEntries(props.homeroomRows.map((r: HomeroomRow) => [r.class_key, r]))}
               config={scheduleConfig} classCounts={classCounts} teacherNames={teacherNames}
               hourlyTeacherIds={hourlyTeacherIds}
+              homeroomHours={homeroomHours}
               onOpenChain={seed => { setChainReq({ seed, nonce: Date.now() }); setHealthOpen(false) }}
             />
           </div>
