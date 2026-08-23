@@ -617,7 +617,9 @@ export default function ChainAdjustModal({
       : tgt?.ok ? ' ring-1 ring-emerald-400' : ''
 
     const hasArrow = arrowOut || arrowIn
-    const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick && (hasArrow || tgt?.ok || (!pick && item && (item.kind !== 'hr' || !fillOpen)))))
+    // picked＝再點一次取消；item＝改選別堂課。原本兩者都被 `!pick` 擋掉，選中之後整張課表就點不動了
+    const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick
+      && (hasArrow || picked || tgt?.ok || (item && (item.kind !== 'hr' || !fillOpen)))))
     const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff ? '不排課時段'
       : hasArrow ? '點一下取消這一步'
       : tgt ? tgt.why
@@ -641,7 +643,8 @@ export default function ChainAdjustModal({
       if (m) { undoMove(m); return }
       if (picked) { setPick(null); return }
       if (pick && tgt?.ok) { draw(b, slot); return }
-      if (!pick && item) {
+      // 不是合法目標又有課＝改選這一堂（換別班時最常用）
+      if (item && (item.kind !== 'hr' || !fillOpen)) {
         setPick({ item, board: b, slot })
         // 需要專科教室的課：把它現在用的那間教室也帶出來，看得到哪幾節還有位子
         const rid = item.kind === 'lesson' ? dById.get(item.id)?.roomId : undefined
