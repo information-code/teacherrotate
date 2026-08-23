@@ -12,6 +12,9 @@ import { EngineRun, polishResult, type EngineInput, type EngineResult } from '..
 
 const CHUNK_MS = 300
 const SEEDS = [42, 7, 17, 63, 3]          // 先跑這幾個固定種子（結果可重現）；不成再無限換新種子
+// 引擎是決定性的：同一份設定＋同一顆種子＝同一張課表，而且跑到第一顆成功就停。
+// 所以不記錄「試過哪些」的話，只要第 4 顆會成功，重排一百次都是同一張課表——
+// 課務組想換一個版本比較就永遠換不到。外面把試過的種子傳進來，這裡跳過它們。
 const MAX_SEEDS = 40                      // 安全上限：真的排不出來時不要無止盡跑下去（可隨時按「停止並採用」）
 const MAX_MS = 30 * 60 * 1000             // 同上，時間上限 30 分鐘
 const BUDGET = { converge: 25000, cap: 120000 }       // 尚未有完整解：每種子收斂/上限（必須級條件變多後，沙盒實測成功的種子要跑滿 90s，上限放寬到 120s）
@@ -109,11 +112,12 @@ async function diagnose(input: EngineInput, best: EngineResult, seed: number): P
   return { probePerfect: true, hints }
 }
 
-self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>) => {
+self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput; skipSeeds?: number[] }>) => {
   if (e.data.type === 'stop') { stopRequested = true; return }
   if (!e.data.input) return
   stopRequested = false
   const input = e.data.input
+  const tried = new Set(e.data.skipSeeds ?? [])
 
   // ── 一個種子一個種子跑，跑到「未排 0、必須級 0」就立刻收尾，不跑完剩下的種子 ──
   // 沒跑到就換新種子繼續（固定的五個用完之後改用衍生的隨機種子），直到成功、或使用者按停止、或碰到安全上限。
@@ -122,7 +126,14 @@ self.onmessage = async (e: MessageEvent<{ type?: string; input?: EngineInput }>)
   const t0 = Date.now()
   for (let i = 0; i < MAX_SEEDS && !stopRequested; i++) {
     if (i > 0 && Date.now() - t0 > MAX_MS) break
-    const seed = i < SEEDS.length ? SEEDS[i] : (SEEDS[0] + (i + 1) * 7919 + Math.floor(Math.random() * 5000)) % 1_000_003
+    // 固定種子用完（或已經試過）就改用衍生的隨機種子；一樣避開試過的
+    const fixed = SEEDS.filter(x => !tried.has(x))
+    let seed = i < fixed.length ? fixed[i] : 0
+    for (let k = 0; !seed || tried.has(seed); k++) {
+      seed = (SEEDS[0] + (i + k + 1) * 7919 + Math.floor(Math.random() * 100_000)) % 1_000_003
+      if (k > 200) break
+    }
+    tried.add(seed)
     const sT0 = Date.now()
     const r = await runOne({ ...input, seed }, { label: `第 ${i + 1} 個種子`, budget: BUDGET })
     // 每顆種子的結果都回報一筆：跑二十分鐘沒人看著，回來要能一眼看出試了幾顆、差在哪

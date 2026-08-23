@@ -152,6 +152,11 @@ export default function ScheduleWizardClient(props: Props) {
   const warns = preflight.filter(p => p.level === 'warn')
 
   const curBaseHash = useMemo(() => baseHashOf(input), [input])
+  // 試過的種子（依「設定指紋」分開存）：引擎是決定性的，不跳過試過的就會一直拿到同一張課表
+  const triedKey = `trotate:tried-seeds:${year}:${curBaseHash}`
+  const readTried = (): number[] => {
+    try { return JSON.parse(localStorage.getItem(triedKey) ?? '[]') } catch { return [] }
+  }
 
   // ── 版本紀錄：載入清單、跑完自動存快照 ──
   // 版本紀錄是附加功能，任何一步失敗都只記錄在 console，不擋排課本身。
@@ -277,7 +282,10 @@ export default function ScheduleWizardClient(props: Props) {
     workerRef.current = w
     w.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'progress') setProgress(e.data as Progress)
-      else if (e.data.type === 'seed') { pushSeed(e.data as SeedRow); setSeedLogOpen(true) }
+      else if (e.data.type === 'seed') {
+        pushSeed(e.data as SeedRow); setSeedLogOpen(true)
+        try { localStorage.setItem(triedKey, JSON.stringify(Array.from(new Set([...readTried(), e.data.seed])).slice(-200))) } catch { /* 無痕視窗：跳過 */ }
+      }
       else if (e.data.type === 'done') {
         const done = e.data.result as EngineResult
         setResult(done)
@@ -291,7 +299,7 @@ export default function ScheduleWizardClient(props: Props) {
         w.terminate()
       }
     }
-    w.postMessage({ input })
+    w.postMessage({ input, skipSeeds: readTried() })
   }
   function stop() {
     // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
