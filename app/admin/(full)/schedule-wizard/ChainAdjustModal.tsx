@@ -52,7 +52,11 @@ const bKey = (b: Board) => b.kind === 'class' ? `c:${b.classKey}` : `t:${b.teach
 const iKey = (i: Item) => i.kind === 'lesson' ? `l:${i.id}` : `h:${i.classKey}|${i.slot}`
 const ckZh = (ck: string) => ck ? classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1])) : ''
 
-const CELL_W = 92, CELL_H = 42, HEAD_H = 24, LABEL_W = 40
+const CELL_W = 92, CELL_H = 42, HEAD_H = 24, LABEL_W = 40   // 100% 時的基準尺寸
+/** 版面偏好存在這台電腦：課務組把大小與每排幾張調到順手之後，之後每次開都一樣。 */
+const LAYOUT_KEY = 'trotate:chain-layout'
+const SCALES = [0.8, 0.9, 1, 1.15, 1.3]
+const PER_ROWS = [0, 1, 2, 3, 4] as const   // 0＝自動（依視窗寬度排）
 
 export default function ChainAdjustModal({
   open, seed, placed: placed0, hr: hr0, config, classCounts, teacherNames, engineInput, fillOpen, extraByTeacher, onClose, onApply,
@@ -66,6 +70,30 @@ export default function ChainAdjustModal({
   const [splitIds, setSplitIds] = useState<string[]>([])
   const [history, setHistory] = useState<Snap[]>([])
   const [booted, setBooted] = useState('')
+  const [scale, setScale] = useState(1)
+  const [perRow, setPerRow] = useState<number>(0)
+  const [layoutLoaded, setLayoutLoaded] = useState(false)
+  if (!layoutLoaded) {
+    setLayoutLoaded(true)
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY)
+      if (raw) {
+        const v = JSON.parse(raw)
+        if (SCALES.includes(v.scale)) setScale(v.scale)
+        if (PER_ROWS.includes(v.perRow)) setPerRow(v.perRow)
+      }
+    } catch { /* 無痕視窗或封鎖儲存：用預設值就好 */ }
+  }
+  const saveLayout = (next: { scale?: number; perRow?: number }) => {
+    const v = { scale: next.scale ?? scale, perRow: next.perRow ?? perRow }
+    if (next.scale !== undefined) setScale(next.scale)
+    if (next.perRow !== undefined) setPerRow(next.perRow)
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(v)) } catch { /* 同上 */ }
+  }
+  // 依縮放算出這一輪要用的實際尺寸（箭頭座標也吃這組數字，不然會跟格子對不齊）
+  const CW = Math.round(CELL_W * scale), CH = Math.round(CELL_H * scale)
+  const HH = Math.round(HEAD_H * scale), LW = Math.round(LABEL_W * scale)
+  const FS = (10.5 * scale).toFixed(1) + 'px'
 
   const nameOf = (id: string) => teacherNames[id] ?? '？'
 
@@ -452,7 +480,7 @@ export default function ChainAdjustModal({
     const mine = moves.filter(m => bKey(m.board) === bKey(b))
     const at = (s: string) => {
       const [d, p] = s.split('-').map(Number)
-      return { x: LABEL_W + (d - 1) * CELL_W + CELL_W / 2, y: HEAD_H + (p - 1) * CELL_H + CELL_H / 2 }
+      return { x: LW + (d - 1) * CW + CW / 2, y: HH + (p - 1) * CH + CH / 2 }
     }
     const waiting = pending.some(x => bKey(x.board) === bKey(b))
     return (
@@ -463,27 +491,27 @@ export default function ChainAdjustModal({
           <button onClick={() => setBoards(bs => bs.filter(x => bKey(x) !== bKey(b)))}
             className="ml-auto text-zinc-400 hover:text-zinc-600 text-[11px]" title="收起這張課表">✕</button>
         </div>
-        <div className="relative p-1" style={{ width: LABEL_W + 5 * CELL_W + 8 }}>
-          <div className="grid" style={{ gridTemplateColumns: `${LABEL_W}px repeat(5, ${CELL_W}px)` }}>
-            <div style={{ height: HEAD_H }} />
-            {SCHEDULE_DAYS.map(d => <div key={d} className="text-[11px] text-zinc-500 text-center" style={{ height: HEAD_H, lineHeight: `${HEAD_H}px` }}>{DAY_LABEL[d]}</div>)}
+        <div className="relative p-1" style={{ width: LW + 5 * CW + 8 }}>
+          <div className="grid" style={{ gridTemplateColumns: `${LW}px repeat(5, ${CW}px)` }}>
+            <div style={{ height: HH }} />
+            {SCHEDULE_DAYS.map(d => <div key={d} className="text-zinc-500 text-center" style={{ height: HH, lineHeight: `${HH}px`, fontSize: FS }}>{DAY_LABEL[d]}</div>)}
             {Array.from({ length: periods }, (_, i) => i + 1).map(p => (
               <div key={p} className="contents">
-                <div className="text-[11px] text-zinc-400 text-center" style={{ height: CELL_H, lineHeight: `${CELL_H}px` }}>{p}</div>
+                <div className="text-zinc-400 text-center" style={{ height: CH, lineHeight: `${CH}px`, fontSize: FS }}>{p}</div>
                 {SCHEDULE_DAYS.map(d => <Cell key={d} slot={`${d}-${p}`} b={b} />)}
               </div>
             ))}
           </div>
           {mine.length > 0 && (
-            <svg className="absolute inset-0 pointer-events-none" style={{ width: LABEL_W + 5 * CELL_W + 8, height: HEAD_H + periods * CELL_H + 8 }}>
+            <svg className="absolute inset-0 pointer-events-none" style={{ width: LW + 5 * CW + 8, height: HH + periods * CH + 8 }}>
               <defs><marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#e11d48" /></marker></defs>
               {mine.map(m => {
                 const a = at(m.from), z = at(m.to)
                 return (
                   <g key={m.n}>
                     <line x1={a.x} y1={a.y} x2={z.x} y2={z.y} stroke="#e11d48" strokeWidth="1.6" markerEnd="url(#ah)" opacity="0.85" />
-                    <circle cx={a.x} cy={a.y} r="8" fill="#e11d48" />
-                    <text x={a.x} y={a.y + 3.5} textAnchor="middle" fontSize="10" fill="#fff">{m.n}</text>
+                    <circle cx={a.x} cy={a.y} r={8 * scale} fill="#e11d48" />
+                    <text x={a.x} y={a.y + 3.5 * scale} textAnchor="middle" fontSize={10 * scale} fill="#fff">{m.n}</text>
                   </g>
                 )
               })}
@@ -542,8 +570,8 @@ export default function ChainAdjustModal({
 
     return (
       <button onClick={onClick} title={title} disabled={!clickable}
-        className={`relative w-full text-[10.5px] leading-tight overflow-hidden flex flex-col items-center justify-center border ${tone}${ring} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
-        style={{ height: CELL_H }}>
+        className={`relative leading-tight w-full overflow-hidden flex flex-col items-center justify-center border ${tone}${ring} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+        style={{ height: CH, fontSize: FS }}>
         {isClass && mustFillOf[ck]?.has(slot) && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 pointer-events-none" />}
         {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? ex.main : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
           : l ? (<>
@@ -566,6 +594,18 @@ export default function ChainAdjustModal({
             點一堂課 → 再點<b>這張課表上的空位</b>（綠框）。畫面只畫箭頭，課要按「套用」才真的動；有衝突時下一張課表才會出現。
           </span>
           <span className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[11px] text-zinc-500 mr-1" title="調到順手之後會記在這台電腦，之後每次開都一樣">
+              <span>大小</span>
+              <select value={scale} onChange={e => saveLayout({ scale: Number(e.target.value) })}
+                className="input py-0 px-1 text-[11px] w-14">
+                {SCALES.map(x => <option key={x} value={x}>{Math.round(x * 100)}%</option>)}
+              </select>
+              <span className="ml-1">每排</span>
+              <select value={perRow} onChange={e => saveLayout({ perRow: Number(e.target.value) })}
+                className="input py-0 px-1 text-[11px] w-14">
+                {PER_ROWS.map(x => <option key={x} value={x}>{x === 0 ? '自動' : `${x} 張`}</option>)}
+              </select>
+            </span>
             <button onClick={undo} disabled={!history.length} className="btn-ghost text-xs disabled:opacity-40">← 退回一步</button>
             <button onClick={onClose} className="btn-ghost text-xs">全部取消</button>
             {pending.length > 0 && (
@@ -580,7 +620,10 @@ export default function ChainAdjustModal({
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 overflow-auto p-3">
-            <div className="flex flex-wrap gap-3 items-start">{boards.map(b => <Grid key={bKey(b)} b={b} />)}</div>
+            <div className={perRow ? 'grid gap-3 items-start justify-start' : 'flex flex-wrap gap-3 items-start'}
+              style={perRow ? { gridTemplateColumns: `repeat(${perRow}, max-content)` } : undefined}>
+              {boards.map(b => <Grid key={bKey(b)} b={b} />)}
+            </div>
           </div>
 
           <div className="w-80 flex-none border-l border-zinc-200 bg-white overflow-auto p-3 text-xs space-y-4">
