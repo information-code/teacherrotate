@@ -209,13 +209,31 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // ── 索引 ──
   const lessonById = useMemo(() => new Map(placed.map(p => [p.id, p])), [placed])
   const teacherOptions = useMemo(() => {
-    const m = new Map<string, { id: string; name: string; co: boolean }>()
-    for (const p of placed) {
-      if (!m.has(p.teacherId)) m.set(p.teacherId, { id: p.teacherId, name: p.teacherName, co: false })
-      if (p.coTeacherId && !m.has(p.coTeacherId)) m.set(p.coTeacherId, { id: p.coTeacherId, name: p.coTeacherName ?? '外師', co: true })
+    // 領域＝這位老師節數最多的那一科（英語 14 節＋國際教育 7 節 → 領域算英語）。
+    // 本土語那類不進引擎的固定課也計入，不然只教本土語的老師會沒有領域。
+    const bySubj = new Map<string, Map<string, number>>()
+    const addSubj = (tid: string, name: string, n: number) => {
+      const m2 = bySubj.get(tid) ?? new Map<string, number>()
+      m2.set(name, (m2.get(name) ?? 0) + n); bySubj.set(tid, m2)
     }
-    for (const tid of Array.from(extras?.teacher.keys() ?? [])) if (!m.has(tid)) m.set(tid, { id: tid, name: teacherNames[tid] ?? '？', co: false })
-    return Array.from(m.values()).sort((a, b) => Number(a.co) - Number(b.co) || a.name.localeCompare(b.name, 'zh-Hant'))
+    for (const p of placed) addSubj(p.teacherId, p.subject, p.size)
+    for (const [tid, cells] of Array.from(extras?.teacher ?? [])) for (const c of cells) addSubj(tid, c.main, 1)
+    const domainOf = (tid: string) => {
+      const m2 = bySubj.get(tid)
+      if (!m2) return ''
+      return Array.from(m2).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'))[0][0]
+    }
+    const m = new Map<string, { id: string; name: string; co: boolean; domain: string }>()
+    for (const p of placed) {
+      if (!m.has(p.teacherId)) m.set(p.teacherId, { id: p.teacherId, name: p.teacherName, co: false, domain: domainOf(p.teacherId) })
+      if (p.coTeacherId && !m.has(p.coTeacherId)) m.set(p.coTeacherId, { id: p.coTeacherId, name: p.coTeacherName ?? '外師', co: true, domain: '外師（協同）' })
+    }
+    for (const tid of Array.from(extras?.teacher.keys() ?? [])) if (!m.has(tid)) m.set(tid, { id: tid, name: teacherNames[tid] ?? '？', co: false, domain: domainOf(tid) })
+    // 外師排最後，其餘依領域分組、組內依姓名
+    return Array.from(m.values()).sort((a, b) =>
+      Number(a.co) - Number(b.co)
+      || a.domain.localeCompare(b.domain, 'zh-Hant')
+      || a.name.localeCompare(b.name, 'zh-Hant'))
   }, [placed, extras, teacherNames])
   const extraCells = useMemo(() => {
     const m = new Map<string, ExtraCell[]>()
@@ -965,7 +983,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           {mode === 'teacher' && (
             <select value={teacherSelState} onChange={e => setTeacherSel(e.target.value)} className="input py-0.5 text-xs w-44">
               <option value="">選擇教師…</option>
-              {teacherOptions.map(t => <option key={t.id} value={t.id}>{t.co ? '★' : ''}{t.name}</option>)}
+              {Array.from(new Set(teacherOptions.map(t => t.domain))).map(dm => (
+                <optgroup key={dm || '未分類'} label={dm || '未分類'}>
+                  {teacherOptions.filter(t => t.domain === dm).map(t => (
+                    <option key={t.id} value={t.id}>{t.co ? '★' : ''}{t.name}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           )}
           {mode === 'room' && (
