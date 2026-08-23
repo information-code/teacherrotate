@@ -216,6 +216,24 @@ export default function ScheduleWizardClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [versions, planStatus, running, result])
 
+  // 舊草稿沒有 versionId（這欄是後來才加的）：拿最近幾版比落點，對得上就標出來。
+  // 只在「接續草稿卻標不出版本」時跑一次，比中或比完就不再試。
+  const sigProbed = useRef(false)
+  useEffect(() => {
+    if (sigProbed.current || previewVersionId || !result || versions.length === 0) return
+    if (!autoPreviewed.current) return
+    sigProbed.current = true
+    const want = sigOfPlaced(result.placed)
+    void (async () => {
+      for (const v of versions.slice(0, 3)) {
+        const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`).catch(() => null)
+        if (!res?.ok) continue
+        const pl = (await res.json().catch(() => ({})))?.plan?.placed
+        if (Array.isArray(pl) && sigOfPlaced(pl) === want) { setPreviewVersionId(v.id); return }
+      }
+    })()
+  }, [previewVersionId, result, versions])
+
   async function patchVersion(id: string, patch: { label?: string | null; starred?: boolean }) {
     // 樂觀更新：先改畫面（星號、名稱立即反應），寫入失敗再抓回正確狀態
     setVersions(prev => prev.map(v => v.id === id ? { ...v, ...(patch.starred !== undefined ? { starred: patch.starred } : {}), ...(patch.label !== undefined ? { label: patch.label } : {}) } : v))
@@ -241,7 +259,7 @@ export default function ScheduleWizardClient(props: Props) {
         + `回去以後科任會是這一版的，導師課則維持現狀——兩邊可能對不起來（同一格撞在一起）。\n確定要回去嗎？`)) return false
       const put = await fetch('/api/admin/schedule-plan', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, plan: { ...p, status: 'draft',
+        body: JSON.stringify({ year, plan: { ...p, status: 'draft', versionId: v.id,
           adjustments: [{ at: new Date().toISOString(), desc: `回到版本 ${verZh(v)}` }] } }),
       })
       if (!put.ok) { alert('寫回課表失敗，請稍後再試。'); return false }
@@ -530,7 +548,8 @@ ${head}確定撤回？`)) return
       iterations: 0, elapsedMs: 0,
     })
     lastVerSig.current = sigOfPlaced(p.placed)
-    setPreviewVersionId(null)
+    // 草稿記得自己是哪一版就直接標出來；舊資料沒這欄，交給下面的比對兜底
+    setPreviewVersionId(typeof p.versionId === 'string' ? p.versionId : null)
     const b = sp.base as Record<string, unknown> | undefined
     if (b && Array.isArray(b.placed)) {
       const bp = (Array.isArray(b.penalties) ? b.penalties : []) as EngineResult['penalties']

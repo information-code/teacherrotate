@@ -181,6 +181,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (res.ok) {
         const d = await res.json().catch(() => ({}))
         onVersionSaved?.({ id: d.id, seq: d.seq })
+        return (d.id as string | undefined) ?? true
       }
       return res.ok
     } catch { if (!opts.silent) setSnapState('error'); return false }
@@ -622,10 +623,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     }])
   }
 
-  async function persist(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, nextAdj: Adjustment[], changedHrClasses: string[]) {
+  async function persist(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, nextAdj: Adjustment[], changedHrClasses: string[], versionId?: string) {
     setSaveState('saving')
     try {
-      const plan = { ...savedPlan, placed: nextPlaced, adjustments: nextAdj, status: planStatus }
+      // versionId＝這份課表對應哪一版。重新整理後才有辦法標出「目前顯示版本」，
+      // 否則接續草稿只知道內容、不知道是哪一版。
+      const plan = { ...savedPlan, placed: nextPlaced, adjustments: nextAdj, status: planStatus,
+        ...(versionId ? { versionId } : {}) }
       const res = await fetch('/api/admin/schedule-plan', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year, plan, expectedAt: planAtRef.current }),
@@ -1379,13 +1383,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           const cks = Array.from(new Set(next.moves.map(m => m.classKey)))
           applyAdjust(re, next.hr, note2, cks)
           setChainSeed(null)
-          // 「套用」就是套用：直接寫進課表，不要再叫人去按「儲存微調」（那顆已經拿掉了）
-          const ok = await persist(re, next.hr, adj, cks)
-          if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
-          // 每次套用留一份版本：人工調整的每一輪都要能回頭找
+          // 先存版本、再寫課表：課表要把版本 id 一起記下來，重新整理才標得出「目前顯示版本」
           const cls = Array.from(new Set(next.moves.map(m => classLabelOf(m.classKey)))).join('、')
-          void saveVersion({ placed: re, adjustments: adj, silent: true, hr: next.hr,
+          const vid = await saveVersion({ placed: re, adjustments: adj, silent: true, hr: next.hr,
             label: `連鎖調課 ${next.moves.length} 步（${cls}）` })
+          // 「套用」就是套用：直接寫進課表，不要再叫人去按「儲存微調」（那顆已經拿掉了）
+          const ok = await persist(re, next.hr, adj, cks, typeof vid === 'string' ? vid : undefined)
+          if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
         }}
       />
 </div>
