@@ -18,11 +18,18 @@ interface Props {
   confirmedAt: string | null
   finalized: boolean
   lockMessage?: string
+  /** 填過但那一格已被課務組改成科任課（或改成不可排課）的格子 */
+  staleCells: { slot: string; subject: string; tookBy: string }[]
 }
 
 /** 教師端：導師排課選填。把自己的配課填入班級課表留白格，全部填完後確認送出。 */
-export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized, lockMessage }: Props) {
-  const [cells, setCells] = useState<Record<string, string>>(initialCells)
+export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized, lockMessage, staleCells }: Props) {
+  // 被蓋掉的格先拿掉：留著會被算進節數，導師會以為填滿了
+  const [cells, setCells] = useState<Record<string, string>>(() => {
+    const c = { ...initialCells }
+    for (const x of staleCells) delete c[x.slot]
+    return c
+  })
   const [selected, setSelected] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<boolean>(Boolean(confirmedAt))
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -138,6 +145,20 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
       )}
       {!confirmed && finalized && lockMessage && (
         <div className="card bg-amber-50 border-amber-200 text-sm text-amber-700 py-3">🔒 {lockMessage}</div>
+      )}
+      {staleCells.length > 0 && (
+        <div className="card bg-red-50 border-red-200 text-sm text-red-700 py-3 space-y-1">
+          <div className="font-medium">⚠ 您原本填的 {staleCells.length} 格已被課務組改動，需要重新安排</div>
+          <ul className="text-xs space-y-0.5">
+            {staleCells.map(x => (
+              <li key={x.slot}>
+                ・{DAY_LABEL[Number(x.slot.split('-')[0])]}第{x.slot.split('-')[1]}節 您填的「{x.subject}」
+                → 現在是<b>{x.tookBy}</b>
+              </li>
+            ))}
+          </ul>
+          <div className="text-xs opacity-80">這幾節已從您的節數扣回，請重新找空格填入；下方科目籤會顯示還差幾節。</div>
+        </div>
       )}
 
       {/* 科目籤 */}

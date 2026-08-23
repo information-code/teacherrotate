@@ -90,6 +90,14 @@ export default async function ScheduleFillPage() {
     .from('schedule_homeroom').select('cells, confirmed_at')
     .eq('year', year).eq('class_key', classKey).maybeSingle()
 
+  // 課務組收回填課期間把科任課搬到導師已填的格子，那一格就被蓋掉了。
+  // 不挑出來的話：畫面上只看得到科任課（導師填的那筆看不見），節數卻還在算，
+  // 導師會看到「✓ 全部配課已填入」，實際上少排一節，而且永遠不會發現。
+  const hrCells = (hrRow?.cells ?? {}) as Record<string, string>
+  const stale = Object.entries(hrCells)
+    .filter(([slot]) => fixed[slot] || !teachable.includes(slot))
+    .map(([slot, subject]) => ({ slot, subject, tookBy: fixed[slot]?.subject ?? '不可排課時段' }))
+
   return (
     <ScheduleFillClient
       year={year}
@@ -99,7 +107,8 @@ export default async function ScheduleFillPage() {
       fixed={fixed}
       pairCells={pairCells}
       breakdown={breakdown}
-      initialCells={(hrRow?.cells ?? {}) as Record<string, string>}
+      initialCells={hrCells}
+      staleCells={stale}
       confirmedAt={hrRow?.confirmed_at ?? null}
       finalized={plan.status === 'final' || plan.fillOpen === false}
       lockMessage={plan.status === 'final' ? '全校課表已發布，排課選填唯讀；如需調整請洽教務處。' : plan.fillOpen === false ? '課務組已收回填課權限（正在進行調課），目前唯讀；重新開放後即可繼續填。' : undefined}
