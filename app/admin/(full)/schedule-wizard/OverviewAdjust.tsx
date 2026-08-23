@@ -151,7 +151,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
    *  微調是每步自動寫進課表的，復原堆疊只在記憶體、換頁就沒了；故第一次微調前會自動備份一份（silent），
    *  批次調完也可按「存為版本」再留一個點。
    *  罰分不重算——引擎的計分要完整 EngineInput，這裡沒有；故標明數值為微調前的，避免被拿去比較。 */
-  async function saveVersion(opts: { placed: PlacedResult[]; adjustments: Adjustment[]; label: string; silent?: boolean; unplaced?: unknown[] }) {
+  async function saveVersion(opts: { placed: PlacedResult[]; adjustments: Adjustment[]; label: string; silent?: boolean; unplaced?: unknown[]; hr?: Record<string, HomeroomRow> }) {
     if (!opts.silent) setSnapState('saving')
     try {
       const pens = (savedPlan.penalties as { key: string; label: string; count: number; points: number }[] | undefined) ?? []
@@ -171,7 +171,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               : '微調前的自動備份；罰分為引擎產生時的數值。',
             rules: pens.filter(x => Number(x.points) > 0).map(x => ({ key: x.key, label: x.label, count: x.count, points: Math.round(Number(x.points)) })),
           },
+          // 導師課存在另一張表，不一起收進版本的話「回到某一版」只還原得了科任
           plan: { ...savedPlan, placed: opts.placed, adjustments: opts.adjustments,
+            homeroom: Object.fromEntries(Object.entries(opts.hr ?? hr).map(([k, v]) => [k, v.cells ?? {}])),
             ...(opts.unplaced ? { unplaced: opts.unplaced } : {}) },
         }),
       })
@@ -1382,7 +1384,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
           // 每次套用留一份版本：人工調整的每一輪都要能回頭找
           const cls = Array.from(new Set(next.moves.map(m => classLabelOf(m.classKey)))).join('、')
-          void saveVersion({ placed: re, adjustments: adj, silent: true,
+          void saveVersion({ placed: re, adjustments: adj, silent: true, hr: next.hr,
             label: `連鎖調課 ${next.moves.length} 步（${cls}）` })
         }}
       />

@@ -225,10 +225,76 @@ export default function ScheduleWizardClient(props: Props) {
     }).catch(() => null)
     if (!res?.ok) loadVersions()
   }
+  const verZh = (v: VersionRow) => `${v.seq ? `#${v.seq} ` : ''}${v.label || new Date(v.created_at).toLocaleString('zh-TW')}`
+
+  /** 把某一版寫回「目前課表」——不只是預覽，重新整理後看到的才會是它。 */
+  async function restoreVersion(v: VersionRow, quiet = false) {
+    setVersionBusy(v.id)
+    try {
+      const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
+      if (!res.ok) { alert('載入版本失敗'); return false }
+      const full = await res.json()
+      const p = (full.plan ?? {}) as Record<string, unknown>
+      if (!Array.isArray(p.placed)) { alert('這份版本沒有課表內容'); return false }
+      const hrMap = (p.homeroom ?? null) as Record<string, Record<string, string>> | null
+      if (!quiet && !hrMap && !confirm(`版本「${verZh(v)}」是舊格式，沒有存導師課。\n`
+        + `回去以後科任會是這一版的，導師課則維持現狀——兩邊可能對不起來（同一格撞在一起）。\n確定要回去嗎？`)) return false
+      const put = await fetch('/api/admin/schedule-plan', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, plan: { ...p, status: 'draft',
+          adjustments: [{ at: new Date().toISOString(), desc: `回到版本 ${verZh(v)}` }] } }),
+      })
+      if (!put.ok) { alert('寫回課表失敗，請稍後再試。'); return false }
+      for (const [ck, cells] of Object.entries(hrMap ?? {})) {
+        await fetch('/api/admin/schedule-homeroom', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, classKey: ck, action: 'setCells', cells }),
+        })
+      }
+      const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
+      setResult({
+        placed: p.placed as EngineResult['placed'],
+        unplaced: Array.isArray(p.unplaced) ? p.unplaced as EngineResult['unplaced'] : [],
+        penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
+        totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
+        uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
+        iterations: 0, elapsedMs: 0,
+      })
+      lastVerSig.current = sigOfPlaced(p.placed as EngineResult['placed'])
+      setPreviewVersionId(v.id)
+      setAdjustUnsaved(0); setDraftDirty(false); setResumedAdjustments(null)
+      setAdjustSession(n => n + 1)
+      setRunFailed(false); setHints([]); setProbePerfect(null)
+      setVersionsOpen(false)
+      router.refresh()   // 導師課是伺服器端的 props，不重拿會沒跟上
+      return true
+    } finally { setVersionBusy(null) }
+  }
+
   async function deleteVersion(v: VersionRow) {
-    if (!confirm(`刪除版本「${v.seq ? `#${v.seq} ` : ''}${v.label || new Date(v.created_at).toLocaleString('zh-TW')}」？此操作無法復原。`)) return
+    // 版本是快照，課表是課表：刪快照本來不會動到課表。但課務組刪掉最新一版，想的
+    // 通常是「回到上一版」——不一併退回去，重新整理後還是看到被刪那一版的內容。
+    let same = false
+    setVersionBusy(v.id)
+    try {
+      const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
+      if (res.ok) {
+        const pl = (await res.json())?.plan?.placed
+        if (Array.isArray(pl) && result) same = sigOfPlaced(pl) === sigOfPlaced(result.placed)
+      }
+    } catch { /* 拿不到就當成不同，只刪快照 */ } finally { setVersionBusy(null) }
+    const prev = versions.filter(x => x.id !== v.id)[0]
+    const msg = !same
+      ? `刪除版本「${verZh(v)}」？\n（這只會刪掉快照，不會改變目前的課表。）\n此操作無法復原。`
+      : prev
+        ? `版本「${verZh(v)}」就是目前的課表。\n刪除後，課表會一併回到「${verZh(prev)}」。\n此操作無法復原。`
+        : `版本「${verZh(v)}」就是目前的課表，而且沒有更早的版本可以退回去。\n`
+          + `刪除後課表內容會留著，但不再有任何版本紀錄。\n此操作無法復原。`
+    if (!confirm(msg)) return
     await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`, { method: 'DELETE' })
-    loadVersions()
+    if (previewVersionId === v.id) setPreviewVersionId(null)
+    await loadVersions()
+    if (same && prev) await restoreVersion(prev, true)
   }
 
   // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
@@ -1263,6 +1329,9 @@ ${head}確定撤回？`)) return
                               <td className={`text-center ${isBest ? 'text-green-700 font-semibold' : 'text-zinc-600'}`}>{s.softPenalty ?? '—'}</td>
                               <td className="text-xs text-zinc-500">{v.created_by ? (versionNames[v.created_by] ?? '') : ''}</td>
                               <td className="text-right whitespace-nowrap">
+                                <button onClick={() => restoreVersion(v)} disabled={versionBusy === v.id}
+                                  title="把目前課表換成這一版（會真的寫進去，重新整理看到的也是它）"
+                                  className="btn btn-secondary text-xs py-0.5">↩ 回到這一版</button>
                                 <button onClick={() => previewVersion(v)} disabled={versionBusy === v.id}
                                   title="把預覽畫面切成這一份（不會動到正式課表）"
                                   className="btn btn-secondary text-xs py-0.5">{versionBusy === v.id ? '載入中…' : '預覽'}</button>
