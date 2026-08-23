@@ -171,7 +171,7 @@ export default function ScheduleWizardClient(props: Props) {
   }, [year])
   useEffect(() => { loadVersions() }, [loadVersions])
 
-  const saveVersion = useCallback(async (r: EngineResult, source: 'engine' | 'manual') => {
+  const saveVersion = useCallback(async (r: EngineResult, source: 'engine' | 'manual', seed?: number) => {
     const sig = sigOfPlaced(r.placed)
     if (lastVerSig.current === sig) return   // 落點沒變＝同一份，不重複存
     lastVerSig.current = sig
@@ -180,6 +180,8 @@ export default function ScheduleWizardClient(props: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           year, source, baseHash: curBaseHash, weights: scheduleConfig.weights, summary: summaryOf(r),
+          // 自動標籤：版本清單原本一律顯示 null，看不出哪一版是什麼。種子號帶著，之後要重現找得回來
+          label: `引擎排課${seed !== undefined ? `・種子 ${seed}` : ''}・軟分 ${Math.round(r.softPenalty)}`,
           plan: {
             placed: r.placed, unplaced: r.unplaced, uncoveredMustFill: r.uncoveredMustFill,
             totalPenalty: r.totalPenalty, softPenalty: r.softPenalty,
@@ -293,21 +295,30 @@ export default function ScheduleWizardClient(props: Props) {
       }
       else if (e.data.type === 'done') {
         const done = e.data.result as EngineResult
-        setResult(done)
-        saveVersion(done, 'engine')   // 跑完就留一份，不然重排一次就找不回來了
-        setRunFailed(Boolean(e.data.failed))
-        setHints(Array.isArray(e.data.hints) ? e.data.hints : [])
-        setProbePerfect(typeof e.data.probePerfect === 'boolean' ? e.data.probePerfect : null)
-        // 排成功了就把種子紀錄收起來，畫面留給課表預覽（沒排成才攝開讓人看差在哪）
-        if (!e.data.failed) setSeedLogOpen(false)
+        const failed = Boolean(e.data.failed)
+        const seed = typeof e.data.meta?.seed === 'number' ? e.data.meta.seed : undefined
         setRunning(false)
         w.terminate()
+        if (failed && e.data.stopped) {
+          // 按「停止」＝純停止：不採用、不存版本。停止本來就不代表要這份半成品，
+          // 而且版本紀錄有保留上限，塞失敗的進去會把好版本擠掉。想知道發生什麼事看種子紀錄就有。
+          setSeedLogOpen(true)
+          return
+        }
+        setResult(done)
+        setRunFailed(failed)
+        setHints(Array.isArray(e.data.hints) ? e.data.hints : [])
+        setProbePerfect(typeof e.data.probePerfect === 'boolean' ? e.data.probePerfect : null)
+        // 沒排成的不存版本（同上：會擠掉好版本）。引擎是決定性的，種子紀錄裡有種子號就能完整重現
+        if (!failed) { saveVersion(done, 'engine', seed); setSeedLogOpen(false) }
+        else setSeedLogOpen(true)
       }
     }
     w.postMessage({ input, skipSeeds: readTried() })
   }
   function stop() {
-    // 通知 Worker 停止並回傳目前最佳解（結果由 done 訊息帶回）
+    // 純停止：Worker 收到就收工，已經排成功的照樣採用，沒排成的什麼都不做
+    // （原本叫「停止並採用目前結果」，但停止是唯一能中斷的方式，按它不代表要那份半成品）
     workerRef.current?.postMessage({ type: 'stop' })
   }
   /** 發布導師排課／撤回發布（伺服器端把關：未排與必排未覆蓋須為 0）。
@@ -789,7 +800,7 @@ ${head}確定撤回？`)) return
                   className="btn btn-secondary text-sm py-1"
                   title="跳過固定的前五顆種子，直接用沒跑過的。同一顆種子永遠排出同一張課表，想換一版比較就用這個">🎲 換一批種子</button>
               </>)
-              : <button onClick={stop} className="btn btn-secondary text-sm py-1">■ 停止並採用目前結果</button>}
+              : <button onClick={stop} className="btn btn-secondary text-sm py-1" title="停下來就好；沒排成的不會採用、也不會存成版本">■ 停止</button>}
             <span className="text-xs text-zinc-400">
               共 {input.lessons.length} 堂科任課待排。硬限制與權重一次跑、多種子多起點取最佳；<b>成功條件＝未排 0 且必須級 0</b>。
               排出來的課表由種子決定，同一顆種子永遠一樣；系統會自動跳過試過的，想直接換一批可按右邊那顆。
@@ -883,6 +894,7 @@ ${head}確定撤回？`)) return
           )}
           <p className="mt-1 text-[11px] text-zinc-400">
             「未排」和「必須級」都要是 0 才算成功。紀錄留在這台電腦的瀏覽器裡，重新整理或關掉分頁都還在，按「開始排課」才會清空。
+            沒排成的不會存成版本（免得把好版本擠掉）——要重現某一顆，記下它的種子號就夠了。
           </p>
         </div>
       )}
