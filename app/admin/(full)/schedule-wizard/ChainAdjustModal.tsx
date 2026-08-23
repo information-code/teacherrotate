@@ -24,7 +24,7 @@ import type { HomeroomRow } from './OverviewAdjust'
 export type ChainSeed = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string }
 
 type Item = { kind: 'lesson'; id: string } | { kind: 'hr'; classKey: string; slot: string }
-type Board = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string }
+type Board = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string } | { kind: 'room'; roomId: string }
 type Move = { n: number; board: Board; from: string; to: string; item: Item; what: string; who: string; cls: string; h: number }
 type Pending = { item: Item; why: string; board: Board; step: number }   // step＝哪一支箭頭造成的（0＝起始）
 type Snap = { placed: PlacedResult[]; hr: Record<string, HomeroomRow>; moves: Move[]; boards: Board[]; pending: Pending[]; splitIds: string[] }
@@ -48,7 +48,7 @@ interface Props {
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 const slotZh = (s: string) => { const [d, p] = s.split('-'); return `週${DAY_ZH[Number(d)]}第${p}節` }
-const bKey = (b: Board) => b.kind === 'class' ? `c:${b.classKey}` : `t:${b.teacherId}`
+const bKey = (b: Board) => b.kind === 'class' ? `c:${b.classKey}` : b.kind === 'teacher' ? `t:${b.teacherId}` : `r:${b.roomId}`
 const iKey = (i: Item) => i.kind === 'lesson' ? `l:${i.id}` : `h:${i.classKey}|${i.slot}`
 const ckZh = (ck: string) => ck ? classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1])) : ''
 
@@ -210,6 +210,18 @@ export default function ChainAdjustModal({
     if (i.kind === 'lesson') { const l = dById.get(i.id); return l ? { what: l.subject, who: l.teacherName } : { what: '？', who: '' } }
     return { what: hr0[i.classKey]?.cells?.[i.slot] || '導師課', who: nameOf(config.classTeacher[i.classKey] ?? '') }
   }
+  const roomById = useMemo(() => new Map(engineInput.rooms.map(r => [r.id, r])), [engineInput])
+  const dRoom = useMemo(() => {
+    const m = new Map<string, Map<string, PlacedResult>>()
+    for (const q of dPlaced) {
+      if (q.day < 1 || !q.roomId) continue
+      const rm = m.get(q.roomId) ?? new Map<string, PlacedResult>()
+      for (const s2 of spanOf(q)) rm.set(s2, q)
+      m.set(q.roomId, rm)
+    }
+    return m
+  }, [dPlaced])
+
   const displaySlot = (i: Item) => i.kind === 'hr' ? i.slot : (() => { const l = dById.get(i.id); return l && l.day > 0 ? `${l.day}-${l.period}` : '' })()
   /** 這一格在畫面上還算不算被占著：已經有箭頭要搬走的，視為空出來了。 */
   const leaving = (i: Item) => moves.some(m => iKey(m.item) === iKey(i))
@@ -233,6 +245,7 @@ export default function ChainAdjustModal({
     if (l && l.size === 2 && !teach.has(`${d}-${p + 1}`)) return { ok: false, why: '連堂放不下（下一節不可排課）' }
     if (l && l.parity !== 'weekly' && ![1, 3, 5].includes(p)) return { ok: false, why: '單雙週區塊只能從第 1／3／5 節開始' }
 
+    if (board.kind === 'room') return { ok: false, why: '教室課表只供對照，請到班級或教師課表上點位置' }
     if (board.kind === 'teacher') {
       if (tBlocked[board.teacherId]?.has(slot)) return { ok: false, why: `${nameOf(board.teacherId)} 這一節不排課` }
       const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === slot)
@@ -493,7 +506,9 @@ export default function ChainAdjustModal({
     const ck = isClass ? b.classKey : ''
     const g = isClass ? Number(ck.split('-')[0]) : 0
     const periods = isClass ? config.bands[bandOf(g)].periodsPerDay : maxPeriods
-    const title = isClass ? `${ckZh(ck)}　導師 ${nameOf(config.classTeacher[ck] ?? '')}` : `${nameOf(b.teacherId)}　教師課表`
+    const title = isClass ? `${ckZh(ck)}　導師 ${nameOf(config.classTeacher[ck] ?? '')}`
+      : b.kind === 'teacher' ? `${nameOf(b.teacherId)}　教師課表`
+      : `${roomById.get(b.roomId)?.label ?? '教室'}　教室課表`
     const mine = moves.filter(m => bKey(m.board) === bKey(b))
     const at = (s: string) => {
       const [d, p] = s.split('-').map(Number)
@@ -542,15 +557,18 @@ export default function ChainAdjustModal({
   function Cell({ slot, b }: { slot: string; b: Board }) {
     const isClass = b.kind === 'class'
     const ck = isClass ? b.classKey : ''
-    const l = isClass ? dClass.get(ck)?.get(slot) : dTeacher.get(b.teacherId)?.get(slot)
-    const ex = !isClass && !l ? (extraByTeacher.get(b.teacherId) ?? []).find(x => x.slot === slot) : undefined
+    const l = isClass ? dClass.get(ck)?.get(slot)
+      : b.kind === 'teacher' ? dTeacher.get(b.teacherId)?.get(slot)
+      : dRoom.get(b.roomId)?.get(slot)
+    const ex = b.kind === 'teacher' && !l ? (extraByTeacher.get(b.teacherId) ?? []).find(x => x.slot === slot) : undefined
     const sub = isClass ? hr0[ck]?.cells?.[slot] : undefined
     const item: Item | null = l ? { kind: 'lesson', id: l.id } : (sub && isClass ? { kind: 'hr', classKey: ck, slot } : null)
     const lock = isClass ? lockOf(ck)[slot] : undefined
     const frozen = isClass
       ? (!teachOf.get(ck)?.has(slot) ? '非可排課時段' : lock ? `鎖課：${lockTypeMap[lock]?.label ?? ''}` : null)
+      : b.kind === 'room' ? null
       : (ex ? `固定課：${ex.main}（${ex.sub}）` : null)
-    const tOff = !isClass && tBlocked[b.teacherId]?.has(slot)
+    const tOff = b.kind === 'teacher' && tBlocked[b.teacherId]?.has(slot)
 
     const picked = Boolean(pick && item && iKey(pick.item) === iKey(item) && bKey(pick.board) === bKey(b))
     const arrowOut = item ? moves.some(m => iKey(m.item) === iKey(item) && bKey(m.board) === bKey(b)) : false
@@ -582,7 +600,12 @@ export default function ChainAdjustModal({
       if (m) { undoMove(m); return }
       if (picked) { setPick(null); return }
       if (pick && tgt?.ok) { draw(b, slot); return }
-      if (!pick && item) setPick({ item, board: b, slot })
+      if (!pick && item) {
+        setPick({ item, board: b, slot })
+        // 需要專科教室的課：把它現在用的那間教室也帶出來，看得到哪幾節還有位子
+        const rid = item.kind === 'lesson' ? dById.get(item.id)?.roomId : undefined
+        if (rid) setBoards(bs => addBoard(bs, { kind: 'room', roomId: rid }))
+      }
     }
 
     return (
@@ -592,8 +615,8 @@ export default function ChainAdjustModal({
         {isClass && mustFillOf[ck]?.has(slot) && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 pointer-events-none" />}
         {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? ex.main : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
           : l ? (<>
-            <span className="font-medium truncate w-full text-center px-0.5">{l.subject}</span>
-            <span className="opacity-70 truncate w-full text-center px-0.5">{isClass ? l.teacherName : l.classLabel}</span>
+            <span className="font-medium truncate w-full text-center px-0.5">{b.kind === 'room' ? l.classLabel : l.subject}</span>
+            <span className="opacity-70 truncate w-full text-center px-0.5">{isClass ? l.teacherName : b.kind === 'room' ? l.teacherName : l.classLabel}</span>
           </>)
           : sub ? <span className="truncate w-full text-center px-0.5">{sub}</span> : null}
       </button>
@@ -652,7 +675,9 @@ export default function ChainAdjustModal({
                   <li key={m.n} className="flex gap-2">
                     <span className="flex-none w-4 h-4 rounded-full bg-rose-600 text-white text-[9px] flex items-center justify-center mt-0.5">{m.n}</span>
                     <span className="text-zinc-600">
-                      <span className="text-zinc-400">{m.board.kind === 'teacher' ? `${nameOf(m.board.teacherId)} 課表` : `${ckZh(m.board.classKey)} 課表`}</span><br />
+                      <span className="text-zinc-400">{m.board.kind === 'teacher' ? `${nameOf(m.board.teacherId)} 課表`
+                        : m.board.kind === 'room' ? `${roomById.get(m.board.roomId)?.label ?? '教室'} 課表`
+                        : `${ckZh(m.board.classKey)} 課表`}</span><br />
                       <span className="font-medium text-zinc-800">{m.what}</span>
                       <span className="text-zinc-400">（{m.who}・{ckZh(m.cls)}）</span><br />
                       {slotZh(m.from)} → {slotZh(m.to)}
@@ -667,7 +692,9 @@ export default function ChainAdjustModal({
                 <div className="font-medium text-zinc-700 mb-1">目前選中</div>
                 <p className="text-zinc-700">{labelOf(pick.item).what}<span className="text-zinc-400">（{labelOf(pick.item).who}・{ckZh(classOfItem(pick.item))}）</span></p>
                 <p className="text-zinc-400">
-                  在「{pick.board.kind === 'teacher' ? `${nameOf(pick.board.teacherId)} 課表` : `${ckZh(pick.board.classKey)} 課表`}」上點一個綠框的位置。
+                  在「{pick.board.kind === 'teacher' ? `${nameOf(pick.board.teacherId)} 課表`
+                    : pick.board.kind === 'room' ? `${roomById.get(pick.board.roomId)?.label ?? '教室'} 課表`
+                    : `${ckZh(pick.board.classKey)} 課表`}」上點一個綠框的位置。
                 </p>
                 {pickedLesson && pickedLesson.size === 2 && pickedLesson.parity === 'weekly' && (
                   <button onClick={splitPicked} className="btn btn-secondary text-xs py-0.5 mt-1"
