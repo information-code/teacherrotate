@@ -268,16 +268,20 @@ export default function ChainAdjustModal({
 
     if (board.kind === 'room') return { ok: false, why: '教室課表只供對照，請到班級或教師課表上點位置' }
     if (board.kind === 'teacher') {
+      const swap: string[] = []
       for (const s2 of want) {
         if (tBlocked[board.teacherId]?.has(s2)) return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 不排課` }
         const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === s2)
         if (ex) return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 有 ${normalizeSubject(ex.main)}（固定課，不可調）` }
         const occ = dTeacher.get(board.teacherId)?.get(s2)
         if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
-          return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 已有 ${occ.classLabel} ${occ.subject}` }
+          swap.push(`${occ.classLabel} ${occ.subject}`)
       }
       const now = want.map(s2 => `${slotZh(s2)} ${classAt(ck, s2)}`).join('、')
-      return { ok: true, why: `標記搬到這裡（這位老師${want.length > 1 ? '這兩節都' : '這一節'}有空）｜${ckZh(ck)} 目前：${now}` }
+      const uniq = Array.from(new Set(swap))
+      return { ok: true, why: uniq.length
+        ? `標記搬到這裡，換掉 ${uniq.join('、')}（接著要幫它找位置）｜${ckZh(ck)} 目前：${now}`
+        : `標記搬到這裡（這位老師${want.length > 1 ? '這兩節都' : '這一節'}有空）｜${ckZh(ck)} 目前：${now}` }
     }
     if (board.classKey !== ck) return { ok: false, why: '只能搬到這堂課自己班上的時段' }
     // 掛外師的課（英語主題、國際教育）：外師同時段唯一、不可到校時段也擋——
