@@ -104,7 +104,12 @@ export async function PUT(request: NextRequest) {
     const { data: cur } = await supabaseAdmin
       .from('schedule_plan').select('generated_at').eq('year', Number(year)).maybeSingle()
     const at = cur?.generated_at ?? ''
-    if (at && at !== expectedAt) {
+    // 比時間點，不要比字串：資料庫讀出來是 "…T14:47:09.23+00:00"，而存檔回應給前端的是
+    // JS 的 "…T14:47:09.230Z"。同一個時間點、兩種寫法，字串永遠不相等——結果是開頁後
+    // 第一次存檔成功（用的是資料庫給的格式），第二次必被自己擋下，看起來像有人在跟你搶。
+    const ms = (t: string) => { const n = Date.parse(t); return Number.isNaN(n) ? null : n }
+    const a = ms(at), b = ms(String(expectedAt))
+    if (at && (a === null || b === null ? at !== expectedAt : a !== b)) {
       return NextResponse.json({
         error: '這份課表在你編輯期間被別人改過了',
         conflict: true, currentAt: at,
