@@ -138,13 +138,27 @@ export default function ScheduleHealth({
       const b = bandOf(Number(p.classKey.split('-')[0]))
       for (const q of (p.size === 2 ? [p.period, p.period + 1] : [p.period])) bandAt.set(`${p.teacherId}|${p.day}-${q}`, b)
     }
+    // 領域＝這位老師節數最多的那一科（英語 14 節＋國際教育 7 節 → 領域算英語）
+    const bySubj = new Map<string, Map<string, number>>()
+    const addSubj = (tid: string, name: string, n: number) => {
+      const m2 = bySubj.get(tid) ?? new Map<string, number>()
+      m2.set(name, (m2.get(name) ?? 0) + n); bySubj.set(tid, m2)
+    }
+    for (const p of placed) addSubj(p.teacherId, p.subject, p.size)
+    extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.main, 1) })
+    const domainOf = (tid: string) => {
+      const m2 = bySubj.get(tid)
+      if (!m2) return ''
+      return Array.from(m2).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'))[0][0]
+    }
+
     for (const p of placed) put(p.teacherId, p.day, p.size === 2 ? [p.period, p.period + 1] : [p.period])
     // 本土語不進引擎，但老師照樣要到校上那一節。不算進來的話：空堂會多算（其實被本土語填住了）、
     // 孤堂日會多算、鐘點的到校天數會少算——而人工課表的基準線是有把本土語算進去的，不補就不是同一個標準。
     extraByTeacher.forEach((cells, tid) => {
       for (const c of cells) { const [d, q] = c.slot.split('-').map(Number); put(tid, d, [q]) }
     })
-    const rows: { tid: string; name: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; run: number }[] }[] = []
+    const rows: { tid: string; name: string; domain: string; total: number; comeDays: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number; run: number }[] }[] = []
     const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0, spread3: 0, tRun6: 0, tRun7: 0, emptyDay: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
@@ -176,11 +190,11 @@ export default function ScheduleHealth({
       const active = days.filter(x => x.n > 0)
       if (total >= 12) tally.emptyDay += 5 - active.length
       if (active.length && Math.max(...active.map(x => x.n)) - Math.min(...active.map(x => x.n)) >= 3) tally.spread3++
-      rows.push({ tid, name: nameOf(tid), total, comeDays: active.length, days })
+      rows.push({ tid, name: nameOf(tid), domain: domainOf(tid), total, comeDays: active.length, days })
     })
-    // 要處理的排前面：先看跨年段，再看孤堂日
+    // 依領域排（同領域的老師擺在一起好對照），同領域內再把要處理的排前面
     const score = (r: typeof rows[number]) => r.days.reduce((s, x) => s + x.cross * 10 + (x.lonely ? 5 : 0), 0)
-    rows.sort((a, b) => score(b) - score(a) || b.total - a.total)
+    rows.sort((a, b) => a.domain.localeCompare(b.domain, 'zh-Hant') || score(b) - score(a) || b.total - a.total)
     return { rows, tally }
   }, [placed, teacherNames, extraByTeacher])
 
@@ -379,7 +393,7 @@ export default function ScheduleHealth({
             )}
             {tab === 'teacher' && (
               <>
-                <p className="text-[11px] text-zinc-400 mb-1">每格＝那天上幾節，要處理的排前面。</p>
+                <p className="text-[11px] text-zinc-400 mb-1">每格＝那天上幾節，依領域分組、同領域內要處理的排前面。</p>
                 <Legend items={[
                   { cls: 'bg-red-100 text-red-800', text: '整天沒課' },
                   { cls: 'bg-red-100 text-red-800', text: '整天只 1 節' },
@@ -428,12 +442,17 @@ export default function ScheduleHealth({
                       })}
                     </tr>
                   ))}
-                  {tab === 'teacher' && teachers.rows.map(r => {
+                  {tab === 'teacher' && teachers.rows.map((r, ri) => {
+                    const newDomain = ri === 0 || teachers.rows[ri - 1].domain !== r.domain
                     // 整天沒課要不要當問題：鐘點與少節數者（行政減課）本來就要集中，沒課的日子是好事；
                     // 課夠多的專任科任整天沒課才是該處理的——標紅提醒課務組考慮重跑種子
                     const watchEmpty = r.total >= 12 && !hourlyTeacherIds.includes(r.tid)
                     return (
-                    <tr key={r.tid}>
+                    <Fragment key={r.tid}>
+                    {newDomain && (
+                      <tr><td colSpan={6} className="pt-1.5 pb-0.5 px-1 text-zinc-500 font-medium">{r.domain || '未分類'}</td></tr>
+                    )}
+                    <tr>
                       <td className="px-0.5 py-0.5">
                         <button onClick={() => setSel({ kind: 'teacher', tid: r.tid })} className={rowBtn(selKey === `t:${r.tid}`)}>
                           {r.name}<span className="text-zinc-300 ml-1">{r.total} 節・到校 {r.comeDays} 天</span>
@@ -455,6 +474,7 @@ export default function ScheduleHealth({
                         )
                       })}
                     </tr>
+                    </Fragment>
                     )
                   })}
                   {tab === 'hourly' && (hourly.length === 0
