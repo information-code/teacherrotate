@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, normalizeSubject, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, type PlacedResult, type EngineInput } from '@/lib/schedule-engine'
 import type { HomeroomRow } from './OverviewAdjust'
@@ -597,7 +597,7 @@ export default function ChainAdjustModal({
     const frozen = isClass
       ? (!teachOf.get(ck)?.has(slot) ? '非可排課時段' : lock ? `鎖課：${lockTypeMap[lock]?.label ?? ''}` : null)
       : b.kind === 'room' ? null
-      : (ex ? `固定課：${ex.main}（${ex.sub}）` : null)
+      : (ex ? `固定課：${normalizeSubject(ex.main)}（${ex.sub}）` : null)
     const tOff = b.kind === 'teacher' && tBlocked[b.teacherId]?.has(slot)
 
     const picked = Boolean(pick && item && iKey(pick.item) === iKey(item) && bKey(pick.board) === bKey(b))
@@ -662,7 +662,7 @@ export default function ChainAdjustModal({
         className={`relative leading-tight w-full overflow-hidden flex flex-col items-center justify-center border ${tone}${ring} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         style={{ height: CH, fontSize: FS }}>
         {isClass && mustFillOf[ck]?.has(slot) && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 pointer-events-none" />}
-        {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? ex.main : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
+        {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? normalizeSubject(ex.main) : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
           : l ? (<>
             <span className="font-medium truncate w-full text-center px-0.5">{b.kind === 'room' ? l.classLabel : l.subject}</span>
             <span className="opacity-70 truncate w-full text-center px-0.5">{isClass ? l.teacherName : b.kind === 'room' ? l.teacherName : l.classLabel}</span>

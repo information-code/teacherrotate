@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useState } from 'react'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, homeroomLockSlots, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, homeroomLockSlots, normalizeSubject, subjectRank, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES } from '@/lib/allocation'
 import type { PlacedResult } from '@/lib/schedule-engine'
 import type { HomeroomRow } from './OverviewAdjust'
@@ -144,8 +144,9 @@ export default function ScheduleHealth({
       const m2 = bySubj.get(tid) ?? new Map<string, number>()
       m2.set(name, (m2.get(name) ?? 0) + n); bySubj.set(tid, m2)
     }
-    for (const p of placed) addSubj(p.teacherId, p.subject, p.size)
-    extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, c.main, 1) })
+    for (const p of placed) addSubj(p.teacherId, normalizeSubject(p.subject), p.size)
+    // 本土語的顯示字串帶班級（「4年7班 本土語」），不正規化的話每個班都會被當成不同科目
+    extraByTeacher.forEach((cells, tid) => { for (const c of cells) addSubj(tid, normalizeSubject(c.main), 1) })
     const domainOf = (tid: string) => {
       const m2 = bySubj.get(tid)
       if (!m2) return ''
@@ -194,7 +195,8 @@ export default function ScheduleHealth({
     })
     // 依領域排（同領域的老師擺在一起好對照），同領域內再把要處理的排前面
     const score = (r: typeof rows[number]) => r.days.reduce((s, x) => s + x.cross * 10 + (x.lonely ? 5 : 0), 0)
-    rows.sort((a, b) => a.domain.localeCompare(b.domain, 'zh-Hant') || score(b) - score(a) || b.total - a.total)
+    rows.sort((a, b) => (subjectRank(a.domain) - subjectRank(b.domain))
+      || a.domain.localeCompare(b.domain, 'zh-Hant') || score(b) - score(a) || b.total - a.total)
     return { rows, tally }
   }, [placed, teacherNames, extraByTeacher])
 

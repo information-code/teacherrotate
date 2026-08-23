@@ -234,6 +234,28 @@ export function roomUseOf(w: ScheduleWeights, subject: string, grade: number): R
   return w.roomUse?.[subject]?.[String(grade)] ?? 'always'
 }
 /** 依使用時機判斷這一堂該不該進專科教室（size 2＝連堂）。 */
+/** 科目的呈現順序（課務組指定）。沒列到的排在最後、依名稱排。 */
+export const SUBJECT_ORDER = [
+  '生活', '國語', '英語', '英語主題課', '數學', '社會', '自然',
+  '視覺藝術', '表演藝術', '音樂', '體育', '健康', '綜合', '智慧探究家：科技創新任務',
+]
+/** 科目名稱正規化：本土語的顯示字串會帶班級（「4年7班 本土語」），統一收斂成「本土語」；
+ *  自然科學／國語文之類的別名也一併對齊，否則會被當成不同科目各自成組。 */
+export function normalizeSubject(name: string): string {
+  const s = (name ?? '').trim()
+  if (s.includes('本土語')) return '本土語'
+  if (s.includes('智慧探究家')) return '智慧探究家：科技創新任務'
+  if (s.startsWith('自然')) return '自然'
+  if (s.startsWith('國語')) return '國語'
+  if (s === '英語文') return '英語'
+  return s
+}
+/** 排序用序位：依 SUBJECT_ORDER，沒列到的給大數字（實際順序再由名稱決定）。 */
+export function subjectRank(name: string): number {
+  const i = SUBJECT_ORDER.indexOf(normalizeSubject(name))
+  return i < 0 ? SUBJECT_ORDER.length : i
+}
+
 export function shouldUseRoom(w: ScheduleWeights, subject: string, grade: number, size: number): boolean {
   const u = roomUseOf(w, subject, grade)
   return u === 'always' || (u === 'double' && size === 2)

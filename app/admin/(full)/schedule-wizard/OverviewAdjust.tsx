@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, OFF_CATEGORY_LABEL, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, classLabel, OFF_CATEGORY_LABEL, normalizeSubject, subjectRank, type ScheduleConfig } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL } from '@/lib/allocation'
 import { roomsFromConfig, reassignRooms, SwapFinder, type PlacedResult, type EngineInput, type SwapOption } from '@/lib/schedule-engine'
 import ChainAdjustModal, { type ChainSeed } from './ChainAdjustModal'
@@ -216,8 +216,8 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       const m2 = bySubj.get(tid) ?? new Map<string, number>()
       m2.set(name, (m2.get(name) ?? 0) + n); bySubj.set(tid, m2)
     }
-    for (const p of placed) addSubj(p.teacherId, p.subject, p.size)
-    for (const [tid, cells] of Array.from(extras?.teacher ?? [])) for (const c of cells) addSubj(tid, c.main, 1)
+    for (const p of placed) addSubj(p.teacherId, normalizeSubject(p.subject), p.size)
+    for (const [tid, cells] of Array.from(extras?.teacher ?? [])) for (const c of cells) addSubj(tid, normalizeSubject(c.main), 1)
     const domainOf = (tid: string) => {
       const m2 = bySubj.get(tid)
       if (!m2) return ''
@@ -232,6 +232,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     // 外師排最後，其餘依領域分組、組內依姓名
     return Array.from(m.values()).sort((a, b) =>
       Number(a.co) - Number(b.co)
+      || (subjectRank(a.domain) - subjectRank(b.domain))
       || a.domain.localeCompare(b.domain, 'zh-Hant')
       || a.name.localeCompare(b.name, 'zh-Hant'))
   }, [placed, extras, teacherNames])
