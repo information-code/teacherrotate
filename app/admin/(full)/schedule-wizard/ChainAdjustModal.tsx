@@ -614,7 +614,11 @@ export default function ChainAdjustModal({
 
     const picked = Boolean(pick && item && iKey(pick.item) === iKey(item) && bKey(pick.board) === bKey(b))
     const arrowOut = item ? moves.some(m => iKey(m.item) === iKey(item) && bKey(m.board) === bKey(b)) : false
-    const arrowIn = moves.some(m => bKey(m.board) === bKey(b) && m.to === slot)
+    const [aD, aQ] = slot.split('-').map(Number)
+    const arrowIn = moves.some(m => bKey(m.board) === bKey(b) && (
+      m.to === slot
+      // 連堂搬過去佔兩節，第二格也要框起來
+      || (m.item.kind === 'lesson' && (dById.get(m.item.id)?.size ?? 1) === 2 && m.to === `${aD}-${aQ - 1}`)))
     const isPending = item ? pending.some(x => iKey(x.item) === iKey(item)) : false
     const tgt = !frozen && !tOff ? targetOf(b, slot) : null
     // 連堂的目標框要蓋住兩節：起始格合法時，下一節也一起加框，才看得出它會佔兩格
@@ -642,7 +646,7 @@ export default function ChainAdjustModal({
     const hasArrow = arrowOut || arrowIn
     // picked＝再點一次取消；item＝改選別堂課。原本兩者都被 `!pick` 擋掉，選中之後整張課表就點不動了
     const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick
-      && (hasArrow || picked || tgt?.ok || (item && (item.kind !== 'hr' || !fillOpen)))))
+      && (hasArrow || picked || tgt?.ok || tgtTail || (item && (item.kind !== 'hr' || !fillOpen)))))
     const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff ? '不排課時段'
       : hasArrow ? '點一下取消這一步'
       : tgt ? tgt.why
@@ -666,9 +670,12 @@ export default function ChainAdjustModal({
       if (m) { undoMove(m); return }
       if (picked) { setPick(null); return }
       if (pick && tgt?.ok) { draw(b, slot); return }
+      // 連堂的第二格：綠框是為了讓人看到會佔兩節，點下去要當成點起始格
+      if (pick && tgtTail) { const [d2, q2] = slot.split('-').map(Number); draw(b, `${d2}-${q2 - 1}`); return }
       // 不是合法目標又有課＝改選這一堂（換別班時最常用）
       if (item && (item.kind !== 'hr' || !fillOpen)) {
-        setPick({ item, board: b, slot })
+        // 連堂佔兩格，點到第二格時起點仍要記成整組的第一格
+        setPick({ item, board: b, slot: displaySlot(item) || slot })
         // 需要專科教室的課：把它現在用的那間教室也帶出來，看得到哪幾節還有位子
         const rid = item.kind === 'lesson' ? dById.get(item.id)?.roomId : undefined
         if (rid) setBoards(bs => addBoard(bs, { kind: 'room', roomId: rid }))
