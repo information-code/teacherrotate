@@ -26,7 +26,7 @@ export type ChainSeed = { kind: 'class'; classKey: string } | { kind: 'teacher';
 type Item = { kind: 'lesson'; id: string } | { kind: 'hr'; classKey: string; slot: string }
 type Board = { kind: 'class'; classKey: string } | { kind: 'teacher'; teacherId: string }
 type Move = { n: number; board: Board; from: string; to: string; item: Item; what: string; who: string; cls: string; h: number }
-type Pending = { item: Item; why: string; board: Board }
+type Pending = { item: Item; why: string; board: Board; step: number }   // step＝哪一支箭頭造成的（0＝起始）
 type Snap = { placed: PlacedResult[]; hr: Record<string, HomeroomRow>; moves: Move[]; boards: Board[]; pending: Pending[]; splitIds: string[] }
 
 interface Props {
@@ -218,10 +218,13 @@ export default function ChainAdjustModal({
   /* ── 目標格判定：一定要是「這張課表上的空位」；班級課表另外允許直接換掉別人的課 ── */
   function targetOf(board: Board, slot: string): { ok: boolean; why: string } | null {
     if (!pick) return null
-    const it = pick.item
+    return targetFor(pick.item, pick.slot, pick.board, board, slot)
+  }
+  /** 指定某一堂課，判斷它能不能標記搬到 (board, slot)。targetOf 與「死路偵測」共用。 */
+  function targetFor(it: Item, atSlot: string, atBoard: Board, board: Board, slot: string): { ok: boolean; why: string } | null {
     const ck = classOfItem(it)
     if (!ck) return null
-    if (slot === pick.slot && bKey(board) === bKey(pick.board)) return null
+    if (slot === atSlot && bKey(board) === bKey(atBoard)) return null
     const teach = teachOf.get(ck)
     if (!teach?.has(slot)) return { ok: false, why: `${ckZh(ck)} 這一節不可排課` }
     if (lockOf(ck)[slot]) return { ok: false, why: `${ckZh(ck)} 這一節是鎖課` }
@@ -235,18 +238,31 @@ export default function ChainAdjustModal({
       const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === slot)
       if (ex) return { ok: false, why: `${nameOf(board.teacherId)} 這一節有 ${ex.main}（固定課，不可調）` }
       const occ = dTeacher.get(board.teacherId)?.get(slot)
-      if (occ && !leaving({ kind: 'lesson', id: occ.id })) return { ok: false, why: `${nameOf(board.teacherId)} 這一節已有 ${occ.classLabel} ${occ.subject}` }
+      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
+        return { ok: false, why: `${nameOf(board.teacherId)} 這一節已有 ${occ.classLabel} ${occ.subject}` }
       return { ok: true, why: '標記搬到這裡（這位老師這一節有空）' }
     }
     if (board.classKey !== ck) return { ok: false, why: '只能搬到這堂課自己班上的時段' }
     const occ = dClass.get(ck)?.get(slot)
-    if (occ && !leaving({ kind: 'lesson', id: occ.id })) return { ok: true, why: `標記搬到這裡（換掉 ${occ.subject}）` }
+    if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
+      return { ok: true, why: `標記搬到這裡（換掉 ${occ.subject}）` }
     const sub = hr0[ck]?.cells?.[slot]
     if (sub && !leaving({ kind: 'hr', classKey: ck, slot })) {
       if (fillOpen) return { ok: false, why: '導師填課開放中，導師課唯讀' }
       return { ok: true, why: `標記搬到這裡（換掉導師課「${sub}」）` }
     }
     return { ok: true, why: '標記搬到這裡（班上這一節沒課）' }
+  }
+
+  /** 這一筆待安置在它該去的那張課表上，還有幾個合法位置。0＝死路，得先退回。 */
+  function optionsFor(p: Pending): number {
+    const at = displaySlot(p.item)
+    const periods = p.board.kind === 'class' ? config.bands[bandOf(Number(p.board.classKey.split('-')[0]))].periodsPerDay : maxPeriods
+    let n = 0
+    for (const d of SCHEDULE_DAYS) for (let q = 1; q <= periods; q++) {
+      if (targetFor(p.item, at, p.board, p.board, `${d}-${q}`)?.ok) n++
+    }
+    return n
   }
 
   const snap = (): Snap => ({ placed, hr, moves, boards, pending, splitIds })
@@ -258,6 +274,7 @@ export default function ChainAdjustModal({
     const ck = classOfItem(it)
     if (!targetOf(board, toSlot)?.ok) return
     const before = snap()
+    const stepNo = moves.length + 1
     let nextPlaced = [...placed]
     let nextHr = { ...hr }
     const newPending: Pending[] = []
@@ -273,7 +290,7 @@ export default function ChainAdjustModal({
       if (occ && `l:${occ.id}` !== self) {
         nextPlaced = nextPlaced.map(x => x.id === occ.id ? { ...x, day: 0, period: 0 } : x)
         const back = moves.some(m => iKey(m.item) === `l:${occ.id}`)
-        newPending.push({ item: { kind: 'lesson', id: occ.id },
+        newPending.push({ item: { kind: 'lesson', id: occ.id }, step: stepNo,
           why: `${ckZh(ck)} ${slotZh(s)} 讓給了 ${labelOf(it).what}${back ? '——這是前面才安置好的課，鏈繞回來了' : ''}`,
           board: { kind: 'teacher', teacherId: occ.teacherId } })
       }
@@ -281,8 +298,8 @@ export default function ChainAdjustModal({
       if (sub && `h:${ck}|${s}` !== self) {
         const cells = { ...nextHr[ck].cells }; delete cells[s]
         nextHr = { ...nextHr, [ck]: { ...nextHr[ck], cells } }
-        newPending.push({ item: { kind: 'hr', classKey: ck, slot: s }, why: `${ckZh(ck)} ${slotZh(s)} 的導師課讓了出來`,
-          board: { kind: 'class', classKey: ck } })
+        newPending.push({ item: { kind: 'hr', classKey: ck, slot: s }, step: stepNo,
+          why: `${ckZh(ck)} ${slotZh(s)} 的導師課讓了出來`, board: { kind: 'class', classKey: ck } })
       }
     }
     // 2) 這位老師同時段在別班有課 → 去那一班的課表上安置
@@ -294,8 +311,8 @@ export default function ChainAdjustModal({
         if (`l:${other.id}` === self || other.classKey === ck) continue
         if (!nextPlaced.some(x => x.id === other.id && x.day > 0)) continue
         nextPlaced = nextPlaced.map(x => x.id === other.id ? { ...x, day: 0, period: 0 } : x)
-        newPending.push({ item: { kind: 'lesson', id: other.id }, why: `${nameOf(tid)} ${slotZh(s)} 同時要上 ${other.classLabel}`,
-          board: { kind: 'class', classKey: other.classKey } })
+        newPending.push({ item: { kind: 'lesson', id: other.id }, step: stepNo,
+          why: `${nameOf(tid)} ${slotZh(s)} 同時要上 ${other.classLabel}`, board: { kind: 'class', classKey: other.classKey } })
       }
     }
     // 3) 把自己放到新位置（只動模擬，畫面不變）
@@ -683,21 +700,39 @@ export default function ChainAdjustModal({
             {pending.length > 0 && (
               <div>
                 <div className="font-medium text-rose-700 mb-1">待安置（{pending.length}）</div>
-                <ul className="space-y-1">
-                  {pending.map(p => {
-                    const lb = labelOf(p.item)
-                    const on = Boolean(pick && iKey(pick.item) === iKey(p.item))
-                    return (
-                      <li key={iKey(p.item)}>
-                        <button onClick={() => { setBoards(bs => addBoard(bs, p.board)); setPick({ item: p.item, board: p.board, slot: displaySlot(p.item) }) }}
-                          className={`w-full text-left px-1.5 py-1 rounded-sm border ${on ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'}`}>
-                          {lb.what}<span className={on ? 'text-rose-100' : 'text-rose-500'}>（{lb.who}・{ckZh(classOfItem(p.item))}）</span>
-                          <br /><span className={on ? 'text-rose-200' : 'text-rose-400'}>{p.why}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                {pending.length >= 5 && (
+                  <p className="mb-1 px-1.5 py-1 rounded-sm bg-amber-50 border border-amber-200 text-amber-800">
+                    連鎖已經擴散到 {pending.length} 堂課。通常代表某一步的方向不對，退回重選會比繼續往下接快。
+                  </p>
+                )}
+                {Array.from(new Set(pending.map(p => p.step))).sort((a, b) => a - b).map(step => (
+                  <div key={step} className="mb-1.5">
+                    <div className="text-zinc-400 mb-0.5">
+                      {step ? `由步驟 ${step} 造成` : '起始'}
+                    </div>
+                    <ul className="space-y-1">
+                      {pending.filter(p => p.step === step).map(p => {
+                        const lb = labelOf(p.item)
+                        const on = Boolean(pick && iKey(pick.item) === iKey(p.item))
+                        const opts = optionsFor(p)
+                        return (
+                          <li key={iKey(p.item)}>
+                            <button onClick={() => { setBoards(bs => addBoard(bs, p.board)); setPick({ item: p.item, board: p.board, slot: displaySlot(p.item) }) }}
+                              className={`w-full text-left px-1.5 py-1 rounded-sm border ${on ? 'bg-rose-600 text-white border-rose-600'
+                                : opts === 0 ? 'bg-red-100 text-red-900 border-red-400' : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'}`}>
+                              {lb.what}<span className={on ? 'text-rose-100' : 'text-rose-500'}>（{lb.who}・{ckZh(classOfItem(p.item))}）</span>
+                              <br /><span className={on ? 'text-rose-200' : 'text-rose-400'}>{p.why}</span>
+                              <br />
+                              {opts === 0
+                                ? <span className="font-medium">✕ 這堂課現在無處可去{step ? `——請退回步驟 ${step}` : ''}</span>
+                                : <span className={on ? 'text-rose-200' : 'text-zinc-500'}>可去的位置 {opts} 個</span>}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
               </div>
             )}
 
