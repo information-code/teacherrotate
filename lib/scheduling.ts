@@ -248,6 +248,8 @@ export function normalizeSubject(name: string): string {
   if (s.startsWith('自然')) return '自然'
   if (s.startsWith('國語')) return '國語'
   if (s === '英語文') return '英語'
+  // 國際教育由英語老師配課、和英語同一個領域，併進去才不會在清單上被拆成兩組
+  if (s.includes('國際教育')) return '英語'
   return s
 }
 /** 排序用序位：依 SUBJECT_ORDER，沒列到的給大數字（實際順序再由名稱決定）。 */
