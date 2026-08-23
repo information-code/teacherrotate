@@ -52,6 +52,7 @@ const bKey = (b: Board) => b.kind === 'class' ? `c:${b.classKey}` : b.kind === '
 const iKey = (i: Item) => i.kind === 'lesson' ? `l:${i.id}` : `h:${i.classKey}|${i.slot}`
 const ckZh = (ck: string) => ck ? classLabel(Number(ck.split('-')[0]), Number(ck.split('-')[1])) : ''
 
+const MORNING_LAST = 4   // 第 4 節後是午休，連堂不能跨過去
 const CELL_W = 92, CELL_H = 42, HEAD_H = 24, LABEL_W = 40   // 100% 時的基準尺寸
 /** 版面偏好存在這台電腦：課務組把大小與每排幾張調到順手之後，之後每次開都一樣。 */
 const LAYOUT_KEY = 'trotate:chain-layout'
@@ -241,33 +242,44 @@ export default function ChainAdjustModal({
     if (!ck) return null
     if (slot === atSlot && bKey(board) === bKey(atBoard)) return null
     const teach = teachOf.get(ck)
-    if (!teach?.has(slot)) return { ok: false, why: `${ckZh(ck)} 這一節不可排課` }
-    if (lockOf(ck)[slot]) return { ok: false, why: `${ckZh(ck)} 這一節是鎖課` }
     const l = it.kind === 'lesson' ? dById.get(it.id) : undefined
     const [d, p] = slot.split('-').map(Number)
-    if (l && l.size === 2 && !teach.has(`${d}-${p + 1}`)) return { ok: false, why: '連堂放不下（下一節不可排課）' }
+    // 連堂佔兩節：兩節都要檢查，而且不能跨午休（第 4→5 節）
+    const want = l && l.size === 2 ? [slot, `${d}-${p + 1}`] : [slot]
+    if (l && l.size === 2 && p === MORNING_LAST) return { ok: false, why: '連堂不能跨午休' }
+    if (l && l.size === 2 && p + 1 > 7) return { ok: false, why: '連堂放不下（沒有下一節）' }
+    for (const s2 of want) {
+      if (!teach?.has(s2)) return { ok: false, why: `${ckZh(ck)} ${slotZh(s2)} 不可排課` }
+      if (lockOf(ck)[s2]) return { ok: false, why: `${ckZh(ck)} ${slotZh(s2)} 是鎖課` }
+    }
     if (l && l.parity !== 'weekly' && ![1, 3, 5].includes(p)) return { ok: false, why: '單雙週區塊只能從第 1／3／5 節開始' }
 
     if (board.kind === 'room') return { ok: false, why: '教室課表只供對照，請到班級或教師課表上點位置' }
     if (board.kind === 'teacher') {
-      if (tBlocked[board.teacherId]?.has(slot)) return { ok: false, why: `${nameOf(board.teacherId)} 這一節不排課` }
-      const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === slot)
-      if (ex) return { ok: false, why: `${nameOf(board.teacherId)} 這一節有 ${ex.main}（固定課，不可調）` }
-      const occ = dTeacher.get(board.teacherId)?.get(slot)
-      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
-        return { ok: false, why: `${nameOf(board.teacherId)} 這一節已有 ${occ.classLabel} ${occ.subject}` }
-      return { ok: true, why: '標記搬到這裡（這位老師這一節有空）' }
+      for (const s2 of want) {
+        if (tBlocked[board.teacherId]?.has(s2)) return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 不排課` }
+        const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === s2)
+        if (ex) return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 有 ${normalizeSubject(ex.main)}（固定課，不可調）` }
+        const occ = dTeacher.get(board.teacherId)?.get(s2)
+        if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
+          return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 已有 ${occ.classLabel} ${occ.subject}` }
+      }
+      return { ok: true, why: want.length > 1 ? '標記搬到這裡（這位老師這兩節都有空）' : '標記搬到這裡（這位老師這一節有空）' }
     }
     if (board.classKey !== ck) return { ok: false, why: '只能搬到這堂課自己班上的時段' }
-    const occ = dClass.get(ck)?.get(slot)
-    if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
-      return { ok: true, why: `標記搬到這裡（換掉 ${occ.subject}）` }
-    const sub = hr0[ck]?.cells?.[slot]
-    if (sub && !leaving({ kind: 'hr', classKey: ck, slot })) {
-      if (fillOpen) return { ok: false, why: '導師填課開放中，導師課唯讀' }
-      return { ok: true, why: `標記搬到這裡（換掉導師課「${sub}」）` }
+    // 班級課表：兩節之中只要有人就是「換掉他」，全空才是直接放
+    const hit: string[] = []
+    for (const s2 of want) {
+      const occ = dClass.get(ck)?.get(s2)
+      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id })) { hit.push(occ.subject); continue }
+      const sub = hr0[ck]?.cells?.[s2]
+      if (sub && !leaving({ kind: 'hr', classKey: ck, slot: s2 })) {
+        if (fillOpen) return { ok: false, why: '導師填課開放中，導師課唯讀' }
+        hit.push(`導師課「${sub}」`)
+      }
     }
-    return { ok: true, why: '標記搬到這裡（班上這一節沒課）' }
+    if (hit.length) return { ok: true, why: `標記搬到這裡（換掉 ${Array.from(new Set(hit)).join('、')}）` }
+    return { ok: true, why: want.length > 1 ? '標記搬到這裡（班上這兩節都沒課）' : '標記搬到這裡（班上這一節沒課）' }
   }
 
   /** 這一筆待安置在它該去的那張課表上，還有幾個合法位置。0＝死路，得先退回。 */
@@ -605,6 +617,12 @@ export default function ChainAdjustModal({
     const arrowIn = moves.some(m => bKey(m.board) === bKey(b) && m.to === slot)
     const isPending = item ? pending.some(x => iKey(x.item) === iKey(item)) : false
     const tgt = !frozen && !tOff ? targetOf(b, slot) : null
+    // 連堂的目標框要蓋住兩節：起始格合法時，下一節也一起加框，才看得出它會佔兩格
+    const pickSize = pick?.item.kind === 'lesson' ? (dById.get(pick.item.id)?.size ?? 1) : 1
+    const tgtTail = Boolean(pickSize === 2 && !frozen && !tOff && (() => {
+      const [d2, q2] = slot.split('-').map(Number)
+      return q2 > 1 && targetOf(b, `${d2}-${q2 - 1}`)?.ok
+    })())
 
     // 教室全滿等你選一個讓出來：那幾間教室在那幾格的使用者就是候選
     const roomCand = Boolean(roomPick && b.kind === 'room' && roomPick.roomIds.includes(b.roomId)
@@ -619,7 +637,7 @@ export default function ChainAdjustModal({
     const ring = roomCand ? ' ring-2 ring-orange-500 z-10'
       : picked ? ' ring-2 ring-rose-500 z-10'
       : arrowIn ? ' ring-2 ring-rose-400 z-10'
-      : tgt?.ok ? ' ring-1 ring-emerald-400' : ''
+      : tgt?.ok || tgtTail ? ' ring-1 ring-emerald-400' : ''
 
     const hasArrow = arrowOut || arrowIn
     // picked＝再點一次取消；item＝改選別堂課。原本兩者都被 `!pick` 擋掉，選中之後整張課表就點不動了
