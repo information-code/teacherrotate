@@ -68,7 +68,6 @@ export default function ChainAdjustModal({
   const [booted, setBooted] = useState('')
 
   const nameOf = (id: string) => teacherNames[id] ?? '？'
-  void engineInput
 
   const seedKey = seed ? bKey(seed as Board) : ''
   if (open && seedKey && booted !== seedKey) {
@@ -329,6 +328,37 @@ export default function ChainAdjustModal({
     setPick({ item: { kind: 'lesson', id: `${pid}~a` }, board: pick.board, slot: `${l.day}-${l.period}` })
   }
 
+  /* ── 導師連堂位：導師自上的連堂科目（社會／生活／自然）或單雙週視藝，
+     班上至少要留一組「同半天連續兩格留白」給他，否則那堂連堂上不了。
+     單雙週視藝特別容易踩到：那一組佔住兩格，導師只有一週用得到，等於少一組連堂位。
+     這裡即時算，調的時候看著數字變，不用等套用才發現。 */
+  const hrDouble = useMemo(() => {
+    const need = engineInput.homeroomDoubleNeed ?? {}
+    const occ = new Map<string, Set<string>>()
+    for (const q of placed) {
+      if (q.day < 1) continue
+      const set = occ.get(q.classKey) ?? new Set<string>()
+      for (const s2 of spanOf(q)) set.add(s2)
+      occ.set(q.classKey, set)
+    }
+    const out: { ck: string; note: string; need: number; pairs: number; biweekly: boolean }[] = []
+    for (const b of boards) {
+      if (b.kind !== 'class') continue
+      const nd = need[b.classKey]
+      if (!nd?.pairs) continue
+      const taken = occ.get(b.classKey) ?? new Set<string>()
+      const blank = new Set((engineInput.classSlots[b.classKey] ?? []).filter(x => !taken.has(x)))
+      let pairs = 0
+      for (const d of SCHEDULE_DAYS) for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+        let run = 0
+        for (const q of [...half, 0]) { if (q && blank.has(`${d}-${q}`)) run++; else { pairs += Math.floor(run / 2); run = 0 } }
+      }
+      out.push({ ck: b.classKey, note: nd.note, need: nd.pairs, pairs,
+        biweekly: placed.some(x => x.classKey === b.classKey && x.parity !== 'weekly') })
+    }
+    return out
+  }, [boards, placed, engineInput])
+
   /* ── 違規：只報這次調動新造成的 ── */
   function computeIssues(px: PlacedResult[], hx: Record<string, HomeroomRow>) {
     const must: string[] = [], hard: string[] = []
@@ -367,6 +397,19 @@ export default function ChainAdjustModal({
       }
       for (const s of Array.from(mustLeaveOf[ck] ?? [])) if (cm.has(s))
         must.push(`${ckZh(ck)} ${slotZh(s)} 是導師排課標記格，卻排了 ${cm.get(s)!.subject}`)
+      // 導師連堂位（和引擎同一條必須級）
+      const nd = engineInput.homeroomDoubleNeed?.[ck]
+      if (nd?.pairs) {
+        const taken = new Set<string>()
+        for (const q of live) if (q.classKey === ck) for (const s2 of spanOf(q)) taken.add(s2)
+        const blank = new Set((engineInput.classSlots[ck] ?? []).filter(x => !taken.has(x)))
+        let pairs = 0
+        for (const d of SCHEDULE_DAYS) for (const half of [[1, 2, 3, 4], [5, 6, 7]]) {
+          let run = 0
+          for (const q of [...half, 0]) { if (q && blank.has(`${d}-${q}`)) run++; else { pairs += Math.floor(run / 2); run = 0 } }
+        }
+        if (pairs < nd.pairs) must.push(`${ckZh(ck)} 導師自上 ${nd.note}，卻沒有任何一組連續兩格留白`)
+      }
       for (const d of SCHEDULE_DAYS) {
         const day = Array.from(teach).filter(x => x.startsWith(`${d}-`))
         if (!day.length) continue
@@ -570,6 +613,27 @@ export default function ChainAdjustModal({
                   <button onClick={splitPicked} className="btn btn-secondary text-xs py-0.5 mt-1"
                     title="拆成兩個單節之後就能分開搬——例如社會 2 連堂＋1 單節，想改成 1 單節＋2 連堂">✂ 拆成兩個單節</button>
                 )}
+              </div>
+            )}
+
+            {hrDouble.length > 0 && (
+              <div>
+                <div className="font-medium text-zinc-700 mb-1">導師連堂位</div>
+                <ul className="space-y-1">
+                  {hrDouble.map(x => (
+                    <li key={x.ck} className={`px-1.5 py-1 rounded-sm border ${x.pairs < x.need
+                      ? 'bg-rose-50 border-rose-300 text-rose-800'
+                      : x.pairs <= x.need ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-white border-zinc-200 text-zinc-600'}`}>
+                      {ckZh(x.ck)}　{x.note}
+                      <br />
+                      <span className="font-medium">剩 {x.pairs} 組</span>
+                      <span className="opacity-70">（至少要 {x.need} 組）</span>
+                      {x.pairs < x.need && <span className="block">✕ 這堂連堂已經沒地方上了</span>}
+                      {x.biweekly && <span className="block opacity-70">這班有單雙週課，那一組佔住兩格，導師只有一週用得到</span>}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-zinc-400">導師自上的連堂需要「同半天連續兩格留白」。科任課把留白切散就湊不出來。</p>
               </div>
             )}
 
