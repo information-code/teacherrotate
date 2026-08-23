@@ -132,6 +132,10 @@ export default function ScheduleWizardClient(props: Props) {
   // 畫面上這一份是「只是看看」還是「真的就是課表」。預覽不寫資料庫，重新整理就沒了，
   // 但畫面跟真的套用完全一樣——不標出來，人會以為已經改好了。
   const [previewOnly, setPreviewOnly] = useState(false)
+  // 預覽舊版時一併換上那一版的導師課。不換的話畫面是「舊科任＋今天的導師課」，
+  // 在上面調課等於在一份從來不存在的課表上調。舊版本沒存導師課就維持現狀並提示。
+  const [previewHr, setPreviewHr] = useState<HomeroomRow[] | null>(null)
+  const [previewHrMissing, setPreviewHrMissing] = useState(false)
   /** 按鈕上的標示。存版本和寫課表是兩件事（存檔被擋下時只留下版本），
    *  所以最新一版不一定就是目前課表——不同時把兩個標出來會被誤讀。 */
   const verBadge = () => {
@@ -259,76 +263,15 @@ export default function ScheduleWizardClient(props: Props) {
   }
   const verZh = (v: VersionRow) => `${v.seq ? `#${v.seq} ` : ''}${v.label || new Date(v.created_at).toLocaleString('zh-TW')}`
 
-  /** 把某一版寫回「目前課表」——不只是預覽，重新整理後看到的才會是它。 */
-  async function restoreVersion(v: VersionRow, quiet = false) {
-    setVersionBusy(v.id)
-    try {
-      const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
-      if (!res.ok) { alert('載入版本失敗'); return false }
-      const full = await res.json()
-      const p = (full.plan ?? {}) as Record<string, unknown>
-      if (!Array.isArray(p.placed)) { alert('這份版本沒有課表內容'); return false }
-      const hrMap = (p.homeroom ?? null) as Record<string, Record<string, string>> | null
-      if (!quiet && !hrMap && !confirm(`版本「${verZh(v)}」是舊格式，沒有存導師課。\n`
-        + `回去以後科任會是這一版的，導師課則維持現狀——兩邊可能對不起來（同一格撞在一起）。\n確定要回去嗎？`)) return false
-      const put = await fetch('/api/admin/schedule-plan', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, plan: { ...p, status: 'draft', versionId: v.id,
-          adjustments: [{ at: new Date().toISOString(), desc: `回到版本 ${verZh(v)}` }] } }),
-      })
-      if (!put.ok) { alert('寫回課表失敗，請稍後再試。'); return false }
-      const putData = await put.json().catch(() => ({}))
-      if (putData.generatedAt) setPlanAt(putData.generatedAt)
-      for (const [ck, cells] of Object.entries(hrMap ?? {})) {
-        await fetch('/api/admin/schedule-homeroom', {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ year, classKey: ck, action: 'setCells', cells }),
-        })
-      }
-      const penalties = (Array.isArray(p.penalties) ? p.penalties : []) as EngineResult['penalties']
-      setResult({
-        placed: p.placed as EngineResult['placed'],
-        unplaced: Array.isArray(p.unplaced) ? p.unplaced as EngineResult['unplaced'] : [],
-        penalties: penalties.map(x => ({ ...x, items: x.items ?? [] })),
-        totalPenalty: Number(p.totalPenalty ?? 0), softPenalty: Number(p.softPenalty ?? 0),
-        uncoveredMustFill: Array.isArray(p.uncoveredMustFill) ? p.uncoveredMustFill as EngineResult['uncoveredMustFill'] : [],
-        iterations: 0, elapsedMs: 0,
-      })
-      lastVerSig.current = sigOfPlaced(p.placed as EngineResult['placed'])
-      setPreviewVersionId(v.id); setPreviewOnly(false)
-      setAdjustUnsaved(0); setDraftDirty(false); setResumedAdjustments(null)
-      setAdjustSession(n => n + 1)
-      setRunFailed(false); setHints([]); setProbePerfect(null)
-      setVersionsOpen(false)
-      router.refresh()   // 導師課是伺服器端的 props，不重拿會沒跟上
-      return true
-    } finally { setVersionBusy(null) }
-  }
-
   async function deleteVersion(v: VersionRow) {
-    // 版本是快照，課表是課表：刪快照本來不會動到課表。但課務組刪掉最新一版，想的
-    // 通常是「回到上一版」——不一併退回去，重新整理後還是看到被刪那一版的內容。
-    let same = false
-    setVersionBusy(v.id)
-    try {
-      const res = await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`)
-      if (res.ok) {
-        const pl = (await res.json())?.plan?.placed
-        if (Array.isArray(pl) && result) same = sigOfPlaced(pl) === sigOfPlaced(result.placed)
-      }
-    } catch { /* 拿不到就當成不同，只刪快照 */ } finally { setVersionBusy(null) }
-    const prev = versions.filter(x => x.id !== v.id)[0]
-    const msg = !same
-      ? `刪除版本「${verZh(v)}」？\n（這只會刪掉快照，不會改變目前的課表。）\n此操作無法復原。`
-      : prev
-        ? `版本「${verZh(v)}」就是目前的課表。\n刪除後，課表會一併回到「${verZh(prev)}」。\n此操作無法復原。`
-        : `版本「${verZh(v)}」就是目前的課表，而且沒有更早的版本可以退回去。\n`
-          + `刪除後課表內容會留著，但不再有任何版本紀錄。\n此操作無法復原。`
-    if (!confirm(msg)) return
+    // 只刪快照。課表不會跟著變——要換成別版，是「預覽那一版 → 在上面調 → 套用」，
+    // 套用會產生新版本，而不是把舊版本搬回來。
+    if (!confirm(`刪除版本「${verZh(v)}」？
+（只會刪掉這份紀錄，目前的課表不受影響。）
+此操作無法復原。`)) return
     await fetch(`/api/admin/schedule-plan-versions?id=${v.id}`, { method: 'DELETE' })
     if (previewVersionId === v.id) setPreviewVersionId(null)
     await loadVersions()
-    if (same && prev) await restoreVersion(prev, true)
   }
 
   // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
@@ -566,7 +509,7 @@ ${head}確定撤回？`)) return
     lastVerSig.current = sigOfPlaced(p.placed)
     // 草稿記得自己是哪一版就直接標出來；舊資料沒這欄，交給下面的比對兜底
     setPreviewVersionId(typeof p.versionId === 'string' ? p.versionId : null)
-    setPreviewOnly(false)
+    setPreviewOnly(false); setPreviewHr(null); setPreviewHrMissing(false)
     const b = sp.base as Record<string, unknown> | undefined
     if (b && Array.isArray(b.placed)) {
       const bp = (Array.isArray(b.penalties) ? b.penalties : []) as EngineResult['penalties']
@@ -618,6 +561,9 @@ ${head}確定撤回？`)) return
       })
       lastVerSig.current = sigOfPlaced(p.placed)   // 預覽既有版本不該再存成新版本
       setPreviewVersionId(v.id); setPreviewOnly(true)
+      const hrMap = (p.homeroom ?? null) as Record<string, Record<string, string>> | null
+      setPreviewHrMissing(!hrMap)
+      setPreviewHr(hrMap ? props.homeroomRows.map(r => ({ ...r, cells: hrMap[r.class_key] ?? {} })) : null)
       // 重掛內嵌元件一定要在 setResult 之後：它會把 savedPlan.placed 抄進自己的 state，
       // 先重掛就會抄到「上一版」的課表，畫面看起來像沒切過去（而且之後怎麼切都不會更新）。
       setAdjustSession(n => n + 1)   // 換一份預覽＝新的微調起點（舊草稿仍在資料庫，可「接續」）
@@ -1015,7 +961,7 @@ ${head}確定撤回？`)) return
           onPlanAt={setPlanAt}
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
-          onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}
+          onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id); setPreviewOnly(false); setPreviewHr(null); setPreviewHrMissing(false) }}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}
@@ -1119,16 +1065,14 @@ ${head}確定撤回？`)) return
                   <b>{v.seq ? `#${v.seq} ` : ''}{v.label || new Date(v.created_at).toLocaleString('zh-TW')}</b>
                   {v.label && <span className="opacity-70 ml-1">{new Date(v.created_at).toLocaleString('zh-TW')}</span>}</span>
                 {ro && <>
-                  <span className="opacity-80">版本只保存科任課，不含導師填的課。</span>
-                  <span className="ml-auto flex gap-1.5">
-                    {planStatus !== 'published' && planStatus !== 'final' && (
-                      <button onClick={() => restoreVersion(v)} disabled={versionBusy === v.id}
-                        title="把目前課表真的換成這一版，重新整理看到的也是它"
-                        className="btn btn-primary text-xs py-0.5">↩ 套用這一版</button>
-                    )}
-                    <button onClick={() => location.reload()}
-                      className="btn btn-secondary text-xs py-0.5">✕ 不看了，回目前課表</button>
+                  <span className="opacity-80">
+                    {planStatus === 'published' || planStatus === 'final'
+                      ? '版本只保存科任課，不含導師填的課。'
+                      : '要用它就直接按班級上的「⇄ 調課」在它上面調，套用後會成為最新版本與目前課表。'}
+                    {previewHrMissing && '（這一版沒有存導師課，畫面上的導師課是目前的。）'}
                   </span>
+                  <button onClick={() => location.reload()}
+                    className="btn btn-secondary text-xs py-0.5 ml-auto">✕ 不看了，回目前課表</button>
                 </>}
               </div>
             )
@@ -1218,12 +1162,13 @@ ${head}確定撤回？`)) return
                 planStatus="draft"
                 setPlanStatus={setPlanStatus}
                 savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
-                homeroomRows={props.homeroomRows}
+                homeroomRows={previewHr ?? props.homeroomRows}
                 planGeneratedAt={planAt}
                 onPlanAt={setPlanAt}
+                syncAllHr={previewOnly}
                 chainRequest={chainReq ?? undefined}
                 onChainConsumed={() => setChainReq(null)}
-                onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id) }}
+                onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id); setPreviewOnly(false); setPreviewHr(null); setPreviewHrMissing(false) }}
                 baseHash={curBaseHash}
                 engineInput={input}
                 config={scheduleConfig}
