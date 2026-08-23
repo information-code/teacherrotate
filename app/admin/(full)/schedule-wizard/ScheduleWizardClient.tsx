@@ -129,6 +129,14 @@ export default function ScheduleWizardClient(props: Props) {
   const [versions, setVersions] = useState<VersionRow[]>([])
   const [versionNames, setVersionNames] = useState<Record<string, string>>({})
   const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
+  /** 按鈕上的標示。存版本和寫課表是兩件事（存檔被擋下時只留下版本），
+   *  所以最新一版不一定就是目前課表——不同時把兩個標出來會被誤讀。 */
+  const verBadge = () => {
+    const cur = versions.find(v => v.id === previewVersionId)?.seq
+    if (!versions.length) return ''
+    if (!cur || cur === latestSeq) return `（最新 #${latestSeq}）`
+    return `（目前 #${cur}・最新 #${latestSeq}）`
+  }
   // 按鈕上顯示「最新編號」而不是筆數：補號是從 #2 開始的，兩個數字永遠差 1，並列會讓人以為版本不見了
   const latestSeq = versions.reduce((m, v) => Math.max(m, v.seq ?? 0), 0) || versions.length
   const [penaltyOpen, setPenaltyOpen] = useState(false)     // 罰分明細 modal
@@ -874,7 +882,7 @@ ${head}確定撤回？`)) return
             這裡補一個入口，免得版本紀錄變成進不去的頁面 */}
         {!result && (
           <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1 order-last ml-auto">
-            🗂 版本紀錄{versions.length > 0 && `（最新 #${latestSeq}）`}
+            🗂 版本紀錄{verBadge()}
           </button>
         )}
         {planStatus === 'published' || planStatus === 'final' ? (
@@ -1126,7 +1134,7 @@ ${head}確定撤回？`)) return
             <span className="ml-auto flex gap-2 items-center">
               <button onClick={() => setHealthOpen(true)} className="btn btn-primary text-xs py-1" title="導師／科任／鐘點三張熱力圖，並和本校人工課表對照">🩺 課表體檢</button>
               <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分（給工程判讀用）">📊 罰分明細</button>
-              <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（最新 #${latestSeq}）`}</button>
+              <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{verBadge()}</button>
             </span>
           </div>
 
