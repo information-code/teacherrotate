@@ -35,6 +35,8 @@ interface Props {
   onPlacedChange?: (placed: PlacedResult[]) => void   // 調動後回報新課表（讓外層教師／教室視圖同步）
   onPersisted?: () => void                             // 成功存檔後回報（外層據此知道資料庫已是微調後的草稿）
   onDirtyChange?: (unsaved: number) => void            // 未儲存的微調筆數（外層據此攔截重跑／換版本）
+  /** 外部（課表體檢的熱力圖）要求開啟連鎖調課；nonce 變了就開一次。 */
+  chainRequest?: { seed: ChainSeed; nonce: number }
   onGradeChange?: (g: number) => void                  // 內嵌時「定位」到某班要切年級
   onDiscard?: () => void                               // 內嵌時「放棄全部微調」（回到這一輪的起點、清掉草稿）
 }
@@ -54,7 +56,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -101,9 +103,12 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // 待排區（自由編輯用）：從課表拿下來、還沒放回去的課。點課＝拿下來，點空格＝放回去。
   const [tray, setTray] = useState<TrayItem[]>([])
   const [chainSeed, setChainSeed] = useState<ChainSeed | null>(null)    // 連鎖調課 modal 的起始課表
+  const [chainNonce, setChainNonce] = useState(0)
   const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
   const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
+  if (chainRequest && chainRequest.nonce !== chainNonce) { setChainNonce(chainRequest.nonce); setChainSeed(chainRequest.seed) }
+
   const markDirty = (changedHrClasses: string[]) => {
     for (const ck of changedHrClasses) pendingHrRef.current.add(ck)
     setUnsaved(n => { const next = n + 1; onDirtyChange?.(next); return next })

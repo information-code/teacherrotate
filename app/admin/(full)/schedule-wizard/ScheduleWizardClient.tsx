@@ -8,6 +8,8 @@ import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, SCORING_VERSION, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import OverviewAdjust, { type HomeroomRow, type AdjustExtras } from './OverviewAdjust'
+import ScheduleHealth from './ScheduleHealth'
+import { type ChainSeed } from './ChainAdjustModal'
 import { buildExportSheets, buildImportRows, buildSchoolCsvRows, rowsToXlsx, sheetsToCsv, sheetsToDocx, sheetsToPdf, saveBlob } from '@/lib/schedule-export'
 import type { GradeSubject } from '../schedule-config/page'
 
@@ -125,6 +127,8 @@ export default function ScheduleWizardClient(props: Props) {
   const [versionNames, setVersionNames] = useState<Record<string, string>>({})
   const [versionsOpen, setVersionsOpen] = useState(false)   // 版本紀錄 modal
   const [penaltyOpen, setPenaltyOpen] = useState(false)     // 罰分明細 modal
+  const [healthOpen, setHealthOpen] = useState(false)       // 課表體檢 modal
+  const [chainReq, setChainReq] = useState<{ seed: ChainSeed; nonce: number } | null>(null)
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null)   // 正在預覽的版本（null＝正式課表或剛跑出來的結果）
   const [versionBusy, setVersionBusy] = useState<string | null>(null)
   const lastVerSig = useRef<string | null>(null)   // 已存成版本的落點指紋，避免同一份重複存
@@ -866,6 +870,7 @@ ${head}確定撤回？`)) return
           savedPlan={props.savedPlan}
           extras={adjustExtras}
           homeroomRows={props.homeroomRows}
+          chainRequest={chainReq ?? undefined}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}
@@ -986,7 +991,8 @@ ${head}確定撤回？`)) return
               軟規則罰分 {Math.round(result.softPenalty)}{bigPenalty.length > 0 && `（另有必須級違反）`}
             </span>
             <span className="ml-auto flex gap-2 items-center">
-              <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分">📊 罰分明細</button>
+              <button onClick={() => setHealthOpen(true)} className="btn btn-primary text-xs py-1" title="導師／科任／鐘點三張熱力圖，並和本校人工課表對照">🩺 課表體檢</button>
+              <button onClick={() => setPenaltyOpen(true)} className="btn btn-secondary text-xs py-1" title="每條規則違反的次數與扣分（給工程判讀用）">📊 罰分明細</button>
               <button onClick={() => setVersionsOpen(true)} className="btn btn-secondary text-xs py-1" title="歷次排課的保存紀錄">🗂 版本紀錄{versions.length > 0 && `（${versions.length}）`}</button>
             </span>
           </div>
@@ -1059,6 +1065,7 @@ ${head}確定撤回？`)) return
                 setPlanStatus={setPlanStatus}
                 savedPlan={resumedAdjustments ? { ...draftPlanObj, adjustments: resumedAdjustments } : draftPlanObj}
                 homeroomRows={props.homeroomRows}
+                chainRequest={chainReq ?? undefined}
                 baseHash={curBaseHash}
                 engineInput={input}
                 config={scheduleConfig}
@@ -1093,6 +1100,27 @@ ${head}確定撤回？`)) return
           </div>
 
         </>
+      )}
+
+      {/* ── 課表體檢 modal：罰分是給引擎比較用的，這裡翻成課務組看得懂的三張熱力圖＋人工課表對照 ── */}
+      {healthOpen && result && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setHealthOpen(false)}>
+          <div className="bg-zinc-50 rounded-md shadow-xl w-full max-w-5xl p-4 my-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-semibold text-zinc-900">課表體檢</h3>
+                <p className="text-xs text-zinc-500">導師、科任、鐘點三個角度看這一版；紅格子點下去直接開連鎖調課</p>
+              </div>
+              <button onClick={() => setHealthOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
+            </div>
+            <ScheduleHealth
+              placed={result.placed} hr={Object.fromEntries(props.homeroomRows.map((r: HomeroomRow) => [r.class_key, r]))}
+              config={scheduleConfig} classCounts={classCounts} teacherNames={teacherNames}
+              hourlyTeacherIds={hourlyTeacherIds}
+              onOpenChain={seed => { setChainReq({ seed, nonce: Date.now() }); setHealthOpen(false) }}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── 罰分明細 modal ── */}
