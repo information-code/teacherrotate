@@ -276,7 +276,8 @@ export default function ChainAdjustModal({
         if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
           return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 已有 ${occ.classLabel} ${occ.subject}` }
       }
-      return { ok: true, why: want.length > 1 ? '標記搬到這裡（這位老師這兩節都有空）' : '標記搬到這裡（這位老師這一節有空）' }
+      const now = want.map(s2 => `${slotZh(s2)} ${classAt(ck, s2)}`).join('、')
+      return { ok: true, why: `標記搬到這裡（這位老師${want.length > 1 ? '這兩節都' : '這一節'}有空）｜${ckZh(ck)} 目前：${now}` }
     }
     if (board.classKey !== ck) return { ok: false, why: '只能搬到這堂課自己班上的時段' }
     // 掛外師的課（英語主題、國際教育）：外師同時段唯一、不可到校時段也擋——
@@ -299,8 +300,9 @@ export default function ChainAdjustModal({
         hit.push(`導師課「${sub}」`)
       }
     }
-    if (hit.length) return { ok: true, why: `標記搬到這裡（換掉 ${Array.from(new Set(hit)).join('、')}）` }
-    return { ok: true, why: want.length > 1 ? '標記搬到這裡（班上這兩節都沒課）' : '標記搬到這裡（班上這一節沒課）' }
+    const now = want.map(s2 => `${slotZh(s2)} ${classAt(ck, s2)}`).join('、')
+    if (hit.length) return { ok: true, why: `標記搬到這裡（換掉 ${Array.from(new Set(hit)).join('、')}）｜${ckZh(ck)} 目前：${now}` }
+    return { ok: true, why: `標記搬到這裡（班上${want.length > 1 ? '這兩節都' : '這一節'}沒課）｜${ckZh(ck)} 目前：${now}` }
   }
 
   /** 這一筆待安置在它該去的那張課表上，還有幾個合法位置。0＝死路，得先退回。 */
@@ -312,6 +314,17 @@ export default function ChainAdjustModal({
       if (targetFor(p.item, at, p.board, p.board, `${d}-${q}`)?.ok) n++
     }
     return n
+  }
+
+  /** 這個班這一節現在上什麼（科目與老師）。教師課表上看不到班級，綠框的提示要補這個。 */
+  function classAt(ck: string, slot: string): string {
+    const l2 = dClass.get(ck)?.get(slot)
+    if (l2) return `${l2.subject}（${l2.teacherName}）`
+    const sub = hr0[ck]?.cells?.[slot]
+    if (sub) return `導師課「${sub}」`
+    const lk = lockOf(ck)[slot]
+    if (lk) return `鎖課：${lockTypeMap[lk]?.label ?? ''}`
+    return '空堂'
   }
 
   const snap = (): Snap => ({ placed, hr, moves, boards, pending, splitIds })
@@ -682,8 +695,9 @@ export default function ChainAdjustModal({
 
     const hasArrow = arrowOut || arrowIn
     // picked＝再點一次取消；item＝改選別堂課。原本兩者都被 `!pick` 擋掉，選中之後整張課表就點不動了
-    const clickable = Boolean(roomCand || (!frozen && !tOff && !roomPick
-      && (hasArrow || picked || tgt?.ok || tgtTail || (item && (item.kind !== 'hr' || !fillOpen)))))
+    // 撤銷（點箭頭兩端）永遠可用：選教室選到一半想反悔，正是最需要撤銷的時候
+    const clickable = Boolean(roomCand || (!frozen && !tOff
+      && (hasArrow || (!roomPick && (picked || tgt?.ok || tgtTail || (item && (item.kind !== 'hr' || !fillOpen)))))))
     const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff
       ? (b.kind === 'teacher' && foreignOff[b.teacherId]?.has(slot) ? '外師不可到校' : '不排課時段')
       : hasArrow ? '點一下取消這一步'
