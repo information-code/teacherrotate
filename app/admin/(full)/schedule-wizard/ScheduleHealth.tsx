@@ -22,7 +22,10 @@ import type { ChainSeed } from './ChainAdjustModal'
 const HAND = {
   hrNoDay: [0, 5], hr5: [7, 15], hr6: [0, 1], hrAm: [35, 88], run4: [10, 23], run5: [0, 2],
   lonely: [11, 18], gapSlots: [85, 133], gapDays: [55, 82], half1: [44, 58],
+  crossDay: [6, 10],
 } as const
+/** 小下課只有十分鐘，跨年段等於跨棟。人工課表四期只有 3% 的老師日發生（每期 6～10 個），確實罕見。 */
+const SHORT_BREAK_PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6]]
 const HAND_TERMS = '112-1、113-1、114-1、114-2 四期'
 
 /* 色階門檻的依據——人工課表四期的實際比例（不是我自訂的）：
@@ -30,8 +33,7 @@ const HAND_TERMS = '112-1、113-1、114-1、114-2 四期'
  *   導師上午：上午 0 節 2%、上午 1 節 16%
  *   孤堂日 6%、半天只上 1 節 21%
  * 所以「有空堂就標紅」會染紅四分之一的格子，等於沒有訊息；紅色留給人工也罕見的情況。 */
-const RED_GAP = 3      // 空堂 ≥3 節才紅（人工僅 3%）
-const AMBER_GAP = 2    // 空 2 節橙（人工 10%）
+
 
 type Extra = { slot: string; main: string; sub: string }
 
@@ -118,14 +120,20 @@ export default function ScheduleHealth({
       dm.set(day, [...(dm.get(day) ?? []), ...qs])
       byT.set(tid, dm)
     }
+    // 老師 → 日 → 節 → 年段（判斷小下課跨年段用；本土語沒有年級資料，只計節數不計跨年段）
+    const bandAt = new Map<string, string>()
+    for (const p of placed) {
+      const b = bandOf(Number(p.classKey.split('-')[0]))
+      for (const q of (p.size === 2 ? [p.period, p.period + 1] : [p.period])) bandAt.set(`${p.teacherId}|${p.day}-${q}`, b)
+    }
     for (const p of placed) put(p.teacherId, p.day, p.size === 2 ? [p.period, p.period + 1] : [p.period])
     // 本土語不進引擎，但老師照樣要到校上那一節。不算進來的話：空堂會多算（其實被本土語填住了）、
     // 孤堂日會多算、鐘點的到校天數會少算——而人工課表的基準線是有把本土語算進去的，不補就不是同一個標準。
     extraByTeacher.forEach((cells, tid) => {
       for (const c of cells) { const [d, q] = c.slot.split('-').map(Number); put(tid, d, [q]) }
     })
-    const rows: { tid: string; name: string; total: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean }[] }[] = []
-    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0 }
+    const rows: { tid: string; name: string; total: number; days: { d: number; n: number; gap: number; lonely: boolean; half1: boolean; cross: number }[] }[] = []
+    const tally = { lonely: 0, gapSlots: 0, gapDays: 0, half1: 0, crossDay: 0 }
     byT.forEach((dm, tid) => {
       let total = 0
       const days = SCHEDULE_DAYS.map(d => {
@@ -133,16 +141,25 @@ export default function ScheduleHealth({
         total += qs.length
         const gap = qs.length > 1 ? qs.slice(1).reduce((s, q, i) => s + (q - qs[i] - 1), 0) : 0
         const am = qs.filter(q => q <= MORNING_LAST).length, pm = qs.length - am
+        // 小下課跨年段：1-2、3-4、5-6 這三對之中，前後兩節分屬不同年段的次數
+        let cross = 0
+        for (const [x, y] of SHORT_BREAK_PAIRS) {
+          const bx = bandAt.get(`${tid}|${d}-${x}`), by = bandAt.get(`${tid}|${d}-${y}`)
+          if (bx && by && bx !== by) cross++
+        }
         if (qs.length) {
           if (qs.length === 1) tally.lonely++
           if (gap) { tally.gapSlots += gap; tally.gapDays++ }
+          if (cross) tally.crossDay++
           tally.half1 += (am === 1 ? 1 : 0) + (pm === 1 ? 1 : 0)
         }
-        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1) }
+        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1), cross }
       })
       rows.push({ tid, name: nameOf(tid), total, days })
     })
-    rows.sort((a, b) => b.days.reduce((s, x) => s + x.gap, 0) - a.days.reduce((s, x) => s + x.gap, 0) || b.total - a.total)
+    // 要處理的排前面：先看跨年段，再看孤堂日
+    const score = (r: typeof rows[number]) => r.days.reduce((s, x) => s + x.cross * 10 + (x.lonely ? 5 : 0), 0)
+    rows.sort((a, b) => score(b) - score(a) || b.total - a.total)
     return { rows, tally }
   }, [placed, teacherNames, extraByTeacher])
 
@@ -164,6 +181,7 @@ export default function ScheduleHealth({
     { name: '導師連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4 },
     { name: '導師連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5 },
     { name: '老師孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely },
+    { name: '老師小下課跨年段', unit: TD, v: teachers.tally.crossDay, hand: HAND.crossDay },
     { name: '老師零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
     { name: '老師有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
     { name: '老師半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1 },
@@ -293,11 +311,11 @@ export default function ScheduleHealth({
             )}
             {tab === 'teacher' && (
               <p className="text-[11px] text-zinc-400 mb-1.5">
-                每格＝那天上幾節，零碎空堂多的排前面。
-                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝空 3 節以上或整天只 1 節</span>
-                <span className="px-1 rounded-sm bg-amber-100 text-amber-900 ml-1">深橙＝空 2 節</span>
-                <span className="px-1 rounded-sm bg-amber-50 text-amber-700 ml-1">淡橙＝空 1 節或半天只 1 節</span>
-                <br />門檻取自人工課表：28% 的老師日本來就有空堂，空 3 節以上才只占 3%。
+                每格＝那天上幾節，要處理的排前面。
+                <span className="px-1 rounded-sm bg-red-100 text-red-800 ml-1">紅＝整天只 1 節</span>
+                <span className="px-1 rounded-sm bg-amber-100 text-amber-900 ml-1">橙＝小下課（1-2／3-4／5-6）跨年段</span>
+                <br />人工課表四期：孤堂日占 6%、跨年段占 3%，兩個都罕見所以值得抓。
+                零碎空堂不上色——人工有 28% 的老師日本來就有空堂，標了等於沒標。
               </p>
             )}
             {tab === 'hourly' && <p className="text-[11px] text-zinc-400 mb-1.5">鐘點老師在乎的是要跑幾趟，到校天數越少越好。</p>}
@@ -343,13 +361,13 @@ export default function ScheduleHealth({
                         </button>
                       </td>
                       {r.days.map(d => {
-                        const tone = d.gap >= RED_GAP || d.lonely ? 'bg-red-100 text-red-800 border-red-300'
-                          : d.gap >= AMBER_GAP ? 'bg-amber-100 text-amber-900 border-amber-300'
-                          : d.gap || d.half1 ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        const tone = d.lonely ? 'bg-red-100 text-red-800 border-red-300'
+                          : d.cross ? 'bg-amber-100 text-amber-900 border-amber-300'
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
                         const why = d.n === 0 ? '這天沒課'
-                          : [`${d.n} 節`, d.gap ? `${d.gap} 節空堂夾在課中間` : '', d.lonely ? '整天只有 1 節' : '', d.half1 ? '有半天只上 1 節' : ''].filter(Boolean).join('｜')
+                          : [`${d.n} 節`, d.lonely ? '整天只有 1 節' : '', d.cross ? `小下課跨年段 ${d.cross} 次` : '',
+                             d.gap ? `${d.gap} 節空堂夾在課中間` : ''].filter(Boolean).join('｜')
                         return (
                           <td key={d.d} className="p-0.5">
                             <div title={`${r.name} 週${DAY_ZH[d.d]}：${why}`}
