@@ -34,7 +34,10 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
   const [confirmed, setConfirmed] = useState<boolean>(Boolean(confirmedAt))
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [confirming, setConfirming] = useState(false)
-  const readOnly = confirmed || finalized
+  /** 存不進去而且重試也沒用的狀況（填課被收回、已定案、那一格被課務組佔走）：
+   *  伺服器回的原因要原封不動給導師看，並且立刻停手，不要讓他繼續填一堆存不進去的東西。 */
+  const [blockedMsg, setBlockedMsg] = useState<string | null>(null)
+  const readOnly = confirmed || finalized || blockedMsg !== null
 
   const subjects = orderSubjectNames(Object.keys(breakdown))
   // 配對格（單雙週區塊）填一格＝整塊兩節，計 2 節
@@ -56,7 +59,11 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ year, cells }),
         })
-        setSaveStatus(res.ok ? 'saved' : 'error')
+        if (res.ok) { setSaveStatus('saved'); return }
+        const d = await res.json().catch(() => ({}))
+        // 400／403＝狀況變了，重試不會成功：停下來講清楚
+        if (res.status === 403 || res.status === 400) { setBlockedMsg(String(d.error ?? '目前無法儲存')); setSaveStatus('idle') }
+        else setSaveStatus('error')
       } catch { setSaveStatus('error') }
     }, 800)
     return () => clearTimeout(t)
@@ -145,6 +152,16 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
       )}
       {!confirmed && finalized && lockMessage && (
         <div className="card bg-amber-50 border-amber-200 text-sm text-amber-700 py-3">🔒 {lockMessage}</div>
+      )}
+      {blockedMsg && (
+        <div className="card bg-red-50 border-red-200 text-sm text-red-700 py-3 space-y-1">
+          <div className="font-medium">⚠ 這一次的修改沒有存進去：{blockedMsg}</div>
+          <div className="text-xs">
+            課表在您填的期間被更動了。請按
+            <button onClick={() => location.reload()} className="btn btn-secondary text-xs py-0.5 mx-1">重新整理</button>
+            取得最新的班級課表；您先前已存檔的內容都還在，只有剛剛這幾格要重填。
+          </div>
+        </div>
       )}
       {staleCells.length > 0 && (
         <div className="card bg-red-50 border-red-200 text-sm text-red-700 py-3 space-y-1">
