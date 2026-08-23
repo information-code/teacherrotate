@@ -49,7 +49,11 @@ export interface EngineInput {
    *  引擎不排導師課，但排科任課時必須留得下這些連堂位，否則導師的自然／社會／視藝連堂根本上不了（固定硬限制，算必須級）。 */
   homeroomDoubleNeed: Record<string, { pairs: number; note: string }>
                                                           // 導師規則（不連四、上午下限、每日上限）與成塊要把這些格當導師課，而非「非導師」
-  teacherBlocked: Record<string, string[]>   // 科任教師不可排時段
+  teacherBlocked: Record<string, string[]>
+  /** 不進引擎、但老師確實在上課的時段（本土語原班與語別場次）。
+   *  這些格子同時也在 teacherBlocked 裡（不可再排課），但兩者意義不同：
+   *  「不排課」是休息、會中斷連上；「本土語」是上課、要接續計算——不分開就會漏掉連 7。 */
+  teacherFixed: Record<string, string[]>   // 科任教師不可排時段
   teacherMustTeach: Record<string, string[]> // 科任教師必排時段（排課標記，未覆蓋＝必須級罰分）
   teacherNames: Record<string, string>
   /** 該班該科有科任需求（每班節數 − 導師自上 > 0）卻沒有任何科任可配（供給不足或配班解不出）。
@@ -562,8 +566,12 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   // 科任教師封鎖（只需引擎會用到的老師）＝個人不排課 ∪ 本土語占用（原班閩南語／實體開課）；外師＝不可用時段
   const teacherIds = new Set(lessons.map(l => l.teacherId))
   const teacherBlocked: Record<string, string[]> = { ...foreignBlocked }
+  const teacherFixed: Record<string, string[]> = {}
   for (const id of Array.from(teacherIds)) {
     teacherBlocked[id] = Array.from(new Set([...(offByTeacher[id] ?? []), ...Array.from(nativeExtraBlocked[id] ?? [])]))
+    // 本土語是「在上課」不是「休息」：連上節數要把它算進去，否則本土語連上六節之後
+    // 再被排一堂就變成連 7，而引擎完全看不到（人工課表四期 974 個老師日只出現過 1 次連 7）
+    if (nativeExtraBlocked[id]?.size) teacherFixed[id] = Array.from(nativeExtraBlocked[id])
   }
 
   // 前置檢核：教師配課節數 vs 其授課班級可排時段（扣除自身不排課）——超過即必然有課排不進
@@ -776,7 +784,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   return {
     input: {
       classes, lessons, classSlots, classMustFill, classMustLeave, classDayFull, lockedCells, homeroomLocks, homeroomDoubleNeed,
-      teacherBlocked, teacherMustTeach, teacherNames: a.teacherNames, unassigned: unassignedList, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
+      teacherBlocked, teacherFixed, teacherMustTeach, teacherNames: a.teacherNames, unassigned: unassignedList, hourlyTeachers: a.hourlyTeacherIds ?? [], rooms, classRoom,
       substituteTeachers: a.substituteTeacherIds ?? [],
       homeroomTeachers: Array.from(new Set(Object.values(config.classTeacher).filter((t): t is string => Boolean(t)))),
       weights: config.weights, seed: a.seed ?? 42,
@@ -1175,6 +1183,7 @@ class State {
 
   private teacherRunAfter(l: EngineLesson, p: Placement, rid: string = l.teacherId): number {
     const tOcc = this.teacherOcc.get(rid)!
+    const fixed = this.input.teacherFixed[rid] ?? []   // 本土語那些不進引擎、但確實在上課的時段
     const parities: ('o' | 'e')[] = l.parity === 'weekly' ? ['o', 'e'] : [l.parity === 'odd' ? 'o' : 'e']
     let worst = 0
     for (const par of parities) {
@@ -1183,6 +1192,7 @@ class State {
         const cell = tOcc.get(`${p.day}-${q}`)
         if (cell && (cell.w || cell[par])) taught.add(q)
       }
+      for (const s2 of fixed) { const [d2, q2] = s2.split('-').map(Number); if (d2 === p.day) taught.add(q2) }
       taught.add(p.period)
       if (l.size === 2) taught.add(p.period + 1)
       let run = 0, best = 0
