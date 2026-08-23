@@ -10,8 +10,9 @@ import type { ChainSeed } from './ChainAdjustModal'
 /* ────────────────────────────────────────────────────────────────────────────
    課表體檢：把「罰分明細」翻譯成課務組看得懂的東西。
 
-   罰分是給引擎比較用的，「同型態同日 ×23＝207 分」對人沒有意義。這裡改成三張
-   熱力圖（導師／科任／鐘點）＋一份對照人工課表的體檢表，紅格子點下去直接開連鎖調課。
+   罰分是給引擎比較用的，「同型態同日 ×23＝207 分」對人沒有意義。這裡改成
+   熱力圖（導師／科任／鐘點）＋對照人工課表的體檢表；左邊挑一列，右邊直接看整週課表，
+   看完不順眼就按「調課」接到連鎖調課——判斷要看整週，不是看單一天。
 
    全部從落點與設定即時算出來，不需要跑引擎，所以切版本立刻重畫。
    ──────────────────────────────────────────────────────────────────────────── */
@@ -24,6 +25,8 @@ const HAND = {
 } as const
 const HAND_TERMS = '112-1、113-1、114-1、114-2 四期'
 
+type Extra = { slot: string; main: string; sub: string }
+
 interface Props {
   placed: PlacedResult[]
   hr: Record<string, HomeroomRow>
@@ -34,27 +37,36 @@ interface Props {
   /** 各班導師自己要上的科目節數：用來判斷哪些鎖課（種子班國數）是導師的課 */
   homeroomHours: Record<string, Record<string, number>>
   /** 不進引擎的固定課（本土語原班／語別場次）：老師照樣要到校上課，不算進去空堂與到校天數都會錯 */
-  extraByTeacher: Map<string, { slot: string }[]>
+  extraByTeacher: Map<string, Extra[]>
   onOpenChain?: (seed: ChainSeed) => void
 }
 
 const DAY_ZH = ['', '一', '二', '三', '四', '五']
 const MORNING_LAST = 4
+type Sel = { kind: 'class'; ck: string } | { kind: 'teacher'; tid: string }
 
-export default function ScheduleHealth({ placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, homeroomHours, extraByTeacher, onOpenChain }: Props) {
+export default function ScheduleHealth({
+  placed, hr, config, classCounts, teacherNames, hourlyTeacherIds, homeroomHours, extraByTeacher, onOpenChain,
+}: Props) {
   const [tab, setTab] = useState<'homeroom' | 'teacher' | 'hourly'>('homeroom')
+  const [sel, setSel] = useState<Sel | null>(null)
   const nameOf = (id: string) => teacherNames[id] ?? '？'
+  const spanOf = (p: PlacedResult) => p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`]
+
+  const cellsByClass = useMemo(() => {
+    const m = new Map<string, Map<string, PlacedResult>>()
+    for (const p of placed) {
+      const cm = m.get(p.classKey) ?? new Map<string, PlacedResult>()
+      for (const s of spanOf(p)) cm.set(s, p)
+      m.set(p.classKey, cm)
+    }
+    return m
+  }, [placed])
 
   /* ── 導師端：每個「班日」算導師節數、上午節數、最長連上 ── */
   const homeroom = useMemo(() => {
-    const cells = new Map<string, Map<string, PlacedResult>>()
-    for (const p of placed) {
-      const cm = cells.get(p.classKey) ?? new Map<string, PlacedResult>()
-      for (const s of (p.size === 2 ? [`${p.day}-${p.period}`, `${p.day}-${p.period + 1}`] : [`${p.day}-${p.period}`])) cm.set(s, p)
-      cells.set(p.classKey, cm)
-    }
     const hm = config.weights.builtin.homeroomDailyMax
-    const rows: { ck: string; label: string; teacher: string; days: { d: number; n: number; am: number; run: number; cap: number; full: boolean }[] }[] = []
+    const rows: { ck: string; label: string; teacher: string; days: { d: number; n: number; am: number; run: number; cap: number }[] }[] = []
     const tally = { hrNoDay: 0, hr5: 0, hr6: 0, hrAm: 0, run4: 0, run5: 0 }
     for (const g of GRADES) for (let i = 0; i < (classCounts[g] ?? 0); i++) {
       const ck = `${g}-${i}`
@@ -62,18 +74,17 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
       const locks = config.lockCells[ck] ?? {}
       // 種子班的國語、數學鎖課本來就是導師自己上的，要算進導師節數；本土語那種才是別人的課
       const hrLocks = new Set(homeroomLockSlots(config, g, i, homeroomHours[ck]))
-      const cm = cells.get(ck) ?? new Map<string, PlacedResult>()
+      const cm = cellsByClass.get(ck) ?? new Map<string, PlacedResult>()
       const days = SCHEDULE_DAYS.map(d => {
         const slots: number[] = []
         for (let p = 1; p <= grid.periodsPerDay; p++) if (grid.teachable[`${d}-${p}`]) slots.push(p)
         const mine = slots.filter(p => {
           const k = `${d}-${p}`
-          if (cm.has(k)) return false                    // 科任課
-          if (locks[k] && !hrLocks.has(k)) return false  // 別人的鎖課（本土語…）
-          return true                                     // 空白或導師自己的鎖課
+          if (cm.has(k)) return false                     // 科任課
+          if (locks[k] && !hrLocks.has(k)) return false   // 別人的鎖課（本土語…）
+          return true                                      // 空白或導師自己的鎖課
         })
-        const full = slots.some(p => p > MORNING_LAST)
-        const cap = bandOf(g) === 'low' && full ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
+        const cap = bandOf(g) === 'low' && slots.some(p => p > MORNING_LAST) ? Math.max(hm.hardN, hm.hardFullDayLowN) : hm.hardN
         let run = 0, best = 0, prev = -9
         for (const p of mine) { run = p === prev + 1 ? run + 1 : 1; prev = p; best = Math.max(best, run) }
         if (slots.length) {
@@ -84,12 +95,12 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
           if (best >= 4) tally.run4++
           if (best >= 5) tally.run5++
         }
-        return { d, n: mine.length, am: mine.filter(p => p <= MORNING_LAST).length, run: best, cap, full }
+        return { d, n: mine.length, am: mine.filter(p => p <= MORNING_LAST).length, run: best, cap }
       })
       rows.push({ ck, label: classLabel(g, i), teacher: nameOf(config.classTeacher[ck] ?? ''), days })
     }
     return { rows, tally }
-  }, [placed, config, classCounts, teacherNames, homeroomHours])
+  }, [cellsByClass, config, classCounts, teacherNames, homeroomHours])
 
   /* ── 科任端：每位老師每天的節數、零碎空堂、孤堂日、半天只上 1 節 ── */
   const teachers = useMemo(() => {
@@ -114,14 +125,12 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
         total += qs.length
         const gap = qs.length > 1 ? qs.slice(1).reduce((s, q, i) => s + (q - qs[i] - 1), 0) : 0
         const am = qs.filter(q => q <= MORNING_LAST).length, pm = qs.length - am
-        const lonely = qs.length === 1
-        const half1 = (am === 1 ? 1 : 0) + (pm === 1 ? 1 : 0) > 0
         if (qs.length) {
-          if (lonely) tally.lonely++
+          if (qs.length === 1) tally.lonely++
           if (gap) { tally.gapSlots += gap; tally.gapDays++ }
           tally.half1 += (am === 1 ? 1 : 0) + (pm === 1 ? 1 : 0)
         }
-        return { d, n: qs.length, gap, lonely, half1 }
+        return { d, n: qs.length, gap, lonely: qs.length === 1, half1: (am === 1 || pm === 1) }
       })
       rows.push({ tid, name: nameOf(tid), total, days })
     })
@@ -137,30 +146,81 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
       .sort((a, b) => b.comeDays - a.comeDays)
   }, [teachers, hourlyTeacherIds])
 
-  /* ── 體檢表：跟人工課表比 ── */
+  /* ── 體檢表 ── */
   const CD = '班日', TD = '老師日'
   const checks = [
-    { name: '導師整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay, bad: (v: number) => v > 0 },
-    { name: '導師一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5, bad: () => false },
-    { name: '導師一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6, bad: () => false },
-    { name: '導師上午不足 2 節', unit: CD, v: homeroom.tally.hrAm, hand: HAND.hrAm, bad: () => false },
-    { name: '導師連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4, bad: () => false },
-    { name: '導師連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5, bad: () => false },
-    { name: '老師孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely, bad: () => false },
-    { name: '老師零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots, bad: () => false },
-    { name: '老師有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays, bad: () => false },
-    { name: '老師半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1, bad: () => false },
+    { name: '導師整天沒課', unit: CD, v: homeroom.tally.hrNoDay, hand: HAND.hrNoDay },
+    { name: '導師一天 5 節以上', unit: CD, v: homeroom.tally.hr5, hand: HAND.hr5 },
+    { name: '導師一天 6 節以上', unit: CD, v: homeroom.tally.hr6, hand: HAND.hr6 },
+    { name: '導師上午不足 2 節', unit: CD, v: homeroom.tally.hrAm, hand: HAND.hrAm },
+    { name: '導師連上 4 節以上', unit: CD, v: homeroom.tally.run4, hand: HAND.run4 },
+    { name: '導師連上 5 節以上', unit: CD, v: homeroom.tally.run5, hand: HAND.run5 },
+    { name: '老師孤堂日（一天只 1 節）', unit: TD, v: teachers.tally.lonely, hand: HAND.lonely },
+    { name: '老師零碎空堂', unit: '節', v: teachers.tally.gapSlots, hand: HAND.gapSlots },
+    { name: '老師有零碎空堂的日數', unit: TD, v: teachers.tally.gapDays, hand: HAND.gapDays },
+    { name: '老師半天只上 1 節', unit: '半天', v: teachers.tally.half1, hand: HAND.half1 },
   ]
-  const verdict = (v: number, [lo, hi]: readonly [number, number] | number[]) =>
+  const verdict = (v: number, [lo, hi]: readonly number[]) =>
     v < lo ? { txt: '優於人工', cls: 'text-green-700 bg-green-50 border-green-200' }
       : v <= hi ? { txt: '在人工範圍內', cls: 'text-zinc-600 bg-zinc-50 border-zinc-200' }
       : { txt: '比人工差', cls: 'text-red-700 bg-red-50 border-red-200' }
+
+  /* ── 右側：選中那一位／那一班的整週課表 ── */
+  const board = useMemo(() => {
+    if (!sel) return null
+    const maxP = Math.max(...Object.values(config.bands).map(b => b.periodsPerDay))
+    if (sel.kind === 'class') {
+      const g = Number(sel.ck.split('-')[0]), i = Number(sel.ck.split('-')[1])
+      const grid = config.bands[bandOf(g)]
+      const locks = config.lockCells[sel.ck] ?? {}
+      const lockType = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+      const hrLocks = new Set(homeroomLockSlots(config, g, i, homeroomHours[sel.ck]))
+      const cm = cellsByClass.get(sel.ck) ?? new Map<string, PlacedResult>()
+      const hrCells = hr[sel.ck]?.cells ?? {}
+      return {
+        title: `${classLabel(g, i)} 班級課表`, sub: `導師 ${nameOf(config.classTeacher[sel.ck] ?? '')}`,
+        periods: grid.periodsPerDay,
+        cell: (d: number, p: number) => {
+          const k = `${d}-${p}`
+          if (!grid.teachable[k]) return { kind: 'off' as const }
+          const l = cm.get(k)
+          if (l) return { kind: 'lesson' as const, main: l.subject, sub: l.teacherName }
+          const lk = locks[k]
+          if (lk) return { kind: hrLocks.has(k) ? 'hr' as const : 'lock' as const, main: lockType[lk]?.subject || lockType[lk]?.label || '鎖課', sub: hrLocks.has(k) ? '導師' : '' }
+          if (hrCells[k]) return { kind: 'hr' as const, main: hrCells[k], sub: '導師' }
+          return { kind: 'blank' as const }
+        },
+        seed: { kind: 'class' as const, classKey: sel.ck },
+      }
+    }
+    const mine = new Map<string, PlacedResult>()
+    for (const p of placed) if (p.teacherId === sel.tid) for (const s of spanOf(p)) mine.set(s, p)
+    const ex = new Map((extraByTeacher.get(sel.tid) ?? []).map(c => [c.slot, c]))
+    return {
+      title: `${nameOf(sel.tid)} 教師課表`, sub: `${mine.size + ex.size} 節`,
+      periods: maxP,
+      cell: (d: number, p: number) => {
+        const k = `${d}-${p}`
+        const l = mine.get(k)
+        if (l) return { kind: 'lesson' as const, main: l.subject, sub: l.classLabel }
+        const e = ex.get(k)
+        if (e) return { kind: 'lock' as const, main: e.main, sub: e.sub }
+        return { kind: 'blank' as const }
+      },
+      seed: { kind: 'teacher' as const, teacherId: sel.tid },
+    }
+  }, [sel, placed, hr, config, homeroomHours, cellsByClass, extraByTeacher, teacherNames])
 
   const TAB = [
     { k: 'homeroom' as const, t: '導師', n: homeroom.rows.length },
     { k: 'teacher' as const, t: '科任老師', n: teachers.rows.length },
     { k: 'hourly' as const, t: '鐘點老師', n: hourly.length },
   ]
+  const selKey = sel ? (sel.kind === 'class' ? `c:${sel.ck}` : `t:${sel.tid}`) : ''
+  const rowBtn = (on: boolean) =>
+    `w-full text-left whitespace-nowrap px-1.5 py-0.5 rounded-sm border ${on
+      ? 'bg-zinc-700 text-white border-zinc-700'
+      : 'bg-white text-zinc-600 border-transparent hover:border-zinc-300'}`
 
   return (
     <div className="space-y-3">
@@ -169,21 +229,21 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
         <div className="text-sm font-semibold text-zinc-700 mb-1">課表體檢</div>
         <p className="text-[11px] text-zinc-400 mb-2">
           和本校 {HAND_TERMS}人工排的課表比。「在人工範圍內」代表這一版跟老師們過去幾年實際上到的課表差不多。
-          <br />班日＝一個班的一天（62 班 × 5 天＝310）；老師日＝一位科任的一天。本土語（不進引擎的固定課）已計入老師的節數。
+          <br />班日＝一個班的一天；老師日＝一位科任的一天。本土語（不進引擎的固定課）已計入老師的節數。
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs tabular-nums min-w-[520px]">
             <thead>
               <tr className="text-zinc-500 border-b border-zinc-200">
                 <th className="text-left font-medium py-1">項目</th>
-                <th className="text-right font-medium py-1 w-20">這一版</th>
-                <th className="text-right font-medium py-1 w-28">人工課表</th>
+                <th className="text-right font-medium py-1 w-24">這一版</th>
+                <th className="text-right font-medium py-1 w-32">人工課表</th>
                 <th className="text-left font-medium py-1 pl-3 w-28">判讀</th>
               </tr>
             </thead>
             <tbody>
               {checks.map(c => {
-                const vd = c.bad(c.v) ? { txt: '要處理', cls: 'text-red-700 bg-red-50 border-red-200' } : verdict(c.v, c.hand)
+                const vd = verdict(c.v, c.hand)
                 return (
                   <tr key={c.name} className="border-b border-zinc-100 last:border-0">
                     <td className="py-1 text-zinc-700">{c.name}</td>
@@ -198,144 +258,169 @@ export default function ScheduleHealth({ placed, hr, config, classCounts, teache
         </div>
       </div>
 
-      {/* 熱力圖 */}
+      {/* 熱力圖 ＋ 課表 */}
       <div className="card p-3">
         <div className="flex items-center gap-2 mb-2">
           {TAB.map(x => (
-            <button key={x.k} onClick={() => setTab(x.k)}
+            <button key={x.k} onClick={() => { setTab(x.k); setSel(null) }}
               className={`text-xs px-2 py-0.5 rounded-sm border ${tab === x.k ? 'bg-zinc-700 text-white border-zinc-700' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
               {x.t}<span className="opacity-60 ml-1">{x.n}</span>
             </button>
           ))}
-          {onOpenChain && <span className="text-[11px] text-zinc-400 ml-auto">點格子可直接開「連鎖調課」</span>}
+          <span className="text-[11px] text-zinc-400 ml-auto">點左邊的名字看整週課表</span>
         </div>
 
-        {tab === 'homeroom' && (
-          <>
-            <p className="text-[11px] text-zinc-400 mb-1.5">
-              每格＝那個班那一天導師自己上幾節。
-              <span className="text-red-600 mx-1">紅＝0 節或超過絕對上限</span>
-              <span className="text-amber-600 mx-1">橙＝上午不足 2 節</span>
-              <span className="text-violet-600 mx-1">紫底＝連上 4 節以上</span>
-            </p>
-            <div className="overflow-x-auto">
+        <div className="flex gap-4 items-start">
+          {/* 左：熱力圖 */}
+          <div className="flex-none">
+            {tab === 'homeroom' && (
+              <p className="text-[11px] text-zinc-400 mb-1.5">
+                每格＝那天導師自己上幾節。
+                <span className="text-red-600 ml-1">紅＝0 節或超過上限</span>
+                <span className="text-amber-600 ml-1">橙＝上午不足 2 節</span>
+                <span className="text-violet-600 ml-1">紫框＝連上 4 節以上</span>
+              </p>
+            )}
+            {tab === 'teacher' && (
+              <p className="text-[11px] text-zinc-400 mb-1.5">
+                每格＝那天上幾節，零碎空堂多的排前面。
+                <span className="text-red-600 ml-1">紅＝有空堂夾在課中間</span>
+                <span className="text-amber-600 ml-1">橙＝孤堂日或半天只上 1 節</span>
+              </p>
+            )}
+            {tab === 'hourly' && <p className="text-[11px] text-zinc-400 mb-1.5">鐘點老師在乎的是要跑幾趟，到校天數越少越好。</p>}
+
+            <div className="overflow-y-auto max-h-[560px] pr-1">
               <table className="text-[11px] tabular-nums border-collapse">
-                <thead><tr>
-                  <th className="sticky left-0 bg-white text-left font-medium text-zinc-500 px-1 py-0.5">班級</th>
-                  {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 px-1 py-0.5 w-9">{DAY_LABEL[d].slice(1)}</th>)}
-                </tr></thead>
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr>
+                    <th className="text-left font-medium text-zinc-500 px-1 py-0.5">{tab === 'homeroom' ? '班級' : '老師'}</th>
+                    {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 px-1 py-0.5 w-8">{DAY_LABEL[d].slice(1)}</th>)}
+                    {tab === 'hourly' && <th className="font-medium text-zinc-500 px-1 py-0.5 w-12">到校</th>}
+                  </tr>
+                </thead>
                 <tbody>
-                  {homeroom.rows.map(r => (
+                  {tab === 'homeroom' && homeroom.rows.map(r => (
                     <tr key={r.ck}>
-                      <td className="sticky left-0 bg-white whitespace-nowrap px-1 py-0.5 text-zinc-600">
-                        {r.label}<span className="text-zinc-300 ml-1">{r.teacher}</span>
+                      <td className="px-0.5 py-0.5">
+                        <button onClick={() => setSel({ kind: 'class', ck: r.ck })} className={rowBtn(selKey === `c:${r.ck}`)}>
+                          {r.label}<span className={selKey === `c:${r.ck}` ? 'text-zinc-300 ml-1' : 'text-zinc-300 ml-1'}>{r.teacher}</span>
+                        </button>
                       </td>
                       {r.days.map(d => {
-                        const over = d.n > d.cap, none = d.n === 0
-                        const tone = none || over ? 'bg-red-100 text-red-800 border-red-300'
+                        const tone = d.n === 0 || d.n > d.cap ? 'bg-red-100 text-red-800 border-red-300'
                           : d.am < 2 ? 'bg-amber-50 text-amber-800 border-amber-200'
                           : 'bg-white text-zinc-500 border-zinc-200'
-                        const runMark = d.run >= 4 ? ' ring-1 ring-violet-400 ring-inset' : ''
-                        const why = [`導師 ${d.n} 節（上限 ${d.cap}）`, `上午 ${d.am} 節`, d.run >= 4 ? `連上 ${d.run} 節` : '']
-                          .filter(Boolean).join('｜')
                         return (
                           <td key={d.d} className="p-0.5">
-                            <button disabled={!onOpenChain} title={`${r.label} 週${DAY_ZH[d.d]}：${why}`}
-                              onClick={() => onOpenChain?.({ kind: 'class', classKey: r.ck })}
-                              className={`w-8 h-6 rounded-sm border ${tone}${runMark} ${onOpenChain ? 'hover:ring-2 hover:ring-zinc-400' : ''}`}>
-                              {d.n}
-                            </button>
+                            <div title={`${r.label} 週${DAY_ZH[d.d]}：導師 ${d.n} 節（上限 ${d.cap}）｜上午 ${d.am} 節${d.run >= 4 ? `｜連上 ${d.run} 節` : ''}`}
+                              className={`w-7 h-5 leading-5 text-center rounded-sm border ${tone}${d.run >= 4 ? ' ring-1 ring-violet-400 ring-inset' : ''}`}>{d.n}</div>
                           </td>
                         )
                       })}
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {tab === 'teacher' && (
-          <>
-            <p className="text-[11px] text-zinc-400 mb-1.5">
-              每格＝那位老師那一天上幾節，依零碎空堂多的排前面。
-              <span className="text-red-600 mx-1">紅＝有空堂夾在課中間</span>
-              <span className="text-amber-600 mx-1">橙＝孤堂日或半天只上 1 節</span>
-            </p>
-            <div className="overflow-x-auto max-h-[420px]">
-              <table className="text-[11px] tabular-nums border-collapse">
-                <thead><tr>
-                  <th className="sticky left-0 bg-white text-left font-medium text-zinc-500 px-1 py-0.5">老師</th>
-                  {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 px-1 py-0.5 w-9">{DAY_LABEL[d].slice(1)}</th>)}
-                  <th className="font-medium text-zinc-500 px-1 py-0.5 w-10">合計</th>
-                </tr></thead>
-                <tbody>
-                  {teachers.rows.map(r => (
+                  {tab === 'teacher' && teachers.rows.map(r => (
                     <tr key={r.tid}>
-                      <td className="sticky left-0 bg-white whitespace-nowrap px-1 py-0.5 text-zinc-600">{r.name}</td>
+                      <td className="px-0.5 py-0.5">
+                        <button onClick={() => setSel({ kind: 'teacher', tid: r.tid })} className={rowBtn(selKey === `t:${r.tid}`)}>
+                          {r.name}<span className="text-zinc-300 ml-1">{r.total} 節</span>
+                        </button>
+                      </td>
                       {r.days.map(d => {
                         const tone = d.gap ? 'bg-red-100 text-red-800 border-red-300'
                           : (d.lonely || d.half1) ? 'bg-amber-50 text-amber-800 border-amber-200'
                           : d.n ? 'bg-white text-zinc-500 border-zinc-200'
                           : 'bg-zinc-50 text-zinc-300 border-zinc-100'
                         const why = d.n === 0 ? '這天沒課'
-                          : [`${d.n} 節`, d.gap ? `${d.gap} 節空堂夾在課中間` : '', d.lonely ? '整天只有 1 節' : '', d.half1 ? '有半天只上 1 節' : '']
-                            .filter(Boolean).join('｜')
+                          : [`${d.n} 節`, d.gap ? `${d.gap} 節空堂夾在課中間` : '', d.lonely ? '整天只有 1 節' : '', d.half1 ? '有半天只上 1 節' : ''].filter(Boolean).join('｜')
                         return (
                           <td key={d.d} className="p-0.5">
-                            <button disabled={!onOpenChain} title={`${r.name} 週${DAY_ZH[d.d]}：${why}`}
-                              onClick={() => onOpenChain?.({ kind: 'teacher', teacherId: r.tid })}
-                              className={`w-8 h-6 rounded-sm border ${tone} ${onOpenChain ? 'hover:ring-2 hover:ring-zinc-400' : ''}`}>
-                              {d.n || ''}
-                            </button>
+                            <div title={`${r.name} 週${DAY_ZH[d.d]}：${why}`}
+                              className={`w-7 h-5 leading-5 text-center rounded-sm border ${tone}`}>{d.n || ''}</div>
                           </td>
                         )
                       })}
-                      <td className="px-1 text-zinc-400 text-right">{r.total}</td>
                     </tr>
                   ))}
+                  {tab === 'hourly' && (hourly.length === 0
+                    ? <tr><td colSpan={7} className="text-zinc-400 px-1 py-2">沒有鐘點老師。</td></tr>
+                    : hourly.map(r => (
+                      <tr key={r.tid}>
+                        <td className="px-0.5 py-0.5">
+                          <button onClick={() => setSel({ kind: 'teacher', tid: r.tid })} className={rowBtn(selKey === `t:${r.tid}`)}>
+                            {r.name}<span className="text-zinc-300 ml-1">{r.total} 節</span>
+                          </button>
+                        </td>
+                        {r.days.map(d => (
+                          <td key={d.d} className="p-0.5">
+                            <div title={`${r.name} 週${DAY_ZH[d.d]}：${d.n ? `${d.n} 節` : '不用到校'}`}
+                              className={`w-7 h-5 leading-5 text-center rounded-sm border ${d.n ? 'bg-sky-50 text-sky-800 border-sky-200' : 'bg-zinc-50 text-zinc-300 border-zinc-100'}`}>{d.n || '—'}</div>
+                          </td>
+                        ))}
+                        <td className={`px-1 text-center font-medium ${r.comeDays >= 4 ? 'text-red-600' : r.comeDays === 3 ? 'text-amber-600' : 'text-green-700'}`}>{r.comeDays}</td>
+                      </tr>
+                    )))}
                 </tbody>
               </table>
             </div>
-          </>
-        )}
+          </div>
 
-        {tab === 'hourly' && (
-          hourly.length === 0
-            ? <p className="text-xs text-zinc-400">沒有鐘點老師。</p>
-            : (<>
-              <p className="text-[11px] text-zinc-400 mb-1.5">鐘點老師在乎的是「要跑幾趟」，不是上幾節。到校天數越少越好。</p>
-              <div className="overflow-x-auto">
-                <table className="text-[11px] tabular-nums border-collapse">
-                  <thead><tr>
-                    <th className="text-left font-medium text-zinc-500 px-1 py-0.5">老師</th>
-                    {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 px-1 py-0.5 w-9">{DAY_LABEL[d].slice(1)}</th>)}
-                    <th className="font-medium text-zinc-500 px-1 py-0.5 w-14">到校天數</th>
-                    <th className="font-medium text-zinc-500 px-1 py-0.5 w-10">節數</th>
-                  </tr></thead>
-                  <tbody>
-                    {hourly.map(r => (
-                      <tr key={r.tid}>
-                        <td className="whitespace-nowrap px-1 py-0.5 text-zinc-600">{r.name}</td>
-                        {r.days.map(d => (
-                          <td key={d.d} className="p-0.5">
-                            <button disabled={!onOpenChain} title={`${r.name} 週${DAY_ZH[d.d]}：${d.n ? `${d.n} 節` : '不用到校'}`}
-                              onClick={() => onOpenChain?.({ kind: 'teacher', teacherId: r.tid })}
-                              className={`w-8 h-6 rounded-sm border ${d.n ? 'bg-sky-50 text-sky-800 border-sky-200' : 'bg-zinc-50 text-zinc-300 border-zinc-100'} ${onOpenChain ? 'hover:ring-2 hover:ring-zinc-400' : ''}`}>
-                              {d.n || '—'}
-                            </button>
-                          </td>
-                        ))}
-                        <td className={`px-1 text-right font-medium ${r.comeDays >= 4 ? 'text-red-600' : r.comeDays === 3 ? 'text-amber-600' : 'text-green-700'}`}>{r.comeDays}</td>
-                        <td className="px-1 text-right text-zinc-400">{r.total}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* 右：整週課表 */}
+          <div className="flex-1 min-w-0">
+            {!board ? (
+              <div className="h-full min-h-[320px] flex items-center justify-center text-xs text-zinc-400 border border-dashed border-zinc-200 rounded-sm">
+                點左邊的班級或老師，這裡會顯示整週課表
               </div>
-            </>)
-        )}
+            ) : (
+              <div className="border border-zinc-200 rounded-sm bg-white">
+                <div className="px-2 py-1.5 border-b border-zinc-200 bg-zinc-50 flex items-center gap-2">
+                  <span className="text-sm font-medium text-zinc-700">{board.title}</span>
+                  <span className="text-[11px] text-zinc-400">{board.sub}</span>
+                  {onOpenChain && (
+                    <button onClick={() => onOpenChain(board.seed)}
+                      className="btn btn-secondary text-xs py-0.5 ml-auto"
+                      title="從這張課表開始連鎖調課；套用後會自動存成一份版本">⇄ 這張課表調課</button>
+                  )}
+                </div>
+                <div className="p-2 overflow-x-auto">
+                  <table className="w-full text-[11px] border-collapse min-w-[420px]">
+                    <thead>
+                      <tr>
+                        <th className="w-6" />
+                        {SCHEDULE_DAYS.map(d => <th key={d} className="font-medium text-zinc-500 py-0.5">{DAY_LABEL[d]}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: board.periods }, (_, i) => i + 1).map(p => (
+                        <tr key={p}>
+                          <td className="text-zinc-400 text-center">{p}</td>
+                          {SCHEDULE_DAYS.map(d => {
+                            const c = board.cell(d, p)
+                            const tone = c.kind === 'off' ? 'bg-zinc-50 border-zinc-100'
+                              : c.kind === 'lesson' ? 'bg-sky-50 border-sky-200 text-sky-900'
+                              : c.kind === 'hr' ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                              : c.kind === 'lock' ? 'bg-amber-50 border-amber-200 text-amber-800'
+                              : 'bg-white border-dashed border-zinc-200 text-zinc-300'
+                            return (
+                              <td key={d} className="p-0.5">
+                                <div className={`h-10 rounded-sm border px-0.5 flex flex-col items-center justify-center leading-tight overflow-hidden ${tone}`}>
+                                  {'main' in c && <span className="font-medium truncate w-full text-center">{c.main}</span>}
+                                  {'sub' in c && c.sub && <span className="opacity-70 truncate w-full text-center">{c.sub}</span>}
+                                  {c.kind === 'blank' && <span className="text-[10px]">導師自排</span>}
+                                </div>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
