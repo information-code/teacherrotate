@@ -343,7 +343,10 @@ export default function ChainAdjustModal({
     // 4) 專科教室：同科還有別間空著就靜靜換一間（套用時會自動重配），全滿才是真衝突
     let roomNeed: { slots: string[]; roomIds: string[]; subject: string } | null = null
     if (it.kind === 'lesson' && l) {
-      const rooms = engineInput.rooms.filter(r => r.subject === l.subject)
+      // 教室設定裡有管理老師的，只認自己管理的那一間（和引擎的 roomPool 同一條規則）；
+      // 沒有管理教室的老師才是該科任一間皆可。不分這一層就會把她根本不會用的教室也攤出來。
+      const own = engineInput.rooms.filter(r => r.subject === l.subject && (r.managerIds ?? []).includes(l.teacherId))
+      const rooms = own.length ? own : engineInput.rooms.filter(r => r.subject === l.subject)
       if (rooms.length) {
         const busy = (rid: string, s2: string) => nextPlaced.some(x =>
           x.id !== l.id && x.day > 0 && x.roomId === rid && spanOf(x).includes(s2))
