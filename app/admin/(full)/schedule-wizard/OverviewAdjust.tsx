@@ -106,7 +106,6 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   // 課務組的習慣是「不妥位置 → 妥適位置 → 連鎖」，跟這裡的「選一堂課 → 點彩格」是兩套思路，並存只會混淆。
   // 這一行是總開關：改回 true 就能救回舊的互動（相關程式碼都還在，等 modal 在課務組手上跑順再刪）。
   const adjustMode = false
-  const [note, setNote] = useState('')
   // 草稿的版本令牌：讀到的 generated_at 一起送回去，對不上代表別人在你編輯期間改過（兩台電腦同開）
   const planAtRef = useRef<string | undefined>(planGeneratedAt ?? undefined)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -679,14 +678,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   function applyAdjust(nextPlaced: PlacedResult[], nextHr: Record<string, HomeroomRow>, desc: string, changedHrClasses: string[]) {
     if (freeMode) { setFreeTouched(true); desc = `【自由編輯】${desc}` }
     pushUndo()
-    const adj: Adjustment = { at: new Date().toISOString(), desc, ...(note.trim() ? { note: note.trim() } : {}) }
+    const adj: Adjustment = { at: new Date().toISOString(), desc }
     const nextAdj = [...adjustments, adj]
     const withRooms = reassignRooms(nextPlaced, rooms, config.weights)
     setPlaced(withRooms); onPlacedChange?.(withRooms)
     setHr(nextHr)
     setAdjustments(nextAdj)
     setSel(null)
-    setNote('')
     markDirty(changedHrClasses)
   }
 
@@ -1034,7 +1032,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
         </div>
       )}
 
-      {(sel || !embedded) && (
+      {/* 舊的行內調課工具列。調整已全部走「連鎖調課」modal，裡面的東西都不會再出現，
+          只剩「協調備註」那個輸入框空占一條——一併關掉。 */}
+      {adjustMode && (sel || !embedded) && (
         <div className="card p-2 text-xs text-zinc-500 flex items-center gap-3 flex-wrap">
           <span>
             {sel
@@ -1070,8 +1070,6 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
               {chain === 'busy' ? '搜尋中…' : '🔗 幫我找一條鏈'}
             </button>
           )}
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="協調備註（選填，隨下一步調整記錄）"
-            className="input py-0.5 text-xs w-56 ml-auto" />
         </div>
       )}
 
