@@ -56,6 +56,7 @@ const navSections = [
     items: [
       { href: '/admin/repair-config', label: '報修設定' },
       { href: '/admin/repair-cases',  label: '案件報表' },
+      { href: '/admin/repair-stats',  label: '報修統計' },
     ],
   },
   {
