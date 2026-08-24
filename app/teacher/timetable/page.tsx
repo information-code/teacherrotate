@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF, deriveNativeSessions, homeroomLockSlots } from '@/lib/scheduling'
+import { normalizeScheduleConfig, roomLabel, subjectClassKey, HOMEROOM_SELF, deriveNativeSessions, homeroomLockSlots, withCurrentNames } from '@/lib/scheduling'
 import { roomsFromConfig } from '@/lib/schedule-engine'
 import { normalizeConfig as normalizeAllocConfig, GRADES, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 import TimetableClient from './TimetableClient'
@@ -135,7 +135,7 @@ export default async function TimetablePage() {
       year={year}
       userId={user.id}
       myClassKey={myClassKey}
-      placed={plan.placed ?? []}
+      placed={withCurrentNames(plan.placed, nameOf)}
       homeroomCells={Object.fromEntries((hrRows ?? []).map(r => [r.class_key, (r.cells ?? {}) as Record<string, string>]))}
       classTeacher={config.classTeacher}
       bands={config.bands}

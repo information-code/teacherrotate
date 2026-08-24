@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { normalizeScheduleConfig, bandOf, classLabel, SCHEDULE_DAYS } from '@/lib/scheduling'
+import { normalizeScheduleConfig, bandOf, classLabel, SCHEDULE_DAYS, withCurrentNames } from '@/lib/scheduling'
 import { homeroomBreakdown, normalizeConfig, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 import ScheduleFillClient from './ScheduleFillClient'
 
@@ -63,7 +63,9 @@ export default async function ScheduleFillPage() {
   // 開放導師填課（同科整塊兩節、扣兩節籤，週型與視藝互補）。
   const fixed: Record<string, FixedCell> = {}
   const pairCells: Record<string, 'odd' | 'even'> = {}   // slot → 導師課的週型
-  for (const p of plan.placed ?? []) {
+  const { data: profs } = await admin.from('profiles').select('id, name').neq('status', 'inactive')
+  const nameOf = Object.fromEntries((profs ?? []).map(p => [p.id, p.name ?? '']))
+  for (const p of withCurrentNames(plan.placed as never, nameOf) as typeof plan.placed & object[]) {
     if (p.classKey !== classKey) continue
     const bi = p.parity === 'odd' || p.parity === 'even' ? p.parity as 'odd' | 'even' : undefined
     if (bi && p.size === 2) {

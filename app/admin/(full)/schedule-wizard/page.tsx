@@ -2,7 +2,7 @@ import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import ScheduleWizardClient from './ScheduleWizardClient'
 import { normalizeConfig, GRADES, adoptedReduction } from '@/lib/allocation'
-import { normalizeScheduleConfig } from '@/lib/scheduling'
+import { normalizeScheduleConfig, withCurrentNames } from '@/lib/scheduling'
 import type { GradeSubject } from '../schedule-config/page'
 
 export const dynamic = 'force-dynamic'
@@ -86,7 +86,10 @@ export default async function ScheduleWizardPage() {
       supplyByTeacher={supplyByTeacher}
       lastGeneratedAt={planRow?.generated_at ?? null}
       initialPlanStatus={String((planRow?.plan as { status?: string } | null)?.status ?? '') || null}
-      savedPlan={(planRow?.plan ?? null) as Record<string, unknown> | null}
+      savedPlan={planRow?.plan
+        ? { ...(planRow.plan as Record<string, unknown>),
+            placed: withCurrentNames((planRow.plan as { placed?: unknown[] }).placed as never, teacherNames) }
+        : null}
       planGeneratedAt={planRow?.generated_at ?? null}
       homeroomRows={(hrRows ?? []) as { class_key: string; teacher_id: string; cells: Record<string, string>; confirmed_at: string | null }[]}
     />

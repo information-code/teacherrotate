@@ -258,6 +258,21 @@ export function subjectRank(name: string): number {
   return i < 0 ? SUBJECT_ORDER.length : i
 }
 
+/** 課表 JSON 裡的 teacherName／coTeacherName 是排課那一刻寫死的快照。待聘帳號轉正後
+ *  profiles 改了名字，快照卻改不到——畫面上就會一直是「瑜恩缺(綜合)」。
+ *  一律以 profiles 現在的名字為準；查不到那個 id 才保留快照（例如帳號已刪）。 */
+export function withCurrentNames<T extends { teacherId?: string; teacherName?: string; coTeacherId?: string; coTeacherName?: string }>(
+  placed: T[] | null | undefined, nameOf: Record<string, string>,
+): T[] {
+  if (!Array.isArray(placed)) return []
+  return placed.map(p => {
+    const t = p.teacherId ? nameOf[p.teacherId] : undefined
+    const c = p.coTeacherId ? nameOf[p.coTeacherId] : undefined
+    if ((!t || t === p.teacherName) && (!c || c === p.coTeacherName)) return p
+    return { ...p, ...(t ? { teacherName: t } : {}), ...(c ? { coTeacherName: c } : {}) }
+  })
+}
+
 export function shouldUseRoom(w: ScheduleWeights, subject: string, grade: number, size: number): boolean {
   const u = roomUseOf(w, subject, grade)
   return u === 'always' || (u === 'double' && size === 2)

@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
+import { withCurrentNames } from '@/lib/scheduling'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { hasPerms } from '@/lib/staff-server'
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
     if (error && isSeqMissing(error)) ({ data, error } = await supabaseAdmin.from('schedule_plan_version').select('id, year, label, starred, source, base_hash, summary, weights, plan, created_at, created_by').eq('id', id).maybeSingle() as never)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: '找不到此版本' }, { status: 404 })
+    // 版本裡的老師名字是存檔當下的快照；待聘帳號轉正後要以現在的名字顯示
+    const { data: profs } = await supabaseAdmin.from('profiles').select('id, name')
+    const nameOf = Object.fromEntries((profs ?? []).map(x => [x.id, x.name ?? '']))
+    const plan = (data as { plan?: { placed?: unknown[] } }).plan
+    if (plan && Array.isArray(plan.placed)) plan.placed = withCurrentNames(plan.placed as never, nameOf)
     return NextResponse.json(data)
   }
 
