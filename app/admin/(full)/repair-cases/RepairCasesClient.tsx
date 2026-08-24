@@ -297,19 +297,25 @@ export default function RepairCasesClient() {
                     </div>
                   )}
 
-                  {/* 向報修者說明 */}
-                  <div>
-                    <p className="mb-1 text-sm text-zinc-600">向報修者說明（顯示在教師端案件頁）</p>
-                    <textarea className="input min-h-20" value={noteDraft}
-                      placeholder="例：已叫料，零件到貨後到班上更換"
-                      onChange={e => setNoteDraft(e.target.value)} />
-                    <div className="mt-1.5 flex justify-end">
-                      <button className="btn-secondary" disabled={noteDraft === r.admin_note}
-                        onClick={() => act(r.id, { action: 'note', admin_note: noteDraft }, '說明已儲存')}>
-                        儲存說明
-                      </button>
+                  {/* 向報修者說明（已結案不再編輯，留存的說明僅顯示） */}
+                  {r.status !== 'closed' ? (
+                    <div>
+                      <p className="mb-1 text-sm text-zinc-600">向報修者說明（顯示在教師端案件頁）</p>
+                      <textarea className="input min-h-20" value={noteDraft}
+                        placeholder="例：已叫料，零件到貨後到班上更換"
+                        onChange={e => setNoteDraft(e.target.value)} />
+                      <div className="mt-1.5 flex justify-end">
+                        <button className="btn-secondary" disabled={noteDraft === r.admin_note}
+                          onClick={() => act(r.id, { action: 'note', admin_note: noteDraft }, '說明已儲存')}>
+                          儲存說明
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : r.admin_note ? (
+                    <p className="whitespace-pre-wrap text-sm text-zinc-600">
+                      <span className="text-xs text-zinc-500">向報修者說明：</span>{r.admin_note}
+                    </p>
+                  ) : null}
 
                   {/* 狀態推進 */}
                   {r.status !== 'closed' && (
