@@ -75,10 +75,18 @@ export async function PUT(request: NextRequest) {
   }
 
   // 配課節數依「本班年級的採用情境」計（各年級可不同）
+  const allocCfg = normalizeConfig(cfgRow?.config)
   const breakdown: Record<string, number> = { ...homeroomBreakdown(
     allocRow?.data as TeacherAllocation | null,
-    adoptedReduction(normalizeConfig(cfgRow?.config).grades[g]),
+    adoptedReduction(allocCfg.grades[g]),
   ) }
+  // 只留該年級有開的科目。導師跨年段調動後，配課裡會殘留原年段的科目——例如四年級
+  // 導師還留著一年級的「生活 3」。引擎與統計頁早就有這道過濾，排課選填漏了，結果那位
+  // 導師要填的節數比班上可填的格數多 3，怎麼填都填不滿、也就送不出。
+  {
+    const offered = new Set(allocCfg.grades[g].subjects.map(x => x.name))
+    for (const k of Object.keys(breakdown)) if (!offered.has(k)) delete breakdown[k]
+  }
   // 與導師選填頁同一套扣法：鎖課已排定的配課節數要扣掉，兩邊算的不一樣就會填得完卻送不出
   const lockTypeMap2 = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
   for (const tid2 of Object.values(config.lockCells[classKey] ?? {})) {

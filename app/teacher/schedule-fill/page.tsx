@@ -87,6 +87,13 @@ export default async function ScheduleFillPage() {
   // 我要填的配課節數（依本班年級的採用情境；各年級可不同）
   const allocConfig = normalizeConfig(cfgRow?.config)
   const breakdown: Record<string, number> = { ...homeroomBreakdown(allocRow?.data as TeacherAllocation | null, adoptedReduction(allocConfig.grades[g])) }
+  // 只留該年級有開的科目。導師跨年段調動後，配課裡會殘留原年段的科目——例如四年級
+  // 導師還留著一年級的「生活 3」。引擎與統計頁早就有這道過濾，排課選填漏了，結果那位
+  // 導師要填的節數比班上可填的格數多 3，怎麼填都填不滿、也就送不出。
+  {
+    const offered = new Set(allocConfig.grades[g].subjects.map(x => x.name))
+    for (const k of Object.keys(breakdown)) if (!offered.has(k)) delete breakdown[k]
+  }
   // 鎖課已經把配課的某些節數排定了（種子班的國語數學、五年級游泳＝班級活動、
   // 種子班的自主學習）。不扣掉的話導師會被要求再填一次，班上根本沒有那麼多留白，
   // 而且填出來會變成雙倍節數。扣的依據是鎖課的「科目」——與 byHomeroom 無關：
