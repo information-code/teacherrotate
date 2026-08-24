@@ -18,6 +18,9 @@ export default async function WhitelistPage() {
     isSuperAdmin = me?.role === 'superadmin'
   }
 
+  const { data: yearRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
+  const year = Number(yearRows?.[0]?.value ?? 115)
+
   const { data: profiles } = await admin
     .from('profiles')
     .select('id, name, email, role, employment_type, created_at')
@@ -34,5 +37,5 @@ export default async function WhitelistPage() {
     logged_in: authIdSet.has(p.id),
   }))
 
-  return <WhitelistClient entries={entries} isSuperAdmin={isSuperAdmin} />
+  return <WhitelistClient entries={entries} isSuperAdmin={isSuperAdmin} year={year} />
 }

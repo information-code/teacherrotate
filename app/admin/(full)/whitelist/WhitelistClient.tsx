@@ -28,9 +28,19 @@ interface TeacherEntry {
 interface Props {
   entries: TeacherEntry[]
   isSuperAdmin: boolean
+  year: number
 }
 
-export default function WhitelistClient({ entries: initial, isSuperAdmin }: Props) {
+type Hours = Record<string, Record<string, number>>
+interface SplitInfo {
+  name: string | null
+  hours: Hours
+  blockers: { lessonHours: number; lessons: string[]; classes: string[] }
+  candidates: { id: string; name: string | null; email: string }[]
+}
+const sumHours = (h: Hours) => Object.values(h ?? {}).reduce((s, byG) => s + Object.values(byG ?? {}).reduce((t, v) => t + (Number(v) || 0), 0), 0)
+
+export default function WhitelistClient({ entries: initial, isSuperAdmin, year }: Props) {
   const router = useRouter()
   const [entries, setEntries] = useState<TeacherEntry[]>(initial)
 
@@ -54,6 +64,59 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
   const [editName, setEditName] = useState('')
   const [editError, setEditError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // 拆分：一個待聘帳號 → 兩位老師，同時分配課
+  const [splitId, setSplitId] = useState<string | null>(null)
+  const [splitInfo, setSplitInfo] = useState<SplitInfo | null>(null)
+  const [splitErr, setSplitErr] = useState('')
+  const [splitBusy, setSplitBusy] = useState(false)
+  const [share, setShare] = useState<{ a: Hours; b: Hours }>({ a: {}, b: {} })
+  const [sideA, setSideA] = useState<{ mode: 'convert' | 'merge'; email: string; name: string }>({ mode: 'convert', email: '', name: '' })
+  const [sideB, setSideB] = useState<{ mode: 'create' | 'merge'; email: string; name: string }>({ mode: 'create', email: '', name: '' })
+
+  async function openSplit(id: string) {
+    setSplitId(id); setSplitInfo(null); setSplitErr(''); setSplitBusy(true)
+    setSideA({ mode: 'convert', email: '', name: '' }); setSideB({ mode: 'create', email: '', name: '' })
+    try {
+      const res = await fetch(`/api/admin/whitelist/split?id=${id}&year=${year}`)
+      const d = await res.json()
+      if (!res.ok) { setSplitErr(d.error ?? '載入失敗'); return }
+      setSplitInfo(d)
+      // 預設全部給甲，課務組再往乙那邊挪
+      const a: Hours = {}
+      for (const [subj, byG] of Object.entries(d.hours as Hours)) { a[subj] = { ...byG } }
+      setShare({ a, b: {} })
+    } finally { setSplitBusy(false) }
+  }
+  /** 把某一科某年級的節數在甲乙之間挪動（總數不變，多的算未分配） */
+  function setSide(which: 'a' | 'b', subj: string, g: string, v: number, max: number) {
+    setShare(prev => {
+      const next = { a: { ...prev.a }, b: { ...prev.b } }
+      const other = which === 'a' ? 'b' : 'a'
+      const n = Math.max(0, Math.min(max, v))
+      next[which] = { ...next[which], [subj]: { ...(next[which][subj] ?? {}), [g]: n } }
+      const o = Number(next[other][subj]?.[g]) || 0
+      if (n + o > max) next[other] = { ...next[other], [subj]: { ...(next[other][subj] ?? {}), [g]: max - n } }
+      return next
+    })
+  }
+  async function submitSplit() {
+    if (!splitId || !splitInfo) return
+    const dropped = sumHours(splitInfo.hours) - sumHours(share.a) - sumHours(share.b)
+    if (dropped > 0 && !confirm(`還有 ${dropped} 節沒有分配給任何人，這些節數會消失。\n（真老師節數比原本少時這是正常的）\n確定送出嗎？`)) return
+    setSplitBusy(true); setSplitErr('')
+    try {
+      const res = await fetch('/api/admin/whitelist/split', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: splitId, year, a: sideA, b: sideB, hours: share }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setSplitErr(d.error ?? '拆分失敗'); return }
+      setSplitId(null)
+      alert(`拆分完成${d.dropped > 0 ? `（${d.dropped} 節未分配）` : ''}。請到配課頁確認兩位老師的節數。`)
+      router.refresh()
+    } finally { setSplitBusy(false) }
+  }
 
   // 刪除
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -261,6 +324,11 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
                 className={`text-xs whitespace-nowrap ${virtual ? 'text-amber-600 hover:text-amber-700 font-medium' : 'text-zinc-400 hover:text-zinc-700'}`}>
                 {virtual ? '轉正' : '改 Email'}
               </button>
+              {virtual && (
+                <button onClick={() => openSplit(entry.id)}
+                  title="這個待聘帳號的配課由兩位老師分擔——一次建好兩邊帳號並分配節數"
+                  className="text-xs whitespace-nowrap text-sky-600 hover:text-sky-700 font-medium">拆分</button>
+              )}
               <button
                 onClick={() => handleDelete(entry.id, entry.name)}
                 disabled={deletingId === entry.id}
@@ -275,8 +343,135 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin }: Prop
     )
   }
 
+  const splitDialog = splitId && (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={() => !splitBusy && setSplitId(null)}>
+      <div className="card w-full max-w-2xl my-8 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-base font-semibold">拆分待聘帳號</h2>
+          <span className="text-sm text-zinc-500">{splitInfo?.name ?? ''}</span>
+          <button onClick={() => setSplitId(null)} disabled={splitBusy}
+            className="ml-auto text-zinc-400 hover:text-zinc-700 text-sm">✕</button>
+        </div>
+
+        {splitBusy && !splitInfo && <p className="text-sm text-zinc-400 py-6 text-center">載入中…</p>}
+        {splitErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-sm px-3 py-2">{splitErr}</p>}
+
+        {splitInfo && (splitInfo.blockers.lessonHours > 0 || splitInfo.blockers.classes.length > 0) && (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2 space-y-1">
+            <div className="font-medium">這個帳號還有課表引用，不能拆分</div>
+            {splitInfo.blockers.lessonHours > 0 && (
+              <div className="text-xs">・課表上已排 {splitInfo.blockers.lessonHours} 節：{splitInfo.blockers.lessons.join('、')}</div>
+            )}
+            {splitInfo.blockers.classes.length > 0 && (
+              <div className="text-xs">・已指派配班：{splitInfo.blockers.classes.join('、')}</div>
+            )}
+            <div className="text-xs opacity-80">拆分只分配課，分不了「哪幾堂歸誰」——請先在排課工具處理掉再回來。</div>
+          </div>
+        )}
+
+        {splitInfo && splitInfo.blockers.lessonHours === 0 && splitInfo.blockers.classes.length === 0 && (
+          <>
+            {Object.keys(splitInfo.hours).length === 0
+              ? <p className="text-sm text-zinc-400">這個帳號沒有配課，不需要拆分。</p>
+              : (
+                <div className="border border-zinc-200 rounded-sm overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-50 text-xs text-zinc-500">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 font-medium">配課</th>
+                        <th className="px-2 py-1.5 font-medium w-16">原本</th>
+                        <th className="px-2 py-1.5 font-medium w-20">甲</th>
+                        <th className="px-2 py-1.5 font-medium w-20">乙</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(splitInfo.hours).flatMap(([subj, byG]) =>
+                        Object.entries(byG).filter(([, n]) => Number(n) > 0).map(([g, n]) => (
+                          <tr key={`${subj}|${g}`} className="border-t border-zinc-100">
+                            <td className="px-3 py-1.5">{subj} <span className="text-zinc-400 text-xs">{GRADE_LABELS[Number(g) - 1] ?? `${g}年級`}</span></td>
+                            <td className="text-center text-zinc-500 tabular-nums">{n}</td>
+                            {(['a', 'b'] as const).map(w => (
+                              <td key={w} className="text-center py-1">
+                                <input type="number" min={0} max={Number(n)} value={Number(share[w][subj]?.[g]) || 0}
+                                  onChange={e => setSide(w, subj, g, Number(e.target.value), Number(n))}
+                                  className="w-14 text-center border border-zinc-200 rounded-sm py-0.5 tabular-nums" />
+                              </td>
+                            ))}
+                          </tr>
+                        )))}
+                      <tr className="border-t border-zinc-200 bg-zinc-50 text-xs">
+                        <td className="px-3 py-1.5 text-zinc-500">合計</td>
+                        <td className="text-center tabular-nums">{sumHours(splitInfo.hours)}</td>
+                        <td className="text-center tabular-nums font-medium">{sumHours(share.a)}</td>
+                        <td className="text-center tabular-nums font-medium">{sumHours(share.b)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {sumHours(splitInfo.hours) - sumHours(share.a) - sumHours(share.b) > 0 && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border-t border-amber-200 px-3 py-1.5">
+                      還有 {sumHours(splitInfo.hours) - sumHours(share.a) - sumHours(share.b)} 節沒分配——送出後這些節數會消失。
+                      真老師節數比原本少時這是正常的，但要確認配課統計那邊的需求也跟著改。
+                    </p>
+                  )}
+                </div>
+              )}
+
+            {([['甲', sideA, setSideA, ['convert', '此帳號轉正（ID 不變，設定與課表的引用原地生效）'], sumHours(share.a)],
+               ['乙', sideB, setSideB, ['create', '新建帳號'], sumHours(share.b)]] as const).map(([label, side, setSide2, [selfMode, selfText], tot]) => (
+              <div key={label} className="border border-zinc-200 rounded-sm p-3 space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-medium text-sm">{label}</span>
+                  <span className="text-xs text-zinc-400">共 {tot} 節</span>
+                </div>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={side.mode === selfMode}
+                      onChange={() => setSide2({ ...side, mode: selfMode, email: '' } as never)} />
+                    {selfText}
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={side.mode === 'merge'}
+                      onChange={() => setSide2({ ...side, mode: 'merge', email: '' } as never)} />
+                    併到既有帳號
+                  </label>
+                </div>
+                {side.mode === 'merge' ? (
+                  <select value={side.email} onChange={e => setSide2({ ...side, email: e.target.value } as never)}
+                    className="input text-sm w-full">
+                    <option value="">選擇既有帳號…</option>
+                    {(splitInfo.candidates ?? []).map(c => (
+                      <option key={c.id} value={c.email}>{c.name ?? c.email}（{c.email}）</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="flex gap-2">
+                    <input value={side.name} onChange={e => setSide2({ ...side, name: e.target.value } as never)}
+                      placeholder="姓名" className="input text-sm w-32" />
+                    <input value={side.email} onChange={e => setSide2({ ...side, email: e.target.value } as never)}
+                      placeholder="真實 Email" className="input text-sm flex-1" />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 pt-1">
+              <p className="text-xs text-zinc-400 flex-1">
+                送出後：兩邊的配課同時寫好，不用再到配課頁填兩次。中途失敗會整個停下。
+              </p>
+              <button onClick={() => setSplitId(null)} disabled={splitBusy} className="btn btn-secondary text-sm">取消</button>
+              <button onClick={submitSplit} disabled={splitBusy || !sideA.email.trim() || !sideB.email.trim()}
+                className="btn btn-primary text-sm">{splitBusy ? '處理中…' : '確認拆分'}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="max-w-3xl space-y-6">
+      {splitDialog}
       <div className="flex items-center justify-between">
         <h1 className="page-title">帳號資料</h1>
         <div className="text-sm text-zinc-400">
