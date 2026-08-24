@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'crypto'
 import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
-import { defaultTeacherAllocation, type TeacherAllocation } from '@/lib/allocation'
-import { normalizeScheduleConfig, HOMEROOM_SELF, classLabel } from '@/lib/scheduling'
+import { defaultTeacherAllocation, normalizeConfig, GRADES, type TeacherAllocation } from '@/lib/allocation'
+import { normalizeScheduleConfig, HOMEROOM_SELF, classLabel, subjectClassKey } from '@/lib/scheduling'
 import { hasPerms } from '@/lib/staff-server'
 
 type Hours = Record<string, Record<string, number>>
@@ -59,15 +59,39 @@ export async function GET(request: NextRequest) {
   if (!me) return NextResponse.json({ error: '帳號不存在' }, { status: 404 })
   if (!me.email?.endsWith(VIRTUAL_EMAIL_DOMAIN)) return NextResponse.json({ error: '只有待聘帳號可以拆分' }, { status: 400 })
 
-  const [{ data: alloc }, { data: others }, blockers] = await Promise.all([
+  const [{ data: alloc }, { data: others }, blockers, { data: schRow }, { data: acRow }] = await Promise.all([
     admin.from('allocation').select('data').eq('teacher_id', id).eq('year', year).maybeSingle(),
     admin.from('profiles').select('id, name, email').in('role', ['teacher', 'admin']).order('name'),
     blockersOf(admin, id, year),
+    admin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
+    admin.from('allocation_config').select('config').eq('year', year).maybeSingle(),
   ])
   const d = (alloc?.data ?? null) as TeacherAllocation | null
+  const hours = (d?.subjectGradeHours ?? {}) as Hours
+  // 拆出去的節數要對應到「哪幾個班」——把各年級還沒指派老師的班列出來給人挑。
+  // 每班節數（perClass）決定 N 節等於幾個班：本土語每班 1 節，所以 2 節＝2 班。
+  const cfg = schRow?.config ? normalizeScheduleConfig(schRow.config) : null
+  const alc = acRow?.config ? normalizeConfig(acRow.config) : null
+  const perClass: Record<string, number> = {}
+  const openClasses: Record<string, { ck: string; label: string }[]> = {}   // `科目|年級` → 可指派的班
+  if (cfg && alc) {
+    for (const subj of Object.keys(hours)) {
+      for (const g of GRADES) {
+        const def = alc.grades[g].subjects.find(x => x.name === subj)
+        if (!def) continue
+        perClass[subj] = def.perClass
+        const list: { ck: string; label: string }[] = []
+        for (let i = 0; i < alc.grades[g].classCount; i++) {
+          const cur = cfg.subjectClassTeacher[subjectClassKey(g, i, subj)]
+          if (!cur || cur === HOMEROOM_SELF || cur === id) list.push({ ck: `${g}-${i}`, label: classLabel(g, i) })
+        }
+        openClasses[`${subj}|${g}`] = list
+      }
+    }
+  }
   return NextResponse.json({
     id, name: me.name, email: me.email,
-    hours: (d?.subjectGradeHours ?? {}) as Hours,
+    hours, perClass, openClasses,
     blockers,
     candidates: (others ?? [])
       .filter(p => p.id !== id && !String(p.email ?? '').endsWith(VIRTUAL_EMAIL_DOMAIN))
@@ -83,7 +107,7 @@ const sumOf = (h: Hours) => Object.values(h ?? {}).reduce((s, byG) => s + Object
 export async function POST(request: NextRequest) {
   const admin = await guard()
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { id, year, to, hours } = await request.json()
+  const { id, year, to, hours, classes } = await request.json()
   if (!id || !Number.isInteger(Number(year))) return NextResponse.json({ error: '參數錯誤' }, { status: 400 })
   const yr = Number(year)
 
@@ -164,7 +188,31 @@ export async function POST(request: NextRequest) {
     const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: id, data: rest as never }, { onConflict: 'year,teacher_id' })
     if (e2) throw new Error(`待聘帳號的配課更新失敗：${e2.message}`)
 
-    return NextResponse.json({ ok: true, targetId, taken: sumOf(take), remaining: sumOf(restH) })
+    // ── 科任配班：把挑好的班指給這位老師 ──
+    // 節數只說「他上幾節」，沒說「上哪幾班」。不一起寫的話那幾節是懸空的，
+    // 課表上那些班仍然顯示「直播共學」，而且配課與配班會對不起來。
+    let assigned = 0
+    const picks = (classes ?? {}) as Record<string, string[]>
+    if (Object.keys(picks).length) {
+      const { data: schRow } = await admin.from('schedule_config').select('config').eq('year', yr).maybeSingle()
+      if (!schRow?.config) throw new Error('找不到排課設定')
+      const raw = schRow.config as Record<string, unknown>
+      const map: Record<string, string> = { ...((raw.subjectClassTeacher ?? {}) as Record<string, string>) }
+      for (const [subj, cks] of Object.entries(picks)) {
+        for (const ck of cks) {
+          const [g, i] = ck.split('-').map(Number)
+          const key = subjectClassKey(g, i, subj)
+          const cur = map[key]
+          if (cur && cur !== HOMEROOM_SELF && cur !== id) throw new Error(`${classLabel(g, i)} 的${subj}已經指派給別人了，請重新整理再試`)
+          map[key] = targetId
+          assigned++
+        }
+      }
+      const { error: e3 } = await admin.from('schedule_config')
+        .update({ config: { ...raw, subjectClassTeacher: map } }).eq('year', yr)
+      if (e3) throw new Error(`科任配班寫入失敗：${e3.message}`)
+    }
+    return NextResponse.json({ ok: true, targetId, taken: sumOf(take), remaining: sumOf(restH), assigned })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : '拆分失敗' }, { status: 500 })
   }

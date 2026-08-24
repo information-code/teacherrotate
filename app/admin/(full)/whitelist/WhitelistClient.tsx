@@ -35,6 +35,8 @@ type Hours = Record<string, Record<string, number>>
 interface SplitInfo {
   name: string | null
   hours: Hours
+  perClass: Record<string, number>
+  openClasses: Record<string, { ck: string; label: string }[]>   // `科目|年級` → 還沒指派老師的班
   blockers: { lessonHours: number; lessons: string[]; classes: string[] }
   candidates: { id: string; name: string | null; email: string }[]
 }
@@ -71,11 +73,12 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
   const [splitErr, setSplitErr] = useState('')
   const [splitBusy, setSplitBusy] = useState(false)
   const [take, setTake] = useState<Hours>({})
+  const [picks, setPicks] = useState<Record<string, string[]>>({})   // 科目 → classKey[]
   const [to, setTo] = useState<{ mode: 'create' | 'merge'; email: string; name: string }>({ mode: 'create', email: '', name: '' })
 
   async function openSplit(id: string) {
     setSplitId(id); setSplitInfo(null); setSplitErr(''); setSplitBusy(true)
-    setTake({}); setTo({ mode: 'create', email: '', name: '' })
+    setTake({}); setPicks({}); setTo({ mode: 'create', email: '', name: '' })
     try {
       const res = await fetch(`/api/admin/whitelist/split?id=${id}&year=${year}`)
       const d = await res.json()
@@ -85,6 +88,24 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
   }
   const setTakeAt = (subj: string, g: string, v: number, max: number) =>
     setTake(prev => ({ ...prev, [subj]: { ...(prev[subj] ?? {}), [g]: Math.max(0, Math.min(max, v || 0)) } }))
+  const togglePick = (subj: string, ck: string) => setPicks(prev => {
+    const cur = prev[subj] ?? []
+    return { ...prev, [subj]: cur.includes(ck) ? cur.filter(x => x !== ck) : [...cur, ck] }
+  })
+  /** 這一科要指派幾個班（節數 ÷ 每班節數），以及已勾了幾個 */
+  function classNeed(info: SplitInfo, subj: string) {
+    const per = Number(info.perClass?.[subj]) || 1
+    const hrs = Object.values(take[subj] ?? {}).reduce((a, b) => a + (Number(b) || 0), 0)
+    const need = Math.round(hrs / per)
+    const got = (picks[subj] ?? []).length
+    return { per, need, got }
+  }
+  /** 勾選的班要落在有拆節數的那些年級 */
+  const picksValid = (info: SplitInfo) => Object.keys(info.hours).every(subj => {
+    const { need, got } = classNeed(info, subj)
+    if (need !== got) return false
+    return (picks[subj] ?? []).every(ck => (Number(take[subj]?.[ck.split('-')[0]]) || 0) > 0)
+  })
 
   async function submitSplit() {
     if (!splitId || !splitInfo) return
@@ -94,14 +115,15 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
     try {
       const res = await fetch('/api/admin/whitelist/split', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: splitId, year, to, hours: take }),
+        body: JSON.stringify({ id: splitId, year, to, hours: take, classes: picks }),
       })
       const d = await res.json()
       if (!res.ok) { setSplitErr(d.error ?? '拆分失敗'); return }
       setSplitId(null)
-      alert(d.remaining > 0
-        ? `已拆出 ${d.taken} 節給這位老師。\n「${splitInfo.name ?? ''}」還剩 ${d.remaining} 節，繼續找人。`
-        : `已拆出 ${d.taken} 節。\n「${splitInfo.name ?? ''}」已經沒有剩餘配課，可以刪除這個待聘帳號了。`)
+      alert(`已拆出 ${d.taken} 節、指派 ${d.assigned ?? 0} 個班給這位老師。\n`
+        + (d.remaining > 0
+          ? `「${splitInfo.name ?? ''}」還剩 ${d.remaining} 節，繼續找人。`
+          : `「${splitInfo.name ?? ''}」已經沒有剩餘配課，可以刪除這個待聘帳號了。`))
       router.refresh()
     } finally { setSplitBusy(false) }
   }
@@ -403,6 +425,42 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                 </table>
               </div>
 
+              {sumHours(take) > 0 && Object.keys(splitInfo.hours).map(subj => {
+                const { per, need, got } = classNeed(splitInfo, subj)
+                if (need <= 0) return null
+                const grades = Object.entries(take[subj] ?? {}).filter(([, n]) => Number(n) > 0).map(([g]) => g)
+                return (
+                  <div key={subj} className="border border-zinc-200 rounded-sm p-3 space-y-2">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{subj}　這位老師上哪幾個班</span>
+                      <span className={`text-xs ${got === need ? 'text-green-600' : 'text-amber-600'}`}>
+                        需要 {need} 班（每班 {per} 節）・已選 {got} 班
+                      </span>
+                    </div>
+                    {grades.map(g => (
+                      <div key={g} className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-zinc-400 w-14">{GRADE_LABELS[Number(g) - 1] ?? `${g}年級`}</span>
+                        {(splitInfo.openClasses?.[`${subj}|${g}`] ?? []).length === 0
+                          ? <span className="text-xs text-zinc-400">（這個年級沒有待指派的班）</span>
+                          : (splitInfo.openClasses[`${subj}|${g}`]).map(c => {
+                            const on = (picks[subj] ?? []).includes(c.ck)
+                            return (
+                              <button key={c.ck} type="button" onClick={() => togglePick(subj, c.ck)}
+                                className={`text-xs px-2 py-0.5 rounded-sm border ${on
+                                  ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>
+                                {c.label}
+                              </button>
+                            )
+                          })}
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-zinc-400">
+                      只列出還沒指派老師的班。不指定的話那幾節是懸空的——課表上那些班會繼續顯示「直播共學」。
+                    </p>
+                  </div>
+                )
+              })}
+
               <div className="border border-zinc-200 rounded-sm p-3 space-y-2">
                 <div className="text-sm font-medium">拆給誰</div>
                 <div className="flex gap-4 text-sm">
@@ -437,7 +495,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                   併到既有帳號時是把節數<b>加進去</b>，不會蓋掉對方原本的配課。
                 </p>
                 <button onClick={() => setSplitId(null)} disabled={splitBusy} className="btn btn-secondary text-sm">取消</button>
-                <button onClick={submitSplit} disabled={splitBusy || !to.email.trim() || sumHours(take) <= 0}
+                <button onClick={submitSplit}
+                  disabled={splitBusy || !to.email.trim() || sumHours(take) <= 0 || !picksValid(splitInfo)}
+                  title={!picksValid(splitInfo) ? '要選滿對應的班級數才能送出' : undefined}
                   className="btn btn-primary text-sm">
                   {splitBusy ? '處理中…' : `拆出 ${sumHours(take)} 節`}
                 </button>
