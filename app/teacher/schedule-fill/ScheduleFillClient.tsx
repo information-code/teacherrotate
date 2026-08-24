@@ -85,20 +85,6 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
     })
   }
 
-  /** 取消確認：填課還開著就讓導師自己解鎖，不必請教務處退回。 */
-  async function cancelConfirm() {
-    if (!confirm('取消確認後即可繼續修改，改完記得再按一次「確認送出」。確定取消確認？')) return
-    setConfirming(true)
-    try {
-      const res = await fetch('/api/teacher/schedule-fill', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, unconfirm: true }),
-      })
-      const data = await res.json()
-      if (!res.ok) { alert(data.error ?? '取消失敗'); return }
-      setConfirmed(false)
-    } finally { setConfirming(false) }
-  }
   /** 一鍵清空：只清自己填的，科任課與鎖課不動。 */
   function clearAll() {
     const n = Object.keys(cells).length
@@ -149,11 +135,11 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
       {confirmed && (
         <div className="card bg-green-50 border-green-200 text-sm text-green-700 py-3 flex items-center gap-3 flex-wrap">
           <span>✓ 已確認送出{confirmedAt ? `（${new Date(confirmedAt).toLocaleString('zh-TW')}）` : ''}。</span>
-          {finalized
-            ? <span className="text-zinc-500">{lockMessage ?? '課表已公告，如需修改請洽教務處。'}</span>
-            : <button onClick={cancelConfirm} disabled={confirming} className="btn btn-secondary text-xs py-0.5 ml-auto">
-                {confirming ? '處理中…' : '取消確認，繼續修改'}
-              </button>}
+          {/* 退回確認統一由課務組執行——教師端留一顆按鈕會讓人以為自己解得開，
+              而課務組也需要「已確認」是穩定的才好安排後續。 */}
+          <span className="text-zinc-500">
+            {finalized ? (lockMessage ?? '課表已公告，如需修改請洽教務處。') : '如需修改，請洽教務處退回後再編輯。'}
+          </span>
         </div>
       )}
       {!confirmed && finalized && lockMessage && (

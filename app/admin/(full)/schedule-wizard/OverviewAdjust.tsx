@@ -1251,8 +1251,13 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
                 {!embedded && (hrRow?.confirmed_at
                   ? <span className="text-[10px] px-1 py-0 rounded-sm bg-green-100 text-green-700 border border-green-200">✓ 已確認</span>
                   : <span className="text-[10px] px-1 py-0 rounded-sm bg-amber-50 text-amber-600 border border-amber-200">填 {filledOf(ck)} 節</span>)}
+                {/* 導師端已經沒有自己取消的按鈕了，退回一律走這裡——要看得見才行 */}
                 {!embedded && hrRow?.confirmed_at && (
-                  <button onClick={() => unconfirmClass(ck)} className="text-[10px] text-zinc-400 hover:text-red-600 ml-auto">退回確認</button>
+                  <button onClick={() => unconfirmClass(ck)}
+                    title="讓這一班的導師可以重新編輯（填課開放中才有效）"
+                    className="text-[10px] px-1.5 py-0.5 rounded-sm border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 ml-auto">
+                    ↩ 退回確認
+                  </button>
                 )}
                 <button onClick={() => setChainSeed({ kind: 'class', classKey: ck })}
                   className={`text-[10px] px-1.5 py-0.5 rounded-sm border border-zinc-200 text-zinc-500 hover:border-rose-300 hover:text-rose-600 ${!embedded && hrRow?.confirmed_at ? '' : 'ml-auto'}`}

@@ -15,8 +15,6 @@ export async function PUT(request: NextRequest) {
 
   const { year, cells, confirm, unconfirm } = await request.json()
   if (!Number.isInteger(Number(year))) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
-  // 取消確認不帶 cells（它只是把 confirmed_at 清掉），所以這道檢查不能一律套用——
-  // 否則導師按「取消確認，繼續修改」永遠只會拿到「格式錯誤」，自己解不了鎖。
   if (unconfirm !== true && (!cells || typeof cells !== 'object')) {
     return NextResponse.json({ error: '格式錯誤' }, { status: 400 })
   }
@@ -39,14 +37,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '課務組已收回填課權限（正在調課），如需調整請洽教務處' }, { status: 403 })
   }
 
-  // 取消確認：填課還開著就讓導師自己解鎖繼續改，不必為了改一格去麻煩教務處
+  // 退回確認統一由課務組執行（排課精靈的班級卡片上有「退回確認」）。
+  // 這裡一併擋住，否則政策只寫在畫面上、繞過畫面仍然解得開。
   if (unconfirm === true) {
-    const { error } = await supabaseAdmin
-      .from('schedule_homeroom')
-      .update({ confirmed_at: null, updated_at: new Date().toISOString() })
-      .eq('year', Number(year)).eq('class_key', classKey)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, confirmed: false })
+    return NextResponse.json({ error: '取消確認請洽教務處退回' }, { status: 403 })
   }
 
   const { data: existing } = await supabaseAdmin
