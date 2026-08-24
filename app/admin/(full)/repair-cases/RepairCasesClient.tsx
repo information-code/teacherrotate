@@ -11,6 +11,7 @@ import {
   slaLevel,
   type RepairConfig,
 } from '@/lib/repair'
+import { casesToWorkOrderPdf, saveBlob } from '@/lib/repair-export'
 
 // ---------- 型別 ----------
 
@@ -183,6 +184,27 @@ export default function RepairCasesClient() {
           onChange={e => setSearch(e.target.value)}
         />
         <span className="self-center text-xs text-zinc-500">{filtered.length} 件</span>
+        <button
+          className="btn-secondary ml-auto"
+          disabled={filtered.length === 0}
+          onClick={() => runBusy('產生工作單…', async () => {
+            const blob = await casesToWorkOrderPdf(
+              filtered.map(r => ({
+                item_name: r.item_name,
+                issue_text: issueText(r),
+                location: r.location,
+                teacher_name: r.teacher_name,
+                created_at: r.created_at,
+                admin_note: r.admin_note,
+              })),
+              setBusy,
+            )
+            const d = new Date()
+            saveBlob(blob, `設備報修工作單-${d.getMonth() + 1}${String(d.getDate()).padStart(2, '0')}.pdf`)
+          })}
+        >
+          ⬇ 下載工作單
+        </button>
       </div>
 
       {filtered.length === 0 && (
