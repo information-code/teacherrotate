@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { hasPerms } from '@/lib/staff-server'
-import { parseGuide } from '@/lib/repair'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -34,7 +33,6 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabaseAdmin.from('repair_items').insert({
     name: String(body.name).trim(),
-    fallback_guide: parseGuide(body.fallback_guide) as never,
     active: body.active !== false,
     sort_order: Number(body.sort_order ?? 0),
   }).select().single()
@@ -56,7 +54,6 @@ export async function PUT(request: NextRequest) {
 
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (fields.name !== undefined) payload.name = String(fields.name).trim()
-  if (fields.fallback_guide !== undefined) payload.fallback_guide = parseGuide(fields.fallback_guide)
   if (fields.active !== undefined) payload.active = Boolean(fields.active)
   if (fields.sort_order !== undefined) payload.sort_order = Number(fields.sort_order)
 

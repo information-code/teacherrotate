@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { hasPerms } from '@/lib/staff-server'
-import { parseGuide } from '@/lib/repair'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -11,11 +10,6 @@ async function requireAdmin() {
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   if (!(await hasPerms(user.id, ['repair-config']))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { user }
-}
-
-function parseAliases(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((a): a is string => typeof a === 'string').map(a => a.trim()).filter(Boolean)
 }
 
 /** 標準問題列表（全部項目一起回，client 端自行依 item_id 分組） */
@@ -41,8 +35,6 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabaseAdmin.from('repair_issues').insert({
     item_id: String(body.item_id),
     name: String(body.name).trim(),
-    aliases: parseAliases(body.aliases) as never,
-    guide: parseGuide(body.guide) as never,
     active: body.active !== false,
     sort_order: Number(body.sort_order ?? 0),
   }).select().single()
@@ -64,8 +56,6 @@ export async function PUT(request: NextRequest) {
 
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (fields.name !== undefined) payload.name = String(fields.name).trim()
-  if (fields.aliases !== undefined) payload.aliases = parseAliases(fields.aliases)
-  if (fields.guide !== undefined) payload.guide = parseGuide(fields.guide)
   if (fields.active !== undefined) payload.active = Boolean(fields.active)
   if (fields.sort_order !== undefined) payload.sort_order = Number(fields.sort_order)
 

@@ -5,9 +5,7 @@ import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   CONTACT_ROLES,
   contactRoleLabel,
-  guideIsEmpty,
   type RepairConfig,
-  type RepairGuide,
 } from '@/lib/repair'
 
 interface ItemRow {
@@ -21,7 +19,6 @@ interface IssueRow {
   id: string
   item_id: string
   name: string
-  guide: RepairGuide
   active: boolean
   sort_order: number
 }
@@ -41,8 +38,6 @@ interface IssueDraft {
   id: string        // '' = 新增
   item_id: string
   name: string
-  videoUrl: string
-  stepsMd: string
   active: boolean
   sortText: string
 }
@@ -171,7 +166,6 @@ export default function RepairConfigClient({
       id: draft.id || undefined,
       item_id: draft.item_id,
       name: draft.name,
-      guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
       active: draft.active,
       sort_order: parseIntOr(draft.sortText, 0),
     }
@@ -181,7 +175,6 @@ export default function RepairConfigClient({
         id: data.id,
         item_id: draft.item_id,
         name: draft.name.trim(),
-        guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
         active: draft.active,
         sort_order: parseIntOr(draft.sortText, 0),
       }
@@ -251,13 +244,12 @@ export default function RepairConfigClient({
   }
 
   const emptyIssueDraft = (itemId: string): IssueDraft => ({
-    id: '', item_id: itemId, name: '', videoUrl: '', stepsMd: '',
+    id: '', item_id: itemId, name: '',
     active: true, sortText: String(selectedIssues.length),
   })
 
   const issueToDraft = (s: IssueRow): IssueDraft => ({
     id: s.id, item_id: s.item_id, name: s.name,
-    videoUrl: s.guide.videoUrl, stepsMd: s.guide.stepsMd,
     active: s.active, sortText: String(s.sort_order),
   })
 
@@ -389,9 +381,6 @@ export default function RepairConfigClient({
                       <div className="min-w-0 text-sm">
                         <span className="font-medium text-zinc-800">{s.name}</span>
                         {!s.active && <span className="ml-2 text-xs text-zinc-400">停用</span>}
-                        <div className="mt-0.5 text-xs text-zinc-500">
-                          {guideIsEmpty(s.guide) ? '未設自助內容' : '✓ 已設自助內容'}
-                        </div>
                       </div>
                       <button className="btn-secondary !px-3 !py-1" onClick={() => setIssueDraft(issueToDraft(s))}>編輯</button>
                     </div>
@@ -417,17 +406,6 @@ export default function RepairConfigClient({
                     <input type="checkbox" checked={issueDraft.active}
                       onChange={e => setIssueDraft({ ...issueDraft, active: e.target.checked })} />
                     啟用
-                  </label>
-                  <label className="block text-sm">
-                    <span className="mb-1 block text-zinc-600">教學影片網址（可留空）</span>
-                    <input className="input" value={issueDraft.videoUrl} placeholder="https://youtu.be/…"
-                      onChange={e => setIssueDraft({ ...issueDraft, videoUrl: e.target.value })} />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="mb-1 block text-zinc-600">排解步驟（一行一步；老師報修後會看到）</span>
-                    <textarea className="input min-h-24" value={issueDraft.stepsMd}
-                      placeholder={'例：\n1. 確認電視旁的網路線有插好\n2. 將電視關機 10 秒再開機\n3. 仍無法連線請聯絡維護人員'}
-                      onChange={e => setIssueDraft({ ...issueDraft, stepsMd: e.target.value })} />
                   </label>
                   <div className="flex justify-end gap-2">
                     {issueDraft.id && (

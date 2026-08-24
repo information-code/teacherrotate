@@ -1,6 +1,6 @@
 import { guardPage } from '@/lib/staff-server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { parseGuide, parseRepairConfig } from '@/lib/repair'
+import { parseRepairConfig } from '@/lib/repair'
 import RepairConfigClient from './RepairConfigClient'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +21,7 @@ export default async function RepairConfigPage() {
       }))}
       initialIssues={(issues ?? []).map(s => ({
         id: s.id, item_id: s.item_id, name: s.name,
-        guide: parseGuide(s.guide), active: s.active, sort_order: s.sort_order,
+        active: s.active, sort_order: s.sort_order,
       }))}
       initialContacts={(contacts ?? []).map(c => ({
         id: c.id, name: c.name, role: c.role, contact: c.contact,

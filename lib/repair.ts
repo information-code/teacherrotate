@@ -29,30 +29,9 @@ export function resolvedKindLabel(key: string | null): string {
   return RESOLVED_KINDS.find(k => k.key === key)?.label ?? key
 }
 
-/** 自助排解內容（掛在標準問題上；設備項目層有 fallback 一份） */
-export interface RepairGuide {
-  /** 教學影片網址（YouTube 等，空字串＝無） */
-  videoUrl: string
-  /** 教學步驟（多行純文字） */
-  stepsMd: string
-  /** 示意圖 storage path */
-  photos: string[]
-}
-
-export const EMPTY_GUIDE: RepairGuide = { videoUrl: '', stepsMd: '', photos: [] }
-
-export function parseGuide(raw: unknown): RepairGuide {
-  const g = (raw ?? {}) as Partial<RepairGuide>
-  return {
-    videoUrl: typeof g.videoUrl === 'string' ? g.videoUrl : '',
-    stepsMd: typeof g.stepsMd === 'string' ? g.stepsMd : '',
-    photos: Array.isArray(g.photos) ? g.photos.filter((p): p is string => typeof p === 'string') : [],
-  }
-}
-
-export function guideIsEmpty(g: RepairGuide): boolean {
-  return !g.videoUrl && !g.stepsMd.trim() && g.photos.length === 0
-}
+// 註：不做自助排解教學（影片/步驟）——使用者決策 2026-08-24，擔心老師照著操作
+// 反而衍生更多問題。報修後頁面只顯示經過時間、維護人員聯絡與「已解決」按鈕。
+// repair_items.fallback_guide 與 repair_issues.guide 欄位保留但不使用。
 
 export interface RepairConfig {
   /** 未結案超過此小時數 → 黃色警告 */
