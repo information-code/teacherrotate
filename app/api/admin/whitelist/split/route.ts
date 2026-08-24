@@ -25,7 +25,6 @@ async function blockersOf(admin: ReturnType<typeof getAdminClient>, id: string, 
   ])
   const placed = ((planRow?.plan as { placed?: { teacherId?: string; coTeacherId?: string; classLabel?: string; subject?: string; size?: number }[] } | null)?.placed ?? [])
   const mine = placed.filter(p => p.teacherId === id || p.coTeacherId === id)
-  const lessons = mine.map(p => `${p.classLabel ?? ''} ${p.subject ?? ''}`)
   const classes: string[] = []
   if (schRow?.config) {
     const cfg = normalizeScheduleConfig(schRow.config)
@@ -43,12 +42,12 @@ async function blockersOf(admin: ReturnType<typeof getAdminClient>, id: string, 
   }
   return {
     lessonHours: mine.reduce((s, p) => s + (p.size ?? 1), 0),
-    lessons: Array.from(new Set(lessons)).slice(0, 12),
+    lessons: Array.from(new Set(mine.map(p => `${p.classLabel ?? ''} ${p.subject ?? ''}`))).slice(0, 12),
     classes: Array.from(new Set(classes)).slice(0, 12),
   }
 }
 
-/** GET ?id=&year=：拆分對話框要的資料——這個帳號的配課、擋住拆分的東西、可併入的既有帳號。 */
+/** GET ?id=&year=：拆分對話框要的資料。 */
 export async function GET(request: NextRequest) {
   const admin = await guard()
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -67,7 +66,7 @@ export async function GET(request: NextRequest) {
   ])
   const d = (alloc?.data ?? null) as TeacherAllocation | null
   return NextResponse.json({
-    id, name: me.name, email: me.email, employmentType: me.employment_type,
+    id, name: me.name, email: me.email,
     hours: (d?.subjectGradeHours ?? {}) as Hours,
     blockers,
     candidates: (others ?? [])
@@ -78,29 +77,17 @@ export async function GET(request: NextRequest) {
 
 const sumOf = (h: Hours) => Object.values(h ?? {}).reduce((s, byG) => s + Object.values(byG ?? {}).reduce((t, v) => t + (Number(v) || 0), 0), 0)
 
-/** 把一份配課節數加進既有配課（既有帳號可能本來就有別的課，不能整份覆蓋）。 */
-function addHours(base: TeacherAllocation | null, share: Hours, template: TeacherAllocation): TeacherAllocation {
-  const d: TeacherAllocation = base ? { ...base } : { ...template, subjectGradeHours: {} }
-  const sgh: Hours = { ...(d.subjectGradeHours ?? {}) }
-  for (const [subj, byG] of Object.entries(share)) {
-    const cur: Record<string, number> = { ...(sgh[subj] ?? {}) }
-    for (const [g, n] of Object.entries(byG)) if (Number(n) > 0) cur[g] = (Number(cur[g]) || 0) + Number(n)
-    if (Object.keys(cur).length) sgh[subj] = cur
-  }
-  d.subjectGradeHours = sgh
-  return d
-}
-
-/** POST：把一個待聘帳號拆成兩位老師，同時寫好各自的配課。
- *  body: { id, year, a: {mode:'convert'|'merge', email, name?}, b: {mode:'create'|'merge', email, name?}, hours: {a, b} } */
+/** POST：從待聘帳號拆一塊配課出去給某位老師，其餘留在待聘帳號繼續找人。
+ *  找到人是陸續發生的，所以這個動作可以重複做——每找到一位就拆一次。
+ *  body: { id, year, to: {mode:'create'|'merge', email, name?}, hours: {科目:{年級:節數}} } */
 export async function POST(request: NextRequest) {
   const admin = await guard()
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { id, year, a, b, hours } = await request.json()
+  const { id, year, to, hours } = await request.json()
   if (!id || !Number.isInteger(Number(year))) return NextResponse.json({ error: '參數錯誤' }, { status: 400 })
   const yr = Number(year)
 
-  const { data: me } = await admin.from('profiles').select('id, name, email, role, employment_type').eq('id', id).maybeSingle()
+  const { data: me } = await admin.from('profiles').select('id, name, email, employment_type').eq('id', id).maybeSingle()
   if (!me) return NextResponse.json({ error: '帳號不存在' }, { status: 404 })
   if (!me.email?.endsWith(VIRTUAL_EMAIL_DOMAIN)) return NextResponse.json({ error: '只有待聘帳號可以拆分' }, { status: 400 })
 
@@ -108,9 +95,7 @@ export async function POST(request: NextRequest) {
   const blockers = await blockersOf(admin, id, yr)
   if (blockers.lessonHours > 0 || blockers.classes.length > 0) {
     return NextResponse.json({
-      error: `這個帳號還有課表引用，不能拆分：${blockers.lessonHours ? `課表上已排 ${blockers.lessonHours} 節` : ''}`
-        + `${blockers.lessonHours && blockers.classes.length ? '、' : ''}${blockers.classes.length ? `已指派 ${blockers.classes.length} 筆配班` : ''}`
-        + '。請先在排課工具處理掉，再回來拆分。',
+      error: '這個帳號在課表上已經有排定的課或指派的班，不能拆分——系統無從得知哪幾堂該歸誰。請先在排課工具處理掉再回來。',
       blockers,
     }, { status: 409 })
   }
@@ -118,73 +103,68 @@ export async function POST(request: NextRequest) {
   const { data: allocRow } = await admin.from('allocation').select('data').eq('teacher_id', id).eq('year', yr).maybeSingle()
   const src = (allocRow?.data ?? null) as TeacherAllocation | null
   const orig = (src?.subjectGradeHours ?? {}) as Hours
-  const hA = (hours?.a ?? {}) as Hours, hB = (hours?.b ?? {}) as Hours
+  const take = (hours ?? {}) as Hours
+  if (sumOf(take) <= 0) return NextResponse.json({ error: '沒有要拆出去的節數' }, { status: 400 })
 
-  // 分配不可超過原本的節數（少於是允許的——真老師節數本來就可能對不上）
-  for (const [subj, byG] of Object.entries(orig)) {
+  for (const [subj, byG] of Object.entries(take)) {
     for (const [g, n] of Object.entries(byG)) {
-      const used = (Number(hA[subj]?.[g]) || 0) + (Number(hB[subj]?.[g]) || 0)
-      if (used > Number(n)) return NextResponse.json({ error: `「${subj}」${g} 年級分配了 ${used} 節，超過原本的 ${n} 節` }, { status: 400 })
+      const have = Number(orig[subj]?.[g]) || 0
+      if (Number(n) > have) return NextResponse.json({ error: `「${subj}」${g} 年級只有 ${have} 節，拆不出 ${n} 節` }, { status: 400 })
     }
   }
-  for (const h of [hA, hB]) for (const [subj, byG] of Object.entries(h)) for (const g of Object.keys(byG)) {
-    if (!(Number(orig[subj]?.[g]) > 0) && Number(byG[g]) > 0) return NextResponse.json({ error: `「${subj}」${g} 年級原本沒有配課，不能分配` }, { status: 400 })
-  }
 
+  const email = String(to?.email ?? '').trim().toLowerCase()
+  const name = String(to?.name ?? '').trim()
+  if (!email) return NextResponse.json({ error: '請填真實老師的 Email' }, { status: 400 })
   const template = (src ?? defaultTeacherAllocation('subject', '', null)) as TeacherAllocation
-  const emailA = String(a?.email ?? '').trim().toLowerCase()
-  const emailB = String(b?.email ?? '').trim().toLowerCase()
-  if (!emailA || !emailB) return NextResponse.json({ error: '兩邊的 Email 都要填' }, { status: 400 })
-  if (emailA === emailB) return NextResponse.json({ error: '兩邊不能是同一個人' }, { status: 400 })
-
-  /** 解析一邊要落到哪個帳號；回傳 profile id。 */
-  const resolve = async (side: { mode: string; email: string; name?: string }, share: Hours, isSelf: boolean) => {
-    const email = side.email.trim().toLowerCase()
-    if (isSelf && side.mode === 'convert') {
-      // 待聘帳號本人轉正：ID 不變，配課直接改成這一份
-      const { error } = await admin.from('profiles').update({ email, ...(side.name?.trim() ? { name: side.name.trim() } : {}) }).eq('id', id)
-      if (error) throw new Error(`轉正失敗：${error.message}`)
-      const next: TeacherAllocation = { ...template, subjectGradeHours: share }
-      const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: id, data: next as never }, { onConflict: 'year,teacher_id' })
-      if (e2) throw new Error(`配課寫入失敗：${e2.message}`)
-      return id
-    }
-    if (side.mode === 'merge') {
-      const { data: t } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
-      if (!t) throw new Error(`找不到 Email 為 ${email} 的既有帳號`)
-      if (t.id === id) throw new Error('不可併到待聘帳號自己')
-      const { data: cur } = await admin.from('allocation').select('data').eq('teacher_id', t.id).eq('year', yr).maybeSingle()
-      const next = addHours((cur?.data ?? null) as TeacherAllocation | null, share, template)
-      const { error } = await admin.from('allocation').upsert({ year: yr, teacher_id: t.id, data: next as never }, { onConflict: 'year,teacher_id' })
-      if (error) throw new Error(`配課寫入失敗：${error.message}`)
-      return t.id
-    }
-    // 新建帳號
-    const { data: dup } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
-    if (dup) throw new Error(`Email ${email} 已存在，請改選「併到既有帳號」`)
-    const newId = randomUUID()
-    const { error } = await admin.from('profiles').insert({
-      id: newId, email, name: (side.name ?? '').trim() || email.split('@')[0],
-      role: 'teacher', employment_type: me.employment_type ?? 'substitute',
-    })
-    if (error) throw new Error(`建立帳號失敗：${error.message}`)
-    const next: TeacherAllocation = { ...template, subjectGradeHours: share }
-    const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: newId, data: next as never }, { onConflict: 'year,teacher_id' })
-    if (e2) throw new Error(`配課寫入失敗：${e2.message}`)
-    return newId
-  }
 
   try {
-    const idA = await resolve({ mode: a?.mode ?? 'convert', email: emailA, name: a?.name }, hA, true)
-    const idB = await resolve({ mode: b?.mode ?? 'create', email: emailB, name: b?.name }, hB, false)
-    // 甲若是併到既有帳號，待聘帳號本身就沒有存在的必要了（此時已確認沒有任何課表引用）
-    if ((a?.mode ?? 'convert') === 'merge') {
-      await admin.from('allocation').delete().eq('teacher_id', id)
-      const { error } = await admin.from('profiles').delete().eq('id', id)
-      if (error) throw new Error(`刪除待聘帳號失敗：${error.message}`)
+    // ── 收下這一塊的老師 ──
+    let targetId: string
+    if (to?.mode === 'merge') {
+      const { data: t } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+      if (!t) throw new Error(`找不到 Email 為 ${email} 的既有帳號`)
+      if (t.id === id) throw new Error('不可併回待聘帳號自己')
+      targetId = t.id
+    } else {
+      const { data: dup } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+      if (dup) throw new Error(`Email ${email} 已存在，請改選「併到既有帳號」`)
+      targetId = randomUUID()
+      const { error } = await admin.from('profiles').insert({
+        id: targetId, email, name: name || email.split('@')[0],
+        role: 'teacher', employment_type: me.employment_type ?? 'substitute',
+      })
+      if (error) throw new Error(`建立帳號失敗：${error.message}`)
     }
-    const dropped = sumOf(orig) - sumOf(hA) - sumOf(hB)
-    return NextResponse.json({ ok: true, idA, idB, dropped })
+    // 併到既有帳號時是「把節數加進去」，不是整份覆蓋——對方本來就有的課不能被蓋掉
+    const { data: cur } = await admin.from('allocation').select('data').eq('teacher_id', targetId).eq('year', yr).maybeSingle()
+    const base = (cur?.data ?? null) as TeacherAllocation | null
+    const next: TeacherAllocation = base ? { ...base } : { ...template, subjectGradeHours: {} }
+    const sgh: Hours = { ...(next.subjectGradeHours ?? {}) }
+    for (const [subj, byG] of Object.entries(take)) {
+      const row: Record<string, number> = { ...(sgh[subj] ?? {}) }
+      for (const [g, n] of Object.entries(byG)) if (Number(n) > 0) row[g] = (Number(row[g]) || 0) + Number(n)
+      if (Object.keys(row).length) sgh[subj] = row
+    }
+    next.subjectGradeHours = sgh
+    const { error: e1 } = await admin.from('allocation').upsert({ year: yr, teacher_id: targetId, data: next as never }, { onConflict: 'year,teacher_id' })
+    if (e1) throw new Error(`老師的配課寫入失敗：${e1.message}`)
+
+    // ── 待聘帳號扣掉拆出去的部分，其餘原地保留 ──
+    const restH: Hours = {}
+    for (const [subj, byG] of Object.entries(orig)) {
+      const row: Record<string, number> = {}
+      for (const [g, n] of Object.entries(byG)) {
+        const left = Number(n) - (Number(take[subj]?.[g]) || 0)
+        if (left > 0) row[g] = left
+      }
+      if (Object.keys(row).length) restH[subj] = row
+    }
+    const rest: TeacherAllocation = { ...(src ?? template), subjectGradeHours: restH }
+    const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: id, data: rest as never }, { onConflict: 'year,teacher_id' })
+    if (e2) throw new Error(`待聘帳號的配課更新失敗：${e2.message}`)
+
+    return NextResponse.json({ ok: true, targetId, taken: sumOf(take), remaining: sumOf(restH) })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : '拆分失敗' }, { status: 500 })
   }
