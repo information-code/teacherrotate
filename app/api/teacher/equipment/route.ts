@@ -9,7 +9,8 @@ import { addDays, todayStr } from '@/lib/equipment'
  * 教師端短期借用總覽。
  * query: from? / to?（借用起訖日，預設今天）
  * 回傳 { config, from, to, equipment（僅可借用狀態）, groups（可整組借用）,
- *        occupied: {日期: {設備id: 節次[]}}, myLoans }
+ *        occupied: {日期: {設備id: 節次[]}},
+ *        typeTotals（同名彙總：全校總數/長借/維修，「借用情況」儀表板用）, myLoans }
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -32,8 +33,9 @@ export async function GET(request: NextRequest) {
   if (to < from) to = from
 
   const [{ data: allEquipment }, { data: allGroups }, { data: slots }, { data: longLoans }, { data: myLoans }] = await Promise.all([
+    // 全狀態都抓：可短借清單另外過濾，維修/長借數量要進「借用情況」儀表板的彙總
     supabaseAdmin.from('equipment').select('*')
-      .eq('status', 'available').order('name').order('asset_number'),
+      .order('name').order('asset_number'),
     supabaseAdmin.from('equipment_groups').select('*').eq('status', 'available').order('name'),
     supabaseAdmin.from('equipment_loan_slots').select('equipment_id, loan_date, period')
       .gte('loan_date', from).lte('loan_date', to),
@@ -54,9 +56,21 @@ export async function GET(request: NextRequest) {
   const longLoanedIds = new Set(
     (longLoans ?? []).filter(l => l.equipment_id && l.start_date <= to).map(l => l.equipment_id as string)
   )
-  const equipment = (allEquipment ?? []).filter(e =>
-    !longLoanedIds.has(e.id) && !(e.group_id && longLoanedGroupIds.has(e.group_id))
+  const activeUnits = (allEquipment ?? []).filter(e => e.status !== 'retired')
+  const equipment = activeUnits.filter(e =>
+    e.status === 'available' && !longLoanedIds.has(e.id) && !(e.group_id && longLoanedGroupIds.has(e.group_id))
   )
+
+  // 儀表板用：同名設備的全校總數與長借/維修台數（停用不計；短借占用由前端按節次從 occupied 算）
+  const typeTotalMap = new Map<string, { name: string; total: number; longLoaned: number; maintenance: number }>()
+  for (const e of activeUnits) {
+    const stat = typeTotalMap.get(e.name) ?? { name: e.name, total: 0, longLoaned: 0, maintenance: 0 }
+    stat.total++
+    if (e.status === 'maintenance') stat.maintenance++
+    else if (longLoanedIds.has(e.id) || (e.group_id && longLoanedGroupIds.has(e.group_id))) stat.longLoaned++
+    typeTotalMap.set(e.name, stat)
+  }
+  const typeTotals = Array.from(typeTotalMap.values())
 
   // 可整組借用的群組（排除整組被長借的；成員取「目前可短借」的設備）
   const membersByGroup = new Map<string, string[]>()
@@ -119,6 +133,7 @@ export async function GET(request: NextRequest) {
     equipment,
     groups,
     occupied,
+    typeTotals,
     myLoans: (myLoans ?? []).map(l => {
       const equip = l.equipment_id ? equipMap.get(l.equipment_id) : undefined
       return {

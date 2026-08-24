@@ -1,9 +1,11 @@
 'use client'
 
 // 借用情況儀表板：一張 squarified treemap 熱力圖，一個方塊一種設備（同名彙總）。
-// 方塊大小＝該設備總台數（固定的規模）、底色＝選定節次的可借比例（變動的狀態），
+// 方塊大小＝全校總台數（含長借與維修，固定的規模）、底色＝選定節次的可借比例（變動的狀態），
 // 比照股票熱力圖「大小＝市值、顏色＝漲跌」——大又紅的方塊一眼就是「熱門設備快沒了」。
-// 資料直接打短期借用同一支 API（equipment 已排除長借/維修，occupied＝日期→設備→已占用節次）。
+// 方塊內列出 總數/長借/短借，讓老師知道「沒得借」是被長借走了還是這節被短借滿了。
+// 資料打短期借用同一支 API：typeTotals＝同名彙總（總數/長借/維修）、
+// equipment＝可短借清單、occupied＝日期→設備→已占用節次。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
@@ -14,6 +16,8 @@ interface BoardData {
   from: string
   equipment: { id: string; name: string }[]
   occupied: Record<string, Record<string, string[]>>
+  /** 同名彙總：全校總數（不含停用）與長借/維修台數 */
+  typeTotals: { name: string; total: number; longLoaned: number; maintenance: number }[]
 }
 
 /** 各節次開始時間（本校作息，與 lib/schedule-export PERIOD_TIMES 同源；儀表板預設節次用） */
@@ -38,8 +42,13 @@ function currentPeriodKey(openPeriods: string[]): string {
 
 interface TypeStat {
   name: string
+  /** 全校總台數（不含停用） */
   total: number
+  /** 選定節次可借台數 */
   free: number
+  longLoaned: number
+  shortLoaned: number
+  maintenance: number
 }
 
 interface Rect {
@@ -129,24 +138,35 @@ function Treemap({ stats }: { stats: TypeStat[] }) {
   return (
     <div ref={boxRef} className="relative w-full h-80 sm:h-[420px] rounded border border-zinc-200 bg-zinc-50 overflow-hidden">
       {rects.map(r => {
-        const ratio = r.item.free / r.item.total
+        const s = r.item
+        const ratio = s.free / s.total
         const tiny = r.w < 48 || r.h < 36
-        const small = r.w < 92 || r.h < 60
+        const small = r.w < 92 || r.h < 76
+        const tip =
+          `${s.name}：共 ${s.total} 台｜長期借出 ${s.longLoaned}｜此節次短借 ${s.shortLoaned}` +
+          (s.maintenance > 0 ? `｜維修中 ${s.maintenance}` : '') +
+          `｜剩 ${s.free} 台可借`
         return (
           <div
-            key={r.item.name}
+            key={s.name}
             className="absolute flex flex-col items-center justify-center text-center overflow-hidden rounded-sm border-2 border-zinc-50 p-0.5 transition-all duration-300"
             style={{ left: r.x, top: r.y, width: r.w, height: r.h, backgroundColor: fillColor(ratio) }}
-            title={`${r.item.name}：剩 ${r.item.free}／共 ${r.item.total} 台`}
+            title={tip}
           >
             {!tiny && (
               <>
                 <div className={`font-medium text-white leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,.3)] ${small ? 'text-xs' : 'text-sm'}`}>
-                  {r.item.name}
+                  {s.name}
                 </div>
                 <div className={`text-white/90 tabular-nums [text-shadow:0_1px_2px_rgba(0,0,0,.3)] ${small ? 'text-[10px]' : 'text-xs'}`}>
-                  剩 {r.item.free}／{r.item.total}
+                  剩 {s.free}／{s.total}
                 </div>
+                {!small && (
+                  <div className="text-[10px] text-white/80 tabular-nums [text-shadow:0_1px_2px_rgba(0,0,0,.3)]">
+                    長借 {s.longLoaned}・短借 {s.shortLoaned}
+                    {s.maintenance > 0 && `・修 ${s.maintenance}`}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -196,17 +216,23 @@ export function AvailabilityTab() {
   const openPeriods = EQUIPMENT_PERIODS.filter(p => data.config.openPeriods.includes(p.key))
   const occupiedToday = data.occupied[date] ?? {}
 
-  // 同名設備彙總成一種：總台數與該節次還有空的台數
-  const statMap = new Map<string, TypeStat>()
+  // 全校總數/長借/維修來自 typeTotals；短借占用與可借按選定節次從可短借清單計
+  const statMap = new Map<string, TypeStat>(
+    (data.typeTotals ?? []).map(t => [t.name, { ...t, free: 0, shortLoaned: 0 }])
+  )
   for (const equip of data.equipment) {
-    const stat = statMap.get(equip.name) ?? { name: equip.name, total: 0, free: 0 }
-    stat.total++
-    if (!(occupiedToday[equip.id] ?? []).includes(period)) stat.free++
-    statMap.set(equip.name, stat)
+    const stat = statMap.get(equip.name)
+    if (!stat) continue
+    if ((occupiedToday[equip.id] ?? []).includes(period)) stat.shortLoaned++
+    else stat.free++
   }
   const stats = Array.from(statMap.values())
-  const totalUnits = stats.reduce((sum, s) => sum + s.total, 0)
-  const freeUnits = stats.reduce((sum, s) => sum + s.free, 0)
+  const sum = (pick: (s: TypeStat) => number) => stats.reduce((acc, s) => acc + pick(s), 0)
+  const totalUnits = sum(s => s.total)
+  const freeUnits = sum(s => s.free)
+  const longUnits = sum(s => s.longLoaned)
+  const shortUnits = sum(s => s.shortLoaned)
+  const maintUnits = sum(s => s.maintenance)
 
   return (
     <div className="card space-y-4">
@@ -257,8 +283,9 @@ export function AvailabilityTab() {
       ) : (
         <div className={loading ? 'opacity-50 pointer-events-none' : ''}>
           <p className="text-sm text-zinc-600 mb-2">
-            {date}｜{periodLabel(period)}：全校 {stats.length} 種設備，剩{' '}
-            <span className="font-medium tabular-nums">{freeUnits}／{totalUnits}</span> 台可借
+            {date}｜{periodLabel(period)}：全校 {stats.length} 種共 {totalUnits} 台，剩{' '}
+            <span className="font-medium tabular-nums">{freeUnits}</span> 台可借
+            （長借 {longUnits}、短借 {shortUnits}{maintUnits > 0 && `、維修 ${maintUnits}`}）
           </p>
           <Treemap stats={stats} />
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-zinc-500">
@@ -279,7 +306,8 @@ export function AvailabilityTab() {
       )}
 
       <p className="text-xs text-zinc-400">
-        僅統計開放短期借用的設備（長期借出與維修中的不列入）；要借用請到「短期借用」分頁預約。
+        總台數含長期借出與維修中的設備（停用不計）；長期借出的要等管理者釋出才能短期借用。
+        要借用請到「短期借用」分頁預約。
       </p>
     </div>
   )
