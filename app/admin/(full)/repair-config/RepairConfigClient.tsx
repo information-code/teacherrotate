@@ -38,7 +38,7 @@ interface ContactRow {
   sort_order: number
 }
 
-/** 問題編輯草稿（aliases 用字串維護，存檔時才切割） */
+/** 問題編輯草稿（aliases、排序用字串維護，存檔時才解析——數字欄位直接綁 number 會讓 0 刪不掉） */
 interface IssueDraft {
   id: string        // '' = 新增
   item_id: string
@@ -47,11 +47,36 @@ interface IssueDraft {
   videoUrl: string
   stepsMd: string
   active: boolean
-  sort_order: number
+  sortText: string
 }
 
 function splitAliases(text: string): string[] {
   return text.split(/[,、;；\n]/).map(a => a.trim()).filter(Boolean)
+}
+
+function parseIntOr(text: string, fallback: number): number {
+  const n = Number(text.trim())
+  return Number.isFinite(n) ? Math.round(n) : fallback
+}
+
+/** 設備項目編輯草稿 */
+interface ItemDraft {
+  id: string        // '' = 新增
+  name: string
+  fallback_guide: RepairGuide
+  active: boolean
+  sortText: string
+}
+
+/** 維護人員編輯草稿 */
+interface ContactDraft {
+  id: string        // '' = 新增
+  name: string
+  role: string
+  contact: string
+  note: string
+  active: boolean
+  sortText: string
 }
 
 async function call(path: string, method: string, body?: unknown) {
@@ -79,13 +104,14 @@ export default function RepairConfigClient({
   const [items, setItems] = useState<ItemRow[]>(initialItems)
   const [issues, setIssues] = useState<IssueRow[]>(initialIssues)
   const [contacts, setContacts] = useState<ContactRow[]>(initialContacts)
-  const [config, setConfig] = useState<RepairConfig>(initialConfig)
+  const [slaWarnText, setSlaWarnText] = useState(String(initialConfig.slaWarnHours))
+  const [slaAlertText, setSlaAlertText] = useState(String(initialConfig.slaAlertHours))
   const [tab, setTab] = useState<'items' | 'contacts' | 'sla'>('items')
 
   const [selectedItemId, setSelectedItemId] = useState<string>(initialItems[0]?.id ?? '')
-  const [itemDraft, setItemDraft] = useState<ItemRow | null>(null)   // 非 null＝正在編輯（id '' 為新增）
+  const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null)   // 非 null＝正在編輯（id '' 為新增）
   const [issueDraft, setIssueDraft] = useState<IssueDraft | null>(null)
-  const [contactDraft, setContactDraft] = useState<ContactRow | null>(null)
+  const [contactDraft, setContactDraft] = useState<ContactDraft | null>(null)
 
   const [message, setMessage] = useState('')
   const flash = (text: string) => {
@@ -112,12 +138,16 @@ export default function RepairConfigClient({
 
   // ---------- 設備項目 ----------
 
-  const saveItem = async (draft: ItemRow) => {
+  const saveItem = async (draft: ItemDraft) => {
     const isCreate = !draft.id
+    const row: ItemRow = {
+      id: draft.id, name: draft.name, fallback_guide: draft.fallback_guide,
+      active: draft.active, sort_order: parseIntOr(draft.sortText, 0),
+    }
     await runBusy('儲存項目中…', async () => {
       const data = await call('/api/admin/repair-items', isCreate ? 'POST' : 'PUT',
-        isCreate ? { ...draft, id: undefined } : draft)
-      const saved: ItemRow = { ...draft, id: data.id }
+        isCreate ? { ...row, id: undefined } : row)
+      const saved: ItemRow = { ...row, id: data.id }
       setItems(list => {
         const next = isCreate ? [...list, saved] : list.map(i => (i.id === saved.id ? saved : i))
         return next.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
@@ -128,7 +158,7 @@ export default function RepairConfigClient({
     })
   }
 
-  const deleteItem = async (row: ItemRow) => {
+  const deleteItem = async (row: { id: string; name: string }) => {
     const count = issues.filter(s => s.item_id === row.id).length
     if (!confirm(`確定刪除「${row.name}」？其底下 ${count} 個問題會一併刪除，既有報修案件會保留文字紀錄。若只是暫時不開放，建議改為「停用」。`)) return
     await runBusy('刪除項目中…', async () => {
@@ -152,7 +182,7 @@ export default function RepairConfigClient({
       aliases: splitAliases(draft.aliasesText),
       guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
       active: draft.active,
-      sort_order: draft.sort_order,
+      sort_order: parseIntOr(draft.sortText, 0),
     }
     await runBusy('儲存問題中…', async () => {
       const data = await call('/api/admin/repair-issues', isCreate ? 'POST' : 'PUT', payload)
@@ -163,7 +193,7 @@ export default function RepairConfigClient({
         aliases: splitAliases(draft.aliasesText),
         guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
         active: draft.active,
-        sort_order: draft.sort_order,
+        sort_order: parseIntOr(draft.sortText, 0),
       }
       setIssues(list => (isCreate ? [...list, saved] : list.map(s => (s.id === saved.id ? saved : s))))
       setIssueDraft(null)
@@ -183,12 +213,16 @@ export default function RepairConfigClient({
 
   // ---------- 維護人員 ----------
 
-  const saveContact = async (draft: ContactRow) => {
+  const saveContact = async (draft: ContactDraft) => {
     const isCreate = !draft.id
+    const row: ContactRow = {
+      id: draft.id, name: draft.name, role: draft.role, contact: draft.contact,
+      note: draft.note, active: draft.active, sort_order: parseIntOr(draft.sortText, 0),
+    }
     await runBusy('儲存人員中…', async () => {
       const data = await call('/api/admin/repair-contacts', isCreate ? 'POST' : 'PUT',
-        isCreate ? { ...draft, id: undefined } : draft)
-      const saved: ContactRow = { ...draft, id: data.id }
+        isCreate ? { ...row, id: undefined } : row)
+      const saved: ContactRow = { ...row, id: data.id }
       setContacts(list => {
         const next = isCreate ? [...list, saved] : list.map(c => (c.id === saved.id ? saved : c))
         return next.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
@@ -198,7 +232,7 @@ export default function RepairConfigClient({
     })
   }
 
-  const deleteContact = async (row: ContactRow) => {
+  const deleteContact = async (row: { id: string; name: string }) => {
     if (!confirm(`確定刪除「${row.name}」？`)) return
     await runBusy('刪除人員中…', async () => {
       await call(`/api/admin/repair-contacts?id=${row.id}`, 'DELETE')
@@ -211,22 +245,31 @@ export default function RepairConfigClient({
   // ---------- SLA ----------
 
   const saveConfig = async () => {
+    const warn = parseIntOr(slaWarnText, 0)
+    const alert = parseIntOr(slaAlertText, 0)
+    if (warn <= 0 || alert <= 0) {
+      flash('請輸入大於 0 的小時數')
+      return
+    }
+    const next: RepairConfig = { slaWarnHours: warn, slaAlertHours: alert }
     await runBusy('儲存設定中…', async () => {
-      await call('/api/admin/repair-config', 'PUT', config)
+      await call('/api/admin/repair-config', 'PUT', next)
+      setSlaWarnText(String(warn))
+      setSlaAlertText(String(alert))
       flash('設定已儲存')
     })
   }
 
   const emptyIssueDraft = (itemId: string): IssueDraft => ({
     id: '', item_id: itemId, name: '', aliasesText: '', videoUrl: '', stepsMd: '',
-    active: true, sort_order: selectedIssues.length,
+    active: true, sortText: String(selectedIssues.length),
   })
 
   const issueToDraft = (s: IssueRow): IssueDraft => ({
     id: s.id, item_id: s.item_id, name: s.name,
     aliasesText: s.aliases.join('、'),
     videoUrl: s.guide.videoUrl, stepsMd: s.guide.stepsMd,
-    active: s.active, sort_order: s.sort_order,
+    active: s.active, sortText: String(s.sort_order),
   })
 
   return (
@@ -266,7 +309,7 @@ export default function RepairConfigClient({
               <h2 className="text-sm font-medium text-zinc-900">設備項目</h2>
               <button
                 className="btn-secondary !px-3 !py-1"
-                onClick={() => setItemDraft({ id: '', name: '', fallback_guide: { videoUrl: '', stepsMd: '', photos: [] }, active: true, sort_order: items.length })}
+                onClick={() => setItemDraft({ id: '', name: '', fallback_guide: { videoUrl: '', stepsMd: '', photos: [] }, active: true, sortText: String(items.length) })}
               >
                 ＋新增
               </button>
@@ -306,8 +349,8 @@ export default function RepairConfigClient({
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-zinc-600">排序</span>
-                  <input className="input" type="number" value={itemDraft.sort_order}
-                    onChange={e => setItemDraft({ ...itemDraft, sort_order: Number(e.target.value) })} />
+                  <input className="input" inputMode="numeric" value={itemDraft.sortText}
+                    onChange={e => setItemDraft({ ...itemDraft, sortText: e.target.value })} />
                 </label>
                 <label className="flex items-end gap-2 pb-2 text-sm text-zinc-700">
                   <input type="checkbox" checked={itemDraft.active}
@@ -352,7 +395,13 @@ export default function RepairConfigClient({
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn-secondary" onClick={() => setItemDraft({ ...selectedItem })}>編輯項目</button>
+                  <button className="btn-secondary"
+                    onClick={() => setItemDraft({
+                      id: selectedItem.id, name: selectedItem.name, fallback_guide: selectedItem.fallback_guide,
+                      active: selectedItem.active, sortText: String(selectedItem.sort_order),
+                    })}>
+                    編輯項目
+                  </button>
                   <button className="btn-primary" onClick={() => setIssueDraft(emptyIssueDraft(selectedItem.id))}>新增問題</button>
                 </div>
               </div>
@@ -391,8 +440,8 @@ export default function RepairConfigClient({
                     </label>
                     <label className="block text-sm">
                       <span className="mb-1 block text-zinc-600">排序</span>
-                      <input className="input" type="number" value={issueDraft.sort_order}
-                        onChange={e => setIssueDraft({ ...issueDraft, sort_order: Number(e.target.value) })} />
+                      <input className="input" inputMode="numeric" value={issueDraft.sortText}
+                        onChange={e => setIssueDraft({ ...issueDraft, sortText: e.target.value })} />
                     </label>
                     <label className="flex items-end gap-2 pb-2 text-sm text-zinc-700">
                       <input type="checkbox" checked={issueDraft.active}
@@ -450,7 +499,7 @@ export default function RepairConfigClient({
               </p>
             </div>
             <button className="btn-primary"
-              onClick={() => setContactDraft({ id: '', name: '', role: 'teacher', contact: '', note: '', active: true, sort_order: contacts.length })}>
+              onClick={() => setContactDraft({ id: '', name: '', role: 'teacher', contact: '', note: '', active: true, sortText: String(contacts.length) })}>
               新增人員
             </button>
           </div>
@@ -471,7 +520,13 @@ export default function RepairConfigClient({
                       {c.contact || '（未填聯絡方式）'}{c.note && `｜${c.note}`}
                     </div>
                   </div>
-                  <button className="btn-secondary !px-3 !py-1" onClick={() => setContactDraft({ ...c })}>編輯</button>
+                  <button className="btn-secondary !px-3 !py-1"
+                    onClick={() => setContactDraft({
+                      id: c.id, name: c.name, role: c.role, contact: c.contact,
+                      note: c.note, active: c.active, sortText: String(c.sort_order),
+                    })}>
+                    編輯
+                  </button>
                 </div>
               )
             )}
@@ -505,8 +560,8 @@ export default function RepairConfigClient({
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-zinc-600">排序</span>
-                  <input className="input !w-24" type="number" value={contactDraft.sort_order}
-                    onChange={e => setContactDraft({ ...contactDraft, sort_order: Number(e.target.value) })} />
+                  <input className="input !w-24" inputMode="numeric" value={contactDraft.sortText}
+                    onChange={e => setContactDraft({ ...contactDraft, sortText: e.target.value })} />
                 </label>
                 <label className="flex items-end gap-2 pb-2 text-sm text-zinc-700">
                   <input type="checkbox" checked={contactDraft.active}
@@ -540,13 +595,13 @@ export default function RepairConfigClient({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block text-zinc-600">黃色警告（小時）</span>
-              <input className="input" type="number" min={1} value={config.slaWarnHours}
-                onChange={e => setConfig({ ...config, slaWarnHours: Number(e.target.value) })} />
+              <input className="input" inputMode="numeric" value={slaWarnText} placeholder="例：24"
+                onChange={e => setSlaWarnText(e.target.value)} />
             </label>
             <label className="block text-sm">
               <span className="mb-1 block text-zinc-600">紅色警告（小時）</span>
-              <input className="input" type="number" min={1} value={config.slaAlertHours}
-                onChange={e => setConfig({ ...config, slaAlertHours: Number(e.target.value) })} />
+              <input className="input" inputMode="numeric" value={slaAlertText} placeholder="例：72"
+                onChange={e => setSlaAlertText(e.target.value)} />
             </label>
           </div>
           <div className="flex justify-end">
