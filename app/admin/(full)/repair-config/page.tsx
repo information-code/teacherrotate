@@ -20,8 +20,7 @@ export default async function RepairConfigPage() {
         id: i.id, name: i.name, active: i.active, sort_order: i.sort_order,
       }))}
       initialIssues={(issues ?? []).map(s => ({
-        id: s.id, item_id: s.item_id, name: s.name,
-        active: s.active, sort_order: s.sort_order,
+        id: s.id, item_id: s.item_id, name: s.name, active: s.active,
       }))}
       initialContacts={(contacts ?? []).map(c => ({
         id: c.id, name: c.name, role: c.role, contact: c.contact,

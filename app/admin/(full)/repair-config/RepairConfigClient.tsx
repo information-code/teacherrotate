@@ -20,7 +20,6 @@ interface IssueRow {
   item_id: string
   name: string
   active: boolean
-  sort_order: number
 }
 
 interface ContactRow {
@@ -33,13 +32,12 @@ interface ContactRow {
   sort_order: number
 }
 
-/** 問題編輯草稿（排序用字串維護，存檔時才解析——數字欄位直接綁 number 會讓 0 刪不掉） */
+/** 問題編輯草稿（不設排序——教師端依被報修次數排列） */
 interface IssueDraft {
   id: string        // '' = 新增
   item_id: string
   name: string
   active: boolean
-  sortText: string
 }
 
 function parseIntOr(text: string, fallback: number): number {
@@ -121,7 +119,7 @@ export default function RepairConfigClient({
   const selectedItem = items.find(i => i.id === selectedItemId) ?? null
   const selectedIssues = issues
     .filter(s => s.item_id === selectedItemId)
-    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
 
   // ---------- 設備項目 ----------
 
@@ -167,7 +165,6 @@ export default function RepairConfigClient({
       item_id: draft.item_id,
       name: draft.name,
       active: draft.active,
-      sort_order: parseIntOr(draft.sortText, 0),
     }
     await runBusy('儲存問題中…', async () => {
       const data = await call('/api/admin/repair-issues', isCreate ? 'POST' : 'PUT', payload)
@@ -176,7 +173,6 @@ export default function RepairConfigClient({
         item_id: draft.item_id,
         name: draft.name.trim(),
         active: draft.active,
-        sort_order: parseIntOr(draft.sortText, 0),
       }
       setIssues(list => (isCreate ? [...list, saved] : list.map(s => (s.id === saved.id ? saved : s))))
       setIssueDraft(null)
@@ -244,13 +240,11 @@ export default function RepairConfigClient({
   }
 
   const emptyIssueDraft = (itemId: string): IssueDraft => ({
-    id: '', item_id: itemId, name: '',
-    active: true, sortText: String(selectedIssues.length),
+    id: '', item_id: itemId, name: '', active: true,
   })
 
   const issueToDraft = (s: IssueRow): IssueDraft => ({
-    id: s.id, item_id: s.item_id, name: s.name,
-    active: s.active, sortText: String(s.sort_order),
+    id: s.id, item_id: s.item_id, name: s.name, active: s.active,
   })
 
   return (
@@ -396,11 +390,6 @@ export default function RepairConfigClient({
                     <span className="mb-1 block text-zinc-600">問題名稱</span>
                     <input className="input" value={issueDraft.name} placeholder="例：沒有網路"
                       onChange={e => setIssueDraft({ ...issueDraft, name: e.target.value })} />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="mb-1 block text-zinc-600">排序</span>
-                    <input className="input !w-24" inputMode="numeric" value={issueDraft.sortText}
-                      onChange={e => setIssueDraft({ ...issueDraft, sortText: e.target.value })} />
                   </label>
                   <label className="flex items-center gap-2 text-sm text-zinc-700">
                     <input type="checkbox" checked={issueDraft.active}
