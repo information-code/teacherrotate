@@ -153,8 +153,23 @@ export async function PATCH(request: NextRequest) {
 
     const { data: vAllocs } = await admin.from('allocation').select('year, data').eq('teacher_id', id)
     for (const row of vAllocs ?? []) {
+      // 節數要「加進去」，不能整份取代——既有帳號本來就可能有自己的課。
+      // 取代的話，只要待聘帳號的配課是空的，對方原有的配課就會被一次清光
+      // （而且要等到預檢跳「有需求沒供給」才會發現）。
+      const { data: cur } = await admin.from('allocation')
+        .select('data').eq('teacher_id', target.id).eq('year', row.year).maybeSingle()
+      const base = (cur?.data ?? null) as { subjectGradeHours?: Record<string, Record<string, number>> } | null
+      const src = (row.data ?? {}) as { subjectGradeHours?: Record<string, Record<string, number>> }
+      const merged = base ? { ...base } : { ...src }
+      const sgh: Record<string, Record<string, number>> = { ...(base?.subjectGradeHours ?? {}) }
+      for (const [subj, byG] of Object.entries(src.subjectGradeHours ?? {})) {
+        const line: Record<string, number> = { ...(sgh[subj] ?? {}) }
+        for (const [g, n] of Object.entries(byG)) if (Number(n) > 0) line[g] = (Number(line[g]) || 0) + Number(n)
+        if (Object.keys(line).length) sgh[subj] = line
+      }
+      if (Object.keys(sgh).length) (merged as { subjectGradeHours?: unknown }).subjectGradeHours = sgh
       const { error: e1 } = await admin.from('allocation').upsert(
-        { year: row.year, teacher_id: target.id, data: row.data },
+        { year: row.year, teacher_id: target.id, data: merged as never },
         { onConflict: 'year,teacher_id' },
       )
       if (e1) return NextResponse.json({ error: `配課轉移失敗：${e1.message}` }, { status: 500 })
