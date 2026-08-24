@@ -1,0 +1,89 @@
+import 'server-only'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { hasPerms } from '@/lib/staff-server'
+import { parseGuide } from '@/lib/repair'
+
+async function requireAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (!(await hasPerms(user.id, ['repair-config']))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  return { user }
+}
+
+function parseAliases(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((a): a is string => typeof a === 'string').map(a => a.trim()).filter(Boolean)
+}
+
+/** 標準問題列表（全部項目一起回，client 端自行依 item_id 分組） */
+export async function GET() {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const { data, error } = await supabaseAdmin
+    .from('repair_issues').select('*').order('sort_order').order('name')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data ?? [])
+}
+
+/** 新增標準問題 */
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const body = await request.json()
+  if (!body?.item_id) return NextResponse.json({ error: '缺少設備項目 id' }, { status: 400 })
+  if (!body?.name?.trim()) return NextResponse.json({ error: '請填寫問題名稱' }, { status: 400 })
+
+  const { data, error } = await supabaseAdmin.from('repair_issues').insert({
+    item_id: String(body.item_id),
+    name: String(body.name).trim(),
+    aliases: parseAliases(body.aliases) as never,
+    guide: parseGuide(body.guide) as never,
+    active: body.active !== false,
+    sort_order: Number(body.sort_order ?? 0),
+  }).select().single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+/** 更新標準問題。body: { id, ...欄位 } */
+export async function PUT(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const { id, ...fields } = await request.json()
+  if (!id) return NextResponse.json({ error: '缺少問題 id' }, { status: 400 })
+  if (fields.name !== undefined && !String(fields.name).trim()) {
+    return NextResponse.json({ error: '問題名稱不可為空' }, { status: 400 })
+  }
+
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (fields.name !== undefined) payload.name = String(fields.name).trim()
+  if (fields.aliases !== undefined) payload.aliases = parseAliases(fields.aliases)
+  if (fields.guide !== undefined) payload.guide = parseGuide(fields.guide)
+  if (fields.active !== undefined) payload.active = Boolean(fields.active)
+  if (fields.sort_order !== undefined) payload.sort_order = Number(fields.sort_order)
+
+  const { data, error } = await supabaseAdmin
+    .from('repair_issues').update(payload).eq('id', id).select().single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+/** 刪除標準問題（既有案件保留名稱快照，統計歸戶到該問題的連結會消失） */
+export async function DELETE(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const id = request.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: '缺少問題 id' }, { status: 400 })
+
+  const { error } = await supabaseAdmin.from('repair_issues').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

@@ -52,6 +52,12 @@ const navSections = [
     ],
   },
   {
+    title: '設備報修',
+    items: [
+      { href: '/admin/repair-config', label: '報修設定' },
+    ],
+  },
+  {
     title: '系統',
     items: [
       { href: '/admin/system', label: '系統偏好' },
