@@ -55,6 +55,7 @@ const navSections = [
     title: '設備報修',
     items: [
       { href: '/admin/repair-config', label: '報修設定' },
+      { href: '/admin/repair-cases',  label: '案件報表' },
     ],
   },
   {
