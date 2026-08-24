@@ -78,7 +78,7 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
         {scoreHistory.length === 0 ? (
           <p className="text-sm text-zinc-400">尚無輪動紀錄</p>
         ) : (
-          <table className="table-base">
+          <div className="overflow-x-auto"><table className="table-base min-w-[320px]">
             <thead>
               <tr>
                 <th>學年度</th>
@@ -100,7 +100,7 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
 
         {/* 確認勾選框（非目標教師不顯示，避免誤勾）*/}

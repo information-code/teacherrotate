@@ -288,17 +288,20 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         <div className="card text-sm text-zinc-400 text-center py-8">請選擇要查看的{view === 'class' ? '班級' : view === 'teacher' ? '教師' : '教室'}。</div>
       ) : (
         <div className="card p-3">
-          <table className="w-full table-fixed border-collapse text-[11px]">
+          {/* 手機上五天塞不進一個螢幕：硬塞會把「英語主題課」截成三個字。
+              給最小寬度改成橫向捲動，節次那一欄釘住，捲的時候還看得出在第幾節。 */}
+          <div className="overflow-x-auto -mx-3 px-3">
+          <table className="w-full table-fixed border-collapse text-[11px] min-w-[520px]">
             <thead>
               <tr>
-                <th className="w-7 text-zinc-400 font-normal"></th>
+                <th className="w-7 text-zinc-400 font-normal sticky left-0 bg-white z-10"></th>
                 {SCHEDULE_DAYS.map(d => <th key={d} className="text-center text-zinc-500 font-normal py-0.5">{DAY_LABEL[d].slice(1)}</th>)}
               </tr>
             </thead>
             <tbody>
               {periods.map(q => (
                 <tr key={q}>
-                  <td className="text-zinc-400 text-center">{q}</td>
+                  <td className="text-zinc-400 text-center sticky left-0 bg-white z-10">{q}</td>
                   {SCHEDULE_DAYS.map(d => {
                     const k = `${d}-${q}`
                     if (grid && !grid.teachable[k]) return <td key={d} className="p-0.5"><div className="h-11 rounded-sm bg-zinc-50" /></td>
@@ -333,6 +336,7 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
