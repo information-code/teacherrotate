@@ -788,9 +788,8 @@ ${head}確定撤回？`)) return
               📢 發布導師排課{draftDirty ? '（含微調）' : ''}
             </button>
           )}
-          {planStatus === 'published' && (
-            <button onClick={() => setPhase('unpublish')} disabled={phaseBusy} className="btn btn-danger text-sm py-1">撤回發布</button>
-          )}
+          {/* 撤回發布已移到「年級總覽」那一排，和收回填課、發布全校放在一起——
+              三顆是同一件事的三個方向，分散在畫面兩端會被當成不相干的功能。 */}
           <Link href="/admin/schedule-config?tab=weight" className="btn btn-secondary text-sm py-1">⚙ 調整權重設定</Link>
           <span className="relative">
             <button onClick={() => setExportOpen(o => !o)} disabled={!exportPlaced || exportStatus !== null} className="btn btn-secondary text-sm py-1"
@@ -844,7 +843,7 @@ ${head}確定撤回？`)) return
         )}
         {planStatus === 'published' || planStatus === 'final' ? (
           <span className="text-xs text-amber-600">
-            已發布導師排課，科任課凍結——導師正在教師端填自己班的課；<b>此階段課表尚未對全校公開</b>。收回填課即可調課；全部完成後按「發布全校課表」。若需重排，請先「撤回發布」（導師已填內容可能與新課表不符）。
+            已發布導師排課，科任課凍結——導師正在教師端填自己班的課；<b>此階段課表尚未對全校公開</b>。下面三顆按鈕是三個方向：<b>← 撤回發布</b>回草稿重排、<b>收回導師填課</b>暫停填課讓你調課、<b>發布全校課表 →</b>對全校公開。
           </span>
         ) : (
           <>
@@ -969,6 +968,7 @@ ${head}確定撤回？`)) return
           chainRequest={chainReq ?? undefined}
           onChainConsumed={() => setChainReq(null)}
           onVersionSaved={v => { loadVersions(); if (v?.id) setPreviewVersionId(v.id); setPreviewOnly(false); setPreviewHr(null); setPreviewHrMissing(false) }}
+          onUnpublish={() => setPhase('unpublish')}
           baseHash={curBaseHash}
           engineInput={input}
           config={scheduleConfig}

@@ -45,6 +45,9 @@ interface Props {
   /** 存檔成功後回報資料庫的新戳記。這個元件會被重掛（切版本、換微調起點），
    *  戳記只放在自己身上的話會被重設成頁面剛載入時的舊值，下次存檔就自己撞自己。 */
   onPlanAt?: (at: string) => void
+  /** 撤回發布（回草稿重排）。動作本身在上層——它要先存版本、還要提醒導師已填的內容，
+   *  但按鈕要跟另外兩顆階段鈕放在一起，不然三個方向散在畫面兩端沒人看得懂。 */
+  onUnpublish?: () => void
   /** 畫面上這份是預覽來的版本，而這些班的導師課和資料庫不同：套用時要一起寫回去，
    *  只寫這次動到的班會變成「這一版的科任＋今天的導師課」的混合體。 */
   hrForceClasses?: string[]
@@ -68,7 +71,7 @@ type TrayItem =
   | { key: string; kind: 'lesson'; lesson: PlacedResult }
   | { key: string; kind: 'hr'; classKey: string; subject: string }
 
-export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, onPlanAt, hrForceClasses, planGeneratedAt }: Props) {
+export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedPlan, homeroomRows, config, classCounts, teacherNames, baseHash, engineInput, embedded = false, gradeSel: gradeSelProp, mode: modeProp, focusId: focusIdProp, extras, onPlacedChange, onPersisted, onGradeChange, onDiscard, onDirtyChange, chainRequest, onChainConsumed, onVersionSaved, onPlanAt, onUnpublish, hrForceClasses, planGeneratedAt }: Props) {
   const [modeState, setModeState] = useState<'class' | 'teacher' | 'room'>('class')
   const [teacherSelState, setTeacherSel] = useState('')
   const [roomSelState, setRoomSel] = useState('')
@@ -985,13 +988,19 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           {adjustMode && embedded && onDiscard && adjustments.length > 0 && (
             <button onClick={onDiscard} className="btn btn-danger text-xs py-0.5" title="回到這份課表微調前的樣子；資料庫裡的草稿微調一併清掉">✕ 放棄全部微調（{adjustments.length} 筆）</button>
           )}
+          {/* 三顆階段鈕：往回（撤回發布）→ 原地暫停（收回填課）→ 往前（發布全校）。
+              同一排、依方向排序，才看得出它們是同一件事的三個方向。 */}
+          {!embedded && planStatus === 'published' && onUnpublish && (
+            <button onClick={onUnpublish} className="btn btn-danger text-xs py-0.5"
+              title="回到草稿階段重新排課。導師已填的內容可能與新課表不符">← 撤回發布</button>
+          )}
           {!embedded && planStatus === 'published' && (
             <button onClick={toggleFill} disabled={fillBusy} className={`btn text-xs py-0.5 ${fillOpenState ? 'btn-secondary' : 'btn-primary'}`}
               title={fillOpenState ? '收回後導師端唯讀，課務組可自由調課（搬進空格、與導師課互換）' : '重新開放導師填課；開放期間課務組只能科任課互換'}>
               {fillOpenState ? '🔒 收回導師填課' : '🔓 開放導師填課'}
             </button>
           )}
-          {!embedded && planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5" title="對全校公開：所有老師可查看並下載全校課表（唯讀）">🏁 發布全校課表</button>}
+          {!embedded && planStatus === 'published' && <button onClick={() => setFinal('finalize')} disabled={busy} className="btn btn-primary text-xs py-0.5" title="對全校公開：所有老師可查看並下載全校課表（唯讀）">發布全校課表 →</button>}
           {!embedded && planStatus === 'final' && <button onClick={() => setFinal('unfinalize')} disabled={busy} className="btn btn-danger text-xs py-0.5" title="收回全校公開，回到導師排課階段">↩ 收回全校課表</button>}
         </span>
       </div>
