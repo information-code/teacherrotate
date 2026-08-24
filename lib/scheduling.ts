@@ -273,6 +273,56 @@ export function withCurrentNames<T extends { teacherId?: string; teacherName?: s
   })
 }
 
+/** 導師填課對帳：他「要填幾節」與班上「有幾格可填」。
+ *  兩邊對不上，導師就會卡住——多了填不滿（送不出），少了填完還剩空格。
+ *  三個地方要用同一套算法（排課選填的畫面、伺服器驗證、發布前的檢查），所以放這裡。
+ *
+ *  要填的節數＝導師配課，扣掉兩種本來就不用填的：
+ *   ① 該年級沒開的科目（跨年段調動後殘留，如四年級導師還留著一年級的「生活」）
+ *   ② 鎖課已經排定的節數（種子班國數、五年級游泳＝班級活動、種子班自主學習）
+ *  可填的格數＝可排課格 − 鎖課 − 科任課佔的格；單雙週區塊只佔「顯示格」，
+ *  配對格是導師可填的，而且隔週才上一次，和單格一樣算 1 節。 */
+export function homeroomFillAudit(a: {
+  config: ScheduleConfig
+  grade: number
+  index: number
+  offeredSubjects: string[]
+  breakdown: Record<string, number> | undefined
+  placed: { classKey: string; day: number; period: number; size: number; parity?: string }[]
+}): { need: number; cells: number; subjects: Record<string, number>; locked: Record<string, number> } {
+  const { config, grade: g, index: i, offeredSubjects, placed } = a
+  const key = classKey(g, i)
+  const offered = new Set(offeredSubjects)
+  const subjects: Record<string, number> = {}
+  for (const [k, v] of Object.entries(a.breakdown ?? {})) if (offered.has(k) && Number(v) > 0) subjects[k] = Number(v)
+
+  const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+  const locked: Record<string, number> = {}
+  for (const tid of Object.values(config.lockCells[key] ?? {})) {
+    const subj = lockTypeMap[tid]?.subject
+    if (!subj || !((subjects[subj] ?? 0) > 0)) continue
+    subjects[subj] -= 1
+    locked[subj] = (locked[subj] ?? 0) + 1
+  }
+  for (const k of Object.keys(subjects)) if (subjects[k] <= 0) delete subjects[k]
+
+  const grid = config.bands[bandOf(g)]
+  const blocked = new Set(Object.keys(config.lockCells[key] ?? {}))
+  for (const q of placed) {
+    if (q.classKey !== key) continue
+    if ((q.parity === 'odd' || q.parity === 'even') && q.size === 2) {
+      blocked.add(`${q.day}-${q.parity === 'odd' ? q.period : q.period + 1}`)
+      continue
+    }
+    for (let k = 0; k < q.size; k++) blocked.add(`${q.day}-${q.period + k}`)
+  }
+  let cells = 0
+  for (const d of SCHEDULE_DAYS) for (let p = 1; p <= grid.periodsPerDay; p++) {
+    if (grid.teachable[`${d}-${p}`] && !blocked.has(`${d}-${p}`)) cells++
+  }
+  return { need: Object.values(subjects).reduce((x, y) => x + y, 0), cells, subjects, locked }
+}
+
 export function shouldUseRoom(w: ScheduleWeights, subject: string, grade: number, size: number): boolean {
   const u = roomUseOf(w, subject, grade)
   return u === 'always' || (u === 'double' && size === 2)

@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig } from '@/lib/scheduling'
+import { SCHEDULE_DAYS, DAY_LABEL, bandOf, deriveNativeSessions, subjectClassKey, classLabel, HOMEROOM_SELF, type ScheduleConfig, homeroomFillAudit } from '@/lib/scheduling'
 import { GRADES, GRADE_LABEL, type ExtraCourse } from '@/lib/allocation'
 import { assembleEngineInput, SCORING_VERSION, type EngineInput, type EngineResult, type PlacedResult, type RoomInfo } from '@/lib/schedule-engine'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
@@ -359,6 +359,27 @@ export default function ScheduleWizardClient(props: Props) {
   /** 發布導師排課／撤回發布（伺服器端把關：未排與必排未覆蓋須為 0）。
    *  發布＝把目前預覽的這一份寫進 schedule_plan（正式課表）再發布，中間沒有獨立的「儲存」步驟——
    *  排課結果本來就自動存成版本了，「儲存」只是在決定哪一份算數，那件事併進發布更單純。 */
+  /** 發布前對帳：每個班「導師要填幾節」與「班上有幾格可填」必須相等。
+   *  對不上就是導師一定會卡住——多了填不滿（送不出），少了填完還剩空格。
+   *  發布之後 62 位導師會同時開始填，這時才發現就得全部收回重來，所以擋在發布前。 */
+  function fillAudit() {
+    const placed = (result?.placed ?? (props.savedPlan?.placed as never[]) ?? []) as never[]
+    const bad: string[] = []
+    for (const g of GRADES) for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+      const ck = `${g}-${i}`
+      if (!scheduleConfig.classTeacher[ck]) continue
+      const a = homeroomFillAudit({
+        config: scheduleConfig, grade: g, index: i,
+        offeredSubjects: (props.gradeSubjects[g] ?? []).map(x => x.name),
+        breakdown: props.homeroomHours[ck], placed,
+      })
+      if (a.need === a.cells) continue
+      const who = teacherNames[scheduleConfig.classTeacher[ck]] ?? ''
+      bad.push(`${classLabel(g, i)}${who ? ` ${who}` : ''}：要填 ${a.need} 節、可填 ${a.cells} 格（${a.need > a.cells ? `多 ${a.need - a.cells} 節，填不滿` : `少 ${a.cells - a.need} 節，會剩空格`}）`)
+    }
+    return bad
+  }
+
   async function setPhase(action: 'publish' | 'unpublish') {
     if (action === 'unpublish') {
       const filled = props.homeroomRows.filter(r => Object.keys(r.cells ?? {}).length > 0)
@@ -451,6 +472,14 @@ ${head}確定撤回？`)) return
           } finally { setPhaseBusy(false) }
         }
       }
+    }
+    if (action === 'publish') {
+      const bad = fillAudit()
+      if (bad.length && !confirm(`有 ${bad.length} 班的配課節數和班上可填的格數對不上，`
+        + `這些班的導師會填不完（或填完還剩空格）：\n\n`
+        + bad.slice(0, 10).map(x => `・${x}`).join('\n')
+        + (bad.length > 10 ? `\n・…另外 ${bad.length - 10} 班` : '')
+        + `\n\n建議先到配課或鎖課設定修正再發布。仍要發布嗎？`)) return
     }
     setPhaseBusy(true)
     try {
