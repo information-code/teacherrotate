@@ -354,6 +354,72 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['staff_roster']['Insert']>
         Relationships: []
       }
+      repair_items: {
+        Row: {
+          id: string; name: string; fallback_guide: Json
+          active: boolean; sort_order: number; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; name: string; fallback_guide?: Json
+          active?: boolean; sort_order?: number; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['repair_items']['Insert']>
+        Relationships: []
+      }
+      repair_issues: {
+        Row: {
+          id: string; item_id: string; name: string; aliases: Json; guide: Json
+          active: boolean; sort_order: number; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; item_id: string; name: string; aliases?: Json; guide?: Json
+          active?: boolean; sort_order?: number; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['repair_issues']['Insert']>
+        Relationships: []
+      }
+      repair_contacts: {
+        Row: {
+          id: string; name: string; role: string; contact: string; note: string
+          active: boolean; sort_order: number; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; name: string; role?: string; contact?: string; note?: string
+          active?: boolean; sort_order?: number; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['repair_contacts']['Insert']>
+        Relationships: []
+      }
+      repair_config: {
+        Row: { id: number; config: Json; updated_at: string }
+        Insert: { id?: number; config?: Json; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['repair_config']['Insert']>
+        Relationships: []
+      }
+      repair_reports: {
+        Row: {
+          id: string; teacher_id: string
+          item_id: string | null; item_name: string
+          issue_id: string | null; issue_name: string; custom_issue: string
+          location: string; photos: Json
+          status: string; resolved_kind: string | null
+          admin_note: string; closed_by: string | null
+          created_at: string; accepted_at: string | null; dispatched_at: string | null
+          vendor_at: string | null; closed_at: string | null; updated_at: string
+        }
+        Insert: {
+          id?: string; teacher_id: string
+          item_id?: string | null; item_name: string
+          issue_id?: string | null; issue_name?: string; custom_issue?: string
+          location?: string; photos?: Json
+          status?: string; resolved_kind?: string | null
+          admin_note?: string; closed_by?: string | null
+          created_at?: string; accepted_at?: string | null; dispatched_at?: string | null
+          vendor_at?: string | null; closed_at?: string | null; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['repair_reports']['Insert']>
+        Relationships: []
+      }
       todos: {
         Row: {
           id: string; user_id: string; title: string; note: string

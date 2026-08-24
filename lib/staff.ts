@@ -85,6 +85,14 @@ export const PERM_GROUPS: { group: string; perms: { key: string; label: string }
       { key: 'equipment',        label: '借用管理' },
     ],
   },
+  {
+    group: '設備報修',
+    perms: [
+      { key: 'repair-config', label: '報修設定' },
+      { key: 'repair-cases',  label: '案件報表' },
+      { key: 'repair-stats',  label: '報修統計' },
+    ],
+  },
 ]
 
 export const ALL_PERM_KEYS = PERM_GROUPS.flatMap(g => g.perms.map(p => p.key))
