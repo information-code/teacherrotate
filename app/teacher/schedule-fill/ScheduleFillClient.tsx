@@ -130,7 +130,11 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
         <div>
           <h2 className="page-title mb-1">排課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度・{classLabel}</span></h2>
           <p className="text-xs text-zinc-400">
-            灰色＝科任課與鎖課（不可動）；點下方科目後，點空白格填入，再點一次移除。全部填完才能按「確認送出」。
+            <span className="inline-flex items-center gap-1 mr-1 align-middle">
+              <span className="inline-block w-3 h-3 rounded-sm bg-zinc-100 border border-zinc-200" />灰＝科任課
+              <span className="inline-block w-3 h-3 rounded-sm bg-rose-100 border border-rose-300 ml-1.5" />紅＝鎖課
+            </span>
+            兩者都不可動；點下方科目後，點空白格填入，再點一次移除。全部填完才能按「確認送出」。
             紫色格是隔週輪流的：那一節單週上視覺藝術、雙週換您上（或相反）。輪到您的那格<b>一次上兩節</b>，
             所以填一格會扣掉 2 節配課，而且兩節要同一科。
           </p>
@@ -227,7 +231,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
                   if (f) {
                     return (
                       <td key={d} className="p-0.5">
-                        <div className={`h-12 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${f.kind === 'lock' ? 'bg-zinc-200 border-zinc-300 text-zinc-600' : f.biweekly ? 'bg-violet-50 border-violet-200 text-violet-800' : 'bg-zinc-100 border-zinc-200 text-zinc-500'}`}>
+                        <div className={`h-12 rounded-sm border px-0.5 flex flex-col items-center justify-center text-center leading-tight overflow-hidden ${f.kind === 'lock' ? 'bg-rose-100 border-rose-300 text-rose-800' : f.biweekly ? 'bg-violet-50 border-violet-200 text-violet-800' : 'bg-zinc-100 border-zinc-200 text-zinc-500'}`}>
                           <span className="truncate w-full font-medium">{f.subject}</span>
                           {f.teacherName && <span className="truncate w-full text-[9px] opacity-70">{f.teacherName}</span>}
                           {f.biweekly && <span className="text-[8px] opacity-70">{f.biweekly === 'odd' ? '單週上這堂・雙週輪您' : '雙週上這堂・單週輪您'}</span>}
