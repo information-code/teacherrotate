@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
+import { AvailabilityTab } from '@/components/teacher/EquipmentAvailability'
 import {
   EQUIPMENT_PERIODS,
   LOAN_STATUS_LABEL,
@@ -104,7 +105,7 @@ type Procedure =
 // ---------- 主頁 ----------
 
 export function EquipmentPage() {
-  const [tab, setTab] = useState<'short' | 'long'>('short')
+  const [tab, setTab] = useState<'board' | 'short' | 'long'>('short')
   const [shortData, setShortData] = useState<ShortData | null>(null)
   const [longData, setLongData] = useState<LongData | null>(null)
   const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
@@ -153,7 +154,7 @@ export function EquipmentPage() {
 
       {/* Tab 切換（手機整行好點按） */}
       <div className="flex border-b border-zinc-200">
-        {([['short', '短期借用'], ['long', '長期借用']] as const).map(([key, label]) => (
+        {([['board', '借用情況'], ['short', '短期借用'], ['long', '長期借用']] as const).map(([key, label]) => (
           <button
             key={key}
             className={`flex-1 sm:flex-none px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -170,7 +171,9 @@ export function EquipmentPage() {
 
       {busy && <BusyOverlay text={busy} />}
 
-      {tab === 'short' ? (
+      {tab === 'board' ? (
+        <AvailabilityTab />
+      ) : tab === 'short' ? (
         <ShortTab
           data={shortData}
           from={range.from}
