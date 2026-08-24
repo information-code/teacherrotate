@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.repair_reports (
   custom_issue  TEXT NOT NULL DEFAULT '',               -- 自由繕打原文（歸類後仍保留）
   location      TEXT NOT NULL DEFAULT '',
   photos        JSONB NOT NULL DEFAULT '[]'::jsonb,     -- storage path string[]
-  status        TEXT NOT NULL DEFAULT 'pending',        -- pending | accepted | dispatched | vendor | closed
+  status        TEXT NOT NULL DEFAULT 'pending',        -- pending(通報中) | accepted | processing(時間戳存 dispatched_at) | closed
   resolved_kind TEXT,                                   -- NULL | self | vanished | fixed
   admin_note    TEXT NOT NULL DEFAULT '',
   closed_by     UUID REFERENCES public.profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,

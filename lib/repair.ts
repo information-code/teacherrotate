@@ -1,11 +1,15 @@
 // 設備報修：共用常數、型別與計算（前後端共用，不可 import server-only 模組）
 
-/** 案件狀態機（單向推進；老師按「已解決」直接跳 closed 輕量結案） */
+/**
+ * 案件狀態機（單向推進；老師按「已解決」直接跳 closed 輕量結案）。
+ * 通報中＝教師已送出；已接案＝管理端看到了（還不代表處理）；
+ * 處理中＝正在處理（出勤/叫修廠商等細節用「維護人員說明」文字交代）；已結案＝問題已解決。
+ * 處理中的時間戳沿用 repair_reports.dispatched_at 欄位（vendor_at 棄用）。
+ */
 export const REPAIR_STATUSES = [
-  { key: 'pending',    label: '待處理' },
+  { key: 'pending',    label: '通報中' },
   { key: 'accepted',   label: '已接案' },
-  { key: 'dispatched', label: '已出勤排查' },
-  { key: 'vendor',     label: '已報廠商協助' },
+  { key: 'processing', label: '處理中' },
   { key: 'closed',     label: '已結案' },
 ] as const
 
