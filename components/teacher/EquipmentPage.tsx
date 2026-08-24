@@ -105,7 +105,7 @@ type Procedure =
 // ---------- 主頁 ----------
 
 export function EquipmentPage() {
-  const [tab, setTab] = useState<'board' | 'short' | 'long'>('short')
+  const [tab, setTab] = useState<'board' | 'short' | 'long'>('board')
   const [shortData, setShortData] = useState<ShortData | null>(null)
   const [longData, setLongData] = useState<LongData | null>(null)
   const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
