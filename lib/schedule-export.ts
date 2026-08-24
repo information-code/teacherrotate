@@ -245,6 +245,25 @@ export function buildImportRows(a: BuildArgs): string[][] {
  *  科目／教師／教室代碼本系統沒有（留空）；教室代碼取教室設定的「編號」欄。
  *  不列入：本土語其他語別的場次老師（只列原班閩南語的授課老師）、英語外師（協同者不另列一行）。
  *  單雙週（視藝）：該區塊兩節各列一行，科目名稱後加註（單週）／（雙週），輪到導師的那一週另列導師的課。 */
+/** 名稱 → 代碼。校務系統要三位數代碼，本系統沒有，所以自己編。
+ *  規則：由名稱本身雜湊出代碼，不是按出現順序流水號——這樣「同一個名稱永遠同一個代碼」，
+ *  而且之後新增一位老師或一個科目，也不會把其他人的代碼整排推移（重匯就會變成一堆新資料）。
+ *  撞號時往後找下一個空號，探測順序固定用排序後的名稱，結果才可重現。 */
+function codeBook(names: Iterable<string>, lo = 101, hi = 999): Map<string, string> {
+  const uniq = Array.from(new Set(Array.from(names).filter(Boolean))).sort((x, y) => x.localeCompare(y, 'zh-Hant'))
+  const span = hi - lo + 1
+  const taken = new Set<number>()
+  const out = new Map<string, string>()
+  for (const n of uniq) {
+    let h = 0x811c9dc5
+    for (let i = 0; i < n.length; i++) { h ^= n.charCodeAt(i); h = Math.imul(h, 0x01000193) }
+    let v = lo + ((h >>> 0) % span)
+    while (taken.has(v)) v = lo + ((v - lo + 1) % span)
+    taken.add(v); out.set(n, String(v))
+  }
+  return out
+}
+
 export function buildSchoolCsvRows(a: BuildArgs): string[][] {
   const { placed, config, input, teacherNames, classCounts, hrCells } = a
   const nameOf = (id: string) => teacherNames[id] ?? ''
@@ -307,9 +326,20 @@ export function buildSchoolCsvRows(a: BuildArgs): string[][] {
     }
   }
   out.sort((x, y) => x.g - y.g || x.i - y.i || x.day - y.day || x.period - y.period || x.subject.localeCompare(y.subject, 'zh-Hant'))
+  const subjCode = codeBook(out.map(r => r.subject))
+  const teacherCode = codeBook(out.map(r => r.teacher))
+  // 教室代碼一律由名稱產生。教室設定的「編號」欄是名稱後綴（自然教室[1]、音樂教室[2]），
+  // 各類型各自從 1 編起，拿來當全校代碼會讓自然教室1／音樂教室1／資訊教室1 全部撞在一起。
+  const roomCode = codeBook(out.map(r => r.roomName))
   return [SCHOOL_CSV_HEADER, ...out.map(r => {
     const no = String(r.g * 100 + r.i + 1)
-    return [no, no, '', r.subject, String(r.day), String(r.period), '', r.teacher, r.roomNo, r.roomName]
+    return [
+      no, no,
+      subjCode.get(r.subject) ?? '', r.subject,
+      String(r.day), String(r.period),
+      teacherCode.get(r.teacher) ?? '', r.teacher,
+      r.roomName ? roomCode.get(r.roomName) ?? '' : '', r.roomName,
+    ]
   })]
 }
 
@@ -323,7 +353,8 @@ export function rowsToCsv(rows: string[][]): string {
 export async function rowsToXlsx(rows: string[][], sheetName = '課程'): Promise<Blob> {
   const XLSX = await import('xlsx')
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 24 }, { wch: 12 }]
+  // 欄寬照最寬的那份（校務系統 10 欄）給，較短的表多出來的設定會被忽略
+  ws['!cols'] = [{ wch: 9 }, { wch: 9 }, { wch: 8 }, { wch: 16 }, { wch: 7 }, { wch: 7 }, { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 16 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, sheetName)
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
