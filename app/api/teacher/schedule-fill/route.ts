@@ -15,7 +15,11 @@ export async function PUT(request: NextRequest) {
 
   const { year, cells, confirm, unconfirm } = await request.json()
   if (!Number.isInteger(Number(year))) return NextResponse.json({ error: '年度格式錯誤' }, { status: 400 })
-  if (!cells || typeof cells !== 'object') return NextResponse.json({ error: '格式錯誤' }, { status: 400 })
+  // 取消確認不帶 cells（它只是把 confirmed_at 清掉），所以這道檢查不能一律套用——
+  // 否則導師按「取消確認，繼續修改」永遠只會拿到「格式錯誤」，自己解不了鎖。
+  if (unconfirm !== true && (!cells || typeof cells !== 'object')) {
+    return NextResponse.json({ error: '格式錯誤' }, { status: 400 })
+  }
 
   const [{ data: schRow }, { data: planRow }, { data: allocRow }, { data: cfgRow }] = await Promise.all([
     supabaseAdmin.from('schedule_config').select('config').eq('year', Number(year)).maybeSingle(),
