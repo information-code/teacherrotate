@@ -20,10 +20,12 @@ interface Props {
   lockMessage?: string
   /** 填過但那一格已被課務組改成科任課（或改成不可排課）的格子 */
   staleCells: { slot: string; subject: string; tookBy: string }[]
+  /** 這些配課節數已由固定課（鎖課）排定，不需要再填 */
+  lockedNote: { subject: string; n: number; by: string }[]
 }
 
 /** 教師端：導師排課選填。把自己的配課填入班級課表留白格，全部填完後確認送出。 */
-export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized, lockMessage, staleCells }: Props) {
+export default function ScheduleFillClient({ year, classLabel, periodsPerDay, teachable, fixed, pairCells, breakdown, initialCells, confirmedAt, finalized, lockMessage, staleCells, lockedNote }: Props) {
   // 被蓋掉的格先拿掉：留著會被算進節數，導師會以為填滿了
   const [cells, setCells] = useState<Record<string, string>>(() => {
     const c = { ...initialCells }
@@ -161,6 +163,14 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
             <button onClick={() => location.reload()} className="btn btn-secondary text-xs py-0.5 mx-1">重新整理</button>
             取得最新的班級課表；您先前已存檔的內容都還在，只有剛剛這幾格要重填。
           </div>
+        </div>
+      )}
+      {lockedNote.length > 0 && (
+        <div className="card bg-zinc-50 border-zinc-200 text-xs text-zinc-600 py-2.5 space-y-0.5">
+          <div className="font-medium text-zinc-700">以下配課已由固定課排定，不需再填：</div>
+          {lockedNote.map(x => (
+            <div key={x.subject}>・{x.subject} {x.n} 節　（{x.by}）</div>
+          ))}
         </div>
       )}
       {staleCells.length > 0 && (

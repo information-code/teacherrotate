@@ -86,7 +86,25 @@ export default async function ScheduleFillPage() {
 
   // 我要填的配課節數（依本班年級的採用情境；各年級可不同）
   const allocConfig = normalizeConfig(cfgRow?.config)
-  const breakdown = homeroomBreakdown(allocRow?.data as TeacherAllocation | null, adoptedReduction(allocConfig.grades[g]))
+  const breakdown: Record<string, number> = { ...homeroomBreakdown(allocRow?.data as TeacherAllocation | null, adoptedReduction(allocConfig.grades[g])) }
+  // 鎖課已經把配課的某些節數排定了（種子班的國語數學、五年級游泳＝班級活動、
+  // 種子班的自主學習）。不扣掉的話導師會被要求再填一次，班上根本沒有那麼多留白，
+  // 而且填出來會變成雙倍節數。扣的依據是鎖課的「科目」——與 byHomeroom 無關：
+  // byHomeroom 講的是「這節是不是導師本人在上」（游泳是外出上課，所以是否），
+  // 但那 2 節仍然佔用班級活動的配課。兩件事不能共用同一個判斷。
+  const lockedBySubject: Record<string, { n: number; labels: Set<string> }> = {}
+  for (const tid2 of Object.values(config.lockCells[classKey] ?? {})) {
+    const t = lockTypeMap[tid2]
+    const subj = t?.subject
+    if (!subj || (breakdown[subj] ?? 0) <= 0) continue
+    breakdown[subj] -= 1
+    const e = (lockedBySubject[subj] ??= { n: 0, labels: new Set() })
+    e.n++; e.labels.add(t.label || subj)
+  }
+  for (const [s2, n] of Object.entries(breakdown)) if (n <= 0) delete breakdown[s2]
+  const lockedNote = Object.entries(lockedBySubject)
+    .map(([subject, e]) => ({ subject, n: e.n, by: Array.from(e.labels).join('、') }))
+
 
   const { data: hrRow } = await admin
     .from('schedule_homeroom').select('cells, confirmed_at')
@@ -109,6 +127,7 @@ export default async function ScheduleFillPage() {
       fixed={fixed}
       pairCells={pairCells}
       breakdown={breakdown}
+      lockedNote={lockedNote}
       initialCells={hrCells}
       staleCells={stale}
       confirmedAt={hrRow?.confirmed_at ?? null}

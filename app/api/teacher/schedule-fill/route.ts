@@ -76,10 +76,17 @@ export async function PUT(request: NextRequest) {
   }
 
   // 配課節數依「本班年級的採用情境」計（各年級可不同）
-  const breakdown = homeroomBreakdown(
+  const breakdown: Record<string, number> = { ...homeroomBreakdown(
     allocRow?.data as TeacherAllocation | null,
     adoptedReduction(normalizeConfig(cfgRow?.config).grades[g]),
-  )
+  ) }
+  // 與導師選填頁同一套扣法：鎖課已排定的配課節數要扣掉，兩邊算的不一樣就會填得完卻送不出
+  const lockTypeMap2 = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
+  for (const tid2 of Object.values(config.lockCells[classKey] ?? {})) {
+    const subj = lockTypeMap2[tid2]?.subject
+    if (subj && (breakdown[subj] ?? 0) > 0) breakdown[subj] -= 1
+  }
+  for (const [s2, n] of Object.entries(breakdown)) if (n <= 0) delete breakdown[s2]
   const clean: Record<string, string> = {}
   const counts: Record<string, number> = {}
   for (const [slot, subj] of Object.entries(cells as Record<string, unknown>)) {
