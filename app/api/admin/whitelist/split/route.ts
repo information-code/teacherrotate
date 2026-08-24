@@ -73,17 +73,17 @@ export async function GET(request: NextRequest) {
   const cfg = schRow?.config ? normalizeScheduleConfig(schRow.config) : null
   const alc = acRow?.config ? normalizeConfig(acRow.config) : null
   const perClass: Record<string, number> = {}
-  const openClasses: Record<string, { ck: string; label: string }[]> = {}   // `科目|年級` → 可指派的班
+  const openClasses: Record<string, { ck: string; label: string; mine?: boolean }[]> = {}   // `科目|年級` → 可指派的班（mine＝已經是這個待聘帳號的）
   if (cfg && alc) {
     for (const subj of Object.keys(hours)) {
       for (const g of GRADES) {
         const def = alc.grades[g].subjects.find(x => x.name === subj)
         if (!def) continue
         perClass[subj] = def.perClass
-        const list: { ck: string; label: string }[] = []
+        const list: { ck: string; label: string; mine?: boolean }[] = []
         for (let i = 0; i < alc.grades[g].classCount; i++) {
           const cur = cfg.subjectClassTeacher[subjectClassKey(g, i, subj)]
-          if (!cur || cur === HOMEROOM_SELF || cur === id) list.push({ ck: `${g}-${i}`, label: classLabel(g, i) })
+          if (!cur || cur === HOMEROOM_SELF || cur === id) list.push({ ck: `${g}-${i}`, label: classLabel(g, i), mine: cur === id })
         }
         openClasses[`${subj}|${g}`] = list
       }
@@ -101,13 +101,16 @@ export async function GET(request: NextRequest) {
 
 const sumOf = (h: Hours) => Object.values(h ?? {}).reduce((s, byG) => s + Object.values(byG ?? {}).reduce((t, v) => t + (Number(v) || 0), 0), 0)
 
-/** POST：從待聘帳號拆一塊配課出去給某位老師，其餘留在待聘帳號繼續找人。
- *  找到人是陸續發生的，所以這個動作可以重複做——每找到一位就拆一次。
- *  body: { id, year, to: {mode:'create'|'merge', email, name?}, hours: {科目:{年級:節數}} } */
+/** POST：把待聘帳號的配課落到真人身上，並同時指派班級。兩種模式：
+ *   convert＝整個帳號轉正給這位老師（ID 不變，設定與課表的引用原地生效）
+ *   split　＝拆一塊出去，其餘留在待聘帳號繼續找人（可重複做）
+ *  兩種都會一併寫科任配班——不然節數是懸空的，課表上那些班仍顯示「直播共學」。
+ *  body: { id, year, mode, to: {mode:'create'|'merge', email, name?}, hours, classes } */
 export async function POST(request: NextRequest) {
   const admin = await guard()
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { id, year, to, hours, classes } = await request.json()
+  const { id, year, mode, to, hours, classes } = await request.json()
+  const isConvert = mode === 'convert'
   if (!id || !Number.isInteger(Number(year))) return NextResponse.json({ error: '參數錯誤' }, { status: 400 })
   const yr = Number(year)
 
@@ -115,8 +118,9 @@ export async function POST(request: NextRequest) {
   if (!me) return NextResponse.json({ error: '帳號不存在' }, { status: 404 })
   if (!me.email?.endsWith(VIRTUAL_EMAIL_DOMAIN)) return NextResponse.json({ error: '只有待聘帳號可以拆分' }, { status: 400 })
 
-  // 有課表引用就擋下：拆分只分配課，分不了「哪幾堂歸誰」
-  const blockers = await blockersOf(admin, id, yr)
+  // 有課表引用就擋下：拆分只分配課，分不了「哪幾堂歸誰」。
+  // 轉正不受此限——ID 不變，那些引用原地就指向轉正後的老師。
+  const blockers = isConvert ? { lessonHours: 0, lessons: [], classes: [] } : await blockersOf(admin, id, yr)
   if (blockers.lessonHours > 0 || blockers.classes.length > 0) {
     return NextResponse.json({
       error: '這個帳號在課表上已經有排定的課或指派的班，不能拆分——系統無從得知哪幾堂該歸誰。請先在排課工具處理掉再回來。',
@@ -127,8 +131,9 @@ export async function POST(request: NextRequest) {
   const { data: allocRow } = await admin.from('allocation').select('data').eq('teacher_id', id).eq('year', yr).maybeSingle()
   const src = (allocRow?.data ?? null) as TeacherAllocation | null
   const orig = (src?.subjectGradeHours ?? {}) as Hours
-  const take = (hours ?? {}) as Hours
-  if (sumOf(take) <= 0) return NextResponse.json({ error: '沒有要拆出去的節數' }, { status: 400 })
+  // 轉正＝整份都歸他，不必也不該讓人再填一次節數
+  const take = isConvert ? orig : ((hours ?? {}) as Hours)
+  if (!isConvert && sumOf(take) <= 0) return NextResponse.json({ error: '沒有要拆出去的節數' }, { status: 400 })
 
   for (const [subj, byG] of Object.entries(take)) {
     for (const [g, n] of Object.entries(byG)) {
@@ -145,7 +150,14 @@ export async function POST(request: NextRequest) {
   try {
     // ── 收下這一塊的老師 ──
     let targetId: string
-    if (to?.mode === 'merge') {
+    if (isConvert) {
+      // 轉正：改 email 與姓名，ID 不動；配課原封不動（本來就是他的）
+      const { data: dup } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+      if (dup && dup.id !== id) throw new Error(`Email ${email} 已被其他帳號使用，請改用「併到既有帳號」`)
+      const { error } = await admin.from('profiles').update({ email, ...(name ? { name } : {}) }).eq('id', id)
+      if (error) throw new Error(`轉正失敗：${error.message}`)
+      targetId = id
+    } else if (to?.mode === 'merge') {
       const { data: t } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
       if (!t) throw new Error(`找不到 Email 為 ${email} 的既有帳號`)
       if (t.id === id) throw new Error('不可併回待聘帳號自己')
@@ -161,7 +173,7 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error(`建立帳號失敗：${error.message}`)
     }
     // 併到既有帳號時是「把節數加進去」，不是整份覆蓋——對方本來就有的課不能被蓋掉
-    const { data: cur } = await admin.from('allocation').select('data').eq('teacher_id', targetId).eq('year', yr).maybeSingle()
+    const { data: cur } = isConvert ? { data: null } : await admin.from('allocation').select('data').eq('teacher_id', targetId).eq('year', yr).maybeSingle()
     const base = (cur?.data ?? null) as TeacherAllocation | null
     const next: TeacherAllocation = base ? { ...base } : { ...template, subjectGradeHours: {} }
     const sgh: Hours = { ...(next.subjectGradeHours ?? {}) }
@@ -171,10 +183,12 @@ export async function POST(request: NextRequest) {
       if (Object.keys(row).length) sgh[subj] = row
     }
     next.subjectGradeHours = sgh
-    const { error: e1 } = await admin.from('allocation').upsert({ year: yr, teacher_id: targetId, data: next as never }, { onConflict: 'year,teacher_id' })
-    if (e1) throw new Error(`老師的配課寫入失敗：${e1.message}`)
+    if (!isConvert) {
+      const { error: e1 } = await admin.from('allocation').upsert({ year: yr, teacher_id: targetId, data: next as never }, { onConflict: 'year,teacher_id' })
+      if (e1) throw new Error(`老師的配課寫入失敗：${e1.message}`)
+    }
 
-    // ── 待聘帳號扣掉拆出去的部分，其餘原地保留 ──
+    // ── 待聘帳號扣掉拆出去的部分，其餘原地保留（轉正沒有「其餘」）──
     const restH: Hours = {}
     for (const [subj, byG] of Object.entries(orig)) {
       const row: Record<string, number> = {}
@@ -184,9 +198,11 @@ export async function POST(request: NextRequest) {
       }
       if (Object.keys(row).length) restH[subj] = row
     }
-    const rest: TeacherAllocation = { ...(src ?? template), subjectGradeHours: restH }
-    const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: id, data: rest as never }, { onConflict: 'year,teacher_id' })
-    if (e2) throw new Error(`待聘帳號的配課更新失敗：${e2.message}`)
+    if (!isConvert) {
+      const rest: TeacherAllocation = { ...(src ?? template), subjectGradeHours: restH }
+      const { error: e2 } = await admin.from('allocation').upsert({ year: yr, teacher_id: id, data: rest as never }, { onConflict: 'year,teacher_id' })
+      if (e2) throw new Error(`待聘帳號的配課更新失敗：${e2.message}`)
+    }
 
     // ── 科任配班：把挑好的班指給這位老師 ──
     // 節數只說「他上幾節」，沒說「上哪幾班」。不一起寫的話那幾節是懸空的，
@@ -212,7 +228,7 @@ export async function POST(request: NextRequest) {
         .update({ config: { ...raw, subjectClassTeacher: map } }).eq('year', yr)
       if (e3) throw new Error(`科任配班寫入失敗：${e3.message}`)
     }
-    return NextResponse.json({ ok: true, targetId, taken: sumOf(take), remaining: sumOf(restH), assigned })
+    return NextResponse.json({ ok: true, targetId, taken: sumOf(take), remaining: isConvert ? 0 : sumOf(restH), assigned, converted: isConvert })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : '拆分失敗' }, { status: 500 })
   }

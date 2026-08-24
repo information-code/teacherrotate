@@ -36,7 +36,7 @@ interface SplitInfo {
   name: string | null
   hours: Hours
   perClass: Record<string, number>
-  openClasses: Record<string, { ck: string; label: string }[]>   // `科目|年級` → 還沒指派老師的班
+  openClasses: Record<string, { ck: string; label: string; mine?: boolean }[]>   // `科目|年級` → 還沒指派老師的班（mine＝已經是這個待聘帳號的）
   blockers: { lessonHours: number; lessons: string[]; classes: string[] }
   candidates: { id: string; name: string | null; email: string }[]
 }
@@ -74,16 +74,28 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
   const [splitBusy, setSplitBusy] = useState(false)
   const [take, setTake] = useState<Hours>({})
   const [picks, setPicks] = useState<Record<string, string[]>>({})   // 科目 → classKey[]
+  const [splitMode, setSplitMode] = useState<'convert' | 'split'>('split')
   const [to, setTo] = useState<{ mode: 'create' | 'merge'; email: string; name: string }>({ mode: 'create', email: '', name: '' })
 
-  async function openSplit(id: string) {
-    setSplitId(id); setSplitInfo(null); setSplitErr(''); setSplitBusy(true)
+  async function openSplit(id: string, mode: 'convert' | 'split') {
+    setSplitId(id); setSplitInfo(null); setSplitErr(''); setSplitBusy(true); setSplitMode(mode)
     setTake({}); setPicks({}); setTo({ mode: 'create', email: '', name: '' })
     try {
       const res = await fetch(`/api/admin/whitelist/split?id=${id}&year=${year}`)
       const d = await res.json()
       if (!res.ok) { setSplitErr(d.error ?? '載入失敗'); return }
       setSplitInfo(d)
+      if (mode === 'convert') {
+        // 轉正＝整份都歸他，節數不必再填一次；已經指派給這個待聘帳號的班先勾起來
+        setTake(d.hours as Hours)
+        const pre: Record<string, string[]> = {}
+        for (const [k, list] of Object.entries(d.openClasses ?? {}) as [string, { ck: string; mine?: boolean }[]][]) {
+          const subj = k.split('|')[0]
+          const mine = list.filter(c => c.mine).map(c => c.ck)
+          if (mine.length) pre[subj] = [...(pre[subj] ?? []), ...mine]
+        }
+        setPicks(pre)
+      }
     } finally { setSplitBusy(false) }
   }
   const setTakeAt = (subj: string, g: string, v: number, max: number) =>
@@ -109,21 +121,23 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
 
   async function submitSplit() {
     if (!splitId || !splitInfo) return
-    const n = sumHours(take)
-    if (n <= 0) { setSplitErr('請填入這位老師能承擔的節數'); return }
+    if (splitMode === 'split' && sumHours(take) <= 0) { setSplitErr('請填入這位老師能承擔的節數'); return }
+    if (splitMode === 'convert' && !to.name.trim()) { setSplitErr('請填入老師姓名'); return }
     setSplitBusy(true); setSplitErr('')
     try {
       const res = await fetch('/api/admin/whitelist/split', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: splitId, year, to, hours: take, classes: picks }),
+        body: JSON.stringify({ id: splitId, year, mode: splitMode, to, hours: take, classes: picks }),
       })
       const d = await res.json()
       if (!res.ok) { setSplitErr(d.error ?? '拆分失敗'); return }
       setSplitId(null)
-      alert(`已拆出 ${d.taken} 節、指派 ${d.assigned ?? 0} 個班給這位老師。\n`
-        + (d.remaining > 0
-          ? `「${splitInfo.name ?? ''}」還剩 ${d.remaining} 節，繼續找人。`
-          : `「${splitInfo.name ?? ''}」已經沒有剩餘配課，可以刪除這個待聘帳號了。`))
+      alert(d.converted
+        ? `已轉正，並指派 ${d.assigned ?? 0} 個班。\n這個帳號的 ID 沒有變，設定與課表的引用原地生效。`
+        : `已拆出 ${d.taken} 節、指派 ${d.assigned ?? 0} 個班給這位老師。\n`
+          + (d.remaining > 0
+            ? `「${splitInfo.name ?? ''}」還剩 ${d.remaining} 節，繼續找人。`
+            : `「${splitInfo.name ?? ''}」已經沒有剩餘配課，可以刪除這個待聘帳號了。`))
       router.refresh()
     } finally { setSplitBusy(false) }
   }
@@ -330,12 +344,15 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                   <option value="foreign">外師</option>
                 </select>
               )}
-              <button onClick={() => { setEditingId(entry.id); setEditEmail(virtual ? '' : entry.email); setEditName(virtual ? '' : (entry.name ?? '')); setEditError('') }}
+              <button onClick={() => virtual
+                ? openSplit(entry.id, 'convert')
+                : (setEditingId(entry.id), setEditEmail(entry.email), setEditName(entry.name ?? ''), setEditError(''))}
+                title={virtual ? '這位老師承擔全部課務：改成真實姓名信箱，並指派班級' : undefined}
                 className={`text-xs whitespace-nowrap ${virtual ? 'text-amber-600 hover:text-amber-700 font-medium' : 'text-zinc-400 hover:text-zinc-700'}`}>
                 {virtual ? '轉正' : '改 Email'}
               </button>
               {virtual && (
-                <button onClick={() => openSplit(entry.id)}
+                <button onClick={() => openSplit(entry.id, 'split')}
                   title="找到老師只能承擔部分課務時：拆一塊配課給他，其餘留在這個待聘帳號繼續找人"
                   className="text-xs whitespace-nowrap text-sky-600 hover:text-sky-700 font-medium">拆一部分</button>
               )}
@@ -359,7 +376,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
       onClick={() => !splitBusy && setSplitId(null)}>
       <div className="card w-full max-w-2xl my-8 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-baseline gap-2">
-          <h2 className="text-base font-semibold">拆出部分配課</h2>
+          <h2 className="text-base font-semibold">{splitMode === 'convert' ? '待聘帳號轉正' : '拆出部分配課'}</h2>
           <span className="text-sm text-zinc-500">{splitInfo?.name ?? ''}</span>
           <button onClick={() => setSplitId(null)} disabled={splitBusy}
             className="ml-auto text-zinc-400 hover:text-zinc-700 text-sm">✕</button>
@@ -386,8 +403,11 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
             ? <p className="text-sm text-zinc-400">這個帳號已經沒有配課了，可以直接刪除。</p>
             : <>
               <p className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2">
-                找到一位老師願意承擔部分課務時用這個。填入他<b>實際能上的節數</b>，
-                其餘<b>原地留在「{splitInfo.name}」繼續找人</b>——之後再找到人可以再拆一次。
+                {splitMode === 'convert'
+                  ? <>找到的老師能承擔<b>全部</b>課務時用這個。配課整份歸他、<b>帳號 ID 不變</b>，
+                    設定與課表裡原本指向這個待聘帳號的引用會原地生效。下面順便把班級指派掉。</>
+                  : <>找到一位老師只能承擔<b>部分</b>課務時用這個。填入他實際能上的節數，
+                    其餘<b>原地留在「{splitInfo.name}」繼續找人</b>——之後再找到人可以再拆一次。</>}
               </p>
               <div className="border border-zinc-200 rounded-sm overflow-hidden">
                 <table className="w-full text-sm">
@@ -395,8 +415,8 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                     <tr>
                       <th className="text-left px-3 py-1.5 font-medium">配課</th>
                       <th className="px-2 py-1.5 font-medium w-16">原本</th>
-                      <th className="px-2 py-1.5 font-medium w-24">拆給老師</th>
-                      <th className="px-2 py-1.5 font-medium w-24">留在待聘</th>
+                      <th className="px-2 py-1.5 font-medium w-24">{splitMode === 'convert' ? '歸這位老師' : '拆給老師'}</th>
+                      {splitMode === 'split' && <th className="px-2 py-1.5 font-medium w-24">留在待聘</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -406,20 +426,24 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                           <td className="px-3 py-1.5">{subj} <span className="text-zinc-400 text-xs">{GRADE_LABELS[Number(g) - 1] ?? `${g}年級`}</span></td>
                           <td className="text-center text-zinc-500 tabular-nums">{n}</td>
                           <td className="text-center py-1">
-                            <input type="number" min={0} max={Number(n)} value={Number(take[subj]?.[g]) || 0}
-                              onChange={e => setTakeAt(subj, g, Number(e.target.value), Number(n))}
-                              className="w-16 text-center border border-zinc-200 rounded-sm py-0.5 tabular-nums" />
+                            {splitMode === 'convert'
+                              ? <span className="tabular-nums font-medium">{n}</span>
+                              : <input type="number" min={0} max={Number(n)} value={Number(take[subj]?.[g]) || 0}
+                                  onChange={e => setTakeAt(subj, g, Number(e.target.value), Number(n))}
+                                  className="w-16 text-center border border-zinc-200 rounded-sm py-0.5 tabular-nums" />}
                           </td>
-                          <td className={`text-center tabular-nums ${rest(subj, g, Number(n)) === 0 ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                            {rest(subj, g, Number(n))}
-                          </td>
+                          {splitMode === 'split' && (
+                            <td className={`text-center tabular-nums ${rest(subj, g, Number(n)) === 0 ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                              {rest(subj, g, Number(n))}
+                            </td>
+                          )}
                         </tr>
                       )))}
                     <tr className="border-t border-zinc-200 bg-zinc-50 text-xs">
                       <td className="px-3 py-1.5 text-zinc-500">合計</td>
                       <td className="text-center tabular-nums">{sumHours(splitInfo.hours)}</td>
                       <td className="text-center tabular-nums font-medium text-sky-700">{sumHours(take)}</td>
-                      <td className="text-center tabular-nums font-medium">{sumHours(splitInfo.hours) - sumHours(take)}</td>
+                      {splitMode === 'split' && <td className="text-center tabular-nums font-medium">{sumHours(splitInfo.hours) - sumHours(take)}</td>}
                     </tr>
                   </tbody>
                 </table>
@@ -462,18 +486,20 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
               })}
 
               <div className="border border-zinc-200 rounded-sm p-3 space-y-2">
-                <div className="text-sm font-medium">拆給誰</div>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={to.mode === 'create'} onChange={() => setTo({ ...to, mode: 'create', email: '' })} />
-                    新建帳號
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={to.mode === 'merge'} onChange={() => setTo({ ...to, mode: 'merge', email: '' })} />
-                    併到既有帳號
-                  </label>
-                </div>
-                {to.mode === 'merge' ? (
+                <div className="text-sm font-medium">{splitMode === 'convert' ? '這位老師是' : '拆給誰'}</div>
+                {splitMode === 'split' && (
+                  <div className="flex gap-4 text-sm">
+                    <label className="flex items-center gap-1.5">
+                      <input type="radio" checked={to.mode === 'create'} onChange={() => setTo({ ...to, mode: 'create', email: '' })} />
+                      新建帳號
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <input type="radio" checked={to.mode === 'merge'} onChange={() => setTo({ ...to, mode: 'merge', email: '' })} />
+                      併到既有帳號
+                    </label>
+                  </div>
+                )}
+                {splitMode === 'split' && to.mode === 'merge' ? (
                   <select value={to.email} onChange={e => setTo({ ...to, email: e.target.value })} className="input text-sm w-full">
                     <option value="">選擇既有帳號…</option>
                     {(splitInfo.candidates ?? []).map(c => (
@@ -492,14 +518,16 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
 
               <div className="flex items-center gap-2">
                 <p className="text-xs text-zinc-400 flex-1">
-                  併到既有帳號時是把節數<b>加進去</b>，不會蓋掉對方原本的配課。
+                  {splitMode === 'convert'
+                    ? '帳號 ID 不變，配課不動——只改姓名信箱，並把班級指派掉。'
+                    : '併到既有帳號時是把節數加進去，不會蓋掉對方原本的配課。'}
                 </p>
                 <button onClick={() => setSplitId(null)} disabled={splitBusy} className="btn btn-secondary text-sm">取消</button>
                 <button onClick={submitSplit}
                   disabled={splitBusy || !to.email.trim() || sumHours(take) <= 0 || !picksValid(splitInfo)}
                   title={!picksValid(splitInfo) ? '要選滿對應的班級數才能送出' : undefined}
                   className="btn btn-primary text-sm">
-                  {splitBusy ? '處理中…' : `拆出 ${sumHours(take)} 節`}
+                  {splitBusy ? '處理中…' : splitMode === 'convert' ? '轉正並指派班級' : `拆出 ${sumHours(take)} 節`}
                 </button>
               </div>
             </>
