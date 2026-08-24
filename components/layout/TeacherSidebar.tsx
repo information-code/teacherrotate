@@ -15,6 +15,7 @@ const FORMAL_GROUPS: NavGroup[] = [
       { href: '/teacher/profile',   label: '基本資料' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
+      { href: '/teacher/repair',    label: '設備報修' },
       { href: '/teacher/scores',    label: '輪動分數' },
     ],
   },
@@ -36,6 +37,7 @@ const SUBSTITUTE_GROUPS: NavGroup[] = [
       { href: '/teacher/profile',   label: '基本資料' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
+      { href: '/teacher/repair',    label: '設備報修' },
     ],
   },
   {
@@ -46,7 +48,7 @@ const SUBSTITUTE_GROUPS: NavGroup[] = [
     ],
   },
 ]
-// 鐘點：課表與設備借用
+// 鐘點：課表與設備借用/報修
 const HOURLY_GROUPS: NavGroup[] = [
   {
     title: '常用功能',
@@ -54,6 +56,7 @@ const HOURLY_GROUPS: NavGroup[] = [
       { href: '/teacher',           label: '工作首頁' },
       { href: '/teacher/timetable', label: '我的課表' },
       { href: '/teacher/equipment', label: '設備借用' },
+      { href: '/teacher/repair',    label: '設備報修' },
     ],
   },
 ]
