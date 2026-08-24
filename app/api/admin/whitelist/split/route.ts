@@ -150,10 +150,34 @@ export async function POST(request: NextRequest) {
   try {
     // ── 收下這一塊的老師 ──
     let targetId: string
-    if (isConvert) {
+    if (isConvert && to?.mode === 'merge') {
+      // 轉正＋併入既有帳號：配課帶過去、設定與課表的引用改指、刪掉待聘帳號
+      const { data: t } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+      if (!t) throw new Error(`找不到 Email 為 ${email} 的既有帳號`)
+      if (t.id === id) throw new Error('不可併到待聘帳號自己')
+      targetId = t.id
+      // 節數用「加進去」而不是整份取代——對方本來就有的課不能被蓋掉
+      const { data: cur0 } = await admin.from('allocation').select('data').eq('teacher_id', targetId).eq('year', yr).maybeSingle()
+      const base0 = (cur0?.data ?? null) as TeacherAllocation | null
+      const merged: TeacherAllocation = base0 ? { ...base0 } : { ...template, subjectGradeHours: {} }
+      const m0: Hours = { ...(merged.subjectGradeHours ?? {}) }
+      for (const [subj, byG] of Object.entries(orig)) {
+        const row: Record<string, number> = { ...(m0[subj] ?? {}) }
+        for (const [g, n] of Object.entries(byG)) if (Number(n) > 0) row[g] = (Number(row[g]) || 0) + Number(n)
+        if (Object.keys(row).length) m0[subj] = row
+      }
+      merged.subjectGradeHours = m0
+      const { error: em } = await admin.from('allocation').upsert({ year: yr, teacher_id: targetId, data: merged as never }, { onConflict: 'year,teacher_id' })
+      if (em) throw new Error(`配課轉移失敗：${em.message}`)
+      await admin.from('allocation').delete().eq('teacher_id', id)
+      const { error: er } = await admin.rpc('relink_profile_refs', { old_id: id, new_id: targetId })
+      if (er) throw new Error(`引用轉移失敗：${er.message}`)
+      const { error: ed } = await admin.from('profiles').delete().eq('id', id)
+      if (ed) throw new Error(`刪除待聘帳號失敗：${ed.message}`)
+    } else if (isConvert) {
       // 轉正：改 email 與姓名，ID 不動；配課原封不動（本來就是他的）
       const { data: dup } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
-      if (dup && dup.id !== id) throw new Error(`Email ${email} 已被其他帳號使用，請改用「併到既有帳號」`)
+      if (dup && dup.id !== id) throw new Error(`Email ${email} 已被其他帳號使用，請改選「併到既有帳號」`)
       const { error } = await admin.from('profiles').update({ email, ...(name ? { name } : {}) }).eq('id', id)
       if (error) throw new Error(`轉正失敗：${error.message}`)
       targetId = id
@@ -174,6 +198,7 @@ export async function POST(request: NextRequest) {
     }
     // 併到既有帳號時是「把節數加進去」，不是整份覆蓋——對方本來就有的課不能被蓋掉
     const { data: cur } = isConvert ? { data: null } : await admin.from('allocation').select('data').eq('teacher_id', targetId).eq('year', yr).maybeSingle()
+    void cur
     const base = (cur?.data ?? null) as TeacherAllocation | null
     const next: TeacherAllocation = base ? { ...base } : { ...template, subjectGradeHours: {} }
     const sgh: Hours = { ...(next.subjectGradeHours ?? {}) }
@@ -219,7 +244,7 @@ export async function POST(request: NextRequest) {
           const [g, i] = ck.split('-').map(Number)
           const key = subjectClassKey(g, i, subj)
           const cur = map[key]
-          if (cur && cur !== HOMEROOM_SELF && cur !== id) throw new Error(`${classLabel(g, i)} 的${subj}已經指派給別人了，請重新整理再試`)
+          if (cur && cur !== HOMEROOM_SELF && cur !== id && cur !== targetId) throw new Error(`${classLabel(g, i)} 的${subj}已經指派給別人了，請重新整理再試`)
           map[key] = targetId
           assigned++
         }
