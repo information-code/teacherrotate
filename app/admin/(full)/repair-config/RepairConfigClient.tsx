@@ -318,12 +318,7 @@ export default function RepairConfigClient({
                   }`}
                   onClick={() => { setSelectedItemId(item.id); setItemDraft(null); setIssueDraft(null) }}
                 >
-                  <span className="flex items-center justify-between">
-                    <span>{item.name}{!item.active && <span className="ml-1 text-xs opacity-70">（停用）</span>}</span>
-                    <span className={`text-xs ${item.id === selectedItemId ? 'text-zinc-300' : 'text-zinc-400'}`}>
-                      {issues.filter(s => s.item_id === item.id).length} 題
-                    </span>
-                  </span>
+                  {item.name}{!item.active && <span className="ml-1 text-xs opacity-70">（停用）</span>}
                 </button>
               ))}
             </div>
