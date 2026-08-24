@@ -283,7 +283,6 @@ export default function ScheduleWizardClient(props: Props) {
 
   // ── 本土語場次：由鎖課×配課自動推導，發布後管理者直接切換 維持/直播/取消 ──
   const [nativeStates, setNativeStates] = useState<Record<string, 'stream' | 'cancelled'>>(scheduleConfig.nativeLang.states)
-  const [nativeSaving, setNativeSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const nativeDerived = useMemo(
     () => deriveNativeSessions({ config: { ...scheduleConfig, nativeLang: { ...scheduleConfig.nativeLang, states: nativeStates } }, extraCourses, hoursByTeacher }),
     [scheduleConfig, nativeStates, extraCourses, hoursByTeacher],
@@ -293,20 +292,6 @@ export default function ScheduleWizardClient(props: Props) {
     for (const z of scheduleConfig.roomZones) for (const r of z.rooms) if (r.kind === 'native') m[r.id] = (r.name || '本土語言教室') + r.no
     return m
   }, [scheduleConfig])
-  async function setNativeState(key: string, next: 'physical' | 'stream' | 'cancelled') {
-    const states = { ...nativeStates }
-    if (next === 'physical') delete states[key]
-    else states[key] = next
-    setNativeStates(states)
-    setNativeSaving('saving')
-    try {
-      const res = await fetch('/api/admin/schedule-config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, config: { ...scheduleConfig, nativeLang: { ...scheduleConfig.nativeLang, states } } }),
-      })
-      setNativeSaving(res.ok ? 'saved' : 'error')
-    } catch { setNativeSaving('error') }
-  }
 
   // 種子紀錄存在瀏覽器：關掉分頁、重新整理都還在，回來才看得到剛才試了幾顆
   const seedLogKey = `trotate:seedlog:${year}`
@@ -977,61 +962,7 @@ ${head}確定撤回？`)) return
         />
       ) : null}
 
-      {/* 發布後：本土語場次（自動推導；管理者依實際情況切換狀態） */}
-      {(planStatus === 'published' || planStatus === 'final') && nativeDerived.sessions.length > 0 && (
-        <div className="card p-3 space-y-2">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="text-sm font-semibold text-zinc-700">本土語場次
-              <span className="text-xs font-normal text-zinc-400 ml-2">由鎖課時段×語別課自動推導（設定在「排課設定 → 6 本土語場次」）。實體＝老師到校；線上＝老師線上授課；不開＝該時段沒有這個語別的學生（回原班上閩南語）。發布後臨時異動可在此改。</span>
-            </div>
-            <span className="text-xs">
-              {nativeSaving === 'saving' && <span className="text-zinc-500">儲存中…</span>}
-              {nativeSaving === 'saved' && <span className="text-green-600">✓ 已儲存</span>}
-              {nativeSaving === 'error' && <span className="text-red-600">⚠ 儲存失敗，請再點一次</span>}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="table-base">
-              <thead><tr><th>時段</th><th>課程</th><th>年級</th><th>教師</th><th>教室</th><th className="text-center">狀態</th></tr></thead>
-              <tbody>
-                {nativeDerived.sessions.map(s => {
-                  const [d, q] = s.slot.split('-').map(Number)
-                  const key = `${s.slot}|${s.course}|${s.grade}`
-                  const stateBtn = (st: 'physical' | 'stream' | 'cancelled', label: string, activeCls: string) => (
-                    <button key={st} disabled={planStatus === 'final'}
-                      onClick={() => setNativeState(key, st)}
-                      className={`text-xs px-2 py-0.5 rounded-sm border ${s.state === st ? activeCls : 'bg-white text-zinc-400 border-zinc-200 hover:border-zinc-400'} ${planStatus === 'final' ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      {label}
-                    </button>
-                  )
-                  return (
-                    <tr key={key} className={s.state === 'cancelled' ? 'opacity-50' : ''}>
-                      <td className="whitespace-nowrap">{DAY_LABEL[d]}第{q}節</td>
-                      <td className="whitespace-nowrap">{s.course}{s.lang && s.lang !== s.course && <span className="text-xs text-zinc-400 ml-1">（{s.lang}）</span>}</td>
-                      <td className="whitespace-nowrap">{GRADE_LABEL[s.grade]}</td>
-                      <td className="whitespace-nowrap">
-                        {s.teacherId ? (teacherNames[s.teacherId] ?? '？') : <span className="text-red-500 text-xs">未配課</span>}{s.state === 'stream' && <span className="ml-1 text-xs text-sky-600">（線上）</span>}
-                      </td>
-                      <td className="whitespace-nowrap text-xs">
-                        {s.state === 'cancelled' ? <span className="text-zinc-400">—（不開，回原班上閩南語）</span>
-                          : s.roomId ? (nativeRoomNames[s.roomId] ?? s.roomId) : <span className="text-red-500">教室不足</span>}
-                      </td>
-                      <td className="text-center whitespace-nowrap">
-                        <span className="inline-flex gap-1">
-                          {stateBtn('physical', '實體', 'bg-green-600 text-white border-green-600')}
-                          {stateBtn('stream', '線上', 'bg-sky-600 text-white border-sky-600')}
-                          {stateBtn('cancelled', '不開', 'bg-zinc-500 text-white border-zinc-500')}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          {planStatus === 'final' && <p className="text-[11px] text-zinc-400">課表已定案，場次狀態唯讀；如需調整請先解除定案。</p>}
-        </div>
-      )}
+      {/* 本土語場次已移回「排課設定 → 6 本土語場次」統一管理，精靈不重複一份 */}
 
       {result && (planStatus !== 'published' && planStatus !== 'final' ? true : Boolean(previewVersionId)) && (
         <>

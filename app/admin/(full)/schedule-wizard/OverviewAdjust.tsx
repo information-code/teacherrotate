@@ -1375,20 +1375,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       {sidePanel}
       </div>}
 
-      {/* 調整紀錄 */}
-      {adjustments.length > 0 && (
-        <details className="card p-3">
-          <summary className="text-sm font-semibold text-zinc-700 cursor-pointer">調整紀錄（{adjustments.length}）</summary>
-          <ul className="mt-2 space-y-1 text-xs text-zinc-500">
-            {[...adjustments].reverse().map((a, i) => (
-              <li key={i}>
-                <span className="text-zinc-400">{new Date(a.at).toLocaleString('zh-TW')}</span>　{a.desc}
-                {a.note && <span className="text-zinc-400">（{a.note}）</span>}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {/* 調整紀錄已移除：要回顧改了什麼，看版本紀錄比看流水帳清楚 */}
     
       {/* 連鎖調課：課務組的人工作法——不妥位置 → 妥適位置，被擠掉的繼續找位置，最後一次套用 */}
       <ChainAdjustModal
