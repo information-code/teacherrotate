@@ -13,7 +13,6 @@ import {
 interface ItemRow {
   id: string
   name: string
-  fallback_guide: RepairGuide
   active: boolean
   sort_order: number
 }
@@ -22,7 +21,6 @@ interface IssueRow {
   id: string
   item_id: string
   name: string
-  aliases: string[]
   guide: RepairGuide
   active: boolean
   sort_order: number
@@ -38,20 +36,15 @@ interface ContactRow {
   sort_order: number
 }
 
-/** 問題編輯草稿（aliases、排序用字串維護，存檔時才解析——數字欄位直接綁 number 會讓 0 刪不掉） */
+/** 問題編輯草稿（排序用字串維護，存檔時才解析——數字欄位直接綁 number 會讓 0 刪不掉） */
 interface IssueDraft {
   id: string        // '' = 新增
   item_id: string
   name: string
-  aliasesText: string
   videoUrl: string
   stepsMd: string
   active: boolean
   sortText: string
-}
-
-function splitAliases(text: string): string[] {
-  return text.split(/[,、;；\n]/).map(a => a.trim()).filter(Boolean)
 }
 
 function parseIntOr(text: string, fallback: number): number {
@@ -63,7 +56,6 @@ function parseIntOr(text: string, fallback: number): number {
 interface ItemDraft {
   id: string        // '' = 新增
   name: string
-  fallback_guide: RepairGuide
   active: boolean
   sortText: string
 }
@@ -141,7 +133,7 @@ export default function RepairConfigClient({
   const saveItem = async (draft: ItemDraft) => {
     const isCreate = !draft.id
     const row: ItemRow = {
-      id: draft.id, name: draft.name, fallback_guide: draft.fallback_guide,
+      id: draft.id, name: draft.name,
       active: draft.active, sort_order: parseIntOr(draft.sortText, 0),
     }
     await runBusy('儲存項目中…', async () => {
@@ -179,7 +171,6 @@ export default function RepairConfigClient({
       id: draft.id || undefined,
       item_id: draft.item_id,
       name: draft.name,
-      aliases: splitAliases(draft.aliasesText),
       guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
       active: draft.active,
       sort_order: parseIntOr(draft.sortText, 0),
@@ -190,7 +181,6 @@ export default function RepairConfigClient({
         id: data.id,
         item_id: draft.item_id,
         name: draft.name.trim(),
-        aliases: splitAliases(draft.aliasesText),
         guide: { videoUrl: draft.videoUrl.trim(), stepsMd: draft.stepsMd, photos: [] },
         active: draft.active,
         sort_order: parseIntOr(draft.sortText, 0),
@@ -261,13 +251,12 @@ export default function RepairConfigClient({
   }
 
   const emptyIssueDraft = (itemId: string): IssueDraft => ({
-    id: '', item_id: itemId, name: '', aliasesText: '', videoUrl: '', stepsMd: '',
+    id: '', item_id: itemId, name: '', videoUrl: '', stepsMd: '',
     active: true, sortText: String(selectedIssues.length),
   })
 
   const issueToDraft = (s: IssueRow): IssueDraft => ({
     id: s.id, item_id: s.item_id, name: s.name,
-    aliasesText: s.aliases.join('、'),
     videoUrl: s.guide.videoUrl, stepsMd: s.guide.stepsMd,
     active: s.active, sortText: String(s.sort_order),
   })
@@ -302,16 +291,19 @@ export default function RepairConfigClient({
 
       {/* ============ 設備項目與問題 ============ */}
       {tab === 'items' && (
-        <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
+        <div className="space-y-4">
           {/* 項目清單 */}
-          <div className="card space-y-2 self-start">
+          <div className="card space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-zinc-900">設備項目</h2>
+              <div>
+                <h2 className="font-medium text-zinc-900">設備項目</h2>
+                <p className="mt-0.5 text-sm text-zinc-500">點選項目可在下方維護它的問題清單。</p>
+              </div>
               <button
-                className="btn-secondary !px-3 !py-1"
-                onClick={() => setItemDraft({ id: '', name: '', fallback_guide: { videoUrl: '', stepsMd: '', photos: [] }, active: true, sortText: String(items.length) })}
+                className="btn-primary"
+                onClick={() => { setIssueDraft(null); setItemDraft({ id: '', name: '', active: true, sortText: String(items.length) }) }}
               >
-                ＋新增
+                新增項目
               </button>
             </div>
             {items.length === 0 && (
@@ -338,52 +330,37 @@ export default function RepairConfigClient({
           </div>
 
           {/* 項目編輯器（新增/編輯） */}
-          {itemDraft ? (
-            <div className="card space-y-3 self-start">
+          {itemDraft && (
+            <div className="card space-y-3">
               <h2 className="text-sm font-medium text-zinc-900">{itemDraft.id ? '編輯項目' : '新增項目'}</h2>
-              <div className="grid gap-3 sm:grid-cols-[1fr_6rem_auto]">
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">項目名稱</span>
-                  <input className="input" value={itemDraft.name} placeholder="例：教室電視"
-                    onChange={e => setItemDraft({ ...itemDraft, name: e.target.value })} />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">排序</span>
-                  <input className="input" inputMode="numeric" value={itemDraft.sortText}
-                    onChange={e => setItemDraft({ ...itemDraft, sortText: e.target.value })} />
-                </label>
-                <label className="flex items-end gap-2 pb-2 text-sm text-zinc-700">
-                  <input type="checkbox" checked={itemDraft.active}
-                    onChange={e => setItemDraft({ ...itemDraft, active: e.target.checked })} />
-                  開放報修
-                </label>
-              </div>
-              <div className="space-y-2 rounded border border-zinc-200 p-3">
-                <p className="text-sm font-medium text-zinc-700">通用自助排解（此項目沒有對到標準問題時顯示）</p>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">教學影片網址</span>
-                  <input className="input" value={itemDraft.fallback_guide.videoUrl} placeholder="https://youtu.be/…（可留空）"
-                    onChange={e => setItemDraft({ ...itemDraft, fallback_guide: { ...itemDraft.fallback_guide, videoUrl: e.target.value } })} />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">排解步驟（一行一步）</span>
-                  <textarea className="input min-h-24" value={itemDraft.fallback_guide.stepsMd}
-                    onChange={e => setItemDraft({ ...itemDraft, fallback_guide: { ...itemDraft.fallback_guide, stepsMd: e.target.value } })} />
-                </label>
-              </div>
-              <div className="flex justify-between">
-                {itemDraft.id ? (
+              <label className="block text-sm">
+                <span className="mb-1 block text-zinc-600">項目名稱</span>
+                <input className="input" value={itemDraft.name} placeholder="例：教室電視"
+                  onChange={e => setItemDraft({ ...itemDraft, name: e.target.value })} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-zinc-600">排序</span>
+                <input className="input !w-24" inputMode="numeric" value={itemDraft.sortText}
+                  onChange={e => setItemDraft({ ...itemDraft, sortText: e.target.value })} />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-zinc-700">
+                <input type="checkbox" checked={itemDraft.active}
+                  onChange={e => setItemDraft({ ...itemDraft, active: e.target.checked })} />
+                開放報修
+              </label>
+              <div className="flex justify-end gap-2">
+                {itemDraft.id && (
                   <button className="btn-danger" onClick={() => deleteItem(itemDraft)}>刪除項目</button>
-                ) : <span />}
-                <span className="flex gap-2">
-                  <button className="btn-secondary" onClick={() => setItemDraft(null)}>取消</button>
-                  <button className="btn-primary" disabled={!itemDraft.name.trim()} onClick={() => saveItem(itemDraft)}>儲存</button>
-                </span>
+                )}
+                <button className="btn-secondary" onClick={() => setItemDraft(null)}>取消</button>
+                <button className="btn-primary" disabled={!itemDraft.name.trim()} onClick={() => saveItem(itemDraft)}>儲存</button>
               </div>
             </div>
-          ) : selectedItem ? (
-            /* 選中項目：問題字典 */
-            <div className="card space-y-3 self-start">
+          )}
+
+          {/* 選中項目：問題字典 */}
+          {!itemDraft && selectedItem && (
+            <div className="card space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-medium text-zinc-900">
@@ -391,13 +368,13 @@ export default function RepairConfigClient({
                     {!selectedItem.active && <span className="ml-2 text-xs text-zinc-400">（停用中）</span>}
                   </h2>
                   <p className="mt-0.5 text-sm text-zinc-500">
-                    老師報修時可直接點選這些問題；同義詞會餵給自由輸入的即時建議。
+                    老師報修時可直接點選這些問題；沒對到的會自由填寫，之後在案件報表歸類。
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button className="btn-secondary"
                     onClick={() => setItemDraft({
-                      id: selectedItem.id, name: selectedItem.name, fallback_guide: selectedItem.fallback_guide,
+                      id: selectedItem.id, name: selectedItem.name,
                       active: selectedItem.active, sortText: String(selectedItem.sort_order),
                     })}>
                     編輯項目
@@ -417,9 +394,8 @@ export default function RepairConfigClient({
                       <div className="min-w-0 text-sm">
                         <span className="font-medium text-zinc-800">{s.name}</span>
                         {!s.active && <span className="ml-2 text-xs text-zinc-400">停用</span>}
-                        <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-zinc-500">
-                          {s.aliases.length > 0 && <span>同義詞：{s.aliases.join('、')}</span>}
-                          <span>{guideIsEmpty(s.guide) ? '未設自助內容' : '✓ 已設自助內容'}</span>
+                        <div className="mt-0.5 text-xs text-zinc-500">
+                          {guideIsEmpty(s.guide) ? '未設自助內容' : '✓ 已設自助內容'}
                         </div>
                       </div>
                       <button className="btn-secondary !px-3 !py-1" onClick={() => setIssueDraft(issueToDraft(s))}>編輯</button>
@@ -432,27 +408,20 @@ export default function RepairConfigClient({
               {issueDraft && (
                 <div className="space-y-3 rounded border border-zinc-300 bg-zinc-50 p-3">
                   <p className="text-sm font-medium text-zinc-700">{issueDraft.id ? '編輯問題' : '新增問題'}</p>
-                  <div className="grid gap-3 sm:grid-cols-[1fr_6rem_auto]">
-                    <label className="block text-sm">
-                      <span className="mb-1 block text-zinc-600">問題名稱</span>
-                      <input className="input" value={issueDraft.name} placeholder="例：沒有網路"
-                        onChange={e => setIssueDraft({ ...issueDraft, name: e.target.value })} />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="mb-1 block text-zinc-600">排序</span>
-                      <input className="input" inputMode="numeric" value={issueDraft.sortText}
-                        onChange={e => setIssueDraft({ ...issueDraft, sortText: e.target.value })} />
-                    </label>
-                    <label className="flex items-end gap-2 pb-2 text-sm text-zinc-700">
-                      <input type="checkbox" checked={issueDraft.active}
-                        onChange={e => setIssueDraft({ ...issueDraft, active: e.target.checked })} />
-                      啟用
-                    </label>
-                  </div>
                   <label className="block text-sm">
-                    <span className="mb-1 block text-zinc-600">同義詞（以「、」或逗號分隔；老師自由輸入時比對用）</span>
-                    <input className="input" value={issueDraft.aliasesText} placeholder="例：連不上網、wifi 壞掉、無法上網"
-                      onChange={e => setIssueDraft({ ...issueDraft, aliasesText: e.target.value })} />
+                    <span className="mb-1 block text-zinc-600">問題名稱</span>
+                    <input className="input" value={issueDraft.name} placeholder="例：沒有網路"
+                      onChange={e => setIssueDraft({ ...issueDraft, name: e.target.value })} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-zinc-600">排序</span>
+                    <input className="input !w-24" inputMode="numeric" value={issueDraft.sortText}
+                      onChange={e => setIssueDraft({ ...issueDraft, sortText: e.target.value })} />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-zinc-700">
+                    <input type="checkbox" checked={issueDraft.active}
+                      onChange={e => setIssueDraft({ ...issueDraft, active: e.target.checked })} />
+                    啟用
                   </label>
                   <label className="block text-sm">
                     <span className="mb-1 block text-zinc-600">教學影片網址（可留空）</span>
@@ -465,24 +434,18 @@ export default function RepairConfigClient({
                       placeholder={'例：\n1. 確認電視旁的網路線有插好\n2. 將電視關機 10 秒再開機\n3. 仍無法連線請聯絡維護人員'}
                       onChange={e => setIssueDraft({ ...issueDraft, stepsMd: e.target.value })} />
                   </label>
-                  <div className="flex justify-between">
-                    {issueDraft.id ? (
+                  <div className="flex justify-end gap-2">
+                    {issueDraft.id && (
                       <button className="btn-danger"
                         onClick={() => { const row = selectedIssues.find(s => s.id === issueDraft.id); if (row) deleteIssue(row) }}>
                         刪除問題
                       </button>
-                    ) : <span />}
-                    <span className="flex gap-2">
-                      <button className="btn-secondary" onClick={() => setIssueDraft(null)}>取消</button>
-                      <button className="btn-primary" disabled={!issueDraft.name.trim()} onClick={() => saveIssue(issueDraft)}>儲存</button>
-                    </span>
+                    )}
+                    <button className="btn-secondary" onClick={() => setIssueDraft(null)}>取消</button>
+                    <button className="btn-primary" disabled={!issueDraft.name.trim()} onClick={() => saveIssue(issueDraft)}>儲存</button>
                   </div>
                 </div>
               )}
-            </div>
-          ) : (
-            <div className="card self-start">
-              <p className="text-sm text-zinc-500">左側選擇一個設備項目，或新增項目。</p>
             </div>
           )}
         </div>
@@ -569,14 +532,12 @@ export default function RepairConfigClient({
                   顯示於教師端
                 </label>
               </div>
-              <div className="flex justify-between">
-                {contactDraft.id ? (
+              <div className="flex justify-end gap-2">
+                {contactDraft.id && (
                   <button className="btn-danger" onClick={() => deleteContact(contactDraft)}>刪除人員</button>
-                ) : <span />}
-                <span className="flex gap-2">
-                  <button className="btn-secondary" onClick={() => setContactDraft(null)}>取消</button>
-                  <button className="btn-primary" disabled={!contactDraft.name.trim()} onClick={() => saveContact(contactDraft)}>儲存</button>
-                </span>
+                )}
+                <button className="btn-secondary" onClick={() => setContactDraft(null)}>取消</button>
+                <button className="btn-primary" disabled={!contactDraft.name.trim()} onClick={() => saveContact(contactDraft)}>儲存</button>
               </div>
             </div>
           )}

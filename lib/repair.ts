@@ -111,24 +111,5 @@ export function contactRoleLabel(key: string): string {
   return CONTACT_ROLES.find(r => r.key === key)?.label ?? key
 }
 
-/**
- * 自由繕打的即時建議：把輸入文字與標準問題的名稱＋同義詞做包含比對，
- * 回傳命中的問題（給「你是不是要報：…」用）。
- */
-export function suggestIssues<T extends { name: string; aliases: string[] }>(
-  input: string,
-  issues: T[],
-  limit = 3,
-): T[] {
-  const q = input.trim().toLowerCase()
-  if (q.length < 2) return []
-  const scored = issues
-    .map(issue => {
-      const terms = [issue.name, ...issue.aliases].map(t => t.toLowerCase())
-      // 雙向包含：輸入含詞條、或詞條含輸入，都算命中
-      const hit = terms.some(t => t.includes(q) || q.includes(t))
-      return hit ? issue : null
-    })
-    .filter((x): x is T => x !== null)
-  return scored.slice(0, limit)
-}
+// 註：問題聚合不做前端即時建議／同義詞比對（使用者決策 2026-08-24）——
+// 老師沒對到標準問題就自由填寫，統一由管理端案件報表「歸類」到標準問題。

@@ -17,12 +17,10 @@ export default async function RepairConfigPage() {
   return (
     <RepairConfigClient
       initialItems={(items ?? []).map(i => ({
-        id: i.id, name: i.name, fallback_guide: parseGuide(i.fallback_guide),
-        active: i.active, sort_order: i.sort_order,
+        id: i.id, name: i.name, active: i.active, sort_order: i.sort_order,
       }))}
       initialIssues={(issues ?? []).map(s => ({
         id: s.id, item_id: s.item_id, name: s.name,
-        aliases: Array.isArray(s.aliases) ? (s.aliases as string[]) : [],
         guide: parseGuide(s.guide), active: s.active, sort_order: s.sort_order,
       }))}
       initialContacts={(contacts ?? []).map(c => ({
