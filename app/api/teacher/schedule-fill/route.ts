@@ -51,7 +51,8 @@ export async function PUT(request: NextRequest) {
   }
 
   // 固定格集合：鎖課＋科任課。
-  // 單雙週課只鎖顯示格（單週＝起始節、雙週＝次節）；配對格開放導師填課、每格計 2 節（整塊兩節同科）
+  // 單雙週課只鎖顯示格（單週＝起始節、雙週＝次節）；配對格開放導師填課、每格計 1 節
+  // （佔兩格但隔週才上一次，平均 1 節／週——和科任那一半的算法一致）
   const blocked = new Set<string>(Object.keys(config.lockCells[classKey] ?? {}))
   const pairCells = new Set<string>()
   for (const p of plan.placed ?? []) {
@@ -93,7 +94,7 @@ export async function PUT(request: NextRequest) {
     if (blocked.has(slot)) return NextResponse.json({ error: `${slot} 已有科任課或鎖課` }, { status: 400 })
     if (!(s in breakdown)) return NextResponse.json({ error: `「${s}」不在您的配課科目中` }, { status: 400 })
     clean[slot] = s
-    counts[s] = (counts[s] ?? 0) + (pairCells.has(slot) ? 2 : 1)   // 配對格＝整塊兩節
+    counts[s] = (counts[s] ?? 0) + 1   // 配對格佔兩格但隔週一次，和單格一樣計 1 節
   }
   for (const [s, n] of Object.entries(counts)) {
     if (n > (breakdown[s] ?? 0)) return NextResponse.json({ error: `「${s}」排了 ${n} 節，超過配課 ${breakdown[s]} 節` }, { status: 400 })

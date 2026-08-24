@@ -12,7 +12,7 @@ interface Props {
   periodsPerDay: number
   teachable: string[]
   fixed: Record<string, FixedCell>
-  pairCells: Record<string, 'odd' | 'even'>   // 單雙週配對格：可填、同科整塊兩節（扣 2 節籤），值＝導師課週型
+  pairCells: Record<string, 'odd' | 'even'>   // 單雙週配對格：可填、隔週上整塊兩節（扣 1 節籤），值＝導師課週型
   breakdown: Record<string, number>       // 科目 → 應排節數
   initialCells: Record<string, string>    // slotKey → 科目
   confirmedAt: string | null
@@ -42,8 +42,11 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
   const readOnly = confirmed || finalized || blockedMsg !== null
 
   const subjects = orderSubjectNames(Object.keys(breakdown))
-  // 配對格（單雙週區塊）填一格＝整塊兩節，計 2 節
-  const weightOf = (k: string) => (pairCells[k] ? 2 : 1)
+  // 配對格＝單雙週區塊輪到導師的那一週：佔兩格，但隔週才上一次，平均下來就是 1 節／週，
+  // 所以只扣 1 節配課。視覺藝術那一半也是這樣算的——四年級視藝每班 1 節，佔的正是同一個
+  // size=2 的區塊。算成 2 節會讓導師永遠差一節填不滿（班級活動只有 1 節，卻填不進唯一
+  // 剩下的那一格），而且和「要填的節數＝可填的格數」這個帳對不起來。
+  const weightOf = (_k: string) => 1
   const placedCount = (s: string) => Object.entries(cells).filter(([, v]) => v === s).reduce((n, [k]) => n + weightOf(k), 0)
   const remaining = (s: string) => (breakdown[s] ?? 0) - placedCount(s)
   const allDone = subjects.every(s => remaining(s) === 0)
@@ -80,7 +83,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
     setCells(prev => {
       const next = { ...prev }
       if (next[k]) { delete next[k]; return next }          // 點已填的格 → 移除
-      if (selected && remaining(selected) >= weightOf(k)) next[k] = selected   // 配對格需剩 2 節
+      if (selected && remaining(selected) >= weightOf(k)) next[k] = selected
       return next
     })
   }
@@ -228,7 +231,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
                   if (!teachSet.has(k)) return <td key={d} className="p-0.5"><div className="h-12 rounded-sm bg-zinc-50" /></td>
                   const mine = cells[k]
                   const pair = pairCells[k]
-                  const pairTag = pair === 'odd' ? '單週輪您・算 2 節' : pair === 'even' ? '雙週輪您・算 2 節' : null
+                  const pairTag = pair === 'odd' ? '單週輪您・隔週上兩節，算 1 節' : pair === 'even' ? '雙週輪您・隔週上兩節，算 1 節' : null
                   return (
                     <td key={d} className="p-0.5">
                       <button type="button" onClick={() => clickCell(k)} disabled={readOnly}

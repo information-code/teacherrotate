@@ -60,7 +60,7 @@ export default async function ScheduleFillPage() {
 
   // 固定格：科任課＋鎖課。
   // 單雙週課只固定「顯示格」（單週＝起始節、雙週＝次節）；區塊的另一格＝配對格，
-  // 開放導師填課（同科整塊兩節、扣兩節籤，週型與視藝互補）。
+  // 開放導師填課（隔週上整塊兩節、扣一節籤，週型與視藝互補）。
   const fixed: Record<string, FixedCell> = {}
   const pairCells: Record<string, 'odd' | 'even'> = {}   // slot → 導師課的週型
   const { data: profs } = await admin.from('profiles').select('id, name').neq('status', 'inactive')
