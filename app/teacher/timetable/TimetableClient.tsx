@@ -39,9 +39,19 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
   // 導師還在填自己班的課：內容會變動，這裡看到的是進度而不是定案
   const filling = planStatus === 'published'
   const [dlOpen, setDlOpen] = useState(false)
-  const [dlScope, setDlScope] = useState<'all' | '班級' | '教師' | '教室'>('all')
+  const [dlScope, setDlScope] = useState<'this' | 'all' | '班級' | '教師' | '教室'>('this')
   const [dlStatus, setDlStatus] = useState<string | null>(null)
-  /** 下載課表：可選整份或只要班級／教師／教室其中一段。 */
+  /** 畫面上這一張課表是哪一份（對應 ExportSheet 的 section＋name）。 */
+  function currentSheet(): { section: '班級' | '教師' | '教室'; name: string } | null {
+    if (view === 'class' && classSel) return { section: '班級', name: labelOf(classSel) }
+    if (view === 'teacher' && teacherSel) {
+      const n = [...teachers, ...foreignList].find(t => t.id === teacherSel)?.name
+      return n ? { section: '教師', name: n } : null
+    }
+    if (view === 'room' && roomSel && roomNames[roomSel]) return { section: '教室', name: roomNames[roomSel] }
+    return null
+  }
+  /** 下載課表：預設只要畫面上這一張，也可整份或某一段。 */
   async function download(kind: 'pdf' | 'doc' | 'csv') {
     setDlOpen(false); setDlStatus('準備中…')
     try {
@@ -52,12 +62,19 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
         teacherNames: exportArgs.teacherNames, classCounts: exportArgs.classCounts,
         hrCells: homeroomCells, nativeSessions: exportArgs.nativeSessions, nativeRoomNames: exportArgs.nativeRoomNames,
       })
-      const sheets = dlScope === 'all' ? all : all.filter(x => x.section === dlScope)
+      const cur = dlScope === 'this' ? currentSheet() : null
+      if (dlScope === 'this' && !cur) { alert('目前沒有選定任何一張課表。'); return }
+      const sheets = dlScope === 'all' ? all
+        : cur ? all.filter(x => x.section === cur.section && x.name === cur.name)
+        : all.filter(x => x.section === dlScope)
       if (!sheets.length) { alert('這個範圍沒有可匯出的課表。'); return }
-      const base = `${year}學年度課表（${dlScope === 'all' ? '班級＋科任教師＋科任教室' : dlScope}）`
-      if (kind === 'csv') { ex.saveBlob(new Blob([ex.sheetsToCsv(sheets)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
-      if (kind === 'doc') { setDlStatus('產生 Word 中…'); ex.saveBlob(await ex.sheetsToDocx(sheets), `${base}.docx`); return }
-      ex.saveBlob(await ex.sheetsToPdf(sheets, m => setDlStatus(m)), `${base}.pdf`)
+      // 還在填課就下載：紙本一旦印出來就追不回來，標題直接標明未定案
+      const out = filling ? sheets.map(x => ({ ...x, title: `${x.title}（未定案・${new Date().toLocaleDateString('zh-TW')} 進度）` })) : sheets
+      const base = (cur ? `${year}學年度 ${cur.name} 課表` : `${year}學年度課表（${dlScope === 'all' ? '班級＋科任教師＋科任教室' : dlScope}）`)
+        + (filling ? '（未定案）' : '')
+      if (kind === 'csv') { ex.saveBlob(new Blob([ex.sheetsToCsv(out)], { type: 'text/csv;charset=utf-8' }), `${base}.csv`); return }
+      if (kind === 'doc') { setDlStatus('產生 Word 中…'); ex.saveBlob(await ex.sheetsToDocx(out), `${base}.docx`); return }
+      ex.saveBlob(await ex.sheetsToPdf(out, m => setDlStatus(m)), `${base}.pdf`)
     } catch (e) {
       alert(`下載失敗：${e instanceof Error ? e.message : String(e)}`)
     } finally { setDlStatus(null) }
@@ -193,24 +210,27 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
           </p>
         )}
         <p className="text-xs text-zinc-400">
-          可查看全校班級、教師與科任教室課表（唯讀）{filling ? '' : '，也可下載'}。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
+          可查看全校班級、教師與科任教室課表（唯讀），也可下載。藍格＝科任課、綠格＝導師課、深灰＝鎖課、紫格＝視藝單雙週（單週顯示於起始節、雙週於次節，各代表隔週連堂兩節）。
           如需調整請洽教務處。
         </p>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        {/* 還沒定案就不給下載：一份 PDF 流出去，之後改了也追不回來 */}
-        <span className={`relative${filling ? ' hidden' : ''}`}>
+        <span className="relative">
           <button onClick={() => setDlOpen(o => !o)} disabled={dlStatus !== null} className="btn btn-secondary text-sm py-1"
             title="下載全校課表：可選整份或只要班級／教師／教室">{dlStatus ?? '⬇ 下載課表 ▾'}</button>
           {dlOpen && (
             <span className="absolute z-20 mt-1 left-0 bg-white border border-zinc-200 rounded-sm shadow-lg p-2 w-52 flex flex-col gap-2">
               <label className="text-xs text-zinc-500 flex items-center gap-1.5">範圍
                 <select value={dlScope} onChange={e => setDlScope(e.target.value as typeof dlScope)} className="input py-0.5 text-xs flex-1">
-                  <option value="all">整份（班級＋教師＋教室）</option>
-                  <option value="班級">只要班級課表</option>
-                  <option value="教師">只要教師課表</option>
-                  <option value="教室">只要科任教室課表</option>
+                  <option value="this">只要目前這一張</option>
+                  {/* 未定案階段不給整份：自己那一張要印無妨，整份流出去就收不回來了 */}
+                  {!filling && <>
+                    <option value="all">整份（班級＋教師＋教室）</option>
+                    <option value="班級">只要班級課表</option>
+                    <option value="教師">只要教師課表</option>
+                    <option value="教室">只要科任教室課表</option>
+                  </>}
                 </select>
               </label>
               <span className="flex gap-1">
@@ -218,7 +238,12 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
                 <button onClick={() => download('doc')} className="btn btn-secondary text-xs py-0.5 flex-1">Word</button>
                 <button onClick={() => download('csv')} className="btn btn-secondary text-xs py-0.5 flex-1">CSV</button>
               </span>
-              <span className="text-[10px] text-zinc-400">一張課表一頁，版面同人工課表。</span>
+              <span className="text-[10px] text-zinc-400">
+                {dlScope === 'this'
+                  ? `目前這一張：${currentSheet()?.name ?? '（尚未選定）'}`
+                  : '一張課表一頁，版面同人工課表。'}
+                {filling && <><br />尚未定案，檔名與標題會標明；整份下載要等定案後。</>}
+              </span>
             </span>
           )}
         </span>
