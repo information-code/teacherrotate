@@ -72,14 +72,17 @@ export function RepairPage() {
   const [loadError, setLoadError] = useState('')
   const [view, setView] = useState<View>({ mode: 'list' })
 
-  // 表單狀態
+  // 表單狀態。formItemId 為 OTHER_ITEM＝「其他設備」（自行填寫名稱、問題只能自由描述）
+  const OTHER_ITEM = '__other__'
   const [formItemId, setFormItemId] = useState('')
+  const [formOtherName, setFormOtherName] = useState('')
   const [formIssueId, setFormIssueId] = useState('')      // '' 且 custom 也空＝未選
   const [formCustom, setFormCustom] = useState('')
   const [useCustom, setUseCustom] = useState(false)
   const [formLocation, setFormLocation] = useState('')
   const [formPhotos, setFormPhotos] = useState<UploadedPhoto[]>([])
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
 
   const [message, setMessage] = useState('')
   const flash = (text: string) => {
@@ -124,6 +127,7 @@ export function RepairPage() {
 
   const resetForm = () => {
     setFormItemId('')
+    setFormOtherName('')
     setFormIssueId('')
     setFormCustom('')
     setUseCustom(false)
@@ -136,12 +140,14 @@ export function RepairPage() {
     setView({ mode: 'form' })
   }
 
+  const isOtherItem = formItemId === OTHER_ITEM
   const formIssues = data.issues
     .filter(s => s.item_id === formItemId)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'))
 
-  const canSubmit =
-    Boolean(formItemId) && (useCustom ? Boolean(formCustom.trim()) : Boolean(formIssueId))
+  const canSubmit = isOtherItem
+    ? Boolean(formOtherName.trim()) && Boolean(formCustom.trim())
+    : Boolean(formItemId) && (useCustom ? Boolean(formCustom.trim()) : Boolean(formIssueId))
 
   const uploadPhotos = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -157,7 +163,8 @@ export function RepairPage() {
       }
       setFormPhotos(next)
     })
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
+    if (galleryInputRef.current) galleryInputRef.current.value = ''
   }
 
   const submitReport = async () => {
@@ -166,9 +173,10 @@ export function RepairPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          item_id: formItemId,
-          issue_id: useCustom ? null : formIssueId || null,
-          custom_issue: useCustom ? formCustom : '',
+          item_id: isOtherItem ? null : formItemId,
+          other_item_name: isOtherItem ? formOtherName : '',
+          issue_id: isOtherItem || useCustom ? null : formIssueId || null,
+          custom_issue: isOtherItem || useCustom ? formCustom : '',
           location: formLocation,
           photos: formPhotos.map(p => p.path),
         }),
@@ -280,53 +288,84 @@ export function RepairPage() {
                   {item.name}
                 </button>
               ))}
+              <button
+                className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                  isOtherItem
+                    ? 'border-zinc-800 bg-zinc-800 text-white'
+                    : 'border-dashed border-zinc-300 text-zinc-500 hover:bg-zinc-50'
+                }`}
+                onClick={() => { setFormItemId(OTHER_ITEM); setFormIssueId(''); setUseCustom(false) }}
+              >
+                其他設備…
+              </button>
             </div>
+            {isOtherItem && (
+              <input
+                className="input mt-2"
+                placeholder="請填寫設備名稱（例：實物投影機）"
+                value={formOtherName}
+                onChange={e => setFormOtherName(e.target.value)}
+              />
+            )}
           </div>
 
-          {/* 選問題（依被報修次數排序） */}
-          {formItemId && (
-            <div>
-              <p className="mb-1.5 text-sm text-zinc-600">遇到什麼問題？</p>
-              <div className="flex flex-wrap gap-2">
-                {formIssues.map(s => (
+          {/* 選問題（依被報修次數排序）；其他設備＝直接自由描述 */}
+          <div>
+            <p className="mb-1.5 text-sm text-zinc-600">遇到什麼問題？</p>
+            {!formItemId && (
+              <p className="text-sm text-zinc-400">請先在上方選擇報修設備。</p>
+            )}
+            {formItemId && !isOtherItem && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {formIssues.map(s => (
+                    <button
+                      key={s.id}
+                      className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                        !useCustom && s.id === formIssueId
+                          ? 'border-zinc-800 bg-zinc-800 text-white'
+                          : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                      }`}
+                      onClick={() => { setFormIssueId(s.id); setUseCustom(false) }}
+                    >
+                      {s.name}
+                      {s.count > 0 && (
+                        <span className={`ml-1.5 text-xs ${!useCustom && s.id === formIssueId ? 'text-zinc-300' : 'text-zinc-400'}`}>
+                          {s.count} 次
+                        </span>
+                      )}
+                    </button>
+                  ))}
                   <button
-                    key={s.id}
                     className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-                      !useCustom && s.id === formIssueId
+                      useCustom
                         ? 'border-zinc-800 bg-zinc-800 text-white'
-                        : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                        : 'border-dashed border-zinc-300 text-zinc-500 hover:bg-zinc-50'
                     }`}
-                    onClick={() => { setFormIssueId(s.id); setUseCustom(false) }}
+                    onClick={() => { setUseCustom(true); setFormIssueId('') }}
                   >
-                    {s.name}
-                    {s.count > 0 && (
-                      <span className={`ml-1.5 text-xs ${!useCustom && s.id === formIssueId ? 'text-zinc-300' : 'text-zinc-400'}`}>
-                        {s.count} 次
-                      </span>
-                    )}
+                    其他問題…
                   </button>
-                ))}
-                <button
-                  className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-                    useCustom
-                      ? 'border-zinc-800 bg-zinc-800 text-white'
-                      : 'border-dashed border-zinc-300 text-zinc-500 hover:bg-zinc-50'
-                  }`}
-                  onClick={() => { setUseCustom(true); setFormIssueId('') }}
-                >
-                  其他問題…
-                </button>
-              </div>
-              {useCustom && (
-                <textarea
-                  className="input mt-2 min-h-20"
-                  placeholder="請描述遇到的狀況（例：開機後畫面一直閃爍）"
-                  value={formCustom}
-                  onChange={e => setFormCustom(e.target.value)}
-                />
-              )}
-            </div>
-          )}
+                </div>
+                {useCustom && (
+                  <textarea
+                    className="input mt-2 min-h-20"
+                    placeholder="請描述遇到的狀況（例：開機後畫面一直閃爍）"
+                    value={formCustom}
+                    onChange={e => setFormCustom(e.target.value)}
+                  />
+                )}
+              </>
+            )}
+            {isOtherItem && (
+              <textarea
+                className="input min-h-20"
+                placeholder="請描述遇到的狀況（例：開機後畫面一直閃爍）"
+                value={formCustom}
+                onChange={e => setFormCustom(e.target.value)}
+              />
+            )}
+          </div>
 
           {/* 地點 */}
           <label className="block text-sm">
@@ -335,17 +374,29 @@ export function RepairPage() {
               onChange={e => setFormLocation(e.target.value)} />
           </label>
 
-          {/* 照片 */}
+          {/* 照片：拍照（手機/平板直接開相機）與相簿分開兩顆按鈕 */}
           <div>
             <p className="mb-1.5 text-sm text-zinc-600">問題照片（選填，可多張）</p>
             <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={e => uploadPhotos(e.target.files)}
+            />
+            <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
               multiple
-              className="text-sm"
+              className="hidden"
               onChange={e => uploadPhotos(e.target.files)}
             />
+            <div className="flex gap-2">
+              <button className="btn-secondary" onClick={() => cameraInputRef.current?.click()}>📷 拍照</button>
+              <button className="btn-secondary" onClick={() => galleryInputRef.current?.click()}>🖼 從相簿選</button>
+            </div>
             {formPhotos.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {formPhotos.map((p, i) => (

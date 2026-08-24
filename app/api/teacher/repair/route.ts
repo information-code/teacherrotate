@@ -56,31 +56,42 @@ export async function GET() {
   })
 }
 
-/** 送出報修。body: { item_id, issue_id?, custom_issue?, location, photos: string[] } */
+/**
+ * 送出報修。body: { item_id?, other_item_name?, issue_id?, custom_issue?, location, photos: string[] }
+ * item_id 為空＝「其他設備」：other_item_name 必填、問題只能自由描述。
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireUser()
   if ('error' in auth) return auth.error
 
   const body = await request.json()
-  const itemId = String(body?.item_id ?? '')
-  if (!itemId) return NextResponse.json({ error: '請選擇報修設備' }, { status: 400 })
-
-  const { data: item } = await supabaseAdmin
-    .from('repair_items').select('id, name, active').eq('id', itemId).maybeSingle()
-  if (!item || !item.active) return NextResponse.json({ error: '此設備項目目前不開放報修' }, { status: 400 })
-
-  const issueId = body?.issue_id ? String(body.issue_id) : null
+  const itemId = body?.item_id ? String(body.item_id) : null
   const customIssue = String(body?.custom_issue ?? '').trim()
+  let itemName = ''
+  let issueId: string | null = null
   let issueName = ''
-  if (issueId) {
-    const { data: issue } = await supabaseAdmin
-      .from('repair_issues').select('id, item_id, name, active').eq('id', issueId).maybeSingle()
-    if (!issue || !issue.active || issue.item_id !== itemId) {
-      return NextResponse.json({ error: '問題選項無效，請重新選擇' }, { status: 400 })
+
+  if (itemId) {
+    const { data: item } = await supabaseAdmin
+      .from('repair_items').select('id, name, active').eq('id', itemId).maybeSingle()
+    if (!item || !item.active) return NextResponse.json({ error: '此設備項目目前不開放報修' }, { status: 400 })
+    itemName = item.name
+
+    issueId = body?.issue_id ? String(body.issue_id) : null
+    if (issueId) {
+      const { data: issue } = await supabaseAdmin
+        .from('repair_issues').select('id, item_id, name, active').eq('id', issueId).maybeSingle()
+      if (!issue || !issue.active || issue.item_id !== itemId) {
+        return NextResponse.json({ error: '問題選項無效，請重新選擇' }, { status: 400 })
+      }
+      issueName = issue.name
+    } else if (!customIssue) {
+      return NextResponse.json({ error: '請選擇問題或自行描述' }, { status: 400 })
     }
-    issueName = issue.name
-  } else if (!customIssue) {
-    return NextResponse.json({ error: '請選擇問題或自行描述' }, { status: 400 })
+  } else {
+    itemName = String(body?.other_item_name ?? '').trim()
+    if (!itemName) return NextResponse.json({ error: '請填寫設備名稱' }, { status: 400 })
+    if (!customIssue) return NextResponse.json({ error: '請描述遇到的問題' }, { status: 400 })
   }
 
   const photos = Array.isArray(body?.photos)
@@ -90,7 +101,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabaseAdmin.from('repair_reports').insert({
     teacher_id: auth.user.id,
     item_id: itemId,
-    item_name: item.name,
+    item_name: itemName,
     issue_id: issueId,
     issue_name: issueName,
     custom_issue: customIssue,
