@@ -28,6 +28,7 @@ interface ReportRow {
   photoUrls: string[]
   status: string
   resolved_kind: string | null
+  admin_note: string
   created_at: string
   accepted_at: string | null
   dispatched_at: string | null
@@ -485,20 +486,23 @@ export function RepairPage() {
               </div>
             )}
 
+            {/* 維護人員說明（管理端填寫，向報修者交代目前情況） */}
+            {detailReport.admin_note && (
+              <div className="rounded border border-zinc-200 bg-zinc-50 p-3">
+                <p className="text-xs font-medium text-zinc-500">維護人員說明</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{detailReport.admin_note}</p>
+              </div>
+            )}
+
             {/* 已解決回報 */}
             {detailReport.status !== 'closed' && (
-              <div className="rounded border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-sm text-zinc-700">
-                  問題已經解決了嗎？回報後案件會結案，維護人員就不需要出勤。
-                </p>
-                <div className="mt-2 flex justify-end gap-2">
-                  <button className="btn-secondary" onClick={() => resolveReport(detailReport, 'vanished')}>
-                    問題自行消失
-                  </button>
-                  <button className="btn-primary" onClick={() => resolveReport(detailReport, 'self')}>
-                    我已自行排除
-                  </button>
-                </div>
+              <div className="flex justify-end gap-2">
+                <button className="btn-secondary" onClick={() => resolveReport(detailReport, 'vanished')}>
+                  問題自行消失
+                </button>
+                <button className="btn-primary" onClick={() => resolveReport(detailReport, 'self')}>
+                  我已自行排除
+                </button>
               </div>
             )}
           </div>

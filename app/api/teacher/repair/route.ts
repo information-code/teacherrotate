@@ -20,7 +20,7 @@ export async function GET() {
     supabaseAdmin.from('repair_issues').select('id, item_id, name').eq('active', true),
     supabaseAdmin.from('repair_contacts').select('name, role, contact, note').eq('active', true).order('sort_order').order('name'),
     supabaseAdmin.from('repair_reports')
-      .select('id, item_id, item_name, issue_id, issue_name, custom_issue, location, photos, status, resolved_kind, created_at, accepted_at, dispatched_at, vendor_at, closed_at')
+      .select('id, item_id, item_name, issue_id, issue_name, custom_issue, location, photos, status, resolved_kind, admin_note, created_at, accepted_at, dispatched_at, vendor_at, closed_at')
       .eq('teacher_id', auth.user.id)
       .order('created_at', { ascending: false }),
   ])
