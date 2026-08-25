@@ -256,7 +256,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
           config={config} setConfig={setConfig}
           classCounts={classCounts} gradeSubjects={gradeSubjects}
           subjectTeachers={subjectTeachers} homerooms={homerooms} homeroomSupply={homeroomSupply} homeroomBreakdown={homeroomBreakdown}
-          avoidMap={avoidMap} allNames={allNames}
+          avoidMap={avoidMap} allNames={allNames} year={year}
         />
       )}
 

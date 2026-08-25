@@ -16,13 +16,68 @@ interface Props {
   homeroomBreakdown: Record<string, Record<string, number>> // 各導師自上節數（teacherId→科目→節數）
   avoidMap: Record<string, number[]>   // 排課需求—避開子女就讀年段：teacherId → 年級
   allNames: Record<string, string>     // 全教師名單（含已不具身分者）：顯示殘留指派用
+  year: number
+}
+
+/** 換授課老師的檢查結果（伺服器算的）。改配班只動設定，課表還是印著舊老師——
+ *  課表才是全校在看的那一份，所以要問一句、順便把課表一起換掉。 */
+interface SwapInfo {
+  classLabel: string; subject: string
+  fromNames: string[]; toName: string
+  lessons: { id: string; slots: string[]; size: number; parity: string; teacherName: string }[]
+  problems: string[]; notes: string[]
+  canSync: boolean
+  grade: number; index: number; to: string
 }
 
 /** 分頁三：科任配班。從配課結果（科目×年級×節數）帶入可授課教師，指派各班；可手動改派任何科任／行政。 */
-export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, homeroomSupply, homeroomBreakdown, avoidMap, allNames }: Props) {
+export default function SubjectAssignTab({ config, setConfig, classCounts, gradeSubjects, subjectTeachers, homerooms, homeroomSupply, homeroomBreakdown, avoidMap, allNames, year }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [showAll, setShowAll] = useState(false)
+  // ── 換授課老師：課表上已經有這一班這一科的課時，順便把課表一起換掉 ──
+  const [swap, setSwap] = useState<SwapInfo | null>(null)
+  const [swapBusy, setSwapBusy] = useState(false)
+  const [swapErr, setSwapErr] = useState('')
+  const slotZh = (s: string) => `週${'一二三四五六日'[Number(s.split('-')[0]) - 1]}第${s.split('-')[1]}節`
+  const lessonZh = (l: SwapInfo['lessons'][number]) =>
+    (l.slots.length > 1
+      ? `週${'一二三四五六日'[Number(l.slots[0].split('-')[0]) - 1]}第${l.slots.map(s => s.split('-')[1]).join('、')}節`
+      : slotZh(l.slots[0]))
+    + (l.parity ? `（${l.parity === 'odd' ? '單' : '雙'}週）` : '')
+
+  /** 改配班：課表上沒課就直接改；有課就先問伺服器能不能一起換。 */
+  async function requestAssign(g: number, index: number, subject: string, teacherId: string) {
+    setSwapBusy(true); setSwapErr('')
+    try {
+      const res = await fetch(`/api/admin/subject-teacher-swap?year=${year}&grade=${g}&index=${index}&subject=${encodeURIComponent(subject)}&to=${teacherId}`)
+      const d = await res.json()
+      // 沒課可換、也沒有要提醒的事（如改成導師自上但課表上還有科任課）→ 照舊直接改
+      if (!res.ok || (!d.canSync && !d.notes?.length)) { setAssign(g, index, subject, teacherId); return }
+      setSwap({ ...d, grade: g, index, to: teacherId })
+    } catch { setAssign(g, index, subject, teacherId) } finally { setSwapBusy(false) }
+  }
+  /** 只改設定不動課表——課表上那幾堂維持原老師（下次重跑排課才會照新配班）。 */
+  function swapConfigOnly() {
+    if (!swap) return
+    setAssign(swap.grade, swap.index, swap.subject, swap.to)
+    setSwap(null)
+  }
+  async function swapConfirm() {
+    if (!swap) return
+    setSwapBusy(true); setSwapErr('')
+    try {
+      const res = await fetch('/api/admin/subject-teacher-swap', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, grade: swap.grade, index: swap.index, subject: swap.subject, to: swap.to }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setSwapErr(d.error ?? '換人失敗'); return }
+      setAssign(swap.grade, swap.index, swap.subject, swap.to)
+      setSwap(null)
+      alert(`已換人：${swap.classLabel} ${swap.subject} ${d.count} 堂改由 ${d.toName} 上課，時間與教室不變。`)
+    } finally { setSwapBusy(false) }
+  }
 
   const nameOf = (id: string) => subjectTeachers.find(t => t.id === id)?.name ?? homerooms.find(h => h.id === id)?.name ?? '？'
   const hoursOf = (t: SubjectTeacher, subj: string, g: number) => Number(t.hours[subj]?.[String(g)]) || 0
@@ -162,7 +217,7 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
                         return (
                           <label key={i} className="flex items-center gap-2 text-sm">
                             <span className="text-zinc-600 w-14 flex-shrink-0">{classLabel(grade, i)}{need !== s.perClass && <span className="block text-[10px] text-zinc-400 leading-none">科任 {need} 節</span>}</span>
-                            <select value={val} onChange={e => setAssign(grade, i, s.name, e.target.value)}
+                            <select value={val} onChange={e => void requestAssign(grade, i, s.name, e.target.value)}
                               className={`input py-1 text-sm flex-1 min-w-0 ${stale ? 'border-red-400 text-red-700 bg-red-50' : warned ? 'border-amber-400 text-amber-700 bg-amber-50' : ''}`}>
                               <option value="">隨機（精靈自動分配）</option>
                               <option value={HOMEROOM_SELF}>導師自上{homeroomName !== '？' ? `（${homeroomName}）` : ''}</option>
@@ -194,6 +249,58 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
               })}
             </div>
           )}
+
+      {/* 換授課老師：課表上已經有課，問一句要不要一起換。
+          只改設定的話，全校看到的課表還是舊老師——那才是真正會出事的地方。 */}
+      {swap && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => !swapBusy && setSwap(null)}>
+          <div className="card w-full max-w-lg space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-base font-semibold">換授課老師</h3>
+              <button type="button" onClick={() => setSwap(null)} disabled={swapBusy}
+                className="ml-auto text-zinc-400 hover:text-zinc-700 text-sm">✕</button>
+            </div>
+            <div className="text-sm font-medium text-zinc-800 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2">
+              {swap.classLabel}　{swap.subject}
+              <div className="text-zinc-500 text-xs mt-0.5">{swap.fromNames.join('、') || '未指定'}　→　{swap.toName || (swap.to ? '導師自上' : '隨機')}</div>
+            </div>
+            <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2 space-y-1">
+              <div className="font-medium text-zinc-700">課表上這一班的{swap.subject}有 {swap.lessons.length} 堂：</div>
+              {swap.lessons.map(l => <div key={l.id}>・{lessonZh(l)}</div>)}
+              <div className="text-zinc-400 pt-0.5">上課時間、班級、教室都不動，只換人。</div>
+            </div>
+            {!swap.canSync ? null
+              : swap.problems.length > 0
+                ? <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2 space-y-0.5">
+                    <div className="font-medium">✗ 不能換：</div>
+                    {swap.problems.map((x, k) => <div key={k}>・{x}</div>)}
+                    <div className="pt-1">請先到排課精靈的人工調課，把擋路的那一堂挪開，再回來換。</div>
+                  </div>
+                : <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-sm px-3 py-2">
+                    ✓ {swap.toName} 這幾節都有空，教室與時間不受影響。
+                  </div>}
+            {swap.notes.map((n, k) => (
+              <div key={k} className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">⚠ {n}</div>
+            ))}
+            {swapErr && <div className="text-xs text-red-600">{swapErr}</div>}
+            <div className="flex gap-2 justify-end pt-1 flex-wrap">
+              <button type="button" onClick={() => setSwap(null)} disabled={swapBusy}
+                className="btn btn-secondary text-sm">取消</button>
+              <button type="button" onClick={swapConfigOnly} disabled={swapBusy}
+                title="課表上那幾堂維持原老師，下次重跑排課才會照新配班"
+                className={`btn text-sm ${swap.canSync ? 'btn-secondary' : 'btn-primary'}`}>
+                {swap.canSync ? '只改設定' : '知道了，只改設定'}
+              </button>
+              {swap.canSync && (
+                <button type="button" onClick={swapConfirm} disabled={swapBusy || swap.problems.length > 0}
+                  className="btn btn-primary text-sm">{swapBusy ? '處理中…' : '連課表一起換'}</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {swapBusy && !swap && <div className="fixed bottom-4 right-4 text-xs text-zinc-400 bg-white border border-zinc-200 rounded-sm px-2 py-1">檢查中…</div>}
     </div>
   )
 }
