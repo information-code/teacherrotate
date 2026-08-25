@@ -182,7 +182,7 @@ export function PreferencesPage({
             {saved && <span className="text-sm text-green-600">已儲存</span>}
             {error && <span className="text-sm text-red-600">{error}</span>}
             <button onClick={requestSave} disabled={saving || locked || closed} className="btn-primary">
-              {saving ? '儲存中...' : closed ? '已截止' : locked ? '已鎖定' : '儲存志願'}
+              {saving ? '儲存中…' : closed ? '已截止' : locked ? '已鎖定' : '儲存志願'}
             </button>
           </div>
         </div>
@@ -213,11 +213,13 @@ export function PreferencesPage({
             ]
           ).map(({ key, label }) => {
             const estimate = getEstimate(preferences[key])
+            const hasEstimate = estimate !== null && Boolean(preferences[key])
             return (
-              <div key={key} className="flex items-center gap-4">
+              // 手機：預估分數換到 select 下方（縮排對齊），避免固定寬度把 select 擠爆
+              <div key={key} className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <label className="w-20 text-sm text-zinc-700 font-medium flex-shrink-0">{label}</label>
                 <select
-                  className="input flex-1"
+                  className="input flex-1 min-w-[10rem]"
                   value={preferences[key] ?? ''}
                   disabled={disabled}
                   onChange={e => setPreference(key, e.target.value)}
@@ -227,8 +229,8 @@ export function PreferencesPage({
                     <option key={w} value={w}>{w}</option>
                   ))}
                 </select>
-                <div className="text-sm text-zinc-500 w-44 flex-shrink-0 space-y-0.5">
-                  {estimate !== null && preferences[key] ? (
+                <div className={`text-sm text-zinc-500 space-y-0.5 ${hasEstimate ? 'w-full pl-24 sm:w-44 sm:flex-shrink-0 sm:pl-0' : 'hidden sm:block sm:w-44 sm:flex-shrink-0'}`}>
+                  {hasEstimate ? (
                     <>
                       <div>本年積分：<span className="font-medium text-zinc-700">{estimate.yearScore.toFixed(2)}</span></div>
                       <div>預估近四年：<span className="font-medium text-zinc-900">{estimate.newTotal.toFixed(2)}</span></div>
@@ -265,7 +267,7 @@ export function PreferencesPage({
             <div className="flex gap-2 justify-end">
               <button onClick={() => setShowConfirm(false)} className="btn-secondary">取消</button>
               <button onClick={confirmSave} disabled={saving} className="btn-primary">
-                {saving ? '儲存中...' : '確認儲存並鎖定'}
+                {saving ? '儲存中…' : '確認儲存並鎖定'}
               </button>
             </div>
           </div>

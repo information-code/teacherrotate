@@ -128,19 +128,26 @@ export function DashboardPage() {
     }
   }
 
+  const [addingTodo, setAddingTodo] = useState(false)
   async function addAnnouncementTodo(a: Announcement) {
-    const res = await fetch('/api/teacher/todos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: a.title, note: a.office, announcement_id: a.id }),
-    })
-    const json = await res.json()
-    if (!res.ok) {
-      alert(json.error ?? '加入失敗，請再試一次。')
-      return
+    if (addingTodo) return
+    setAddingTodo(true)
+    try {
+      const res = await fetch('/api/teacher/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: a.title, note: a.office, announcement_id: a.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? '加入失敗，請再試一次。')
+        return
+      }
+      setData(prev => prev && ({ ...prev, todos: [...prev.todos, json] }))
+      setActiveAnnouncement(null)
+    } finally {
+      setAddingTodo(false)
     }
-    setData(prev => prev && ({ ...prev, todos: [...prev.todos, json] }))
-    setActiveAnnouncement(null)
   }
 
   if (loading && !data) {
@@ -153,6 +160,8 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      {/* 換月份／modal 存檔後重抓資料：蓋上載入遮罩，避免畫面停住像當機 */}
+      {loading && <PageLoading />}
       <h2 className="page-title !mb-0">工作首頁</h2>
 
       {error && (
@@ -221,6 +230,7 @@ export function DashboardPage() {
         <AnnouncementModal
           announcement={activeAnnouncement}
           alreadyAdded={(data?.todos ?? []).some(t => t.announcement_id === activeAnnouncement.id)}
+          adding={addingTodo}
           onAddTodo={() => addAnnouncementTodo(activeAnnouncement)}
           onClose={() => setActiveAnnouncement(null)}
         />
@@ -491,16 +501,22 @@ function DayDetail({
   const holidays = (data?.holidays ?? []).filter(h => h.date === date)
   const events = (data?.events ?? []).filter(ev => dateInRange(date, ev.start_date, ev.end_date))
   const personals = (data?.personalEvents ?? []).filter(p => p.date === date)
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
   async function removePersonal(id: string) {
     if (!confirm('刪除這個個人事項？')) return
-    const res = await fetch(`/api/teacher/personal-events?id=${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const json = await res.json().catch(() => null)
-      alert(json?.error ?? '刪除失敗，請再試一次。')
-      return
+    setRemovingId(id)
+    try {
+      const res = await fetch(`/api/teacher/personal-events?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        alert(json?.error ?? '刪除失敗，請再試一次。')
+        return
+      }
+      onChanged()
+    } finally {
+      setRemovingId(null)
     }
-    onChanged()
   }
 
   // 這天沒有任何項目就整段不顯示；桌機一律隱藏（直接在月曆格子上操作），
@@ -547,10 +563,11 @@ function DayDetail({
               {p.title}
             </button>
             <button
-              className="text-xs text-zinc-400 hover:text-red-600"
+              className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50"
+              disabled={removingId === p.id}
               onClick={() => removePersonal(p.id)}
             >
-              刪除
+              {removingId === p.id ? '刪除中…' : '刪除'}
             </button>
           </li>
         ))}
@@ -629,11 +646,13 @@ function AnnouncementPanel({
 function AnnouncementModal({
   announcement,
   alreadyAdded,
+  adding,
   onAddTodo,
   onClose,
 }: {
   announcement: Announcement
   alreadyAdded: boolean
+  adding: boolean
   onAddTodo: () => void
   onClose: () => void
 }) {
@@ -661,8 +680,8 @@ function AnnouncementModal({
         </p>
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           <button className="btn-secondary" onClick={onClose}>關閉</button>
-          <button className="btn-secondary" disabled={alreadyAdded} onClick={onAddTodo}>
-            {alreadyAdded ? '已加入代辦' : '加入代辦'}
+          <button className="btn-secondary" disabled={alreadyAdded || adding} onClick={onAddTodo}>
+            {adding ? '加入中…' : alreadyAdded ? '已加入代辦' : '加入代辦'}
           </button>
           {announcement.link_url && (
             <a
@@ -692,6 +711,7 @@ function TodoPanel({
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showDone, setShowDone] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
   const open = todos.filter(t => t.status === 'todo')
   const overdue = open.filter(t => t.due_date && t.due_date < today)
@@ -722,13 +742,18 @@ function TodoPanel({
 
   async function remove(t: Todo) {
     if (!confirm(`刪除代辦「${t.title}」？`)) return
-    const res = await fetch(`/api/teacher/todos?id=${t.id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const json = await res.json().catch(() => null)
-      alert(json?.error ?? '刪除失敗，請再試一次。')
-      return
+    setRemovingId(t.id)
+    try {
+      const res = await fetch(`/api/teacher/todos?id=${t.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        alert(json?.error ?? '刪除失敗，請再試一次。')
+        return
+      }
+      onChange(todos.filter(x => x.id !== t.id))
+    } finally {
+      setRemovingId(null)
     }
-    onChange(todos.filter(x => x.id !== t.id))
   }
 
   function renderGroup(label: string, items: Todo[], labelClass?: string) {
@@ -738,7 +763,7 @@ function TodoPanel({
         <div className={cn('mb-1 text-xs font-medium text-zinc-400', labelClass)}>{label}</div>
         <ul className="space-y-1">
           {items.map(t => (
-            <TodoRow key={t.id} todo={t} today={today} onToggle={() => toggle(t)} onRemove={() => remove(t)} />
+            <TodoRow key={t.id} todo={t} today={today} removing={removingId === t.id} onToggle={() => toggle(t)} onRemove={() => remove(t)} />
           ))}
         </ul>
       </div>
@@ -772,7 +797,7 @@ function TodoPanel({
           {showDone && (
             <ul className="mt-1 space-y-1">
               {done.map(t => (
-                <TodoRow key={t.id} todo={t} today={today} onToggle={() => toggle(t)} onRemove={() => remove(t)} />
+                <TodoRow key={t.id} todo={t} today={today} removing={removingId === t.id} onToggle={() => toggle(t)} onRemove={() => remove(t)} />
               ))}
             </ul>
           )}
@@ -864,11 +889,13 @@ function TodoModal({
 function TodoRow({
   todo,
   today,
+  removing,
   onToggle,
   onRemove,
 }: {
   todo: Todo
   today: string
+  removing: boolean
   onToggle: () => void
   onRemove: () => void
 }) {
@@ -899,10 +926,14 @@ function TodoRow({
         </p>
       </div>
       <button
-        className="flex-shrink-0 text-xs text-zinc-300 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+        className={cn(
+          'flex-shrink-0 text-xs text-zinc-300 hover:text-red-600',
+          removing ? 'text-zinc-500' : 'sm:opacity-0 sm:group-hover:opacity-100'
+        )}
+        disabled={removing}
         onClick={onRemove}
       >
-        刪除
+        {removing ? '刪除中…' : '刪除'}
       </button>
     </li>
   )

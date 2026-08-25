@@ -44,7 +44,8 @@ export default async function TeacherLayout({ children }: { children: React.Reac
 
   return (
     <MobileNavProvider>
-      <div className="flex h-screen bg-zinc-50 overflow-hidden">
+      {/* iOS Safari 的 100vh 含網址列會裁掉底部；支援 dvh 的瀏覽器改用動態視窗高度 */}
+      <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] bg-zinc-50 overflow-hidden">
         <TeacherSidebar employmentType={profile.employment_type} siteTitle={siteTitle} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopBar

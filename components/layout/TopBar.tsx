@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -17,7 +18,10 @@ export function TopBar({ userName, role, isAdmin }: TopBarProps) {
   const supabase = createClient()
   const { setOpen } = useMobileNav()
 
+  const [loggingOut, setLoggingOut] = useState(false)
   async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
@@ -55,9 +59,10 @@ export function TopBar({ userName, role, isAdmin }: TopBarProps) {
         {role === 'teacher' && <InstallGuide autoPrompt />}
         <button
           onClick={handleLogout}
-          className="text-sm text-zinc-500 hover:text-zinc-800 transition-colors"
+          disabled={loggingOut}
+          className="text-sm text-zinc-500 hover:text-zinc-800 transition-colors disabled:opacity-60"
         >
-          登出
+          {loggingOut ? '登出中…' : '登出'}
         </button>
       </div>
     </header>

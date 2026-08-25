@@ -201,19 +201,20 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
         </div>
       )}
 
-      {/* 課表 */}
-      <div className="card p-3 overflow-x-auto">
+      {/* 課表：手機橫向捲動；節次欄釘住，捲動填格時仍看得出在第幾節（比照我的課表頁） */}
+      <div className="card p-3">
+        <div className="overflow-x-auto -mx-3 px-3">
         <table className="w-full table-fixed border-collapse text-[11px] min-w-[420px]">
           <thead>
             <tr>
-              <th className="w-7 text-zinc-400 font-normal"></th>
+              <th className="w-7 sticky left-0 z-10 bg-white text-zinc-400 font-normal"></th>
               {SCHEDULE_DAYS.map(d => <th key={d} className="text-center text-zinc-500 font-normal py-0.5">{DAY_LABEL[d].slice(1)}</th>)}
             </tr>
           </thead>
           <tbody>
             {periods.map(p => (
               <tr key={p}>
-                <td className="text-zinc-400 text-center">{p}</td>
+                <td className="sticky left-0 z-10 bg-white text-zinc-400 text-center">{p}</td>
                 {SCHEDULE_DAYS.map(d => {
                   const k = `${d}-${p}`
                   const f = fixed[k]
@@ -249,6 +250,7 @@ export default function ScheduleFillClient({ year, classLabel, periodsPerDay, te
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {!readOnly && (

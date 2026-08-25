@@ -416,7 +416,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         {saved && <span className="text-sm text-green-600">已儲存</span>}
         {error && <span className="text-sm text-red-600">{error}</span>}
         <button type="submit" disabled={saving} className="btn-primary">
-          {saving ? '儲存中...' : '儲存變更'}
+          {saving ? '儲存中…' : '儲存變更'}
         </button>
       </div>
     </form>

@@ -212,7 +212,7 @@ export function RepairPage() {
   return (
     <div className="space-y-4">
       {busy && <BusyOverlay text={busy} />}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-zinc-900">設備報修</h1>
         {message && <span className="text-sm text-zinc-600" aria-live="polite">{message}</span>}
       </div>
@@ -220,12 +220,12 @@ export function RepairPage() {
       {/* ============ 我的案件列表 ============ */}
       {view.mode === 'list' && (
         <div className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
               <h2 className="font-medium text-zinc-900">我的報修</h2>
               <p className="mt-0.5 text-sm text-zinc-500">點案件可查看進度與維護人員聯絡方式。</p>
             </div>
-            <button className="btn-primary" onClick={openForm}>我要報修</button>
+            <button className="btn-primary shrink-0" onClick={openForm}>我要報修</button>
           </div>
 
           {data.reports.length === 0 && (
@@ -422,7 +422,8 @@ export function RepairPage() {
           </div>
 
           <div className="flex justify-end">
-            <button className="btn-primary" disabled={!canSubmit} onClick={submitReport}>送出報修</button>
+            {/* 手機全寬好點按，桌機收回右下角 */}
+            <button className="btn-primary w-full sm:w-auto" disabled={!canSubmit} onClick={submitReport}>送出報修</button>
           </div>
         </div>
       )}
@@ -431,8 +432,8 @@ export function RepairPage() {
       {view.mode === 'detail' && detailReport && (
         <div className="space-y-4">
           <div className="card space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
                 <h2 className="font-medium text-zinc-900">
                   {detailReport.item_name}｜{issueText(detailReport)}
                 </h2>
@@ -441,7 +442,7 @@ export function RepairPage() {
                   {timeText(detailReport.created_at)} 報修
                 </p>
               </div>
-              <button className="btn-secondary" onClick={() => setView({ mode: 'list' })}>返回</button>
+              <button className="btn-secondary shrink-0" onClick={() => setView({ mode: 'list' })}>返回</button>
             </div>
 
             {detailReport.status !== 'closed' && (
@@ -496,7 +497,7 @@ export function RepairPage() {
 
             {/* 已解決回報 */}
             {detailReport.status !== 'closed' && (
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <button className="btn-secondary" onClick={() => resolveReport(detailReport, 'vanished')}>
                   問題自行消失
                 </button>
@@ -513,8 +514,8 @@ export function RepairPage() {
               <h3 className="text-sm font-medium text-zinc-900">急用嗎？可以聯絡維護人員</h3>
               <div className="space-y-1.5">
                 {data.contacts.map((c, i) => (
-                  <div key={i} className="flex items-center justify-between rounded border border-zinc-200 px-3 py-2 text-sm">
-                    <span>
+                  <div key={i} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded border border-zinc-200 px-3 py-2 text-sm">
+                    <span className="min-w-0">
                       <span className="font-medium text-zinc-800">{c.name}</span>
                       <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{contactRoleLabel(c.role)}</span>
                       {c.note && <span className="ml-2 text-xs text-zinc-500">{c.note}</span>}

@@ -26,17 +26,24 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
   const [confirmedAt] = useState(initialConfirmedAt)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [confirmSaving, setConfirmSaving] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
 
   const nextYear = Math.max(0, ...scoreHistory.map(s => s.year)) + 1
 
   async function handleConfirm() {
     setConfirmSaving(true)
+    setConfirmError('')
     try {
       const res = await fetch('/api/teacher/confirm', { method: 'POST' })
       if (res.ok) {
         setConfirmed(true)
         setShowConfirmDialog(false)
+      } else {
+        const json = await res.json().catch(() => null)
+        setConfirmError(json?.error ?? '確認失敗，請再試一次。')
       }
+    } catch {
+      setConfirmError('確認失敗，請檢查網路後再試一次。')
     } finally {
       setConfirmSaving(false)
     }
@@ -143,6 +150,7 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
             <p className="text-sm text-zinc-600">
               確認後將被<strong>鎖定</strong>，是否確定歷年工作與分數無誤？
             </p>
+            {confirmError && <p className="text-sm text-red-600">{confirmError}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowConfirmDialog(false)}
@@ -155,7 +163,7 @@ export function ScoresPage({ targetType, initialScoreHistory, initialRecentTotal
                 disabled={confirmSaving}
                 className="btn-primary"
               >
-                {confirmSaving ? '處理中...' : '確認'}
+                {confirmSaving ? '處理中…' : '確認'}
               </button>
             </div>
           </div>

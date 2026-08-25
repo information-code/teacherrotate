@@ -8,6 +8,7 @@ import {
   type AllocRole, type TeacherAllocation, type ScenarioChoice, type SchedulingNeeds, type AllocationPlan,
 } from '@/lib/allocation'
 import { ReasonCertModal, ConfirmNotesModal, SchedulingNeedsCard, HomeroomNoticeCard, type ReasonResult } from '@/components/teacher/AllocationSubmitWizard'
+import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import type { HomeroomCtx } from '@/app/teacher/allocation/page'
 
 const OVERTIME_CAP = 6  // 自主＋意願超鐘總額上限
@@ -323,6 +324,8 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     else setSeg(4)
   }
   function onReasonDone(_r: ReasonResult) { setReasonModalOpen(false); setSeg(4) }
+  // 送出並鎖定進行中：頁面很長、頁首的「儲存中…」小字看不到，用全螢幕遮罩給明確回饋
+  const [submitting, setSubmitting] = useState(false)
   // 排課需求為必填：須勾「無」或至少一項實際需求才能送出
   function trySubmit() {
     const s = scheduling
@@ -331,7 +334,11 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
     setError(null)
     setConfirmModalOpen(true)
   }
-  async function onConfirm() { setConfirmModalOpen(false); if (await put(true)) setLocked(true) }
+  async function onConfirm() {
+    setConfirmModalOpen(false)
+    setSubmitting(true)
+    try { if (await put(true)) setLocked(true) } finally { setSubmitting(false) }
+  }
 
   // 分段流程（依角色）：導師有注意事項+方案配課；行政以「配課意願」取代方案配課；科任兩者皆無。
   const segKinds = role === 'homeroom'
@@ -492,6 +499,7 @@ export function AllocationPage({ year, role, work, grade, roleLabel, base, homer
 
   return (
     <div ref={topRef} className="space-y-5 max-w-4xl scroll-mt-4">
+      {submitting && <BusyOverlay text="送出並鎖定中…" />}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="page-title mb-1">配課選填 <span className="text-sm font-normal text-zinc-500 ml-2">{year} 學年度{isSub && ' · 代理教師'}</span>

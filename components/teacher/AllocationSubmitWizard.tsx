@@ -116,7 +116,8 @@ function NoScheduleTimetable({ unsure, slots: slotList, readOnly, onUnsure, onSl
       {!unsure && (
         <div className="space-y-1">
           <p className="text-xs text-zinc-500">點選欲「不排課」的節次（星期三為半天 4 節）：</p>
-          <div className="inline-block border border-zinc-200 rounded-sm overflow-hidden">
+          {/* 手機（尤其在 modal 內）塞不下五天：改橫向捲動，不能用 overflow-hidden 把星期五裁掉 */}
+          <div className="inline-block max-w-full border border-zinc-200 rounded-sm overflow-x-auto">
             <table className="text-xs text-center border-collapse">
               <thead>
                 <tr className="bg-zinc-50">

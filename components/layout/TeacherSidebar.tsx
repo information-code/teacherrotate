@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -87,6 +88,11 @@ export function TeacherSidebar({
     : FORMAL_GROUPS
   const { open, setOpen } = useMobileNav()
 
+  // 點擊後到新頁 commit 前有一段空窗（server component 要跑查詢），
+  // 先讓被點的連結呈現 pending 樣式，避免「點了沒反應」
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  useEffect(() => { setPendingHref(null) }, [pathname])
+
   return (
     <>
       {/* 手機遮罩：抽屜開啟時顯示，點擊關閉（桌機隱藏） */}
@@ -116,10 +122,11 @@ export function TeacherSidebar({
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={() => setOpen(false)}
+                  onClick={() => { setOpen(false); if (item.href !== pathname) setPendingHref(item.href) }}
                   className={cn(
                     'sidebar-link',
-                    pathname === item.href && 'active'
+                    pathname === item.href && 'active',
+                    pendingHref === item.href && 'animate-pulse bg-zinc-100'
                   )}
                 >
                   {item.label}
