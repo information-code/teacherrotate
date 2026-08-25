@@ -44,7 +44,8 @@ export default function SubjectAssignTab({ config, setConfig, classCounts, grade
     (l.slots.length > 1
       ? `週${'一二三四五六日'[Number(l.slots[0].split('-')[0]) - 1]}第${l.slots.map(s => s.split('-')[1]).join('、')}節`
       : slotZh(l.slots[0]))
-    + (l.parity ? `（${l.parity === 'odd' ? '單' : '雙'}週）` : '')
+    // parity 一般課是 'weekly'，只有真的單雙週上課才標——不然每一堂都會被誤標成雙週
+    + (l.parity === 'odd' ? '（單週）' : l.parity === 'even' ? '（雙週）' : '')
 
   /** 改配班：課表上沒課就直接改；有課就先問伺服器能不能一起換。 */
   async function requestAssign(g: number, index: number, subject: string, teacherId: string) {

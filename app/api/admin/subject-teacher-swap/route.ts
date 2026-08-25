@@ -21,8 +21,10 @@ type Lesson = {
 const spans = (q: { day: number; period: number; size: number }) =>
   Array.from({ length: Math.max(1, q.size) }, (_, k) => `${q.day}-${q.period + k}`)
 const zh = (s: string) => `${DAY_LABEL[Number(s.split('-')[0])]}第${s.split('-')[1]}節`
-/** 單雙週錯開的兩堂可以共用同一格；其餘視為衝突。 */
-const overlaps = (a?: string, b?: string) => !(a && b && a !== b)
+/** 只有「單週 vs 雙週」錯得開；其餘（含一般課的 'weekly'）都算撞在一起。
+ *  parity 的值域是 'weekly' | 'odd' | 'even'——weekly 是每週都上，會和單週、雙週都撞。 */
+const overlaps = (a?: string, b?: string) =>
+  !((a === 'odd' && b === 'even') || (a === 'even' && b === 'odd'))
 
 async function guard() {
   const supabase = await createClient()
