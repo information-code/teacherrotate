@@ -285,7 +285,7 @@ export default function ScheduleConfigClient({ year, initialTab, initialConfig, 
 
       {/* ── 五、鎖課設定 ── */}
       {tab === 'lock' && (
-        <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects} />
+        <LockTab config={config} setConfig={setConfig} classCounts={classCounts} gradeSubjects={gradeSubjects}  year={year}/>
       )}
 
       {/* ── 六、本土語場次 ── */}

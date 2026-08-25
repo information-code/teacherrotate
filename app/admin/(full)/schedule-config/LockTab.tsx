@@ -13,13 +13,57 @@ interface Props {
   setConfig: Dispatch<SetStateAction<ScheduleConfig>>
   classCounts: Record<number, number>
   gradeSubjects: Record<number, GradeSubject[]>
+  year: number
+}
+/** 移動鎖課的檢查結果（伺服器算的，含目標格上的課與本土語場次影響） */
+interface MoveInfo {
+  classLabel: string; lockLabel: string; from: string; to: string
+  problems: string[]
+  sitting: { id: string; subject: string; teacherName: string; size: number } | null
+  native: { newSession: boolean; sameGradeSlots: string[] } | null
 }
 
 /** 分頁四：鎖課設定。先建名目（名目給管理者辨識、科目顯示於課表、顏色區分），再點各班課表格子直接寫上該科目。 */
-export default function LockTab({ config, setConfig, classCounts, gradeSubjects }: Props) {
+export default function LockTab({ config, setConfig, classCounts, gradeSubjects, year }: Props) {
   const firstGrade = GRADES.find(g => (classCounts[g] ?? 0) > 0) ?? 1
   const [grade, setGrade] = useState<number>(firstGrade)
   const [active, setActive] = useState<string | null>(null)   // 選取中的名目 id；null = 未選
+  // ── 移動鎖課：整格換位置。目標格若有科任課就和它對調（鎖課讓出來的那格正好給它），
+  //    所以不必先找空白格。設定與課表由伺服器一次寫完。 ──
+  const [moveMode, setMoveMode] = useState(false)
+  const [moveFrom, setMoveFrom] = useState<{ ck: string; slot: string } | null>(null)
+  const [moveInfo, setMoveInfo] = useState<MoveInfo | null>(null)
+  const [moveErr, setMoveErr] = useState('')
+  const [moveBusy, setMoveBusy] = useState(false)
+  const slotZh = (s: string) => `${DAY_LABEL[Number(s.split('-')[0])]}第${s.split('-')[1]}節`
+
+  async function pickDest(ck: string, slot: string) {
+    if (!moveFrom || moveFrom.ck !== ck) { setMoveErr('請點同一個班的格子'); return }
+    if (moveFrom.slot === slot) { setMoveFrom(null); return }
+    setMoveBusy(true); setMoveErr(''); setMoveInfo(null)
+    try {
+      const res = await fetch(`/api/admin/lock-move?year=${year}&classKey=${ck}&from=${moveFrom.slot}&to=${slot}`)
+      const d = await res.json()
+      if (!res.ok) { setMoveErr(d.error ?? '檢查失敗'); return }
+      setMoveInfo(d)
+    } finally { setMoveBusy(false) }
+  }
+  async function doMove() {
+    if (!moveFrom || !moveInfo) return
+    setMoveBusy(true); setMoveErr('')
+    try {
+      const res = await fetch('/api/admin/lock-move', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, classKey: moveFrom.ck, from: moveInfo.from, to: moveInfo.to }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setMoveErr(d.error ?? '移動失敗'); return }
+      alert(`已移動。${d.moved ? `「${d.moved}」已對調到 ${slotZh(moveInfo.from)}。` : ''}`
+        + `${d.native?.newSession ? '\n⚠ 這是該年級新的本土語時段，會多出一場場次——請到「6 本土語場次」指定老師與教室。' : ''}`)
+      setMoveFrom(null); setMoveInfo(null); setMoveMode(false)
+      window.location.reload()   // 設定與課表都被伺服器改過，重新載入才是最新的
+    } finally { setMoveBusy(false) }
+  }
 
   const subjectOptions = orderSubjectNames(Array.from(new Set(GRADES.flatMap(g => (gradeSubjects[g] ?? []).map(s => s.name)))))
 
@@ -49,6 +93,10 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
 
   function clickCell(ck: string, slot: string) {
     const cur = config.lockCells[ck]?.[slot]
+    if (moveMode) {
+      if (!moveFrom) { if (cur) { setMoveFrom({ ck, slot }); setMoveErr(''); setMoveInfo(null) } else setMoveErr('請先點要移動的那一格鎖課') ; return }
+      void pickDest(ck, slot); return
+    }
     setConfig(c => {
       const cells = { ...(c.lockCells[ck] ?? {}) }
       if (cur && (!active || cur === active)) delete cells[slot]        // 再點同名目或未選名目 → 清除
@@ -70,6 +118,46 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects 
       <p className="text-xs text-zinc-400">
         先新增鎖課名目（名目給管理者辨識，科目為課表格子上顯示的課名），選取名目後點各班課表格子即可鎖定該時段；
         再點一次清除。排課時被鎖的格子視為已占用，該班其他課會避開。
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={() => { setMoveMode(m => !m); setMoveFrom(null); setMoveInfo(null); setMoveErr('') }}
+          className={`btn text-xs py-0.5 ${moveMode ? 'btn-primary' : 'btn-secondary'}`}
+          title="把已鎖的一格換到別格；目標格若有科任課會自動對調，設定與課表一次寫完">
+          {moveMode ? '✕ 結束移動鎖課' : '🔀 移動鎖課'}
+        </button>
+        {moveMode && (
+          <span className="text-xs text-amber-700">
+            {!moveFrom ? '點一下要移動的那一格鎖課' : `已選 ${slotZh(moveFrom.slot)}——再點同一班的目標格`}
+          </span>
+        )}
+        {moveErr && <span className="text-xs text-red-600">{moveErr}</span>}
+        {moveBusy && <span className="text-xs text-zinc-400">檢查中…</span>}
+      </div>
+      {moveInfo && (
+        <div className="card border-amber-300 bg-amber-50 p-3 space-y-2 text-sm">
+          <div className="font-medium text-amber-900">
+            {moveInfo.classLabel}　{moveInfo.lockLabel}　{slotZh(moveInfo.from)} → {slotZh(moveInfo.to)}
+          </div>
+          {moveInfo.sitting
+            ? <div className="text-xs text-amber-800">
+                {slotZh(moveInfo.to)} 目前是「{moveInfo.sitting.subject}（{moveInfo.sitting.teacherName}）」——
+                會和鎖課<b>對調</b>，那堂課移到 {slotZh(moveInfo.from)}。班上佔用的格子總數不變。
+              </div>
+            : <div className="text-xs text-amber-800">{slotZh(moveInfo.to)} 是空的，直接移過去；{slotZh(moveInfo.from)} 會變成導師可填的空格。</div>}
+          {moveInfo.native && (moveInfo.native.newSession
+            ? <div className="text-xs text-red-700">⚠ 這是該年級<b>新的</b>本土語時段（既有：{moveInfo.native.sameGradeSlots.map(slotZh).join('、') || '無'}），會多出一場場次，需要指定老師與教室。</div>
+            : <div className="text-xs text-green-700">✓ 併入該年級既有的本土語時段，場次數不變。</div>)}
+          {moveInfo.problems.length > 0 && (
+            <ul className="text-xs text-red-700 space-y-0.5">{moveInfo.problems.map((x, i) => <li key={i}>・{x}</li>)}</ul>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setMoveInfo(null)} className="btn btn-secondary text-xs py-0.5">重選</button>
+            <button type="button" onClick={doMove} disabled={moveBusy || moveInfo.problems.length > 0}
+              className="btn btn-primary text-xs py-0.5">確認移動</button>
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-zinc-400">
       </p>
 
       {/* 名目管理 */}
