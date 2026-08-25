@@ -7,6 +7,7 @@ import {
 } from '@/lib/scheduling'
 import { normalizeConfig, type TeacherAllocation } from '@/lib/allocation'
 import { hasPerms } from '@/lib/staff-server'
+import { createPlanVersion } from '@/lib/schedule-version-server'
 
 /** 換授課老師：把某班某科在課表上的課，整批換成另一位老師。
  *  上課時間、班級、教室都不動，只換人——所以不必重跑排課。
@@ -140,7 +141,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await guard())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const user = await guard()
+  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { year, grade, index, subject, to } = await request.json()
   const yr = Number(year), g = Number(grade), i = Number(index)
   if (!Number.isInteger(yr) || !Number.isInteger(g) || !Number.isInteger(i) || !subject || !to)
@@ -158,15 +160,21 @@ export async function POST(request: NextRequest) {
   const plan = r._plan
   const now = new Date().toISOString()
   const next = (plan.placed ?? []).map(q => ids.has(q.id) ? { ...q, teacherId: String(to), teacherName: r._toName } : q)
-  const { data: ok } = await supabaseAdmin.from('schedule_plan').update({
-    plan: {
-      ...plan, placed: next,
-      adjustments: [...(plan.adjustments ?? []),
-        { at: now, desc: `換授課老師 ${r.classLabel} ${r.subject} ${r.fromNames.join('、')}→${r._toName}（${r.lessons.length} 堂）` }],
-    },
-    generated_at: now,
-  }).eq('year', yr).eq('generated_at', r.generatedAt as string).select('generated_at')
+  const nextPlan = {
+    ...plan, placed: next,
+    adjustments: [...(plan.adjustments ?? []),
+      { at: now, desc: `換授課老師 ${r.classLabel} ${r.subject} ${r.fromNames.join('、')}→${r._toName}（${r.lessons.length} 堂）` }],
+  }
+  const { data: ok } = await supabaseAdmin.from('schedule_plan')
+    .update({ plan: nextPlan, generated_at: now })
+    .eq('year', yr).eq('generated_at', r.generatedAt as string).select('generated_at')
   if (!ok?.length) return NextResponse.json({ error: '課表在你操作期間被別人改過了，請重新整理再試一次。' }, { status: 409 })
+
+  // 版本快照：課表變了就要留下一張相片，否則版本紀錄會對不上目前的課表
+  const ver = await createPlanVersion({
+    year: yr, plan: nextPlan as never, userId: user.id, inherit: true, source: 'manual',
+    label: `換授課老師（${r.classLabel} ${r.subject}）`,
+  })
 
   // ② 設定：科任配班
   const raw = r._config as Record<string, unknown>
@@ -176,5 +184,5 @@ export async function POST(request: NextRequest) {
     .update({ config: { ...raw, subjectClassTeacher: map } }).eq('year', yr)
   if (error) return NextResponse.json({ error: `設定寫入失敗：${error.message}（課表已改，請重試）`, planAt: now }, { status: 500 })
 
-  return NextResponse.json({ ok: true, count: r.lessons.length, toName: r._toName, planAt: now })
+  return NextResponse.json({ ok: true, count: r.lessons.length, toName: r._toName, planAt: now, version: 'error' in ver ? null : ver.seq })
 }

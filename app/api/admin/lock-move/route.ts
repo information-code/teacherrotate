@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { normalizeScheduleConfig, bandOf, classLabel, DAY_LABEL } from '@/lib/scheduling'
 import { hasPerms } from '@/lib/staff-server'
+import { createPlanVersion } from '@/lib/schedule-version-server'
 
 /** 移動鎖課：把某班的一格鎖課換到另一格。
  *  目標格若已有科任課，就和鎖課「對調」——鎖課讓出來的那一格正好給那堂課去，
@@ -106,7 +107,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await guard())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const user = await guard()
+  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { year, classKey: ck, from, to } = await request.json()
   if (!Number.isInteger(Number(year)) || !ck || !from || !to) return NextResponse.json({ error: '參數錯誤' }, { status: 400 })
   const yr = Number(year)
@@ -122,12 +124,17 @@ export async function POST(request: NextRequest) {
     const plan = r.plan as { placed?: Lesson[]; adjustments?: { at: string; desc: string }[] }
     const next = (plan.placed ?? []).map(q => q.id === r.sitting!.id ? { ...q, day: d, period: p } : q)
     const now = new Date().toISOString()
-    const { data: ok } = await supabaseAdmin.from('schedule_plan').update({
-      plan: { ...plan, placed: next, adjustments: [...(plan.adjustments ?? []),
-        { at: now, desc: `移動鎖課 ${r.classLabel} ${r.lockLabel} ${zh(from)}→${zh(to)}，${r.sitting.subject} 對調到 ${zh(from)}` }] },
-      generated_at: now,
-    }).eq('year', yr).eq('generated_at', r.generatedAt as string).select('generated_at')
+    const nextPlan = { ...plan, placed: next, adjustments: [...(plan.adjustments ?? []),
+      { at: now, desc: `移動鎖課 ${r.classLabel} ${r.lockLabel} ${zh(from)}→${zh(to)}，${r.sitting.subject} 對調到 ${zh(from)}` }] }
+    const { data: ok } = await supabaseAdmin.from('schedule_plan')
+      .update({ plan: nextPlan, generated_at: now })
+      .eq('year', yr).eq('generated_at', r.generatedAt as string).select('generated_at')
     if (!ok?.length) return NextResponse.json({ error: '課表在你操作期間被別人改過了，請重新整理再試一次。' }, { status: 409 })
+    // 版本快照：課表變了就要留下一張相片，否則版本紀錄會對不上目前的課表
+    await createPlanVersion({
+      year: yr, plan: nextPlan as never, userId: user.id, inherit: true, source: 'manual',
+      label: `移動鎖課（${r.classLabel} ${r.lockLabel}）`,
+    })
   }
   // ② 導師課：填在目標格的內容搬到鎖課讓出來的那一格
   if (r.hrMoved) {
