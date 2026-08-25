@@ -20,6 +20,8 @@ interface MoveInfo {
   classLabel: string; lockLabel: string; from: string; to: string
   problems: string[]
   sitting: { id: string; subject: string; teacherName: string; size: number } | null
+  hrMoved: string | null
+  hrConfirmed: boolean
   native: { newSession: boolean; sameGradeSlots: string[] } | null
 }
 
@@ -59,6 +61,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
       const d = await res.json()
       if (!res.ok) { setMoveErr(d.error ?? '移動失敗'); return }
       alert(`已移動。${d.moved ? `「${d.moved}」已對調到 ${slotZh(moveInfo.from)}。` : ''}`
+        + `${d.hrMoved ? `\n導師填的「${d.hrMoved}」已搬到 ${slotZh(moveInfo.from)}——請通知他重新整理。` : ''}`
         + `${d.native?.newSession ? '\n⚠ 這是該年級新的本土語時段，會多出一場場次——請到「6 本土語場次」指定老師與教室。' : ''}`)
       setMoveFrom(null); setMoveInfo(null); setMoveMode(false)
       window.location.reload()   // 設定與課表都被伺服器改過，重新載入才是最新的
@@ -143,7 +146,12 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
                 {slotZh(moveInfo.to)} 目前是「{moveInfo.sitting.subject}（{moveInfo.sitting.teacherName}）」——
                 會和鎖課<b>對調</b>，那堂課移到 {slotZh(moveInfo.from)}。班上佔用的格子總數不變。
               </div>
-            : <div className="text-xs text-amber-800">{slotZh(moveInfo.to)} 是空的，直接移過去；{slotZh(moveInfo.from)} 會變成導師可填的空格。</div>}
+            : moveInfo.hrMoved
+              ? <div className="text-xs text-amber-800">
+                  {slotZh(moveInfo.to)} 是導師填的「{moveInfo.hrMoved}」——會和鎖課<b>對調</b>，搬到 {slotZh(moveInfo.from)}。
+                  他要填的節數不變，但<b>請通知他重新整理</b>{moveInfo.hrConfirmed ? '（這一班已確認送出）' : ''}。
+                </div>
+              : <div className="text-xs text-amber-800">{slotZh(moveInfo.to)} 是空的，直接移過去；{slotZh(moveInfo.from)} 會變成導師可填的空格。</div>}
           {moveInfo.native && (moveInfo.native.newSession
             ? <div className="text-xs text-red-700">⚠ 這是該年級<b>新的</b>本土語時段（既有：{moveInfo.native.sameGradeSlots.map(slotZh).join('、') || '無'}），會多出一場場次，需要指定老師與教室。</div>
             : <div className="text-xs text-green-700">✓ 併入該年級既有的本土語時段，場次數不變。</div>)}

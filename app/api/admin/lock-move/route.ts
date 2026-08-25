@@ -29,7 +29,7 @@ async function inspect(year: number, ck: string, from: string, to: string) {
   const [{ data: schRow }, { data: planRow }, { data: hrRow }] = await Promise.all([
     supabaseAdmin.from('schedule_config').select('config').eq('year', year).maybeSingle(),
     supabaseAdmin.from('schedule_plan').select('plan, generated_at').eq('year', year).maybeSingle(),
-    supabaseAdmin.from('schedule_homeroom').select('cells').eq('year', year).eq('class_key', ck).maybeSingle(),
+    supabaseAdmin.from('schedule_homeroom').select('cells, confirmed_at').eq('year', year).eq('class_key', ck).maybeSingle(),
   ])
   if (!schRow?.config) throw new Error('找不到排課設定')
   const config = normalizeScheduleConfig(schRow.config)
@@ -45,12 +45,17 @@ async function inspect(year: number, ck: string, from: string, to: string) {
 
   const lockType = config.lockTypes.find(t => t.id === lockId)
   const hrCells = (hrRow?.cells ?? {}) as Record<string, string>
-  const blocked = hrCells[to] ? `導師已填「${hrCells[to]}」` : ''
+  // 導師填在目標格的內容，一樣走「對調」——搬到鎖課讓出來的那一格。
+  // 硬擋的話課務組得打電話請導師清格、等他改完再回來，而結果幾乎都是「搬過去就好」。
+  // 導師那張沒重新整理的頁面存檔時會被整筆擋下（他的 cells 逐格驗證），
+  // 所以不會靜默蓋掉這裡的變更，只是他要重整一次。
+  const hrMoved = hrCells[to] ?? null
 
   // 目標格上的課
   const sitting = placed.find(q => q.classKey === ck && q.day > 0 && spans(q).includes(to))
   const problems: string[] = []
-  if (blocked) problems.push(`${zh(to)} ${blocked}——請先請導師改，或改挑別格`)
+  if (hrMoved && hrCells[from]) problems.push(`${zh(from)} 導師也填了「${hrCells[from]}」，兩格都有內容無法對調`)
+  if (hrMoved && sitting) problems.push(`${zh(to)} 同時有科任課與導師課，資料不一致，請先處理`)
   if (sitting && sitting.size > 1) problems.push(`${zh(to)} 是「${sitting.subject}」的連堂，整塊佔兩節，不能和單格鎖課對調`)
   if (sitting && sitting.size === 1) {
     // 那堂課要搬到 from：它的老師、外師、教室在 from 都得有空
@@ -78,7 +83,9 @@ async function inspect(year: number, ck: string, from: string, to: string) {
   }
   return {
     classLabel: classLabel(g, i), lockLabel: lockType?.label || lockType?.subject || '鎖課',
-    from, to, problems,
+    from, to, problems, hrMoved,
+    hrConfirmed: Boolean((hrRow as { confirmed_at?: string | null } | null)?.confirmed_at),
+    hrCells,
     sitting: sitting ? { id: sitting.id, subject: sitting.subject, teacherName: sitting.teacherName ?? '', size: sitting.size } : null,
     native, generatedAt: planRow?.generated_at ?? null,
     config: schRow.config, plan, lockId,
@@ -92,7 +99,7 @@ export async function GET(request: NextRequest) {
   if (!Number.isInteger(year) || !ck || !from || !to) return NextResponse.json({ error: '參數錯誤' }, { status: 400 })
   try {
     const r = await inspect(year, ck, from, to)
-    return NextResponse.json({ ...r, config: undefined, plan: undefined })
+    return NextResponse.json({ ...r, config: undefined, plan: undefined, hrCells: undefined })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : '檢查失敗' }, { status: 400 })
   }
@@ -122,7 +129,17 @@ export async function POST(request: NextRequest) {
     }).eq('year', yr).eq('generated_at', r.generatedAt as string).select('generated_at')
     if (!ok?.length) return NextResponse.json({ error: '課表在你操作期間被別人改過了，請重新整理再試一次。' }, { status: 409 })
   }
-  // ② 設定：鎖課換格
+  // ② 導師課：填在目標格的內容搬到鎖課讓出來的那一格
+  if (r.hrMoved) {
+    const cells = { ...(r.hrCells as Record<string, string>) }
+    delete cells[to]
+    cells[from] = r.hrMoved
+    const { error } = await supabaseAdmin.from('schedule_homeroom')
+      .update({ cells, updated_at: new Date().toISOString() })
+      .eq('year', yr).eq('class_key', ck)
+    if (error) return NextResponse.json({ error: `導師課搬移失敗：${error.message}` }, { status: 500 })
+  }
+  // ③ 設定：鎖課換格
   const raw = r.config as Record<string, unknown>
   const lockCells = { ...((raw.lockCells ?? {}) as Record<string, Record<string, string>>) }
   const cells = { ...(lockCells[ck] ?? {}) }
@@ -131,5 +148,5 @@ export async function POST(request: NextRequest) {
   lockCells[ck] = cells
   const { error } = await supabaseAdmin.from('schedule_config').update({ config: { ...raw, lockCells } }).eq('year', yr)
   if (error) return NextResponse.json({ error: `設定寫入失敗：${error.message}（課表已改，請重試或手動修正）` }, { status: 500 })
-  return NextResponse.json({ ok: true, moved: r.sitting?.subject ?? null, native: r.native })
+  return NextResponse.json({ ok: true, moved: r.sitting?.subject ?? null, hrMoved: r.hrMoved, hrConfirmed: r.hrConfirmed, native: r.native })
 }
