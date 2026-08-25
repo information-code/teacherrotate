@@ -69,6 +69,13 @@ export default function RepairCasesClient() {
   const [itemFilter, setItemFilter] = useState('')
   const [search, setSearch] = useState('')
 
+  // 唯讀看板模式：全螢幕未結案清單（給公用電腦展示），離開需輸入啟動時設定的密碼。
+  // 密碼存 localStorage，重新整理仍維持鎖定。
+  const [kiosk, setKiosk] = useState(false)
+  const [kioskModal, setKioskModal] = useState<'' | 'enter' | 'exit'>('')
+  const [kioskPwDraft, setKioskPwDraft] = useState('')
+  const [kioskError, setKioskError] = useState('')
+
   const [expandedId, setExpandedId] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
   // 歸類草稿（未歸類案件用）
@@ -111,6 +118,18 @@ export default function RepairCasesClient() {
   }
 
   useEffect(() => { void load() }, [])
+
+  // 重新整理後若看板密碼還在，直接回到鎖定狀態
+  useEffect(() => {
+    try { if (localStorage.getItem('repairKioskPw')) setKiosk(true) } catch {}
+  }, [])
+
+  // 看板模式每分鐘自動抓最新案件
+  useEffect(() => {
+    if (!kiosk) return
+    const t = setInterval(() => { void load() }, 60_000)
+    return () => clearInterval(t)
+  }, [kiosk])
 
   if (loadError) return <div className="card"><p className="text-sm text-red-600">{loadError}</p></div>
   if (!data) return <PageLoading />
@@ -155,6 +174,40 @@ export default function RepairCasesClient() {
   }
 
   const classifyIssues = data.issues.filter(s => s.item_id === classifyItemId && s.active)
+
+  const enterKiosk = () => {
+    const pw = kioskPwDraft.trim()
+    if (pw.length < 4) {
+      setKioskError('離開密碼至少 4 碼')
+      return
+    }
+    try { localStorage.setItem('repairKioskPw', pw) } catch {}
+    setKioskModal('')
+    setKioskPwDraft('')
+    setKioskError('')
+    setKiosk(true)
+    document.documentElement.requestFullscreen?.().catch(() => {})
+  }
+
+  const exitKiosk = () => {
+    let saved = ''
+    try { saved = localStorage.getItem('repairKioskPw') ?? '' } catch {}
+    if (kioskPwDraft !== saved) {
+      setKioskError('密碼錯誤')
+      return
+    }
+    try { localStorage.removeItem('repairKioskPw') } catch {}
+    setKioskModal('')
+    setKioskPwDraft('')
+    setKioskError('')
+    setKiosk(false)
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+  }
+
+  // 看板內容：未結案，最久未處理的排最上面
+  const kioskCases = data.reports
+    .filter(r => r.status !== 'closed')
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   return (
     <div className="space-y-4">
@@ -204,6 +257,12 @@ export default function RepairCasesClient() {
           })}
         >
           ⬇ 下載工作單
+        </button>
+        <button
+          className="btn-secondary"
+          onClick={() => { setKioskPwDraft(''); setKioskError(''); setKioskModal('enter') }}
+        >
+          🖥 唯讀看板
         </button>
       </div>
 
@@ -342,6 +401,98 @@ export default function RepairCasesClient() {
           )
         })}
       </div>
+
+      {/* ============ 唯讀看板（全螢幕，密碼才能離開） ============ */}
+      {kiosk && (
+        <div className="fixed inset-0 z-[80] overflow-y-auto bg-zinc-100">
+          <div className="mx-auto max-w-4xl space-y-3 p-6">
+            <div className="flex items-end justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-zinc-900">設備報修處理看板</h1>
+                <p className="mt-1 text-sm text-zinc-500">
+                  未結案 {kioskCases.length} 件｜每分鐘自動更新
+                </p>
+              </div>
+              <button
+                className="text-xs text-zinc-400 underline hover:text-zinc-600"
+                onClick={() => { setKioskPwDraft(''); setKioskError(''); setKioskModal('exit') }}
+              >
+                離開看板
+              </button>
+            </div>
+
+            {kioskCases.length === 0 && (
+              <div className="rounded-md bg-white p-8 text-center shadow-sm">
+                <p className="text-lg text-zinc-500">目前沒有待處理的報修案件 🎉</p>
+              </div>
+            )}
+
+            {kioskCases.map(r => {
+              const level = slaLevel(r.created_at, r.status, data.config, now)
+              return (
+                <div key={r.id} className="rounded-md bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 text-lg font-semibold text-zinc-900">
+                      {r.item_name}｜{issueText(r)}
+                    </span>
+                    <span className={`shrink-0 rounded px-2.5 py-1 text-sm ${SLA_BADGE[level]}`}>
+                      {repairStatusLabel(r.status)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-base text-zinc-700">
+                    {r.location && <span className="font-medium">📍 {r.location}　</span>}
+                    <span className="text-zinc-500">
+                      {r.teacher_name}｜{timeText(r.created_at)} 報修｜
+                    </span>
+                    <span className={level === 'alert' ? 'font-semibold text-red-600' : level === 'warn' ? 'font-semibold text-orange-600' : 'text-zinc-500'}>
+                      已經過 {elapsedText(r.created_at, now)}
+                    </span>
+                  </div>
+                  {r.admin_note && (
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm text-zinc-600">
+                      <span className="text-xs text-zinc-400">說明：</span>{r.admin_note}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 看板啟動／離開密碼視窗 */}
+      {kioskModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-80 space-y-3 rounded-md bg-white p-4 shadow-xl">
+            <h3 className="font-medium text-zinc-900">
+              {kioskModal === 'enter' ? '啟動唯讀看板' : '離開唯讀看板'}
+            </h3>
+            <p className="text-sm text-zinc-500">
+              {kioskModal === 'enter'
+                ? '看板為全螢幕唯讀畫面，只顯示未結案件。請設定離開密碼（離開看板時需輸入）。'
+                : '請輸入啟動看板時設定的密碼。'}
+            </p>
+            <input
+              type="password"
+              className="input"
+              autoFocus
+              placeholder={kioskModal === 'enter' ? '設定離開密碼（至少 4 碼）' : '離開密碼'}
+              value={kioskPwDraft}
+              onChange={e => { setKioskPwDraft(e.target.value); setKioskError('') }}
+              onKeyDown={e => { if (e.key === 'Enter') (kioskModal === 'enter' ? enterKiosk : exitKiosk)() }}
+            />
+            {kioskError && <p className="text-sm text-red-600">{kioskError}</p>}
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => { setKioskModal(''); setKioskPwDraft(''); setKioskError('') }}>
+                取消
+              </button>
+              <button className="btn-primary" onClick={kioskModal === 'enter' ? enterKiosk : exitKiosk}>
+                {kioskModal === 'enter' ? '啟動' : '離開'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
