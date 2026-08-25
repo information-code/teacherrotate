@@ -136,32 +136,54 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
         {moveErr && <span className="text-xs text-red-600">{moveErr}</span>}
         {moveBusy && <span className="text-xs text-zinc-400">檢查中…</span>}
       </div>
+      {/* 檢查結果用 modal：原本印在頁面最上方，點完格子還要捲回去看，
+          而且捲上去之後就看不到自己點了哪一格。 */}
       {moveInfo && (
-        <div className="card border-amber-300 bg-amber-50 p-3 space-y-2 text-sm">
-          <div className="font-medium text-amber-900">
-            {moveInfo.classLabel}　{moveInfo.lockLabel}　{slotZh(moveInfo.from)} → {slotZh(moveInfo.to)}
-          </div>
-          {moveInfo.sitting
-            ? <div className="text-xs text-amber-800">
-                {slotZh(moveInfo.to)} 目前是「{moveInfo.sitting.subject}（{moveInfo.sitting.teacherName}）」——
-                會和鎖課<b>對調</b>，那堂課移到 {slotZh(moveInfo.from)}。班上佔用的格子總數不變。
-              </div>
-            : moveInfo.hrMoved
-              ? <div className="text-xs text-amber-800">
-                  {slotZh(moveInfo.to)} 是導師填的「{moveInfo.hrMoved}」——會和鎖課<b>對調</b>，搬到 {slotZh(moveInfo.from)}。
-                  他要填的節數不變，但<b>請通知他重新整理</b>{moveInfo.hrConfirmed ? '（這一班已確認送出）' : ''}。
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => !moveBusy && setMoveInfo(null)}>
+          <div className="card w-full max-w-lg space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-base font-semibold">移動鎖課</h3>
+              <button type="button" onClick={() => setMoveInfo(null)} disabled={moveBusy}
+                className="ml-auto text-zinc-400 hover:text-zinc-700 text-sm">✕</button>
+            </div>
+            <div className="text-sm font-medium text-zinc-800 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2">
+              {moveInfo.classLabel}　{moveInfo.lockLabel}
+              <div className="text-zinc-500 text-xs mt-0.5">{slotZh(moveInfo.from)}　→　{slotZh(moveInfo.to)}</div>
+            </div>
+            {moveInfo.sitting
+              ? <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+                  {slotZh(moveInfo.to)} 目前是「{moveInfo.sitting.subject}（{moveInfo.sitting.teacherName}）」——
+                  會和鎖課<b>對調</b>，那堂課移到 {slotZh(moveInfo.from)}。班上佔用的格子總數不變。
                 </div>
-              : <div className="text-xs text-amber-800">{slotZh(moveInfo.to)} 是空的，直接移過去；{slotZh(moveInfo.from)} 會變成導師可填的空格。</div>}
-          {moveInfo.native && (moveInfo.native.newSession
-            ? <div className="text-xs text-red-700">⚠ 這是該年級<b>新的</b>本土語時段（既有：{moveInfo.native.sameGradeSlots.map(slotZh).join('、') || '無'}），會多出一場場次，需要指定老師與教室。</div>
-            : <div className="text-xs text-green-700">✓ 併入該年級既有的本土語時段，場次數不變。</div>)}
-          {moveInfo.problems.length > 0 && (
-            <ul className="text-xs text-red-700 space-y-0.5">{moveInfo.problems.map((x, i) => <li key={i}>・{x}</li>)}</ul>
-          )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setMoveInfo(null)} className="btn btn-secondary text-xs py-0.5">重選</button>
-            <button type="button" onClick={doMove} disabled={moveBusy || moveInfo.problems.length > 0}
-              className="btn btn-primary text-xs py-0.5">確認移動</button>
+              : moveInfo.hrMoved
+                ? <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+                    {slotZh(moveInfo.to)} 是導師填的「{moveInfo.hrMoved}」——會和鎖課<b>對調</b>，搬到 {slotZh(moveInfo.from)}。
+                    他要填的節數不變，但<b>請通知他重新整理</b>{moveInfo.hrConfirmed ? '（這一班已確認送出）' : ''}。
+                  </div>
+                : <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-sm px-3 py-2">
+                    {slotZh(moveInfo.to)} 是空的，直接移過去；{slotZh(moveInfo.from)} 會變成導師可填的空格。
+                  </div>}
+            {moveInfo.native && (moveInfo.native.newSession
+              ? <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2">
+                  ⚠ 這是該年級<b>新的</b>本土語時段（既有：{moveInfo.native.sameGradeSlots.map(slotZh).join('、') || '無'}），
+                  會多出一場場次，需要到「6 本土語場次」指定老師與教室。
+                </div>
+              : <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-sm px-3 py-2">
+                  ✓ 併入該年級既有的本土語時段，場次數不變。
+                </div>)}
+            {moveInfo.problems.length > 0 && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2 space-y-0.5">
+                <div className="font-medium">不能移動：</div>
+                {moveInfo.problems.map((x, i2) => <div key={i2}>・{x}</div>)}
+              </div>
+            )}
+            {moveErr && <div className="text-xs text-red-600">{moveErr}</div>}
+            <div className="flex gap-2 justify-end pt-1">
+              <button type="button" onClick={() => setMoveInfo(null)} disabled={moveBusy} className="btn btn-secondary text-sm">重選目標</button>
+              <button type="button" onClick={doMove} disabled={moveBusy || moveInfo.problems.length > 0}
+                className="btn btn-primary text-sm">{moveBusy ? '處理中…' : '確認移動'}</button>
+            </div>
           </div>
         </div>
       )}
@@ -248,8 +270,11 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
             {Array.from({ length: count }, (_, i) => {
               const ck = classKey(grade, i)
               return (
-                <div key={i} className="card p-3 space-y-1">
-                  <div className="text-sm font-semibold text-zinc-700">{classLabel(grade, i)}</div>
+                <div key={i} className={`card p-3 space-y-1 ${moveMode && moveFrom && moveFrom.ck !== ck ? 'opacity-40' : ''}`}>
+                  <div className="text-sm font-semibold text-zinc-700">
+                    {classLabel(grade, i)}
+                    {moveMode && moveFrom?.ck === ck && <span className="ml-2 text-[10px] font-normal text-amber-600">移動中</span>}
+                  </div>
                   <table className="w-full table-fixed border-collapse text-[11px]">
                     <thead>
                       <tr>
@@ -267,12 +292,27 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
                             const tid = config.lockCells[ck]?.[k]
                             const t = tid ? typeMap[tid] : undefined
                             const col = t ? (LOCK_COLORS[t.color] ?? LOCK_COLORS.slate) : null
+                            // 移動模式的點擊回饋：選中的來源格要一眼看得出來，
+                            // 不能選的格子要看起來就不能選——否則點了沒反應會以為壞掉。
+                            const isSrc = moveMode && moveFrom?.ck === ck && moveFrom.slot === k
+                            const isDst = moveMode && moveInfo != null && moveFrom?.ck === ck && moveInfo.to === k
+                            const sameClass = moveMode && moveFrom?.ck === ck
+                            const selectable = moveMode && (moveFrom ? sameClass : Boolean(t))
+                            const mv = !moveMode ? ''
+                              : isSrc ? ' ring-2 ring-amber-500 ring-offset-1 animate-pulse'
+                              : isDst ? ' ring-2 ring-sky-500 ring-offset-1'
+                              : selectable ? ' hover:ring-2 hover:ring-sky-400 cursor-pointer'
+                              : ' opacity-30 cursor-not-allowed'
                             return (
                               <td key={d} className="p-0.5">
-                                <button type="button" onClick={() => clickCell(ck, k)} title={t ? `${t.label || t.subject}` : undefined}
-                                  className={`w-full h-7 rounded-sm border text-[10px] leading-tight truncate px-0 ${t ? '' : 'bg-zinc-50 border-zinc-200 hover:border-zinc-400'}`}
+                                <button type="button" onClick={() => clickCell(ck, k)} disabled={moveMode && !selectable}
+                                  title={moveMode
+                                    ? (isSrc ? '移動中——再點一次取消' : selectable ? (moveFrom ? '點這裡當目標' : t ? '點這裡開始移動' : undefined) : '這一格不能選')
+                                    : (t ? `${t.label || t.subject}` : undefined)}
+                                  className={`relative w-full h-7 rounded-sm border text-[10px] leading-tight truncate px-0 ${t ? '' : 'bg-zinc-50 border-zinc-200 hover:border-zinc-400'}${mv}`}
                                   style={col ? { backgroundColor: col.bg, borderColor: col.border, color: col.text } : undefined}>
                                   {t ? (t.subject || t.label || '？') : ''}
+                                  {isSrc && <span className="absolute -top-1 -right-1 text-[8px] bg-amber-500 text-white rounded-full w-3 h-3 leading-3">↦</span>}
                                 </button>
                               </td>
                             )
