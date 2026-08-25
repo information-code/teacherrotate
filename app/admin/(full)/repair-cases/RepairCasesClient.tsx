@@ -69,12 +69,13 @@ export default function RepairCasesClient() {
   const [itemFilter, setItemFilter] = useState('')
   const [search, setSearch] = useState('')
 
-  // 唯讀看板模式：全螢幕未結案清單（給公用電腦展示），離開需輸入啟動時設定的密碼。
-  // 密碼存 localStorage，重新整理仍維持鎖定。
+  // 看板模式：全螢幕未結案清單（給公用電腦），只開放更新狀態與填寫說明，
+  // 離開需輸入啟動時設定的密碼。密碼存 localStorage，重新整理仍維持鎖定。
   const [kiosk, setKiosk] = useState(false)
   const [kioskModal, setKioskModal] = useState<'' | 'enter' | 'exit'>('')
   const [kioskPwDraft, setKioskPwDraft] = useState('')
   const [kioskError, setKioskError] = useState('')
+  const [kioskNoteDrafts, setKioskNoteDrafts] = useState<Record<string, string>>({})
 
   const [expandedId, setExpandedId] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
@@ -209,6 +210,16 @@ export default function RepairCasesClient() {
     .filter(r => r.status !== 'closed')
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
+  /** 看板的狀態下拉：選了就推進（單向；結案需確認） */
+  const kioskChangeStatus = (r: ReportRow, next: string) => {
+    if (next === r.status) return
+    if (next === 'accepted') void act(r.id, { action: 'accept' }, '已接案')
+    else if (next === 'processing') void act(r.id, { action: 'process' }, '已轉為處理中')
+    else if (next === 'closed') {
+      if (confirm('確定結案？教師端會顯示已結案。')) void act(r.id, { action: 'close' }, '已結案')
+    }
+  }
+
   return (
     <div className="space-y-4">
       {busy && <BusyOverlay text={busy} />}
@@ -262,7 +273,7 @@ export default function RepairCasesClient() {
           className="btn-secondary"
           onClick={() => { setKioskPwDraft(''); setKioskError(''); setKioskModal('enter') }}
         >
-          🖥 唯讀看板
+          🖥 看板模式
         </button>
       </div>
 
@@ -411,6 +422,7 @@ export default function RepairCasesClient() {
                 <h1 className="text-2xl font-bold text-zinc-900">設備報修處理看板</h1>
                 <p className="mt-1 text-sm text-zinc-500">
                   未結案 {kioskCases.length} 件｜每分鐘自動更新
+                  {message && <span className="ml-2 text-zinc-700" aria-live="polite">｜{message}</span>}
                 </p>
               </div>
               <button
@@ -429,6 +441,7 @@ export default function RepairCasesClient() {
 
             {kioskCases.map(r => {
               const level = slaLevel(r.created_at, r.status, data.config, now)
+              const noteDraftValue = kioskNoteDrafts[r.id] ?? r.admin_note
               return (
                 <div key={r.id} className="rounded-md bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
@@ -436,27 +449,59 @@ export default function RepairCasesClient() {
                       {r.item_name}｜{issueText(r)}
                     </span>
                     <span className={`shrink-0 rounded px-2.5 py-1 text-sm ${SLA_BADGE[level]}`}>
-                      {repairStatusLabel(r.status)}
+                      已經過 {elapsedText(r.created_at, now)}
                     </span>
                   </div>
                   <div className="mt-1 text-base text-zinc-700">
                     {r.location && <span className="font-medium">📍 {r.location}　</span>}
                     <span className="text-zinc-500">
-                      {r.teacher_name}｜{timeText(r.created_at)} 報修｜
-                    </span>
-                    <span className={level === 'alert' ? 'font-semibold text-red-600' : level === 'warn' ? 'font-semibold text-orange-600' : 'text-zinc-500'}>
-                      已經過 {elapsedText(r.created_at, now)}
+                      {r.teacher_name}｜{timeText(r.created_at)} 報修
                     </span>
                   </div>
-                  {r.admin_note && (
-                    <p className="mt-1.5 whitespace-pre-wrap text-sm text-zinc-600">
-                      <span className="text-xs text-zinc-400">說明：</span>{r.admin_note}
-                    </p>
-                  )}
+                  <div className="mt-2 flex flex-wrap items-start gap-2">
+                    <select
+                      className="input !w-32"
+                      value={r.status}
+                      onChange={e => kioskChangeStatus(r, e.target.value)}
+                    >
+                      <option value="pending" disabled={r.status !== 'pending'}>通報中</option>
+                      <option value="accepted" disabled={r.status !== 'pending' && r.status !== 'accepted'}>已接案</option>
+                      <option value="processing">處理中</option>
+                      <option value="closed">已結案</option>
+                    </select>
+                    <div className="min-w-56 flex-1">
+                      <textarea
+                        className="input min-h-14 w-full"
+                        placeholder="填寫處理說明（報修老師看得到）"
+                        value={noteDraftValue}
+                        onChange={e => setKioskNoteDrafts(d => ({ ...d, [r.id]: e.target.value }))}
+                      />
+                      <div className="mt-1 flex justify-end">
+                        <button
+                          className="btn-secondary !px-3 !py-1"
+                          disabled={noteDraftValue === r.admin_note}
+                          onClick={() => act(r.id, { action: 'note', admin_note: noteDraftValue }, '說明已儲存')
+                            .then(() => setKioskNoteDrafts(d => { const { [r.id]: _drop, ...rest } = d; return rest }))}
+                        >
+                          儲存說明
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             })}
           </div>
+
+          {/* 看板內的處理中遮罩（看板 z 較高，蓋不到全域 BusyOverlay） */}
+          {busy && (
+            <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/30">
+              <div className="flex items-center gap-3 rounded-md bg-white px-6 py-4 shadow-xl">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
+                <span className="text-sm text-zinc-700">{busy}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -469,7 +514,7 @@ export default function RepairCasesClient() {
             </h3>
             <p className="text-sm text-zinc-500">
               {kioskModal === 'enter'
-                ? '看板為全螢幕唯讀畫面，只顯示未結案件。請設定離開密碼（離開看板時需輸入）。'
+                ? '看板為全螢幕畫面，只顯示未結案件，僅能更新狀態與填寫說明。請設定離開密碼（離開看板時需輸入）。'
                 : '請輸入啟動看板時設定的密碼。'}
             </p>
             <input
