@@ -1229,7 +1229,7 @@ ${head}確定撤回？`)) return
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold text-zinc-900">排課版本紀錄<span className="text-xs font-normal text-zinc-500 ml-2">{versions.length} 份</span></h3>
-                <p className="text-xs text-zinc-500">每次排課自動保存，最多留 20 份（加 ★ 者不會被自動刪除）</p>
+                <p className="text-xs text-zinc-500">每次排課或人工調課自動保存，最多留 30 份（加 ★ 者不會被自動刪除）</p>
               </div>
               <button onClick={() => setVersionsOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">×</button>
             </div>
