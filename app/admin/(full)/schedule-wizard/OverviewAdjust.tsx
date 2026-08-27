@@ -123,6 +123,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
   const [trayPick, setTrayPick] = useState<string | null>(null)          // 選中的待排項目
   const [slotPick, setSlotPick] = useState<{ classKey: string; slot: string } | null>(null)   // 先點的空格
   const pendingHrRef = useRef<Set<string>>(new Set())   // 待寫入的導師課班級（儲存時一併 PATCH）
+  const lastVersionError = useRef('')                  // 版本存檔失敗的原因（套用完要講給人聽）
   // 防守：外面換了一份課表（換版本預覽、發布後重載…）就跟著更新。
   // placed／hr 是在掛載時從 props 抄進 state 的，只靠外面記得換 key 太脆弱——
   // 少換一次就會停在上一版，而且之後怎麼切都不會動。有未存的微調時不覆蓋，免得洗掉使用者的工作。
@@ -163,9 +164,7 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
     if (!opts.silent) setSnapState('saving')
     try {
       const pens = (savedPlan.penalties as { key: string; label: string; count: number; points: number }[] | undefined) ?? []
-      const res = await fetch('/api/admin/schedule-plan-versions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const body = JSON.stringify({
           year, source: opts.adjustments.length > 0 ? 'manual' : 'engine', baseHash, weights: config.weights,
           label: opts.label,
           summary: {
@@ -183,16 +182,37 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           plan: { ...savedPlan, placed: opts.placed, adjustments: opts.adjustments,
             homeroom: Object.fromEntries(Object.entries(opts.hr ?? hr).map(([k, v]) => [k, v.cells ?? {}])),
             ...(opts.unplaced ? { unplaced: opts.unplaced } : {}) },
-        }),
       })
-      if (!opts.silent) setSnapState(res.ok ? 'saved' : 'error')
-      if (res.ok) {
-        const d = await res.json().catch(() => ({}))
-        onVersionSaved?.({ id: d.id, seq: d.seq })
-        return (d.id as string | undefined) ?? true
+      const res = await fetch('/api/admin/schedule-plan-versions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      })
+      if (!res.ok) {
+        // 存版本失敗多半是一瞬間的事（部署換版、網路抖動），先重試一次再說
+        const why = (await res.json().catch(() => ({})))?.error ?? `HTTP ${res.status}`
+        lastVersionError.current = String(why)
+        const res2 = await fetch('/api/admin/schedule-plan-versions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        }).catch(() => null)
+        if (!res2?.ok) {
+          lastVersionError.current = String((await res2?.json().catch(() => ({})))?.error ?? why)
+          if (!opts.silent) setSnapState('error')
+          return false
+        }
+        const d2 = await res2.json().catch(() => ({}))
+        lastVersionError.current = ''
+        if (!opts.silent) setSnapState('saved')
+        onVersionSaved?.({ id: d2.id, seq: d2.seq })
+        return (d2.id as string | undefined) ?? true
       }
-      return res.ok
-    } catch { if (!opts.silent) setSnapState('error'); return false }
+      lastVersionError.current = ''
+      if (!opts.silent) setSnapState('saved')
+      const d = await res.json().catch(() => ({}))
+      onVersionSaved?.({ id: d.id, seq: d.seq })
+      return (d.id as string | undefined) ?? true
+    } catch (e) {
+      lastVersionError.current = e instanceof Error ? e.message : '連線失敗'
+      if (!opts.silent) setSnapState('error'); return false
+    }
   }
   const snapshot = () => saveVersion({ placed, adjustments, label: `手動微調後（${adjustments.length} 筆調整）` })
 
@@ -1419,7 +1439,19 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
             label: `連鎖調課 ${next.moves.length} 步（${cls}）` })
           // 「套用」就是套用：直接寫進課表，不要再叫人去按「儲存微調」（那顆已經拿掉了）
           const ok = await persist(re, next.hr, adj, cks, typeof vid === 'string' ? vid : undefined)
-          if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
+          if (ok) {
+            pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0)
+            if (typeof vid !== 'string') {
+              alert(`調課已經套用，課表是正確的。
+
+`
+                + `但這一版沒有存進版本紀錄${lastVersionError.current ? `（${lastVersionError.current}）` : ''}，`
+                + `所以版本清單會跳號，之後也回不到這一版的快照。
+
+`
+                + `課表本身不受影響，下一次調課會照常存版本。`)
+            }
+          }
           else if (typeof vid === 'string') {
             // 課表沒寫成，那這一版就不算數：留著只會變成版本紀錄裡有它、課表卻沒有
             // fetch 遇到 4xx 不會 reject，只 catch 網路錯誤會讓刪不掉的版本靜靜留下來
