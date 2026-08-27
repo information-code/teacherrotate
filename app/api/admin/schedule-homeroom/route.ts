@@ -55,12 +55,17 @@ export async function PATCH(request: NextRequest) {
 
   if (action === 'setCells') {
     if (!cells || typeof cells !== 'object') return NextResponse.json({ error: 'cells 格式錯誤' }, { status: 400 })
-    const { error } = await supabaseAdmin
+    // 一定要 select 回來：update 沒配對到任何一列時 Supabase 不算錯誤，
+    // 就這樣回一個 ok，呼叫端以為存好了，導師課其實原封不動——
+    // 連鎖調課把科任課搬到導師那一格之後，導師課就這樣被壓在底下看不見。
+    const { data, error } = await supabaseAdmin
       .from('schedule_homeroom')
       .update({ cells, updated_at: new Date().toISOString() })
       .eq('year', Number(year)).eq('class_key', String(classKey))
+      .select('class_key, cells')
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true })
+    if (!data?.length) return NextResponse.json({ error: `找不到 ${classKey} 的導師課資料列，沒有存到` }, { status: 404 })
+    return NextResponse.json({ ok: true, cells: data[0].cells })
   }
 
   return NextResponse.json({ error: '無效的動作' }, { status: 400 })

@@ -120,6 +120,10 @@ export default function ChainAdjustModal({
     { ...l, id: `${l.id}~b`, size: 1, period: l.period + 1 },
   ])
   const spanOf = (l: PlacedResult) => l.size === 2 ? [`${l.day}-${l.period}`, `${l.day}-${l.period + 1}`] : [`${l.day}-${l.period}`]
+  /** 兩堂課在同一格會不會撞：只有「單週 vs 雙週」錯得開，其餘（含每週都上的 weekly）都算撞。
+   *  專科教室最常遇到——一間視覺藝術教室，單週給一班、雙週給另一班，本來就是這樣排的。 */
+  const clash = (a?: string, b?: string) =>
+    !((a === 'odd' && b === 'even') || (a === 'even' && b === 'odd'))
   const dPlaced = useMemo(() => {
     const set = new Set(splitIds)
     return placed0.flatMap(l => set.has(l.id) ? splitOf(l) : [l])
@@ -274,7 +278,8 @@ export default function ChainAdjustModal({
         const ex = (extraByTeacher.get(board.teacherId) ?? []).find(x => x.slot === s2)
         if (ex) return { ok: false, why: `${nameOf(board.teacherId)} ${slotZh(s2)} 有 ${normalizeSubject(ex.main)}（固定課，不可調）` }
         const occ = dTeacher.get(board.teacherId)?.get(s2)
-        if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id }))
+        if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id })
+          && clash(l?.parity, occ.parity))
           swap.push(`${occ.classLabel} ${occ.subject}`)
       }
       const now = want.map(s2 => `${slotZh(s2)} ${classAt(ck, s2)}`).join('、')
@@ -297,7 +302,8 @@ export default function ChainAdjustModal({
     const hit: string[] = []
     for (const s2 of want) {
       const occ = dClass.get(ck)?.get(s2)
-      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id })) { hit.push(occ.subject); continue }
+      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id })
+        && clash(l?.parity, occ.parity)) { hit.push(occ.subject); continue }
       const sub = hr0[ck]?.cells?.[s2]
       if (sub && !leaving({ kind: 'hr', classKey: ck, slot: s2 })) {
         if (fillOpen) return { ok: false, why: '導師填課開放中，導師課唯讀' }
@@ -353,7 +359,7 @@ export default function ChainAdjustModal({
     // 1) 班上這幾格被誰占著 → 那堂課要另找位置，去他老師的課表上找
     for (const s of slots) {
       const occ = sClass.get(ck)?.get(s)
-      if (occ && `l:${occ.id}` !== self) {
+      if (occ && `l:${occ.id}` !== self && clash(l?.parity, occ.parity)) {
         nextPlaced = nextPlaced.map(x => x.id === occ.id ? { ...x, day: 0, period: 0 } : x)
         const back = moves.some(m => iKey(m.item) === `l:${occ.id}`)
         newPending.push({ item: { kind: 'lesson', id: occ.id }, step: stepNo,
@@ -404,7 +410,7 @@ export default function ChainAdjustModal({
       const rooms = own.length ? own : engineInput.rooms.filter(r => r.subject === l.subject)
       if (rooms.length) {
         const busy = (rid: string, s2: string) => nextPlaced.some(x =>
-          x.id !== l.id && x.day > 0 && x.roomId === rid && spanOf(x).includes(s2))
+          x.id !== l.id && x.day > 0 && x.roomId === rid && spanOf(x).includes(s2) && clash(l.parity, x.parity))
         const free = rooms.filter(r => !(r.offSlots ?? []).some(o => slots.includes(o)) && !slots.some(s2 => busy(r.id, s2)))
         if (!free.length) roomNeed = { slots, roomIds: rooms.map(r => r.id), subject: l.subject }
       }

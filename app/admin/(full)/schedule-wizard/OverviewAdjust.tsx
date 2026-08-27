@@ -659,12 +659,31 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
       if (!res.ok) throw new Error()
       const okData = await res.json().catch(() => ({}))
       if (okData.generatedAt) { planAtRef.current = okData.generatedAt; onPlanAt?.(okData.generatedAt) }
+      // 導師課逐班寫，而且要對過才算數。這裡出事最難發現：課表已經寫進去了，
+      // 導師課沒跟上就會被搬過來的科任課壓在底下，畫面上看起來就是「導師課不見了」。
       for (const ck of changedHrClasses) {
+        const want = nextHr[ck]?.cells ?? {}
         const r = await fetch('/api/admin/schedule-homeroom', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ year, classKey: ck, action: 'setCells', cells: nextHr[ck]?.cells ?? {} }),
+          body: JSON.stringify({ year, classKey: ck, action: 'setCells', cells: want }),
         })
-        if (!r.ok) throw new Error()
+        const d = await r.json().catch(() => ({}))
+        const same = r.ok && JSON.stringify(d.cells ?? null) === JSON.stringify(want)
+        if (!same) {
+          setSaveState('error')
+          alert(`${classLabelOf(ck)} 的導師課沒有存進去。
+
+`
+            + `${d.error ?? (r.ok ? '存回來的內容和送出去的不一樣' : `HTTP ${r.status}`)}
+
+`
+            + `課表已經改了，但這一班的導師課還停在原位——`
+            + `搬過去的科任課會把它壓住，看起來像導師課不見了。
+
+`
+            + `請重新整理，確認 ${classLabelOf(ck)} 的課表，必要時重調一次。`)
+          return false
+        }
       }
       // savedPlan 同步（後續 persist 以最新為基底）
       savedPlan.placed = nextPlaced
@@ -1403,7 +1422,9 @@ export default function OverviewAdjust({ year, planStatus, setPlanStatus, savedP
           if (ok) { pendingHrRef.current.clear(); setUnsaved(0); onDirtyChange?.(0) }
           else if (typeof vid === 'string') {
             // 課表沒寫成，那這一版就不算數：留著只會變成版本紀錄裡有它、課表卻沒有
-            await fetch(`/api/admin/schedule-plan-versions?id=${vid}`, { method: 'DELETE' }).catch(() => null)
+            // fetch 遇到 4xx 不會 reject，只 catch 網路錯誤會讓刪不掉的版本靜靜留下來
+            const del = await fetch(`/api/admin/schedule-plan-versions?id=${vid}`, { method: 'DELETE' }).catch(() => null)
+            if (!del?.ok) console.warn('版本回收失敗，版本紀錄可能對不上課表', vid)
             onVersionSaved?.({})
           }
         }}
