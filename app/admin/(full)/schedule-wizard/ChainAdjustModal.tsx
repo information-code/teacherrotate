@@ -124,6 +124,13 @@ export default function ChainAdjustModal({
    *  專科教室最常遇到——一間視覺藝術教室，單週給一班、雙週給另一班，本來就是這樣排的。 */
   const clash = (a?: string, b?: string) =>
     !((a === 'odd' && b === 'even') || (a === 'even' && b === 'odd'))
+  /** 班上同一格能不能兩個東西共存。'hr' 代表導師課。
+   *  單週 vs 雙週錯得開；導師課也能和單雙週的科任課共用一格——科任課上單週、導師上雙週，
+   *  全校現在就有 19 格是這樣排的（6年10班 週四第3節：雙週視藝＋導師國語）。 */
+  const canShare = (a: string, b: string) =>
+    (a === 'odd' && b === 'even') || (a === 'even' && b === 'odd')
+    || (a === 'hr' && (b === 'odd' || b === 'even'))
+    || ((a === 'odd' || a === 'even') && b === 'hr')
   const dPlaced = useMemo(() => {
     const set = new Set(splitIds)
     return placed0.flatMap(l => set.has(l.id) ? splitOf(l) : [l])
@@ -300,11 +307,15 @@ export default function ChainAdjustModal({
     }
     // 班級課表：兩節之中只要有人就是「換掉他」，全空才是直接放
     const hit: string[] = []
+    const mine = l ? (l.parity ?? 'weekly') : 'hr'
     for (const s2 of want) {
-      const occ = dClass.get(ck)?.get(s2)
-      if (occ && iKey({ kind: 'lesson', id: occ.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ.id })
-        && clash(l?.parity, occ.parity)) { hit.push(occ.subject); continue }
+      const occ0 = dClass.get(ck)?.get(s2)
+      const occ = occ0 && iKey({ kind: 'lesson', id: occ0.id }) !== iKey(it) && !leaving({ kind: 'lesson', id: occ0.id })
+        ? occ0 : undefined
+      if (occ && !canShare(mine, occ.parity ?? 'weekly')) { hit.push(occ.subject); continue }
       const sub = hr0[ck]?.cells?.[s2]
+      // 單雙週的課搬進來時導師課不用讓——除非這一格的另一週已經被別堂課佔走，導師就沒有週次可用了
+      if (sub && canShare(mine, 'hr') && !occ) continue
       if (sub && !leaving({ kind: 'hr', classKey: ck, slot: s2 })) {
         if (fillOpen) return { ok: false, why: '導師填課開放中，導師課唯讀' }
         hit.push(`導師課「${sub}」`)
@@ -367,7 +378,9 @@ export default function ChainAdjustModal({
           board: { kind: 'teacher', teacherId: occ.teacherId } })
       }
       const sub = nextHr[ck]?.cells?.[s]
-      if (sub && `h:${ck}|${s}` !== self) {
+      // 單雙週的課和導師課共用同一格是正常排法，別把導師課擠出來（除非另一週已經有課）
+      const shares = sub && it.kind === 'lesson' && l && l.parity !== 'weekly' && !occ
+      if (sub && !shares && `h:${ck}|${s}` !== self) {
         const cells = { ...nextHr[ck].cells }; delete cells[s]
         nextHr = { ...nextHr, [ck]: { ...nextHr[ck], cells } }
         newPending.push({ item: { kind: 'hr', classKey: ck, slot: s }, step: stepNo,
@@ -806,6 +819,11 @@ export default function ChainAdjustModal({
         style={{ height: CH, fontSize: FS }}>
         {isClass && mustFillOf[ck]?.has(slot) && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose-400/70 pointer-events-none" />}
         {frozen ? <span className="opacity-70 truncate w-full text-center px-0.5">{ex ? normalizeSubject(ex.main) : frozen.startsWith('鎖課') ? frozen.slice(3) : ''}</span>
+          : isClass && l && sub && (l.parity === 'odd' || l.parity === 'even') ? (<>
+            {/* 同一格單週上科任、雙週上導師課：只畫一個，導師課就看不見了 */}
+            <span className="font-medium truncate w-full text-center px-0.5">{l.parity === 'odd' ? '單' : '雙'}{l.subject}</span>
+            <span className="truncate w-full text-center px-0.5 text-emerald-700">{l.parity === 'odd' ? '雙' : '單'}{sub}</span>
+          </>)
           : l ? (<>
             <span className="font-medium truncate w-full text-center px-0.5">{b.kind === 'room' ? l.classLabel : l.subject}</span>
             <span className="opacity-70 truncate w-full text-center px-0.5">{isClass ? l.teacherName : b.kind === 'room' ? l.teacherName : l.classLabel}</span>
