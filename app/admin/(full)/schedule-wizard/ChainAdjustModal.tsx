@@ -720,13 +720,16 @@ export default function ChainAdjustModal({
     // 教室全滿等你選一個讓出來：那幾間教室在那幾格的使用者就是候選
     const roomCand = Boolean(roomPick && b.kind === 'room' && roomPick.roomIds.includes(b.roomId)
       && roomPick.slots.includes(slot) && l)
+    // 還有課待安置，而且這一格是它的合法落點 → 這一下是「放到這裡」，不是「撤銷」。
+    // picked（點自己）除外，那仍然是取消選取。
+    const canPlace = Boolean(pick && !picked && (tgt?.ok || tgtTail))
     let tone = 'bg-white border-zinc-200 text-zinc-400'
     if (frozen) tone = 'bg-amber-50 border-amber-200 text-amber-700'
     else if (tOff) tone = 'bg-rose-50 border-rose-200 border-dashed text-rose-300'
     else if (l) tone = 'bg-sky-50 border-sky-200 text-sky-900'
     else if (sub) tone = fillOpen ? 'bg-emerald-50/60 border-emerald-200 text-emerald-700/70' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
     if (isPending) tone = 'bg-rose-100 border-rose-300 text-rose-900'
-    else if (arrowOut) tone += ' opacity-45 line-through decoration-rose-400'
+    else if (arrowOut && !canPlace) tone += ' opacity-45 line-through decoration-rose-400'
     const ring = roomCand ? ' ring-2 ring-orange-500 z-10'
       : picked ? ' ring-2 ring-rose-500 z-10'
       : arrowIn ? ' ring-2 ring-rose-400 z-10'
@@ -739,6 +742,7 @@ export default function ChainAdjustModal({
       && (hasArrow || (!roomPick && (picked || tgt?.ok || tgtTail || (item && (item.kind !== 'hr' || !fillOpen)))))))
     const title = roomCand ? '點一下請這一班讓出教室' : frozen ?? (tOff
       ? (b.kind === 'teacher' && foreignOff[b.teacherId]?.has(slot) ? '外師不可到校' : '不排課時段')
+      : canPlace ? '點一下把它放到這裡'
       : hasArrow ? '點一下取消這一步'
       : tgt ? tgt.why
       : item ? `${labelOf(item).what}（${labelOf(item).who}）` : '空格')
@@ -758,7 +762,10 @@ export default function ChainAdjustModal({
         return
       }
       const m = moves.find(x => bKey(x.board) === bKey(b) && ((item && iKey(x.item) === iKey(item)) || x.to === slot))
-      if (m) { undoMove(m); return }
+      // 鏈繞回原點時，同一格既是「前一步的起點」（點了會撤銷）也是「這一步的合法目標」。
+      // 兩節導師課互調正是這個形狀：A 搬到 B 那格，B 要回 A 原本那格——而那格就是第一步的起點。
+      // 撤銷優先的話，最常見的互調永遠走不完，點下去只會把第一步取消掉。
+      if (m && !canPlace) { undoMove(m); return }
       if (picked) { setPick(null); return }
       if (pick && tgt?.ok) { draw(b, slot); return }
       // 連堂的第二格：綠框是為了讓人看到會佔兩節，點下去要當成點起始格
