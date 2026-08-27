@@ -725,7 +725,13 @@ export default function ChainAdjustModal({
       : b.kind === 'teacher' ? dTeacher.get(b.teacherId)?.get(slot)
       : dRoom.get(b.roomId)?.get(slot)
     const ex = b.kind === 'teacher' && !l ? (extraByTeacher.get(b.teacherId) ?? []).find(x => x.slot === slot) : undefined
-    const sub = isClass ? hr0[ck]?.cells?.[slot] : undefined
+    // 單雙週區塊的導師課只記在「配對格」那一格，代表的卻是整塊兩節
+    // （雙週視藝排在第3、4節 → 科任顯示在第4節，導師記在第3節，導師那一週兩節都是他的）。
+    // 只看本格的話，另一格會被畫成「單週空白」——實際上那一格導師有課。
+    const pairSub = isClass && l && l.size === 2 && (l.parity === 'odd' || l.parity === 'even')
+      ? hr0[ck]?.cells?.[`${l.day}-${l.parity === 'odd' ? l.period + 1 : l.period}`]
+      : undefined
+    const sub = isClass ? (hr0[ck]?.cells?.[slot] ?? pairSub) : undefined
     const item: Item | null = l ? { kind: 'lesson', id: l.id } : (sub && isClass ? { kind: 'hr', classKey: ck, slot } : null)
     const lock = isClass ? lockOf(ck)[slot] : undefined
     const frozen = isClass
