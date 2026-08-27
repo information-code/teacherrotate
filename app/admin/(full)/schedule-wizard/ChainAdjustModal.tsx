@@ -386,7 +386,10 @@ export default function ChainAdjustModal({
     else if (it.kind === 'hr') {
       const cells = { ...(nextHr[it.classKey]?.cells ?? {}) }
       const sub = hr0[it.classKey]?.cells?.[it.slot] ?? '導師課'
-      delete cells[it.slot]; cells[toSlot] = sub
+      // 只有原格「還是自己」才清掉。這堂課被擠出來時原格早就空了，
+      // 而在多步鏈裡那一格可能已經讓給前一步搬進來的課——無條件 delete 會把它刪掉。
+      if (cells[it.slot] === sub) delete cells[it.slot]
+      cells[toSlot] = sub
       nextHr = { ...nextHr, [it.classKey]: { ...nextHr[it.classKey], cells } }
     }
 
