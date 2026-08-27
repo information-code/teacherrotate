@@ -462,7 +462,18 @@ export default function ChainAdjustModal({
     setHistory(h => [...h, snap()])
     setSplitIds(ids => [...ids, pid])
     setPlaced(ps => ps.flatMap(x => x.id === pid ? splitOf(x) : [x]))
-    setPending(ps => ps.filter(x => iKey(x.item) !== `l:${pid}`))
+    // 被擠出來、還沒安置的連堂拆開後，兩半都還是沒位置——兩半都要留在待安置清單。
+    // 只把原本那筆刪掉的話，你安置了 ~a，~b 就成了沒人管的孤兒，
+    // 套用檢查看不到它，課表就這樣少一堂。
+    const was = pending.find(x => iKey(x.item) === `l:${pid}`)
+    setPending(ps => {
+      const rest = ps.filter(x => iKey(x.item) !== `l:${pid}`)
+      if (!was && l.day > 0) return rest
+      const meta = { step: was?.step ?? moves.length + 1, why: was?.why ?? '連堂拆開後還沒安置', board: was?.board ?? pick.board }
+      return [...rest,
+        { ...meta, item: { kind: 'lesson' as const, id: `${pid}~a` } },
+        { ...meta, item: { kind: 'lesson' as const, id: `${pid}~b` } }]
+    })
     setPick({ item: { kind: 'lesson', id: `${pid}~a` }, board: pick.board, slot: `${l.day}-${l.period}` })
   }
 
@@ -576,7 +587,10 @@ export default function ChainAdjustModal({
     return { must: now.must.filter(x => !wm.has(x)), hard: now.hard.filter(x => !wh.has(x)) }
   }, [placed, hr, baseIssues, config, classCounts])
   const issueCount = issues.must.length + issues.hard.length
-  const canApply = moves.length > 0 && pending.length === 0 && !roomPick
+  // 沒有位置的課（day<=0）。待安置清單漏掉時，這裡是最後一道保險——
+  // 課表少一堂是使用者最難自己發現的錯，寧可擋住套用。
+  const orphans = useMemo(() => placed.filter(x => x.day <= 0), [placed])
+  const canApply = moves.length > 0 && pending.length === 0 && !roomPick && orphans.length === 0
 
   /** 拆過的連堂，套用時若又貼在一起就併回一塊。
    *  「拆連堂」是用來把連堂換個時段（社會 2連堂＋1單節 → 想改成 1單節＋2連堂），
@@ -823,11 +837,17 @@ export default function ChainAdjustModal({
             {roomPick && (
               <span className="text-xs text-orange-600">請在教室課表上點一班讓出教室</span>
             )}
-            {!roomPick && pending.length > 0 && (
-              <span className="text-xs text-rose-600">還有 {pending.length} 堂課沒安置，安置完才能套用</span>
+            {!roomPick && (pending.length > 0 || orphans.length > 0) && (
+              <span className="text-xs text-rose-600">
+                還有 {pending.length || orphans.length} 堂課沒安置，安置完才能套用
+                {pending.length === 0 && orphans.length > 0 && `（${orphans.map(x => `${x.classLabel} ${x.subject}`).join('、')}）`}
+              </span>
             )}
             <button onClick={apply} disabled={!canApply} className="btn text-xs disabled:opacity-40"
-              title={!moves.length ? '還沒有任何調動' : pending.length ? `還有 ${pending.length} 堂課沒安置` : '套用這些調動'}>
+              title={!moves.length ? '還沒有任何調動'
+                : pending.length ? `還有 ${pending.length} 堂課沒安置`
+                : orphans.length ? `還有 ${orphans.length} 堂課沒有位置：${orphans.map(x => `${x.classLabel} ${x.subject}`).join('、')}`
+                : '套用這些調動'}>
               套用 {moves.length ? `（${moves.length} 步）` : ''}
             </button>
           </span>
