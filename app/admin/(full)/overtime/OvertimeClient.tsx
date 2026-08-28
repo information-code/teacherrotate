@@ -878,67 +878,36 @@ function TeacherCard({
       </div>
 
       {open && (<>
-      <div className="flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-3">
-        {([
-          ['勞保費', laborText, setLaborText],
-          ['健保費', healthText, setHealthText],
-          ['午餐費代扣', lunchText, setLunchText],
-          ['其他扣款', otherText, setOtherText],
-        ] as const).map(([label, value, setter]) => (
-          <label key={label} className="block">
-            <span className="text-xs text-zinc-500">{label}</span>
-            <input className="input block w-24" inputMode="numeric" value={value} onChange={e => setter(e.target.value)} />
-          </label>
-        ))}
-        <label className="block flex-1 min-w-32">
-          <span className="text-xs text-zinc-500">備註</span>
-          <input className="input block w-full" value={note} onChange={e => setNote(e.target.value)} />
-        </label>
-        <button
-          className={dirty ? 'btn-primary' : 'btn-secondary'}
-          disabled={!dirty}
-          onClick={() => onSave(teacher.id, {
-            labor_fee: parseIntOr(laborText, 0),
-            health_fee: parseIntOr(healthText, 0),
-            lunch_fee: parseIntOr(lunchText, 0),
-            other_fee: parseIntOr(otherText, 0),
-            note,
-          })}
-        >
-          儲存
-        </button>
-      </div>
-
-      {/* 超鐘點區間：可多段，落在區間外的日子不產生簽到節次 */}
+      {/* (1) 超鐘點時間區段：可多段，落在區間外的日子不產生簽到節次 */}
       <div className="border-t border-zinc-100 pt-3 space-y-2">
-        <div className="text-xs text-zinc-500">
-          超鐘點區間（可多段；未設定＝整個計畫期程 {plan.start_date} ～ {plan.end_date}）
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-sm font-medium text-zinc-800">超鐘點時間區段</span>
+          <span className="text-xs text-zinc-400">可多段；未設定＝整個計畫期程 {plan.start_date} ～ {plan.end_date}</span>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          {teacher.ranges.map((r, i) => (
-            <span key={`${r.start}-${r.end}-${i}`} className="inline-flex items-center gap-2 border border-zinc-300 rounded px-2 py-1 text-sm">
-              {r.start} ～ {r.end}
-              <button
-                className="text-zinc-400 hover:text-red-600"
-                aria-label="刪除區間"
-                onClick={() => onSaveRanges(teacher.ranges.filter((_, idx) => idx !== i))}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-          <label className="block">
-            <span className="text-xs text-zinc-500">開始</span>
-            <input type="date" className="input block" value={rangeStart}
-              min={plan.start_date} max={plan.end_date}
-              onChange={e => setRangeStart(e.target.value)} />
-          </label>
-          <label className="block">
-            <span className="text-xs text-zinc-500">結束</span>
-            <input type="date" className="input block" value={rangeEnd}
-              min={plan.start_date} max={plan.end_date}
-              onChange={e => setRangeEnd(e.target.value)} />
-          </label>
+        {teacher.ranges.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {teacher.ranges.map((r, i) => (
+              <span key={`${r.start}-${r.end}-${i}`} className="inline-flex items-center gap-2 border border-zinc-300 rounded px-2 py-1 text-sm">
+                {r.start} ～ {r.end}
+                <button
+                  className="text-zinc-400 hover:text-red-600"
+                  aria-label="刪除區間"
+                  onClick={() => onSaveRanges(teacher.ranges.filter((_, idx) => idx !== i))}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="date" className="input !w-auto" value={rangeStart} aria-label="區間開始"
+            min={plan.start_date} max={plan.end_date}
+            onChange={e => setRangeStart(e.target.value)} />
+          <span className="text-sm text-zinc-400">～</span>
+          <input type="date" className="input !w-auto" value={rangeEnd} aria-label="區間結束"
+            min={plan.start_date} max={plan.end_date}
+            onChange={e => setRangeEnd(e.target.value)} />
           <button
             className="btn-secondary"
             disabled={!rangeStart || !rangeEnd || rangeStart > rangeEnd}
@@ -952,12 +921,16 @@ function TeacherCard({
         </div>
       </div>
 
+      {/* (2) 減課時段 */}
       <div className="border-t border-zinc-100 pt-3 space-y-2">
         {courses.length > 0 ? (
           <>
-            <div className="text-xs text-zinc-500">
-              減課時段：點選課務勾選（再點一次取消）；灰色＝已在其他計畫勾選
-              {capped ? `，正式／代理每週上限 ${OT_WEEKLY_CAP} 節` : ''}。
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-sm font-medium text-zinc-800">減課時段</span>
+              <span className="text-xs text-zinc-400">
+                點選課務勾選、再點一次取消；灰色＝已在其他計畫勾選
+                {capped ? `；每週上限 ${OT_WEEKLY_CAP} 節` : ''}
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {courses.map(c => {
@@ -1005,8 +978,11 @@ function TeacherCard({
           </>
         ) : (
           <>
-            <div className="text-xs text-zinc-500">
-              減課時段（{teacher.teacher_id ? '課表尚未發布，暫以手動輸入' : '手動人員無課表，手動輸入'}；星期×節次不可重複）
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-sm font-medium text-zinc-800">減課時段</span>
+              <span className="text-xs text-zinc-400">
+                {teacher.teacher_id ? '課表尚未發布，暫以手動輸入' : '手動人員無課表，手動輸入'}；星期×節次不可重複
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {slots.length === 0 && <span className="text-sm text-zinc-400">尚未設定</span>}
@@ -1052,6 +1028,48 @@ function TeacherCard({
             </div>
           </>
         )}
+      </div>
+
+      {/* (3) 其他費用 ＋ (4) 備註：同一個 PUT，一顆儲存 */}
+      <div className="border-t border-zinc-100 pt-3 space-y-2">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-sm font-medium text-zinc-800">其他費用</span>
+          <span className="text-xs text-zinc-400">個人負擔代扣款，清冊 PDF 會列出並自實領扣除</span>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          {([
+            ['勞保費', laborText, setLaborText],
+            ['健保費', healthText, setHealthText],
+            ['午餐費代扣', lunchText, setLunchText],
+            ['其他扣款', otherText, setOtherText],
+          ] as const).map(([label, value, setter]) => (
+            <label key={label} className="block">
+              <span className="text-xs text-zinc-500">{label}</span>
+              <input className="input block w-24" inputMode="numeric" value={value} onChange={e => setter(e.target.value)} />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-zinc-100 pt-3 space-y-2">
+        <div className="text-sm font-medium text-zinc-800">備註</div>
+        <div className="flex items-end gap-2">
+          <input className="input flex-1" value={note} placeholder="顯示於清冊 PDF 的備註欄"
+            onChange={e => setNote(e.target.value)} />
+          <button
+            className={dirty ? 'btn-primary' : 'btn-secondary'}
+            disabled={!dirty}
+            onClick={() => onSave(teacher.id, {
+              labor_fee: parseIntOr(laborText, 0),
+              health_fee: parseIntOr(healthText, 0),
+              lunch_fee: parseIntOr(lunchText, 0),
+              other_fee: parseIntOr(otherText, 0),
+              note,
+            })}
+          >
+            儲存費用與備註
+          </button>
+        </div>
       </div>
       </>)}
     </div>
