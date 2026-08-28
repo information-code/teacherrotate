@@ -497,14 +497,14 @@ export default function OvertimeClient({
                 {addMode === 'profile' ? (
                   <label className="block">
                     <span className="text-xs text-zinc-500">教師</span>
-                    <select className="input block min-w-40" value={addProfileId} onChange={e => {
-                      setAddProfileId(e.target.value)
-                      const p = profileOptions.find(x => x.id === e.target.value)
-                      if (p) setAddCategory(p.employment_type === 'substitute' ? 'substitute' : 'formal')
-                    }}>
-                      <option value="">— 選擇 —</option>
-                      {profileOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    <TeacherPicker
+                      options={profileOptions}
+                      value={addProfileId}
+                      onSelect={p => {
+                        setAddProfileId(p?.id ?? '')
+                        if (p) setAddCategory(p.employment_type === 'substitute' ? 'substitute' : 'formal')
+                      }}
+                    />
                   </label>
                 ) : (
                   <label className="block">
@@ -674,6 +674,62 @@ export default function OvertimeClient({
                 </table>
               </div>
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 教師搜尋下拉：打字過濾姓名、點選帶入（人多時比原生 select 好找） */
+function TeacherPicker({ options, value, onSelect }: {
+  options: ProfileOption[]
+  value: string
+  onSelect: (p: ProfileOption | null) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const selected = options.find(o => o.id === value) ?? null
+  const q = query.trim()
+  const matches = q ? options.filter(o => o.name.includes(q)) : options
+  const SHOW_MAX = 80
+  return (
+    <div className="relative">
+      <input
+        className="input block w-48"
+        placeholder="輸入姓名搜尋…"
+        value={open ? query : (selected?.name ?? '')}
+        onFocus={() => { setOpen(true); setQuery('') }}
+        onBlur={() => setOpen(false)}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+      />
+      {open && (
+        <div className="absolute z-20 mt-1 w-48 max-h-64 overflow-y-auto border border-zinc-300 bg-white rounded shadow-md">
+          {matches.length === 0 && (
+            <div className="px-3 py-2 text-sm text-zinc-400">沒有符合的教師</div>
+          )}
+          {matches.slice(0, SHOW_MAX).map(p => (
+            <button
+              key={p.id}
+              type="button"
+              className={`flex w-full items-center justify-between text-left px-3 py-1.5 text-sm hover:bg-zinc-100 ${
+                p.id === value ? 'bg-zinc-50 font-medium' : ''
+              }`}
+              onMouseDown={e => {
+                e.preventDefault()   // 先於 blur 觸發，避免選單先關掉
+                onSelect(p)
+                setQuery('')
+                setOpen(false)
+              }}
+            >
+              <span>{p.name}</span>
+              <span className="text-xs text-zinc-400">
+                {p.employment_type === 'substitute' ? '代理' : '正式'}
+              </span>
+            </button>
+          ))}
+          {matches.length > SHOW_MAX && (
+            <div className="px-3 py-1.5 text-xs text-zinc-400">還有 {matches.length - SHOW_MAX} 位，請輸入姓名縮小範圍</div>
           )}
         </div>
       )}
