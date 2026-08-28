@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
-  OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_CATEGORIES, OT_WEEKLY_CAP,
+  OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP,
   otCategoryLabel, buildSkipSet, weekdayCounts, expandSessions, monthRange, money,
   type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday,
 } from '@/lib/overtime'
@@ -143,7 +143,6 @@ export default function OvertimeClient({
   const [addMode, setAddMode] = useState<'profile' | 'manual'>('profile')
   const [addProfileId, setAddProfileId] = useState('')
   const [addName, setAddName] = useState('')
-  const [addCategory, setAddCategory] = useState('formal')
 
   const addTeacher = async () => {
     if (!selectedPlan) return
@@ -155,7 +154,6 @@ export default function OvertimeClient({
         plan_id: selectedPlan.id,
         teacher_id: profile?.id ?? null,
         name,
-        category: addCategory,
       })
       setTeachers(list => [...list, {
         id: data.id, plan_id: data.plan_id, teacher_id: data.teacher_id, name: data.name,
@@ -168,7 +166,7 @@ export default function OvertimeClient({
   }
 
   const saveTeacher = async (id: string, patch: {
-    category: string; labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
+    labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
   }) => {
     await runBusy('儲存中…', async () => {
       await call('/api/admin/overtime/teachers', 'PUT', { id, ...patch })
@@ -485,13 +483,9 @@ export default function OvertimeClient({
               <div className="flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-3">
                 <label className="block">
                   <span className="text-xs text-zinc-500">來源</span>
-                  <select className="input block" value={addMode} onChange={e => {
-                    const mode = e.target.value as 'profile' | 'manual'
-                    setAddMode(mode)
-                    setAddCategory(mode === 'manual' ? 'hourly' : 'formal')
-                  }}>
+                  <select className="input block" value={addMode} onChange={e => setAddMode(e.target.value as 'profile' | 'manual')}>
                     <option value="profile">系統教師</option>
-                    <option value="manual">手動輸入</option>
+                    <option value="manual">手動輸入（鐘點人員）</option>
                   </select>
                 </label>
                 {addMode === 'profile' ? (
@@ -500,10 +494,7 @@ export default function OvertimeClient({
                     <TeacherPicker
                       options={profileOptions}
                       value={addProfileId}
-                      onSelect={p => {
-                        setAddProfileId(p?.id ?? '')
-                        if (p) setAddCategory(p.employment_type === 'substitute' ? 'substitute' : 'formal')
-                      }}
+                      onSelect={p => setAddProfileId(p?.id ?? '')}
                     />
                   </label>
                 ) : (
@@ -512,14 +503,10 @@ export default function OvertimeClient({
                     <input className="input block" value={addName} onChange={e => setAddName(e.target.value)} />
                   </label>
                 )}
-                <label className="block">
-                  <span className="text-xs text-zinc-500">身分</span>
-                  <select className="input block" value={addCategory} onChange={e => setAddCategory(e.target.value)}>
-                    {OT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                </label>
                 <button className="btn-primary" onClick={addTeacher}>加入清冊</button>
-                <span className="text-xs text-zinc-400 pb-2">正式／代理每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計）；鐘點人員無上限。</span>
+                <span className="text-xs text-zinc-400 pb-2">
+                  正式／代理依帳號資料自動帶入，每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計）；手動輸入＝鐘點人員，無上限。
+                </span>
               </div>
             )}
           </div>
@@ -681,7 +668,7 @@ export default function OvertimeClient({
   )
 }
 
-/** 教師搜尋下拉：打字過濾姓名、點選帶入（人多時比原生 select 好找） */
+/** 教師搜尋下拉：打字過濾姓名＋正式／代理篩選、點選帶入（人多時比原生 select 好找） */
 function TeacherPicker({ options, value, onSelect }: {
   options: ProfileOption[]
   value: string
@@ -689,9 +676,13 @@ function TeacherPicker({ options, value, onSelect }: {
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [empFilter, setEmpFilter] = useState<'all' | 'formal' | 'substitute'>('all')
   const selected = options.find(o => o.id === value) ?? null
   const q = query.trim()
-  const matches = q ? options.filter(o => o.name.includes(q)) : options
+  const matches = options.filter(o =>
+    (empFilter === 'all'
+      || (empFilter === 'substitute' ? o.employment_type === 'substitute' : o.employment_type !== 'substitute'))
+    && (!q || o.name.includes(q)))
   const SHOW_MAX = 80
   return (
     <div className="relative">
@@ -705,6 +696,20 @@ function TeacherPicker({ options, value, onSelect }: {
       />
       {open && (
         <div className="absolute z-20 mt-1 w-48 max-h-64 overflow-y-auto border border-zinc-300 bg-white rounded shadow-md">
+          <div className="flex gap-1 px-2 py-1.5 border-b border-zinc-100 sticky top-0 bg-white">
+            {([['all', '全部'], ['formal', '正式'], ['substitute', '代理']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded border ${
+                  empFilter === key ? 'border-zinc-700 bg-zinc-800 text-white' : 'border-zinc-200 text-zinc-500 hover:text-zinc-700'
+                }`}
+                onMouseDown={e => { e.preventDefault(); setEmpFilter(key) }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {matches.length === 0 && (
             <div className="px-3 py-2 text-sm text-zinc-400">沒有符合的教師</div>
           )}
@@ -737,7 +742,7 @@ function TeacherPicker({ options, value, onSelect }: {
   )
 }
 
-/** 清冊教師卡：身分、代扣款（文字輸入、存檔時解析）、減課時段 chips＋新增列 */
+/** 清冊教師卡：代扣款（文字輸入、存檔時解析）、減課時段 chips＋新增列；身分依帳號資料，僅顯示 */
 function TeacherCard({
   teacher, slots, weeklyCount, onSave, onDelete, onAddSlot, onDeleteSlot,
 }: {
@@ -745,13 +750,12 @@ function TeacherCard({
   slots: OtSlot[]
   weeklyCount: number
   onSave: (id: string, patch: {
-    category: string; labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
+    labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
   }) => Promise<void>
   onDelete: () => void
   onAddSlot: (rowId: string, weekday: number, period: number, class_name: string, domain: string) => Promise<void>
   onDeleteSlot: (id: string) => void
 }) {
-  const [category, setCategory] = useState(teacher.category)
   const [laborText, setLaborText] = useState(String(teacher.labor_fee))
   const [healthText, setHealthText] = useState(String(teacher.health_fee))
   const [lunchText, setLunchText] = useState(String(teacher.lunch_fee))
@@ -763,9 +767,8 @@ function TeacherCard({
   const [slotClass, setSlotClass] = useState('')
   const [slotDomain, setSlotDomain] = useState('')
 
-  const capped = category !== 'hourly'
-  const dirty = category !== teacher.category
-    || parseIntOr(laborText, 0) !== teacher.labor_fee
+  const capped = teacher.category !== 'hourly'
+  const dirty = parseIntOr(laborText, 0) !== teacher.labor_fee
     || parseIntOr(healthText, 0) !== teacher.health_fee
     || parseIntOr(lunchText, 0) !== teacher.lunch_fee
     || parseIntOr(otherText, 0) !== teacher.other_fee
@@ -776,7 +779,9 @@ function TeacherCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-medium text-zinc-900">{teacher.name}</span>
-          {!teacher.teacher_id && <span className="text-xs text-zinc-400 border border-zinc-200 rounded px-1.5 py-0.5">手動</span>}
+          <span className="text-xs text-zinc-500 border border-zinc-200 rounded px-1.5 py-0.5">
+            {otCategoryLabel(teacher.category)}
+          </span>
           <span className={`text-xs rounded px-1.5 py-0.5 border ${
             capped && weeklyCount > OT_WEEKLY_CAP ? 'border-red-300 text-red-600'
             : capped && weeklyCount === OT_WEEKLY_CAP ? 'border-amber-300 text-amber-700'
@@ -789,12 +794,6 @@ function TeacherCard({
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="text-xs text-zinc-500">身分</span>
-          <select className="input block" value={category} onChange={e => setCategory(e.target.value)}>
-            {OT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-        </label>
         {([
           ['勞保費', laborText, setLaborText],
           ['健保費', healthText, setHealthText],
@@ -814,7 +813,6 @@ function TeacherCard({
           className={dirty ? 'btn-primary' : 'btn-secondary'}
           disabled={!dirty}
           onClick={() => onSave(teacher.id, {
-            category,
             labor_fee: parseIntOr(laborText, 0),
             health_fee: parseIntOr(healthText, 0),
             lunch_fee: parseIntOr(lunchText, 0),
