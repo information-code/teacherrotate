@@ -38,6 +38,12 @@ const navSections = [
     ],
   },
   {
+    title: '超鐘管理',
+    items: [
+      { href: '/admin/overtime', label: '超鐘簽到' },
+    ],
+  },
+  {
     title: '排課管理',
     items: [
       { href: '/admin/schedule-config', label: '排課設定' },

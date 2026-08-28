@@ -383,7 +383,7 @@ export async function sheetsToDocx(sheets: ExportSheet[]): Promise<Blob> {
 // ───────────── PDF（jsPDF）─────────────
 const FONT_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/Variable/TTF/Subset/NotoSansTC-VF.ttf'
 let fontCache: string | null = null
-async function loadFontBase64(onStatus?: (s: string) => void): Promise<string> {
+export async function loadFontBase64(onStatus?: (s: string) => void): Promise<string> {
   if (fontCache) return fontCache
   onStatus?.('下載中文字型（首次約 12MB）…')
   const res = await fetch(FONT_URL)

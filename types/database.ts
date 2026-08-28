@@ -432,6 +432,50 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['repair_messages']['Insert']>
         Relationships: []
       }
+      overtime_plans: {
+        Row: {
+          id: string; name: string; start_date: string; end_date: string
+          rate: number; budget: number; created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; name: string; start_date: string; end_date: string
+          rate?: number; budget?: number; created_at?: string; updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['overtime_plans']['Insert']>
+        Relationships: []
+      }
+      overtime_teachers: {
+        Row: {
+          id: string; plan_id: string; teacher_id: string | null; name: string
+          category: string; labor_fee: number; health_fee: number
+          lunch_fee: number; other_fee: number; note: string; created_at: string
+        }
+        Insert: {
+          id?: string; plan_id: string; teacher_id?: string | null; name: string
+          category?: string; labor_fee?: number; health_fee?: number
+          lunch_fee?: number; other_fee?: number; note?: string; created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['overtime_teachers']['Insert']>
+        Relationships: []
+      }
+      overtime_slots: {
+        Row: {
+          id: string; teacher_row_id: string; weekday: number; period: number
+          class_name: string; domain: string; created_at: string
+        }
+        Insert: {
+          id?: string; teacher_row_id: string; weekday: number; period: number
+          class_name?: string; domain?: string; created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['overtime_slots']['Insert']>
+        Relationships: []
+      }
+      overtime_skip_dates: {
+        Row: { id: string; date: string; name: string; created_at: string }
+        Insert: { id?: string; date: string; name?: string; created_at?: string }
+        Update: Partial<Database['public']['Tables']['overtime_skip_dates']['Insert']>
+        Relationships: []
+      }
       todos: {
         Row: {
           id: string; user_id: string; title: string; note: string

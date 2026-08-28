@@ -72,6 +72,12 @@ export const PERM_GROUPS: { group: string; perms: { key: string; label: string }
     ],
   },
   {
+    group: '超鐘管理',
+    perms: [
+      { key: 'overtime', label: '超鐘簽到' },
+    ],
+  },
+  {
     group: '排課管理',
     perms: [
       { key: 'schedule-config', label: '排課設定' },
