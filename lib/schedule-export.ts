@@ -161,84 +161,45 @@ export function buildExportSheets(a: BuildArgs): ExportSheet[] {
   return sheets
 }
 
-// ───────────── 校務系統匯入格式（Excel）─────────────
-// 一列一堂課：週次／節次／年級／班級／教師姓名／校訂課程名稱／上課頻率
-//   連堂＝兩列（第 N 節、第 N+1 節）；單雙週區塊＝該區塊兩節各一列，科任那一週寫「單週上課」或「雙週上課」，
-//   輪到導師的那一週另寫兩列（導師填的科目）。鎖課（種子班國數、本土語、游泳）也會列出，導師自上的填導師姓名。
-const PERIOD_ZH = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節']
-export const IMPORT_HEADER = ['週次', '節次', '年級', '班級', '教師姓名', '校訂課程名稱', '上課頻率']
-/** 校務系統課程資料匯入（CSV）欄位。科目／教師／教室三個「代碼」欄本系統沒有，留空給課務組貼上或由校務系統以名稱比對。 */
-export const SCHOOL_CSV_HEADER = ['class_no', '班級', '科目', '科目名稱', '星期', '節次', '教師', '教師名稱', '教室', '教室名稱']
-const FREQ_WEEKLY = '每週上課', FREQ_ODD = '單週上課', FREQ_EVEN = '雙週上課'
+// ───────────── 班級教師清冊（Excel）─────────────
+/** 一列一位老師在一個班：姓名／年級／班級。
+ *  收導師與科任（同一位老師在同一班只出現一次），不收本土語與英語外師——
+ *  本土語走鎖課、不進排課引擎，外師是掛在英語課上協同，兩者都不是該班的授課老師。
+ *  排序：年級 → 班級 → 導師排最前 → 姓名，印出來就是一本可以直接看的清冊。 */
+export const ROSTER_HEADER = ['姓名', '年級', '班級']
 
-export function buildImportRows(a: BuildArgs): string[][] {
-  const { placed, config, input, teacherNames, classCounts, hrCells } = a
+export function buildRosterRows(a: BuildArgs): string[][] {
+  const { placed, config, teacherNames, classCounts } = a
   const nameOf = (id: string) => teacherNames[id] ?? ''
-  const lockTypeMap = Object.fromEntries(config.lockTypes.map(t => [t.id, t]))
-  type Row = { g: number; i: number; day: number; period: number; teacher: string; subject: string; freq: string }
-  const out: Row[] = []
+  const out: string[][] = [ROSTER_HEADER]
   for (const g of GRADES) {
     for (let i = 0; i < (classCounts[g] ?? 0); i++) {
       const ck = `${g}-${i}`
-      const homeroom = nameOf(config.classTeacher[ck] ?? '')
-      const hlocks = new Set(input.homeroomLocks[ck] ?? [])
-      const hr = hrCells[ck] ?? {}
-      const used = new Set<string>()   // 已由科任課（含單雙週配對）佔用的格
-      const push = (day: number, period: number, teacher: string, subject: string, freq: string) => {
-        out.push({ g, i, day, period, teacher, subject, freq })
+      const hrId = config.classTeacher[ck] ?? ''
+      const seen = new Set<string>()
+      const names: { name: string; hr: boolean }[] = []
+      const add = (name: string, hr: boolean) => {
+        if (!name || seen.has(name)) return
+        seen.add(name); names.push({ name, hr })
       }
+      add(nameOf(hrId), true)
       for (const p of placed) {
-        if (p.classKey !== ck) continue
-        if (p.parity !== 'weekly') {
-          // 單雙週區塊：整塊兩節，這一週科任、另一週導師
-          const wk = p.parity === 'odd' ? FREQ_ODD : FREQ_EVEN
-          const owk = p.parity === 'odd' ? FREQ_EVEN : FREQ_ODD
-          const disp = `${p.day}-${p.parity === 'odd' ? p.period : p.period + 1}`
-          const other = `${p.day}-${p.parity === 'odd' ? p.period + 1 : p.period}`
-          const hrSubj = hr[other]
-          for (const q of [p.period, p.period + 1]) {
-            used.add(`${p.day}-${q}`)
-            push(p.day, q, p.teacherName, p.subject, wk)
-            if (hrSubj) push(p.day, q, homeroom, hrSubj, owk)
-          }
-          used.add(disp); used.add(other)
-          continue
-        }
-        for (const q of p.size === 2 ? [p.period, p.period + 1] : [p.period]) {
-          used.add(`${p.day}-${q}`)
-          push(p.day, q, p.teacherName, p.subject, FREQ_WEEKLY)
-        }
+        if (p.classKey !== ck || p.day <= 0) continue
+        if (p.subject.startsWith('本土語')) continue
+        add(p.teacherName || nameOf(p.teacherId), false)
       }
-      // 鎖課（種子班國數、班級活動、本土語、游泳…）
-      for (const [slot, tid] of Object.entries(config.lockCells[ck] ?? {})) {
-        if (used.has(slot)) continue
-        const t = lockTypeMap[tid]
-        const subject = t ? (t.subject || t.label || '鎖課') : '鎖課'
-        let teacher = ''
-        if (hlocks.has(slot)) teacher = homeroom
-        else if (t?.isNative) {
-          const nt = config.subjectClassTeacher[subjectClassKey(g, i, '本土語')] ?? ''
-          teacher = nt === HOMEROOM_SELF ? homeroom : nameOf(nt)
-        }
-        const [day, period] = slot.split('-').map(Number)
-        used.add(slot)
-        push(day, period, teacher, subject, FREQ_WEEKLY)
-      }
-      // 導師填的課（單雙週配對格已在上面處理）
-      for (const [slot, subject] of Object.entries(hr)) {
-        if (used.has(slot)) continue
-        const [day, period] = slot.split('-').map(Number)
-        push(day, period, homeroom, subject, FREQ_WEEKLY)
-      }
+      names.sort((x, y) => (x.hr === y.hr ? x.name.localeCompare(y.name, 'zh-Hant') : x.hr ? -1 : 1))
+      for (const n of names) out.push([n.name, String(g), String(i + 1)])
     }
   }
-  out.sort((x, y) => x.g - y.g || x.i - y.i || x.day - y.day || x.period - y.period || x.subject.localeCompare(y.subject, 'zh-Hant'))
-  return [IMPORT_HEADER, ...out.map(r => [
-    `週${DAY_ZH[r.day]}`, PERIOD_ZH[r.period] ?? `第${r.period}節`,
-    GRADE_LABEL[r.g] ?? `${r.g}年級`, `第${String(r.i + 1).padStart(2, '0')}班`,
-    r.teacher, r.subject, r.freq,
-  ])]
+  return out
 }
+
+// ───────────── 校務系統課程資料（Excel）─────────────
+const PERIOD_ZH = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節']
+/** 校務系統課程資料匯入（CSV）欄位。科目／教師／教室三個「代碼」欄本系統沒有，留空給課務組貼上或由校務系統以名稱比對。 */
+export const SCHOOL_CSV_HEADER = ['class_no', '班級', '科目', '科目名稱', '星期', '節次', '教師', '教師名稱', '教室', '教室名稱']
+const FREQ_WEEKLY = '每週上課', FREQ_ODD = '單週上課', FREQ_EVEN = '雙週上課'
 
 /** 校務系統課程資料（CSV）：一列一堂課。
  *  class_no／班級＝班級代碼（年級×100＋班序，如 1年1班＝101）；星期、節次為數字；
