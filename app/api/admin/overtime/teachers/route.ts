@@ -2,6 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
+import { OT_CATEGORIES } from '@/lib/overtime'
 
 const parseFee = (v: unknown) => {
   const n = Math.round(Number(v ?? 0))
@@ -29,7 +30,9 @@ export async function POST(request: NextRequest) {
     const { data: profile } = await supabaseAdmin.from('profiles')
       .select('employment_type').eq('id', teacher_id).single()
     if (!profile) return NextResponse.json({ error: '找不到教師帳號' }, { status: 404 })
-    category = profile.employment_type === 'substitute' ? 'substitute' : 'formal'
+    // 聘任別直接沿用（formal／substitute／hourly／foreign），未知值視為正式
+    category = OT_CATEGORIES.some(c => c.value === profile.employment_type)
+      ? profile.employment_type : 'formal'
   }
 
   // 同計畫同人不重複（系統帳號比對 id、手動比對姓名）

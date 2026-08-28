@@ -5,17 +5,20 @@ export const OT_WEEKDAYS = [1, 2, 3, 4, 5] as const
 export const OT_DAY_ZH = ['', '一', '二', '三', '四', '五', '六', '日']
 export const OT_PERIOD_ZH = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節']
 
+/** 身分＝帳號資料的聘任別（與 whitelist 一致）；手動輸入的清冊列固定為 hourly */
 export const OT_CATEGORIES = [
   { value: 'formal', label: '正式' },
   { value: 'substitute', label: '代理' },
-  { value: 'hourly', label: '鐘點人員' },
+  { value: 'hourly', label: '鐘點' },
+  { value: 'foreign', label: '外師' },
 ] as const
 export type OtCategory = (typeof OT_CATEGORIES)[number]['value']
 export const otCategoryLabel = (v: string) =>
   OT_CATEGORIES.find(c => c.value === v)?.label ?? v
 
-/** 正式／代理教師每人（跨計畫合計）每週減課上限；鐘點人員無上限 */
+/** 正式／代理教師每人（跨計畫合計）每週減課上限；鐘點／外師無上限 */
 export const OT_WEEKLY_CAP = 6
+export const isCappedCategory = (v: string) => v === 'formal' || v === 'substitute'
 
 export interface OtPlan {
   id: string

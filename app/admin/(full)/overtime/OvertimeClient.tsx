@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
-  OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP,
+  OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
   otCategoryLabel, buildSkipSet, weekdayCounts, expandSessions, monthRange, money,
   type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday,
 } from '@/lib/overtime'
@@ -269,8 +269,8 @@ export default function OvertimeClient({
   // ───────────── 儀表板統計 ─────────────
   const distinctBy = (filter: (t: OtTeacher) => boolean) =>
     new Set(teachers.filter(filter).map(teacherKey)).size
-  const overtimeCount = distinctBy(t => t.category !== 'hourly')
-  const hourlyCount = distinctBy(t => t.category === 'hourly')
+  const overtimeCount = distinctBy(t => isCappedCategory(t.category))
+  const hourlyCount = distinctBy(t => !isCappedCategory(t.category))
 
   const planSelector = (
     <select className="input max-w-xs" value={planId} onChange={e => setPlanId(e.target.value)}>
@@ -316,7 +316,7 @@ export default function OvertimeClient({
             {([
               ['計畫數', String(plans.length)],
               ['超鐘點教師（正式＋代理）', `${overtimeCount} 人`],
-              ['鐘點人員', `${hourlyCount} 人`],
+              ['鐘點／外師', `${hourlyCount} 人`],
               ['每週減課節數合計', `${slots.length} 節`],
             ] as const).map(([label, value]) => (
               <div key={label} className="card !p-4">
@@ -505,7 +505,7 @@ export default function OvertimeClient({
                 )}
                 <button className="btn-primary" onClick={addTeacher}>加入清冊</button>
                 <span className="text-xs text-zinc-400 pb-2">
-                  正式／代理依帳號資料自動帶入，每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計）；手動輸入＝鐘點人員，無上限。
+                  身分依帳號資料聘任別自動帶入；正式／代理每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計），鐘點／外師與手動輸入無上限。
                 </span>
               </div>
             )}
@@ -676,18 +676,17 @@ function TeacherPicker({ options, value, onSelect }: {
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [empFilter, setEmpFilter] = useState<'all' | 'formal' | 'substitute'>('all')
+  const [empFilter, setEmpFilter] = useState('all')
   const selected = options.find(o => o.id === value) ?? null
   const q = query.trim()
   const matches = options.filter(o =>
-    (empFilter === 'all'
-      || (empFilter === 'substitute' ? o.employment_type === 'substitute' : o.employment_type !== 'substitute'))
+    (empFilter === 'all' || o.employment_type === empFilter)
     && (!q || o.name.includes(q)))
   const SHOW_MAX = 80
   return (
     <div className="relative">
       <input
-        className="input block w-48"
+        className="input block w-56"
         placeholder="輸入姓名搜尋…"
         value={open ? query : (selected?.name ?? '')}
         onFocus={() => { setOpen(true); setQuery('') }}
@@ -695,9 +694,9 @@ function TeacherPicker({ options, value, onSelect }: {
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
       />
       {open && (
-        <div className="absolute z-20 mt-1 w-48 max-h-64 overflow-y-auto border border-zinc-300 bg-white rounded shadow-md">
-          <div className="flex gap-1 px-2 py-1.5 border-b border-zinc-100 sticky top-0 bg-white">
-            {([['all', '全部'], ['formal', '正式'], ['substitute', '代理']] as const).map(([key, label]) => (
+        <div className="absolute z-20 mt-1 w-56 max-h-64 overflow-y-auto border border-zinc-300 bg-white rounded shadow-md">
+          <div className="flex flex-wrap gap-1 px-2 py-1.5 border-b border-zinc-100 sticky top-0 bg-white">
+            {([['all', '全部'], ['formal', '正式'], ['substitute', '代理'], ['hourly', '鐘點'], ['foreign', '外師']] as const).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -728,9 +727,7 @@ function TeacherPicker({ options, value, onSelect }: {
               }}
             >
               <span>{p.name}</span>
-              <span className="text-xs text-zinc-400">
-                {p.employment_type === 'substitute' ? '代理' : '正式'}
-              </span>
+              <span className="text-xs text-zinc-400">{otCategoryLabel(p.employment_type)}</span>
             </button>
           ))}
           {matches.length > SHOW_MAX && (
@@ -767,7 +764,7 @@ function TeacherCard({
   const [slotClass, setSlotClass] = useState('')
   const [slotDomain, setSlotDomain] = useState('')
 
-  const capped = teacher.category !== 'hourly'
+  const capped = isCappedCategory(teacher.category)
   const dirty = parseIntOr(laborText, 0) !== teacher.labor_fee
     || parseIntOr(healthText, 0) !== teacher.health_fee
     || parseIntOr(lunchText, 0) !== teacher.lunch_fee

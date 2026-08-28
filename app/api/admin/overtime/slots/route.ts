@@ -2,13 +2,13 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
-import { OT_WEEKLY_CAP, otCategoryLabel } from '@/lib/overtime'
+import { OT_WEEKLY_CAP, otCategoryLabel, isCappedCategory } from '@/lib/overtime'
 
 /**
  * 新增減課時段。body: { teacher_row_id, weekday, period, class_name, domain }
  * 檢查（同一人跨計畫合計，系統帳號比對 teacher_id、手動比對姓名）：
  *  - 同星期節次不可重複（人不能同時在兩個地方減課）
- *  - 正式／代理每人每週上限 6 節（鐘點人員無上限）
+ *  - 正式／代理每人每週上限 6 節（鐘點／外師無上限）
  */
 export async function POST(request: NextRequest) {
   const auth = await requirePerms(['overtime'])
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   if (existing.some(s => s.weekday === weekday && s.period === period)) {
     return NextResponse.json({ error: '這位教師該星期節次已有減課時段（含其他計畫）' }, { status: 400 })
   }
-  if (row.category !== 'hourly' && existing.length >= OT_WEEKLY_CAP) {
+  if (isCappedCategory(row.category) && existing.length >= OT_WEEKLY_CAP) {
     return NextResponse.json(
       { error: `${otCategoryLabel(row.category)}教師每人每週上限 ${OT_WEEKLY_CAP} 節（含其他計畫共 ${existing.length} 節）` },
       { status: 400 },
