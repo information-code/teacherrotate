@@ -3,6 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { normalizeScheduleConfig, homeroomLockSlots, deriveNativeSessions } from '@/lib/scheduling'
 import { normalizeConfig as normalizeAllocConfig, GRADES, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
 import { buildTeacherCourses, type TeacherCourse } from '@/lib/overtime-courses'
+import { normalizeRanges } from '@/lib/overtime'
 import type { PlacedResult } from '@/lib/schedule-engine'
 import OvertimeClient from './OvertimeClient'
 
@@ -89,6 +90,7 @@ export default async function OvertimePage() {
         id: t.id, plan_id: t.plan_id, teacher_id: t.teacher_id, name: t.name,
         category: t.category, labor_fee: t.labor_fee, health_fee: t.health_fee,
         lunch_fee: t.lunch_fee, other_fee: t.other_fee, note: t.note,
+        ranges: normalizeRanges(t.ranges),
       }))}
       initialSlots={(slots ?? []).map(s => ({
         id: s.id, teacher_row_id: s.teacher_row_id, weekday: s.weekday,

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { normalizeRanges } from '@/lib/overtime'
 import OvertimeTeacherClient from './OvertimeTeacherClient'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,7 @@ export default async function TeacherOvertimePage() {
         id: t.id, plan_id: t.plan_id, teacher_id: t.teacher_id, name: t.name,
         category: t.category, labor_fee: t.labor_fee, health_fee: t.health_fee,
         lunch_fee: t.lunch_fee, other_fee: t.other_fee, note: t.note,
+        ranges: normalizeRanges(t.ranges),
       }))}
       plans={(plans ?? []).map(p => ({
         id: p.id, name: p.name, start_date: p.start_date, end_date: p.end_date,

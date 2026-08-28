@@ -38,7 +38,7 @@ export default function OvertimeTeacherClient({
   const download = async (plan: OtPlan, row: OtTeacher) => {
     const range = monthRange(month)
     if (!range) { flash('月份格式無效'); return }
-    const sessions = expandSessions(slots.filter(s => s.teacher_row_id === row.id), plan, range[0], range[1], skipSet)
+    const sessions = expandSessions(slots.filter(s => s.teacher_row_id === row.id), plan, range[0], range[1], skipSet, row.ranges)
     setBusy('產生簽到表 PDF…')
     try {
       const blob = await exportSigninPdf(plan, month, [{ teacher: row, sessions }], setBusy)
@@ -85,7 +85,7 @@ export default function OvertimeTeacherClient({
             const mySlots = slots.filter(s => s.teacher_row_id === row.id)
             const range = monthRange(month)
             const monthSessions = range
-              ? expandSessions(mySlots, plan, range[0], range[1], skipSet)
+              ? expandSessions(mySlots, plan, range[0], range[1], skipSet, row.ranges)
               : []
             const monthPay = monthSessions.length * plan.rate
             return (
@@ -104,6 +104,11 @@ export default function OvertimeTeacherClient({
                 <div className="text-sm text-zinc-500">
                   期程 {plan.start_date} ～ {plan.end_date}｜節薪 {money(plan.rate)} 元
                 </div>
+                {row.ranges.length > 0 && (
+                  <div className="text-sm text-zinc-500">
+                    超鐘點區間：{row.ranges.map(r => `${r.start} ～ ${r.end}`).join('、')}
+                  </div>
+                )}
                 <div>
                   <div className="text-xs text-zinc-500 mb-1">每週減課時段（{mySlots.length} 節）</div>
                   <div className="flex flex-wrap gap-2">

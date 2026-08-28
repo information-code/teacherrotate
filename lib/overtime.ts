@@ -29,17 +29,39 @@ export interface OtPlan {
   budget: number       // 總經費（0＝未設定）
 }
 
+/** 超鐘點區間（含首尾）；空陣列＝整個計畫期程 */
+export interface OtRange { start: string; end: string }
+
 export interface OtTeacher {
   id: string
   plan_id: string
   teacher_id: string | null
   name: string
-  category: string     // formal | substitute | hourly
+  category: string     // formal | substitute | hourly | foreign
   labor_fee: number
   health_fee: number
   lunch_fee: number
   other_fee: number
   note: string
+  ranges: OtRange[]
+}
+
+/** 解析 DB 的 ranges JSONB（壞資料丟棄），依開始日排序 */
+export function normalizeRanges(v: unknown): OtRange[] {
+  if (!Array.isArray(v)) return []
+  const out: OtRange[] = []
+  for (const r of v.slice(0, 24)) {
+    const start = String((r as { start?: unknown })?.start ?? '')
+    const end = String((r as { end?: unknown })?.end ?? '')
+    if (isDateStr(start) && isDateStr(end) && start <= end) out.push({ start, end })
+  }
+  return out.sort((a, b) => a.start.localeCompare(b.start))
+}
+
+/** 日期是否落在任一區間內（無區間＝不限制） */
+export function inRanges(date: string, ranges: OtRange[]): boolean {
+  if (ranges.length === 0) return true
+  return ranges.some(r => date >= r.start && date <= r.end)
 }
 
 export interface OtSlot {
@@ -145,16 +167,19 @@ export interface OtSessionRow {
 
 /**
  * 展開某位教師在區間內的簽到列（每時段 × 每個符合星期的可授課日），
- * 依日期、節次排序。區間會先與計畫期程取交集。
+ * 依日期、節次排序。區間會先與計畫期程取交集；
+ * ranges＝該師的超鐘點區間（多段，空＝整個期程），區間外的日子不算。
  */
 export function expandSessions(
   slots: OtSlot[], plan: OtPlan, rangeStart: string, rangeEnd: string, skip: Set<string>,
+  ranges: OtRange[] = [],
 ): OtSessionRow[] {
   const range = intersectRange(plan.start_date, plan.end_date, rangeStart, rangeEnd)
   if (!range) return []
   const rows: OtSessionRow[] = []
   for (const s of slots) {
     for (const d of teachingDates(range[0], range[1], s.weekday, skip)) {
+      if (!inRanges(d, ranges)) continue
       rows.push({ date: d, weekday: s.weekday, period: s.period, class_name: s.class_name, domain: s.domain })
     }
   }

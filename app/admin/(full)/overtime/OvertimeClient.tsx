@@ -7,7 +7,7 @@ import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
   otCategoryLabel, buildSkipSet, weekdayCounts, expandSessions, monthRange, money,
-  type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday,
+  type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday, type OtRange,
 } from '@/lib/overtime'
 import { exportSigninPdf, exportRosterPdf, saveBlob, type SigninSheet, type RosterRow } from '@/lib/overtime-export'
 import type { TeacherCourse } from '@/lib/overtime-courses'
@@ -86,11 +86,11 @@ export default function OvertimeClient({
     return slots.filter(s => ids.has(s.teacher_row_id)).length
   }
 
-  /** 計畫期程內總節數（全部教師、扣不上課日） */
+  /** 計畫期程內總節數（全部教師、扣不上課日、限各自超鐘點區間） */
   const planTotalSessions = (plan: OtPlan) => {
     let total = 0
     for (const t of teachers.filter(x => x.plan_id === plan.id)) {
-      total += expandSessions(slotsOf(t.id), plan, plan.start_date, plan.end_date, skipSet).length
+      total += expandSessions(slotsOf(t.id), plan, plan.start_date, plan.end_date, skipSet, t.ranges).length
     }
     return total
   }
@@ -160,7 +160,7 @@ export default function OvertimeClient({
       setTeachers(list => [...list, {
         id: data.id, plan_id: data.plan_id, teacher_id: data.teacher_id, name: data.name,
         category: data.category, labor_fee: data.labor_fee, health_fee: data.health_fee,
-        lunch_fee: data.lunch_fee, other_fee: data.other_fee, note: data.note,
+        lunch_fee: data.lunch_fee, other_fee: data.other_fee, note: data.note, ranges: [],
       }])
       setAddProfileId(''); setAddName('')
       flash('已加入清冊')
@@ -174,6 +174,18 @@ export default function OvertimeClient({
       await call('/api/admin/overtime/teachers', 'PUT', { id, ...patch })
       setTeachers(list => list.map(t => (t.id === id ? { ...t, ...patch } : t)))
       flash('已儲存')
+    })
+  }
+
+  /** 儲存超鐘點區間（代扣款帶既有值一併送，PUT 一次寫入） */
+  const saveRanges = async (t: OtTeacher, ranges: OtRange[]) => {
+    await runBusy('儲存區間中…', async () => {
+      await call('/api/admin/overtime/teachers', 'PUT', {
+        id: t.id, labor_fee: t.labor_fee, health_fee: t.health_fee,
+        lunch_fee: t.lunch_fee, other_fee: t.other_fee, note: t.note, ranges,
+      })
+      setTeachers(list => list.map(x => (x.id === t.id ? { ...x, ranges } : x)))
+      flash('超鐘點區間已儲存')
     })
   }
 
@@ -239,7 +251,7 @@ export default function OvertimeClient({
     if (!range) return new Map<string, ReturnType<typeof expandSessions>>()
     const map = new Map<string, ReturnType<typeof expandSessions>>()
     for (const t of teachers.filter(x => x.plan_id === plan.id)) {
-      map.set(t.id, expandSessions(slotsOf(t.id), plan, range[0], range[1], skipSet))
+      map.set(t.id, expandSessions(slotsOf(t.id), plan, range[0], range[1], skipSet, t.ranges))
     }
     return map
   }
@@ -525,11 +537,13 @@ export default function OvertimeClient({
               <TeacherCard
                 key={t.id}
                 teacher={t}
+                plan={selectedPlan}
                 slots={slotsOf(t.id)}
                 weeklyCount={weeklyCountOf(t)}
                 courses={t.teacher_id ? (teacherCourses[t.teacher_id] ?? []) : []}
                 takenElsewhere={takenElsewhere}
                 onSave={saveTeacher}
+                onSaveRanges={ranges => saveRanges(t, ranges)}
                 onDelete={() => deleteTeacher(t)}
                 onAddSlot={addSlot}
                 onDeleteSlot={deleteSlot}
@@ -750,14 +764,17 @@ function TeacherPicker({ options, value, onSelect }: {
 }
 
 /**
- * 清冊教師卡：代扣款（文字輸入、存檔時解析）＋減課時段。
+ * 清冊教師卡（可收合，預設收合）：代扣款（文字輸入、存檔時解析）、
+ * 超鐘點區間（可多段；空＝整個計畫期程）、減課時段。
  * 時段以「該師的實際課務」點選勾選（課表已發布且為系統帳號）；
  * 其他計畫已勾的時段鎖定不可再選。無課務資料（手動人員／課表未發布）才退回手動輸入。
  */
 function TeacherCard({
-  teacher, slots, weeklyCount, courses, takenElsewhere, onSave, onDelete, onAddSlot, onDeleteSlot,
+  teacher, plan, slots, weeklyCount, courses, takenElsewhere,
+  onSave, onSaveRanges, onDelete, onAddSlot, onDeleteSlot,
 }: {
   teacher: OtTeacher
+  plan: OtPlan
   slots: OtSlot[]
   weeklyCount: number
   courses: TeacherCourse[]
@@ -765,10 +782,14 @@ function TeacherCard({
   onSave: (id: string, patch: {
     labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
   }) => Promise<void>
+  onSaveRanges: (ranges: OtRange[]) => void
   onDelete: () => void
   onAddSlot: (rowId: string, weekday: number, period: number, class_name: string, domain: string) => Promise<void>
   onDeleteSlot: (id: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [rangeStart, setRangeStart] = useState('')
+  const [rangeEnd, setRangeEnd] = useState('')
   const [laborText, setLaborText] = useState(String(teacher.labor_fee))
   const [healthText, setHealthText] = useState(String(teacher.health_fee))
   const [lunchText, setLunchText] = useState(String(teacher.lunch_fee))
@@ -788,25 +809,44 @@ function TeacherCard({
     || note !== teacher.note
 
   return (
-    <div className="card space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <div className="card !p-4 space-y-3">
+      {/* 標題列：點擊展開／收合 */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-zinc-400 text-xs w-3">{open ? '▾' : '▸'}</span>
           <span className="font-medium text-zinc-900">{teacher.name}</span>
           <span className="text-xs text-zinc-500 border border-zinc-200 rounded px-1.5 py-0.5">
             {otCategoryLabel(teacher.category)}
+          </span>
+          <span className="text-xs text-zinc-500 border border-zinc-200 rounded px-1.5 py-0.5">
+            本計畫 {slots.length} 節
           </span>
           <span className={`text-xs rounded px-1.5 py-0.5 border ${
             capped && weeklyCount > OT_WEEKLY_CAP ? 'border-red-300 text-red-600'
             : capped && weeklyCount === OT_WEEKLY_CAP ? 'border-amber-300 text-amber-700'
             : 'border-zinc-200 text-zinc-500'
           }`}>
-            每週 {weeklyCount}{capped ? ` / ${OT_WEEKLY_CAP}` : ''} 節
+            每週合計 {weeklyCount}{capped ? ` / ${OT_WEEKLY_CAP}` : ''} 節
+          </span>
+          <span className="text-xs text-zinc-400">
+            {teacher.ranges.length === 0
+              ? '區間：全期程'
+              : `區間：${teacher.ranges.map(r => `${r.start.slice(5)}～${r.end.slice(5)}`).join('、')}`}
           </span>
         </div>
-        <button className="text-sm text-red-600 hover:text-red-700" onClick={onDelete}>移出清冊</button>
+        <button
+          className="text-sm text-red-600 hover:text-red-700"
+          onClick={e => { e.stopPropagation(); onDelete() }}
+        >
+          移出清冊
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
+      {open && (<>
+      <div className="flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-3">
         {([
           ['勞保費', laborText, setLaborText],
           ['健保費', healthText, setHealthText],
@@ -835,6 +875,49 @@ function TeacherCard({
         >
           儲存
         </button>
+      </div>
+
+      {/* 超鐘點區間：可多段，落在區間外的日子不產生簽到節次 */}
+      <div className="border-t border-zinc-100 pt-3 space-y-2">
+        <div className="text-xs text-zinc-500">
+          超鐘點區間（可多段；未設定＝整個計畫期程 {plan.start_date} ～ {plan.end_date}）
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          {teacher.ranges.map((r, i) => (
+            <span key={`${r.start}-${r.end}-${i}`} className="inline-flex items-center gap-2 border border-zinc-300 rounded px-2 py-1 text-sm">
+              {r.start} ～ {r.end}
+              <button
+                className="text-zinc-400 hover:text-red-600"
+                aria-label="刪除區間"
+                onClick={() => onSaveRanges(teacher.ranges.filter((_, idx) => idx !== i))}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          <label className="block">
+            <span className="text-xs text-zinc-500">開始</span>
+            <input type="date" className="input block" value={rangeStart}
+              min={plan.start_date} max={plan.end_date}
+              onChange={e => setRangeStart(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="text-xs text-zinc-500">結束</span>
+            <input type="date" className="input block" value={rangeEnd}
+              min={plan.start_date} max={plan.end_date}
+              onChange={e => setRangeEnd(e.target.value)} />
+          </label>
+          <button
+            className="btn-secondary"
+            disabled={!rangeStart || !rangeEnd || rangeStart > rangeEnd}
+            onClick={() => {
+              onSaveRanges([...teacher.ranges, { start: rangeStart, end: rangeEnd }])
+              setRangeStart(''); setRangeEnd('')
+            }}
+          >
+            新增區間
+          </button>
+        </div>
       </div>
 
       <div className="border-t border-zinc-100 pt-3 space-y-2">
@@ -938,6 +1021,7 @@ function TeacherCard({
           </>
         )}
       </div>
+      </>)}
     </div>
   )
 }

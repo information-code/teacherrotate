@@ -448,12 +448,14 @@ export type Database = {
         Row: {
           id: string; plan_id: string; teacher_id: string | null; name: string
           category: string; labor_fee: number; health_fee: number
-          lunch_fee: number; other_fee: number; note: string; created_at: string
+          lunch_fee: number; other_fee: number; note: string; ranges: Json
+          created_at: string
         }
         Insert: {
           id?: string; plan_id: string; teacher_id?: string | null; name: string
           category?: string; labor_fee?: number; health_fee?: number
-          lunch_fee?: number; other_fee?: number; note?: string; created_at?: string
+          lunch_fee?: number; other_fee?: number; note?: string; ranges?: Json
+          created_at?: string
         }
         Update: Partial<Database['public']['Tables']['overtime_teachers']['Insert']>
         Relationships: []
