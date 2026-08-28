@@ -6,6 +6,7 @@ import {
   OT_WEEKLY_CAP, otCategoryLabel, isCappedCategory, isDateStr,
   rangesOverlap, maxConcurrentSlots,
 } from '@/lib/overtime'
+import { forbidIfNotPlanOwner, planIdOfSlot } from '@/lib/overtime-server'
 
 /**
  * 新增減課時段。body: { teacher_row_id, weekday, period, class_name, domain, start_date?, end_date? }
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
   const { data: row } = await supabaseAdmin.from('overtime_teachers')
     .select('id, teacher_id, name, category, plan_id').eq('id', teacher_row_id).single()
   if (!row) return NextResponse.json({ error: '找不到清冊教師' }, { status: 404 })
+
+  const forbidden = await forbidIfNotPlanOwner(auth.access, row.plan_id)
+  if (forbidden) return forbidden
 
   // 同一人所有清冊列（跨計畫）＋各列所屬計畫期程
   let q = supabaseAdmin.from('overtime_teachers').select('id, plan_id')
@@ -103,6 +107,11 @@ export async function DELETE(request: NextRequest) {
 
   const id = request.nextUrl.searchParams.get('id') ?? ''
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
+
+  const planId = await planIdOfSlot(id)
+  if (!planId) return NextResponse.json({ error: '找不到時段' }, { status: 404 })
+  const forbidden = await forbidIfNotPlanOwner(auth.access, planId)
+  if (forbidden) return forbidden
 
   const { error } = await supabaseAdmin.from('overtime_slots').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

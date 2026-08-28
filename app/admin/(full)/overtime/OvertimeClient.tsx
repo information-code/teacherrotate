@@ -82,7 +82,8 @@ export default function OvertimeClient({
   const [slots, setSlots] = useState<OtSlot[]>(initialSlots)
   const [skips, setSkips] = useState<OtSkipDate[]>(initialSkips)
   const [tab, setTab] = useState<'dashboard' | 'plans' | 'roster' | 'skips' | 'export'>('dashboard')
-  const [planId, setPlanId] = useState<string>(initialPlans[0]?.id ?? '')
+  const [planId, setPlanId] = useState<string>(
+    initialPlans.find(p => p.mine !== false)?.id ?? '')
 
   // 訊息：一般訊息 4 秒自動消失；錯誤改紅色橫幅常駐（手動關），避免存檔失敗沒被看到
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
@@ -106,6 +107,12 @@ export default function OvertimeClient({
 
   const skipSet = useMemo(() => buildSkipSet(holidays, skips), [holidays, skips])
   const today = todayStr()
+
+  // 計畫互不相碰：畫面只列自己可管理的計畫（superadmin＝全部）；
+  // 但同一位老師的統計（personSlotsOf 的重疊與上限）仍掃全部計畫。
+  const visiblePlans = plans.filter(p => p.mine !== false)
+  const visiblePlanIds = new Set(visiblePlans.map(p => p.id))
+  const planIdOfRow = Object.fromEntries(teachers.map(t => [t.id, t.plan_id]))
 
   const selectedPlan = plans.find(p => p.id === planId) ?? null
   const planTeachers = teachers.filter(t => t.plan_id === planId)
@@ -315,14 +322,15 @@ export default function OvertimeClient({
 
   // ───────────── 儀表板統計 ─────────────
   const distinctBy = (filter: (t: OtTeacher) => boolean) =>
-    new Set(teachers.filter(filter).map(teacherKey)).size
+    new Set(teachers.filter(t => visiblePlanIds.has(t.plan_id)).filter(filter).map(teacherKey)).size
   const overtimeCount = distinctBy(t => isCappedCategory(t.category))
   const hourlyCount = distinctBy(t => !isCappedCategory(t.category))
+  const visibleSlotCount = slots.filter(s => visiblePlanIds.has(planIdOfRow[s.teacher_row_id] ?? '')).length
 
   const planSelector = (
     <select className="input max-w-xs" value={planId} onChange={e => setPlanId(e.target.value)}>
       <option value="">— 選擇計畫 —</option>
-      {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      {visiblePlans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
     </select>
   )
 
@@ -369,10 +377,10 @@ export default function OvertimeClient({
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {([
-              ['計畫數', String(plans.length)],
+              ['計畫數', String(visiblePlans.length)],
               ['超鐘點教師（正式＋代理）', `${overtimeCount} 人`],
               ['鐘點／外師', `${hourlyCount} 人`],
-              ['每週減課節數合計', `${slots.length} 節`],
+              ['減課時段數合計', `${visibleSlotCount} 節`],
             ] as const).map(([label, value]) => (
               <div key={label} className="card !p-4">
                 <div className="text-xs text-zinc-500">{label}</div>
@@ -381,13 +389,13 @@ export default function OvertimeClient({
             ))}
           </div>
 
-          {plans.length === 0 && (
+          {visiblePlans.length === 0 && (
             <div className="card text-sm text-zinc-500">
               尚未建立任何計畫。請先到「經費來源」新增計畫經費。
             </div>
           )}
 
-          {plans.map(p => {
+          {visiblePlans.map(p => {
             const counts = weekdayCounts(p.start_date, p.end_date, skipSet)
             const totalSessions = planTotalSessions(p)
             const totalAmount = totalSessions * p.rate
@@ -441,7 +449,10 @@ export default function OvertimeClient({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-medium text-zinc-900">計畫經費</h2>
-              <p className="mt-0.5 text-sm text-zinc-500">計畫經費名稱、期程與節薪；總預算供儀表板計算剩餘款（可留 0）。</p>
+              <p className="mt-0.5 text-sm text-zinc-500">
+                計畫經費名稱、期程與節薪；總預算供儀表板計算剩餘款（可留 0）。
+                各管理者只看到自己建立的計畫（最高管理者可見全部）；教師的同週上限與重複檢查仍跨全部計畫合併計算。
+              </p>
             </div>
             <button className="btn-secondary" onClick={() => setPlanDraft({
               id: '', name: '', start_date: '', end_date: '', rateText: '405', budgetText: '0',
@@ -496,20 +507,22 @@ export default function OvertimeClient({
                   <th className="py-2 pr-3 text-right">節薪</th>
                   <th className="py-2 pr-3 text-right">總預算</th>
                   <th className="py-2 pr-3 text-right">清冊人數</th>
+                  <th className="py-2 pr-3">建立者</th>
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {plans.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-zinc-400">尚未建立計畫</td></tr>
+                {visiblePlans.length === 0 && (
+                  <tr><td colSpan={7} className="py-6 text-center text-zinc-400">尚未建立計畫</td></tr>
                 )}
-                {plans.map(p => (
+                {visiblePlans.map(p => (
                   <tr key={p.id} className="border-b border-zinc-100">
                     <td className="py-2 pr-3 text-zinc-900">{p.name}</td>
                     <td className="py-2 pr-3 text-zinc-600 whitespace-nowrap">{p.start_date} ～ {p.end_date}</td>
                     <td className="py-2 pr-3 text-right">{money(p.rate)}</td>
                     <td className="py-2 pr-3 text-right">{p.budget > 0 ? money(p.budget) : '—'}</td>
                     <td className="py-2 pr-3 text-right">{teachers.filter(t => t.plan_id === p.id).length}</td>
+                    <td className="py-2 pr-3 text-zinc-500">{p.created_by_name || '—'}</td>
                     <td className="py-2 text-right whitespace-nowrap">
                       <button className="text-zinc-600 hover:text-zinc-900 mr-3" onClick={() => setPlanDraft({
                         id: p.id, name: p.name, start_date: p.start_date, end_date: p.end_date,

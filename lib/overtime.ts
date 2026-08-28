@@ -26,7 +26,9 @@ export interface OtPlan {
   start_date: string   // YYYY-MM-DD
   end_date: string
   rate: number         // 節薪
-  budget: number       // 總經費（0＝未設定）
+  budget: number       // 總預算（0＝未設定）
+  created_by_name?: string   // 建立者（管理端顯示用）
+  mine?: boolean             // 目前管理者可否管理（undefined＝可）
 }
 
 /** 時間區段（含首尾） */

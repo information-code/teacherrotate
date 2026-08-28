@@ -1,4 +1,5 @@
-import { guardPage } from '@/lib/staff-server'
+import { guardPage, getAdminAccess } from '@/lib/staff-server'
+import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { normalizeScheduleConfig, homeroomLockSlots, deriveNativeSessions } from '@/lib/scheduling'
 import { normalizeConfig as normalizeAllocConfig, GRADES, adoptedReduction, type TeacherAllocation } from '@/lib/allocation'
@@ -10,6 +11,9 @@ export const dynamic = 'force-dynamic'
 
 export default async function OvertimePage() {
   await guardPage(['overtime'])
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const access = user ? await getAdminAccess(user.id) : null
   const admin = getAdminClient()
 
   const { data: settingsRows } = await admin.from('settings').select('value').eq('key', 'preference_year')
@@ -84,6 +88,9 @@ export default async function OvertimePage() {
       initialPlans={(plans ?? []).map(p => ({
         id: p.id, name: p.name, start_date: p.start_date, end_date: p.end_date,
         rate: p.rate, budget: p.budget,
+        created_by_name: p.created_by_name ?? '',
+        // 計畫互不相碰：只有建立者（或 superadmin）可管理；NULL＝舊資料共用
+        mine: access?.role === 'superadmin' || !p.created_by || p.created_by === access?.userId,
       }))}
       initialTeachers={(teachers ?? []).map(t => ({
         id: t.id, plan_id: t.plan_id, teacher_id: t.teacher_id, name: t.name,

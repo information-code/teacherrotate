@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
 import { OT_CATEGORIES } from '@/lib/overtime'
+import { forbidIfNotPlanOwner, planIdOfTeacherRow } from '@/lib/overtime-server'
 
 const parseFee = (v: unknown) => {
   const cleaned = String(v ?? 0)
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
   const name = String(body?.name ?? '').trim()
   if (!plan_id) return NextResponse.json({ error: '缺少計畫' }, { status: 400 })
   if (!name) return NextResponse.json({ error: '請填寫教師姓名' }, { status: 400 })
+
+  const forbidden = await forbidIfNotPlanOwner(auth.access, plan_id)
+  if (forbidden) return forbidden
 
   let category = 'hourly'
   if (teacher_id) {
@@ -65,6 +69,11 @@ export async function PUT(request: NextRequest) {
   const id = String(body?.id ?? '')
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
 
+  const planId = await planIdOfTeacherRow(id)
+  if (!planId) return NextResponse.json({ error: '找不到清冊教師' }, { status: 404 })
+  const forbidden = await forbidIfNotPlanOwner(auth.access, planId)
+  if (forbidden) return forbidden
+
   const { data, error } = await supabaseAdmin.from('overtime_teachers')
     .update({
       labor_fee: parseFee(body?.labor_fee),
@@ -85,6 +94,11 @@ export async function DELETE(request: NextRequest) {
 
   const id = request.nextUrl.searchParams.get('id') ?? ''
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
+
+  const planId = await planIdOfTeacherRow(id)
+  if (!planId) return NextResponse.json({ error: '找不到清冊教師' }, { status: 404 })
+  const forbidden = await forbidIfNotPlanOwner(auth.access, planId)
+  if (forbidden) return forbidden
 
   const { error } = await supabaseAdmin.from('overtime_teachers').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

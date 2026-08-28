@@ -435,11 +435,15 @@ export type Database = {
       overtime_plans: {
         Row: {
           id: string; name: string; start_date: string; end_date: string
-          rate: number; budget: number; created_at: string; updated_at: string
+          rate: number; budget: number
+          created_by: string | null; created_by_name: string
+          created_at: string; updated_at: string
         }
         Insert: {
           id?: string; name: string; start_date: string; end_date: string
-          rate?: number; budget?: number; created_at?: string; updated_at?: string
+          rate?: number; budget?: number
+          created_by?: string | null; created_by_name?: string
+          created_at?: string; updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['overtime_plans']['Insert']>
         Relationships: []
