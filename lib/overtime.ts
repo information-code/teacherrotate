@@ -29,7 +29,7 @@ export interface OtPlan {
   budget: number       // 總經費（0＝未設定）
 }
 
-/** 超鐘點區間（含首尾）；空陣列＝整個計畫期程 */
+/** 時間區段（含首尾） */
 export interface OtRange { start: string; end: string }
 
 export interface OtTeacher {
@@ -43,25 +43,6 @@ export interface OtTeacher {
   lunch_fee: number
   other_fee: number
   note: string
-  ranges: OtRange[]
-}
-
-/** 解析 DB 的 ranges JSONB（壞資料丟棄），依開始日排序 */
-export function normalizeRanges(v: unknown): OtRange[] {
-  if (!Array.isArray(v)) return []
-  const out: OtRange[] = []
-  for (const r of v.slice(0, 24)) {
-    const start = String((r as { start?: unknown })?.start ?? '')
-    const end = String((r as { end?: unknown })?.end ?? '')
-    if (isDateStr(start) && isDateStr(end) && start <= end) out.push({ start, end })
-  }
-  return out.sort((a, b) => a.start.localeCompare(b.start))
-}
-
-/** 日期是否落在任一區間內（無區間＝不限制） */
-export function inRanges(date: string, ranges: OtRange[]): boolean {
-  if (ranges.length === 0) return true
-  return ranges.some(r => date >= r.start && date <= r.end)
 }
 
 export interface OtSlot {
@@ -71,6 +52,37 @@ export interface OtSlot {
   period: number       // 1-7
   class_name: string
   domain: string
+  start_date: string | null   // 生效區段；NULL＝整個計畫期程
+  end_date: string | null
+}
+
+/** 時段的實際生效區間（未設定＝計畫期程） */
+export function slotEffRange(s: Pick<OtSlot, 'start_date' | 'end_date'>, plan: Pick<OtPlan, 'start_date' | 'end_date'>): [string, string] {
+  return [s.start_date ?? plan.start_date, s.end_date ?? plan.end_date]
+}
+
+/** 兩段（含首尾）是否重疊 */
+export const rangesOverlap = (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+  aStart <= bEnd && bStart <= aEnd
+
+/**
+ * 同時生效的最大節數（掃描線）：每週上限看的是「同一週內同時進行」的減課節數，
+ * 不重疊的區段可以各自用滿額度。
+ */
+export function maxConcurrentSlots(ranges: [string, string][]): number {
+  const events: [number, number][] = []
+  for (const [s, e] of ranges) {
+    events.push([Date.parse(s), 1])
+    events.push([Date.parse(e) + DAY_MS, -1])   // 含首尾 → 結束日隔天才釋放
+  }
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1])   // 同日先 -1 再 +1：首尾相接不算重疊
+  let cur = 0
+  let max = 0
+  for (const [, d] of events) {
+    cur += d
+    if (cur > max) max = cur
+  }
+  return max
 }
 
 export interface OtSkipDate {
@@ -167,19 +179,20 @@ export interface OtSessionRow {
 
 /**
  * 展開某位教師在區間內的簽到列（每時段 × 每個符合星期的可授課日），
- * 依日期、節次排序。區間會先與計畫期程取交集；
- * ranges＝該師的超鐘點區間（多段，空＝整個期程），區間外的日子不算。
+ * 依日期、節次排序。每個時段各自的生效區段（start/end_date，NULL＝全期程）
+ * 會再與計畫期程、查詢區間取交集。
  */
 export function expandSessions(
   slots: OtSlot[], plan: OtPlan, rangeStart: string, rangeEnd: string, skip: Set<string>,
-  ranges: OtRange[] = [],
 ): OtSessionRow[] {
-  const range = intersectRange(plan.start_date, plan.end_date, rangeStart, rangeEnd)
-  if (!range) return []
   const rows: OtSessionRow[] = []
   for (const s of slots) {
+    const eff = slotEffRange(s, plan)
+    const inPlan = intersectRange(eff[0], eff[1], plan.start_date, plan.end_date)
+    if (!inPlan) continue
+    const range = intersectRange(inPlan[0], inPlan[1], rangeStart, rangeEnd)
+    if (!range) continue
     for (const d of teachingDates(range[0], range[1], s.weekday, skip)) {
-      if (!inRanges(d, ranges)) continue
       rows.push({ date: d, weekday: s.weekday, period: s.period, class_name: s.class_name, domain: s.domain })
     }
   }

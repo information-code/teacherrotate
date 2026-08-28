@@ -463,11 +463,13 @@ export type Database = {
       overtime_slots: {
         Row: {
           id: string; teacher_row_id: string; weekday: number; period: number
-          class_name: string; domain: string; created_at: string
+          class_name: string; domain: string
+          start_date: string | null; end_date: string | null; created_at: string
         }
         Insert: {
           id?: string; teacher_row_id: string; weekday: number; period: number
-          class_name?: string; domain?: string; created_at?: string
+          class_name?: string; domain?: string
+          start_date?: string | null; end_date?: string | null; created_at?: string
         }
         Update: Partial<Database['public']['Tables']['overtime_slots']['Insert']>
         Relationships: []

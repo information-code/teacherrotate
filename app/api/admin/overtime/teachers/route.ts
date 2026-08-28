@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
-import { OT_CATEGORIES, normalizeRanges } from '@/lib/overtime'
+import { OT_CATEGORIES } from '@/lib/overtime'
 
 const parseFee = (v: unknown) => {
   const cleaned = String(v ?? 0)
@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 修改教師（代扣款、備註、超鐘點區間；身分跟著帳號資料走，不在這裡改）。
- * body: { id, labor_fee, health_fee, lunch_fee, other_fee, note, ranges? }
- * ranges 有帶才更新（[{start,end}]，空陣列＝整個計畫期程）。
+ * 修改教師（代扣款、備註；身分跟著帳號資料走，不在這裡改；
+ * 時間區段掛在各減課時段上，不在教師列）。
+ * body: { id, labor_fee, health_fee, lunch_fee, other_fee, note }
  */
 export async function PUT(request: NextRequest) {
   const auth = await requirePerms(['overtime'])
@@ -65,17 +65,14 @@ export async function PUT(request: NextRequest) {
   const id = String(body?.id ?? '')
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
 
-  const update: Record<string, unknown> = {
-    labor_fee: parseFee(body?.labor_fee),
-    health_fee: parseFee(body?.health_fee),
-    lunch_fee: parseFee(body?.lunch_fee),
-    other_fee: parseFee(body?.other_fee),
-    note: String(body?.note ?? ''),
-  }
-  if (body?.ranges !== undefined) update.ranges = normalizeRanges(body.ranges)
-
   const { data, error } = await supabaseAdmin.from('overtime_teachers')
-    .update(update)
+    .update({
+      labor_fee: parseFee(body?.labor_fee),
+      health_fee: parseFee(body?.health_fee),
+      lunch_fee: parseFee(body?.lunch_fee),
+      other_fee: parseFee(body?.other_fee),
+      note: String(body?.note ?? ''),
+    })
     .eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
