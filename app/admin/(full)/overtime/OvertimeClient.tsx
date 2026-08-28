@@ -10,6 +10,7 @@ import {
   type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday,
 } from '@/lib/overtime'
 import { exportSigninPdf, exportRosterPdf, saveBlob, type SigninSheet, type RosterRow } from '@/lib/overtime-export'
+import type { TeacherCourse } from '@/lib/overtime-courses'
 
 interface ProfileOption { id: string; name: string; employment_type: string }
 
@@ -39,7 +40,7 @@ const todayStr = () => {
 const teacherKey = (t: OtTeacher) => t.teacher_id ?? `name:${t.name}`
 
 export default function OvertimeClient({
-  initialPlans, initialTeachers, initialSlots, initialSkips, holidays, profileOptions,
+  initialPlans, initialTeachers, initialSlots, initialSkips, holidays, profileOptions, teacherCourses,
 }: {
   initialPlans: OtPlan[]
   initialTeachers: OtTeacher[]
@@ -47,6 +48,7 @@ export default function OvertimeClient({
   initialSkips: OtSkipDate[]
   holidays: OtHoliday[]
   profileOptions: ProfileOption[]
+  teacherCourses: Record<string, TeacherCourse[]>   // profile id → 週課務（課表未發布時為空）
 }) {
   const [plans, setPlans] = useState<OtPlan[]>(initialPlans)
   const [teachers, setTeachers] = useState<OtTeacher[]>(initialTeachers)
@@ -514,18 +516,26 @@ export default function OvertimeClient({
           {selectedPlan && planTeachers.length === 0 && (
             <div className="card text-sm text-zinc-400">此計畫清冊尚無教師。</div>
           )}
-          {selectedPlan && planTeachers.map(t => (
-            <TeacherCard
-              key={t.id}
-              teacher={t}
-              slots={slotsOf(t.id)}
-              weeklyCount={weeklyCountOf(t)}
-              onSave={saveTeacher}
-              onDelete={() => deleteTeacher(t)}
-              onAddSlot={addSlot}
-              onDeleteSlot={deleteSlot}
-            />
-          ))}
+          {selectedPlan && planTeachers.map(t => {
+            const otherIds = new Set(
+              teachers.filter(x => x.id !== t.id && teacherKey(x) === teacherKey(t)).map(x => x.id))
+            const takenElsewhere = new Set(
+              slots.filter(s => otherIds.has(s.teacher_row_id)).map(s => `${s.weekday}-${s.period}`))
+            return (
+              <TeacherCard
+                key={t.id}
+                teacher={t}
+                slots={slotsOf(t.id)}
+                weeklyCount={weeklyCountOf(t)}
+                courses={t.teacher_id ? (teacherCourses[t.teacher_id] ?? []) : []}
+                takenElsewhere={takenElsewhere}
+                onSave={saveTeacher}
+                onDelete={() => deleteTeacher(t)}
+                onAddSlot={addSlot}
+                onDeleteSlot={deleteSlot}
+              />
+            )
+          })}
         </div>
       )}
 
@@ -739,13 +749,19 @@ function TeacherPicker({ options, value, onSelect }: {
   )
 }
 
-/** 清冊教師卡：代扣款（文字輸入、存檔時解析）、減課時段 chips＋新增列；身分依帳號資料，僅顯示 */
+/**
+ * 清冊教師卡：代扣款（文字輸入、存檔時解析）＋減課時段。
+ * 時段以「該師的實際課務」點選勾選（課表已發布且為系統帳號）；
+ * 其他計畫已勾的時段鎖定不可再選。無課務資料（手動人員／課表未發布）才退回手動輸入。
+ */
 function TeacherCard({
-  teacher, slots, weeklyCount, onSave, onDelete, onAddSlot, onDeleteSlot,
+  teacher, slots, weeklyCount, courses, takenElsewhere, onSave, onDelete, onAddSlot, onDeleteSlot,
 }: {
   teacher: OtTeacher
   slots: OtSlot[]
   weeklyCount: number
+  courses: TeacherCourse[]
+  takenElsewhere: Set<string>   // 同一人在其他計畫已勾選的「星期-節次」
   onSave: (id: string, patch: {
     labor_fee: number; health_fee: number; lunch_fee: number; other_fee: number; note: string
   }) => Promise<void>
@@ -822,49 +838,105 @@ function TeacherCard({
       </div>
 
       <div className="border-t border-zinc-100 pt-3 space-y-2">
-        <div className="text-xs text-zinc-500">減課時段（星期×節次不可重複，可多時段）</div>
-        <div className="flex flex-wrap gap-2">
-          {slots.length === 0 && <span className="text-sm text-zinc-400">尚未設定</span>}
-          {slots.map(s => (
-            <span key={s.id} className="inline-flex items-center gap-2 border border-zinc-300 rounded px-2 py-1 text-sm">
-              週{OT_DAY_ZH[s.weekday]} {OT_PERIOD_ZH[s.period]}
-              {s.class_name && `　${s.class_name}`}
-              {s.domain && `　${s.domain}`}
-              <button className="text-zinc-400 hover:text-red-600" onClick={() => onDeleteSlot(s.id)} aria-label="刪除時段">✕</button>
-            </span>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="text-xs text-zinc-500">星期</span>
-            <select className="input block" value={slotWeekday} onChange={e => setSlotWeekday(Number(e.target.value))}>
-              {OT_WEEKDAYS.map(w => <option key={w} value={w}>週{OT_DAY_ZH[w]}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs text-zinc-500">節次</span>
-            <select className="input block" value={slotPeriod} onChange={e => setSlotPeriod(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5, 6, 7].map(p => <option key={p} value={p}>{OT_PERIOD_ZH[p]}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs text-zinc-500">班級</span>
-            <input className="input block w-24" value={slotClass} onChange={e => setSlotClass(e.target.value)} placeholder="604" />
-          </label>
-          <label className="block">
-            <span className="text-xs text-zinc-500">領域</span>
-            <input className="input block w-28" value={slotDomain} onChange={e => setSlotDomain(e.target.value)} placeholder="數學" />
-          </label>
-          <button
-            className="btn-secondary"
-            onClick={async () => {
-              await onAddSlot(teacher.id, slotWeekday, slotPeriod, slotClass.trim(), slotDomain.trim())
-              setSlotClass(''); setSlotDomain('')
-            }}
-          >
-            新增時段
-          </button>
-        </div>
+        {courses.length > 0 ? (
+          <>
+            <div className="text-xs text-zinc-500">
+              減課時段：點選課務勾選（再點一次取消）；灰色＝已在其他計畫勾選
+              {capped ? `，正式／代理每週上限 ${OT_WEEKLY_CAP} 節` : ''}。
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {courses.map(c => {
+                const key = `${c.weekday}-${c.period}`
+                const chosen = slots.find(s => s.weekday === c.weekday && s.period === c.period)
+                const elsewhere = !chosen && takenElsewhere.has(key)
+                const atCap = !chosen && capped && weeklyCount >= OT_WEEKLY_CAP
+                const disabled = elsewhere || atCap
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={disabled}
+                    title={elsewhere ? '已在其他計畫勾選' : atCap ? `已達每週 ${OT_WEEKLY_CAP} 節上限` : undefined}
+                    className={`border rounded px-2 py-1 text-sm transition-colors ${
+                      chosen
+                        ? 'border-zinc-800 bg-zinc-800 text-white'
+                        : disabled
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed'
+                          : 'border-zinc-300 text-zinc-700 hover:border-zinc-500'
+                    }`}
+                    onClick={() => {
+                      if (chosen) onDeleteSlot(chosen.id)
+                      else onAddSlot(teacher.id, c.weekday, c.period, c.class_name, c.domain)
+                    }}
+                  >
+                    週{OT_DAY_ZH[c.weekday]} {OT_PERIOD_ZH[c.period]}　{c.class_name}　{c.domain}
+                    {elsewhere && '（他計畫）'}
+                  </button>
+                )
+              })}
+            </div>
+            {/* 不在課務清單上的既有時段（舊資料或手動加的）仍可移除 */}
+            {slots.filter(s => !courses.some(c => c.weekday === s.weekday && c.period === s.period)).map(s => (
+              <div key={s.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="inline-flex items-center gap-2 border border-amber-300 bg-amber-50 rounded px-2 py-1">
+                  週{OT_DAY_ZH[s.weekday]} {OT_PERIOD_ZH[s.period]}
+                  {s.class_name && `　${s.class_name}`}
+                  {s.domain && `　${s.domain}`}
+                  <button className="text-zinc-400 hover:text-red-600" onClick={() => onDeleteSlot(s.id)} aria-label="刪除時段">✕</button>
+                </span>
+                <span className="text-xs text-amber-600">不在課表課務中，請確認</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className="text-xs text-zinc-500">
+              減課時段（{teacher.teacher_id ? '課表尚未發布，暫以手動輸入' : '手動人員無課表，手動輸入'}；星期×節次不可重複）
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {slots.length === 0 && <span className="text-sm text-zinc-400">尚未設定</span>}
+              {slots.map(s => (
+                <span key={s.id} className="inline-flex items-center gap-2 border border-zinc-300 rounded px-2 py-1 text-sm">
+                  週{OT_DAY_ZH[s.weekday]} {OT_PERIOD_ZH[s.period]}
+                  {s.class_name && `　${s.class_name}`}
+                  {s.domain && `　${s.domain}`}
+                  <button className="text-zinc-400 hover:text-red-600" onClick={() => onDeleteSlot(s.id)} aria-label="刪除時段">✕</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block">
+                <span className="text-xs text-zinc-500">星期</span>
+                <select className="input block" value={slotWeekday} onChange={e => setSlotWeekday(Number(e.target.value))}>
+                  {OT_WEEKDAYS.map(w => <option key={w} value={w}>週{OT_DAY_ZH[w]}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-500">節次</span>
+                <select className="input block" value={slotPeriod} onChange={e => setSlotPeriod(Number(e.target.value))}>
+                  {[1, 2, 3, 4, 5, 6, 7].map(p => <option key={p} value={p}>{OT_PERIOD_ZH[p]}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-500">班級</span>
+                <input className="input block w-24" value={slotClass} onChange={e => setSlotClass(e.target.value)} placeholder="604" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-500">領域</span>
+                <input className="input block w-28" value={slotDomain} onChange={e => setSlotDomain(e.target.value)} placeholder="數學" />
+              </label>
+              <button
+                className="btn-secondary"
+                onClick={async () => {
+                  await onAddSlot(teacher.id, slotWeekday, slotPeriod, slotClass.trim(), slotDomain.trim())
+                  setSlotClass(''); setSlotDomain('')
+                }}
+              >
+                新增時段
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
