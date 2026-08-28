@@ -366,15 +366,15 @@ export default function OvertimeClient({
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                   {([
-                    ['總經費', p.budget > 0 ? `${money(p.budget)} 元` : '未設定'],
                     ['總人數', `${people} 人`],
-                    ['總節數（期程內）', `${totalSessions} 節`],
-                    ['總金額', `${money(totalAmount)} 元`],
-                    ['剩餘金額', p.budget > 0 ? `${money(remain)} 元` : '—'],
+                    ['總節數', `${totalSessions} 節`],
+                    ['總支出', `${money(totalAmount)} 元`],
+                    ['總預算', p.budget > 0 ? `${money(p.budget)} 元` : '未設定'],
+                    ['剩餘款', p.budget > 0 ? `${money(remain)} 元` : '—'],
                   ] as const).map(([label, value]) => (
                     <div key={label} className="border border-zinc-200 rounded p-2">
                       <div className="text-xs text-zinc-500">{label}</div>
-                      <div className={`mt-0.5 font-medium ${label === '剩餘金額' && p.budget > 0 && remain < 0 ? 'text-red-600' : 'text-zinc-900'}`}>{value}</div>
+                      <div className={`mt-0.5 font-medium ${label === '剩餘款' && p.budget > 0 && remain < 0 ? 'text-red-600' : 'text-zinc-900'}`}>{value}</div>
                     </div>
                   ))}
                 </div>
@@ -400,7 +400,7 @@ export default function OvertimeClient({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-medium text-zinc-900">計畫經費</h2>
-              <p className="mt-0.5 text-sm text-zinc-500">計畫經費名稱、期程與節薪；總經費供儀表板計算剩餘金額（可留 0）。</p>
+              <p className="mt-0.5 text-sm text-zinc-500">計畫經費名稱、期程與節薪；總預算供儀表板計算剩餘款（可留 0）。</p>
             </div>
             <button className="btn-secondary" onClick={() => setPlanDraft({
               id: '', name: '', start_date: '', end_date: '', rateText: '405', budgetText: '0',
@@ -434,7 +434,7 @@ export default function OvertimeClient({
                     onChange={e => setPlanDraft({ ...planDraft, rateText: e.target.value })} />
                 </label>
                 <label className="block">
-                  <span className="text-xs text-zinc-500">總經費（元，0＝未設定）</span>
+                  <span className="text-xs text-zinc-500">總預算（元，0＝未設定）</span>
                   <input className="input w-full" inputMode="numeric" value={planDraft.budgetText}
                     onChange={e => setPlanDraft({ ...planDraft, budgetText: e.target.value })} />
                 </label>
@@ -453,7 +453,7 @@ export default function OvertimeClient({
                   <th className="py-2 pr-3">計畫經費名稱</th>
                   <th className="py-2 pr-3">期程</th>
                   <th className="py-2 pr-3 text-right">節薪</th>
-                  <th className="py-2 pr-3 text-right">總經費</th>
+                  <th className="py-2 pr-3 text-right">總預算</th>
                   <th className="py-2 pr-3 text-right">清冊人數</th>
                   <th className="py-2" />
                 </tr>
