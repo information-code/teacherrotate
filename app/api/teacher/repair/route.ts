@@ -36,6 +36,21 @@ export async function GET() {
     if (r.issue_id) issueCounts[r.issue_id] = (issueCounts[r.issue_id] ?? 0) + 1
   }
 
+  // 我的案件留言串
+  const reportIds = (reports ?? []).map(r => r.id)
+  const messagesByReport: Record<string, unknown[]> = {}
+  if (reportIds.length > 0) {
+    const { data: messages, error: e6 } = await supabaseAdmin
+      .from('repair_messages')
+      .select('id, report_id, author_name, is_admin, body, created_at')
+      .in('report_id', reportIds)
+      .order('created_at', { ascending: true })
+    if (e6) return NextResponse.json({ error: e6.message }, { status: 500 })
+    for (const m of messages ?? []) {
+      (messagesByReport[m.report_id] ??= []).push(m)
+    }
+  }
+
   // 我的案件照片轉簽名網址（1 小時）
   const myReports = await Promise.all((reports ?? []).map(async r => {
     const paths = Array.isArray(r.photos) ? (r.photos as string[]) : []
@@ -45,7 +60,7 @@ export async function GET() {
         .from('equipment-photos').createSignedUrl(p, 60 * 60)
       if (signed?.signedUrl) photoUrls.push(signed.signedUrl)
     }
-    return { ...r, photos: undefined, photoUrls }
+    return { ...r, photos: undefined, photoUrls, messages: messagesByReport[r.id] ?? [] }
   }))
 
   return NextResponse.json({

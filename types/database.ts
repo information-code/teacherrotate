@@ -420,6 +420,18 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['repair_reports']['Insert']>
         Relationships: []
       }
+      repair_messages: {
+        Row: {
+          id: string; report_id: string; author_id: string | null
+          author_name: string; is_admin: boolean; body: string; created_at: string
+        }
+        Insert: {
+          id?: string; report_id: string; author_id?: string | null
+          author_name?: string; is_admin?: boolean; body: string; created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['repair_messages']['Insert']>
+        Relationships: []
+      }
       todos: {
         Row: {
           id: string; user_id: string; title: string; note: string

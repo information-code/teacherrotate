@@ -17,6 +17,14 @@ interface ItemRow { id: string; name: string }
 interface IssueRow { id: string; item_id: string; name: string; count: number }
 interface ContactRow { name: string; role: string; contact: string; note: string }
 
+interface MessageRow {
+  id: string
+  author_name: string
+  is_admin: boolean
+  body: string
+  created_at: string
+}
+
 interface ReportRow {
   id: string
   item_id: string | null
@@ -28,7 +36,7 @@ interface ReportRow {
   photoUrls: string[]
   status: string
   resolved_kind: string | null
-  admin_note: string
+  messages: MessageRow[]
   created_at: string
   accepted_at: string | null
   dispatched_at: string | null
@@ -84,6 +92,8 @@ export function RepairPage() {
   const [formPhotos, setFormPhotos] = useState<UploadedPhoto[]>([])
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+
+  const [msgDraft, setMsgDraft] = useState('')  // 案件留言板輸入框
 
   const [message, setMessage] = useState('')
   const flash = (text: string) => {
@@ -190,6 +200,22 @@ export function RepairPage() {
     })
   }
 
+  const sendMessage = async (report: ReportRow) => {
+    const body = msgDraft.trim()
+    if (!body) return
+    await runBusy('送出留言中…', async () => {
+      const res = await fetch('/api/teacher/repair/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_id: report.id, body }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || '留言失敗')
+      setMsgDraft('')
+      await load()
+    })
+  }
+
   const resolveReport = async (report: ReportRow, kind: 'self' | 'vanished') => {
     const label = kind === 'self' ? '自行排除' : '問題自行消失'
     if (!confirm(`確定回報「${label}」？案件會直接結案。`)) return
@@ -237,7 +263,7 @@ export function RepairPage() {
               <button
                 key={r.id}
                 className="w-full rounded border border-zinc-200 px-3 py-2 text-left transition-colors hover:bg-zinc-50"
-                onClick={() => setView({ mode: 'detail', reportId: r.id })}
+                onClick={() => { setMsgDraft(''); setView({ mode: 'detail', reportId: r.id }) }}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 text-sm">
@@ -487,14 +513,6 @@ export function RepairPage() {
               </div>
             )}
 
-            {/* 維護人員說明（管理端填寫，向報修者交代目前情況） */}
-            {detailReport.admin_note && (
-              <div className="rounded border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-xs font-medium text-zinc-500">維護人員說明</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{detailReport.admin_note}</p>
-              </div>
-            )}
-
             {/* 已解決回報 */}
             {detailReport.status !== 'closed' && (
               <div className="flex flex-wrap justify-end gap-2">
@@ -504,6 +522,42 @@ export function RepairPage() {
                 <button className="btn-primary" onClick={() => resolveReport(detailReport, 'self')}>
                   我已自行排除
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* 留言板：與維護方雙向溝通 */}
+          <div className="card space-y-2">
+            <h3 className="text-sm font-medium text-zinc-900">留言板</h3>
+            {detailReport.messages.length === 0 && (
+              <p className="text-sm text-zinc-500">
+                {detailReport.status === 'closed' ? '沒有留言。' : '有補充或想詢問進度，可以在這裡留言。'}
+              </p>
+            )}
+            {detailReport.messages.map(m => (
+              <div key={m.id} className={`rounded border p-2.5 ${
+                m.is_admin ? 'border-zinc-200 bg-zinc-50' : 'border-zinc-200'
+              }`}>
+                <p className="text-xs text-zinc-500">
+                  {m.is_admin ? '🛠 ' : ''}{m.author_name}
+                  <span className="ml-2">{timeText(m.created_at)}</span>
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-800">{m.body}</p>
+              </div>
+            ))}
+            {detailReport.status !== 'closed' && (
+              <div>
+                <textarea
+                  className="input min-h-16"
+                  placeholder="輸入留言…"
+                  value={msgDraft}
+                  onChange={e => setMsgDraft(e.target.value)}
+                />
+                <div className="mt-1.5 flex justify-end">
+                  <button className="btn-secondary" disabled={!msgDraft.trim()} onClick={() => sendMessage(detailReport)}>
+                    送出留言
+                  </button>
+                </div>
               </div>
             )}
           </div>

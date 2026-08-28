@@ -36,6 +36,21 @@ export async function GET() {
     for (const p of profiles ?? []) names[p.id] = p.name || p.email
   }
 
+  // 各案件留言串
+  const reportIds = (reports ?? []).map(r => r.id)
+  const messagesByReport: Record<string, unknown[]> = {}
+  if (reportIds.length > 0) {
+    const { data: messages, error: e6 } = await supabaseAdmin
+      .from('repair_messages')
+      .select('id, report_id, author_name, is_admin, body, created_at')
+      .in('report_id', reportIds)
+      .order('created_at', { ascending: true })
+    if (e6) return NextResponse.json({ error: e6.message }, { status: 500 })
+    for (const m of messages ?? []) {
+      (messagesByReport[m.report_id] ??= []).push(m)
+    }
+  }
+
   const rows = await Promise.all((reports ?? []).map(async r => {
     const paths = Array.isArray(r.photos) ? (r.photos as string[]) : []
     const photoUrls: string[] = []
@@ -44,7 +59,11 @@ export async function GET() {
         .from('equipment-photos').createSignedUrl(p, 60 * 60)
       if (signed?.signedUrl) photoUrls.push(signed.signedUrl)
     }
-    return { ...r, photos: undefined, photoUrls, teacher_name: names[r.teacher_id] ?? '（不明）' }
+    return {
+      ...r, photos: undefined, photoUrls,
+      teacher_name: names[r.teacher_id] ?? '（不明）',
+      messages: messagesByReport[r.id] ?? [],
+    }
   }))
 
   return NextResponse.json({
@@ -60,7 +79,7 @@ export async function GET() {
  * - accept：接案（通報中→已接案）
  * - process：開始處理（通報中/已接案→處理中，時間戳存 dispatched_at）
  * - close：結案（未結案→已結案，resolved_kind 補 'fixed'）
- * - note：儲存「向報修者說明」{ admin_note }
+ * - message：在案件留言（維護方）{ body }，未結案才能發言
  * - classify：歸類 { item_id, issue_id }（更新 id 與名稱快照，custom_issue 原文保留）
  * - new-issue：把自由描述升級成新標準問題 { item_id, name } 並歸類本案
  */
@@ -97,8 +116,21 @@ export async function PUT(request: NextRequest) {
     patch.resolved_kind = report.resolved_kind ?? 'fixed'
     patch.closed_at = now
     patch.closed_by = auth.user.id
-  } else if (action === 'note') {
-    patch.admin_note = String(body?.admin_note ?? '')
+  } else if (action === 'message') {
+    const text = String(body?.body ?? '').trim()
+    if (!text) return NextResponse.json({ error: '留言不可為空' }, { status: 400 })
+    if (report.status === 'closed') return NextResponse.json({ error: '案件已結案，無法留言' }, { status: 400 })
+    const { data: profile } = await supabaseAdmin
+      .from('profiles').select('name, email').eq('id', auth.user.id).maybeSingle()
+    const { error: me } = await supabaseAdmin.from('repair_messages').insert({
+      report_id: id,
+      author_id: auth.user.id,
+      author_name: profile?.name || profile?.email || '維護人員',
+      is_admin: true,
+      body: text,
+    })
+    if (me) return NextResponse.json({ error: me.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
   } else if (action === 'classify') {
     const itemId = String(body?.item_id ?? '')
     const issueId = String(body?.issue_id ?? '')

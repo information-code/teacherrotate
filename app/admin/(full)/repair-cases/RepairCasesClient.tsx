@@ -18,6 +18,14 @@ import { casesToWorkOrderPdf, saveBlob } from '@/lib/repair-export'
 interface ItemRow { id: string; name: string; active: boolean }
 interface IssueRow { id: string; item_id: string; name: string; active: boolean }
 
+interface MessageRow {
+  id: string
+  author_name: string
+  is_admin: boolean
+  body: string
+  created_at: string
+}
+
 interface ReportRow {
   id: string
   teacher_id: string
@@ -31,7 +39,7 @@ interface ReportRow {
   photoUrls: string[]
   status: string
   resolved_kind: string | null
-  admin_note: string
+  messages: MessageRow[]
   created_at: string
   accepted_at: string | null
   dispatched_at: string | null
@@ -75,10 +83,10 @@ export default function RepairCasesClient() {
   const [kioskModal, setKioskModal] = useState<'' | 'enter' | 'exit'>('')
   const [kioskPwDraft, setKioskPwDraft] = useState('')
   const [kioskError, setKioskError] = useState('')
-  const [kioskNoteDrafts, setKioskNoteDrafts] = useState<Record<string, string>>({})
+  const [kioskMsgDrafts, setKioskMsgDrafts] = useState<Record<string, string>>({})
 
   const [expandedId, setExpandedId] = useState('')
-  const [noteDraft, setNoteDraft] = useState('')
+  const [msgDraft, setMsgDraft] = useState('')  // 展開案件的留言輸入
   // 歸類草稿（未歸類案件用）
   const [classifyItemId, setClassifyItemId] = useState('')
   const [classifyIssueId, setClassifyIssueId] = useState('')
@@ -141,8 +149,8 @@ export default function RepairCasesClient() {
     if (statusFilter !== 'open' && statusFilter !== 'all' && r.status !== statusFilter) return false
     if (itemFilter && r.item_id !== itemFilter) return false
     if (keyword) {
-      const hay = [r.teacher_name, r.item_name, r.issue_name, r.custom_issue, r.location, r.admin_note]
-        .join(' ').toLowerCase()
+      const hay = [r.teacher_name, r.item_name, r.issue_name, r.custom_issue, r.location,
+        ...r.messages.map(m => m.body)].join(' ').toLowerCase()
       if (!hay.includes(keyword)) return false
     }
     return true
@@ -154,7 +162,7 @@ export default function RepairCasesClient() {
       return
     }
     setExpandedId(r.id)
-    setNoteDraft(r.admin_note)
+    setMsgDraft('')
     setClassifyItemId(r.item_id ?? '')
     setClassifyIssueId('')
     setNewIssueName(r.custom_issue)
@@ -175,6 +183,23 @@ export default function RepairCasesClient() {
   }
 
   const classifyIssues = data.issues.filter(s => s.item_id === classifyItemId && s.active)
+
+  /** 維護方在案件留言（展開區與看板共用）；成功才清空輸入框 */
+  const sendCaseMessage = async (id: string, text: string, clear: () => void) => {
+    const body = text.trim()
+    if (!body) return
+    await runBusy('送出留言中…', async () => {
+      const res = await fetch('/api/admin/repair-cases', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'message', body }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || '留言失敗')
+      clear()
+      await load()
+    })
+  }
 
   const enterKiosk = () => {
     const pw = kioskPwDraft.trim()
@@ -259,7 +284,8 @@ export default function RepairCasesClient() {
                 location: r.location,
                 teacher_name: r.teacher_name,
                 created_at: r.created_at,
-                admin_note: r.admin_note,
+                // 工作單的說明欄放維護方最後一則留言
+                admin_note: [...r.messages].reverse().find(m => m.is_admin)?.body ?? '',
               })),
               setBusy,
             )
@@ -367,25 +393,35 @@ export default function RepairCasesClient() {
                     </div>
                   )}
 
-                  {/* 向報修者說明（已結案不再編輯，留存的說明僅顯示） */}
-                  {r.status !== 'closed' ? (
-                    <div>
-                      <p className="mb-1 text-sm text-zinc-600">向報修者說明（顯示在教師端案件頁）</p>
-                      <textarea className="input min-h-20" value={noteDraft}
-                        placeholder="例：已叫料，零件到貨後到班上更換"
-                        onChange={e => setNoteDraft(e.target.value)} />
-                      <div className="mt-1.5 flex justify-end">
-                        <button className="btn-secondary" disabled={noteDraft === r.admin_note}
-                          onClick={() => act(r.id, { action: 'note', admin_note: noteDraft }, '說明已儲存')}>
-                          儲存說明
-                        </button>
+                  {/* 留言板（與報修老師雙向；已結案唯讀） */}
+                  <div className="space-y-1.5">
+                    <p className="text-sm text-zinc-600">留言板（報修老師看得到，也可回覆）</p>
+                    {r.messages.length === 0 && (
+                      <p className="text-sm text-zinc-400">還沒有留言。</p>
+                    )}
+                    {r.messages.map(m => (
+                      <div key={m.id} className={`rounded border border-zinc-200 p-2 ${m.is_admin ? 'bg-zinc-50' : ''}`}>
+                        <p className="text-xs text-zinc-500">
+                          {m.is_admin ? '🛠 ' : ''}{m.author_name}
+                          <span className="ml-2">{timeText(m.created_at)}</span>
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-800">{m.body}</p>
                       </div>
-                    </div>
-                  ) : r.admin_note ? (
-                    <p className="whitespace-pre-wrap text-sm text-zinc-600">
-                      <span className="text-xs text-zinc-500">向報修者說明：</span>{r.admin_note}
-                    </p>
-                  ) : null}
+                    ))}
+                    {r.status !== 'closed' && (
+                      <div>
+                        <textarea className="input min-h-16" value={msgDraft}
+                          placeholder="例：已叫料，零件到貨後到班上更換"
+                          onChange={e => setMsgDraft(e.target.value)} />
+                        <div className="mt-1.5 flex justify-end">
+                          <button className="btn-secondary" disabled={!msgDraft.trim()}
+                            onClick={() => sendCaseMessage(r.id, msgDraft, () => setMsgDraft(''))}>
+                            送出留言
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* 狀態推進 */}
                   {r.status !== 'closed' && (
@@ -441,7 +477,7 @@ export default function RepairCasesClient() {
 
             {kioskCases.map(r => {
               const level = slaLevel(r.created_at, r.status, data.config, now)
-              const noteDraftValue = kioskNoteDrafts[r.id] ?? r.admin_note
+              const kioskDraft = kioskMsgDrafts[r.id] ?? ''
               return (
                 <div key={r.id} className="rounded-md bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
@@ -469,21 +505,30 @@ export default function RepairCasesClient() {
                       <option value="processing">處理中</option>
                       <option value="closed">已結案</option>
                     </select>
-                    <div className="min-w-56 flex-1">
+                    <div className="min-w-56 flex-1 space-y-1.5">
+                      {r.messages.map(m => (
+                        <div key={m.id} className={`rounded border border-zinc-200 p-2 ${m.is_admin ? 'bg-zinc-50' : ''}`}>
+                          <p className="text-xs text-zinc-500">
+                            {m.is_admin ? '🛠 ' : ''}{m.author_name}
+                            <span className="ml-2">{timeText(m.created_at)}</span>
+                          </p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-800">{m.body}</p>
+                        </div>
+                      ))}
                       <textarea
                         className="input min-h-14 w-full"
-                        placeholder="填寫處理說明（報修老師看得到）"
-                        value={noteDraftValue}
-                        onChange={e => setKioskNoteDrafts(d => ({ ...d, [r.id]: e.target.value }))}
+                        placeholder="留言給報修老師（例：已到現場檢查，需要更換零件）"
+                        value={kioskDraft}
+                        onChange={e => setKioskMsgDrafts(d => ({ ...d, [r.id]: e.target.value }))}
                       />
-                      <div className="mt-1 flex justify-end">
+                      <div className="flex justify-end">
                         <button
                           className="btn-secondary !px-3 !py-1"
-                          disabled={noteDraftValue === r.admin_note}
-                          onClick={() => act(r.id, { action: 'note', admin_note: noteDraftValue }, '說明已儲存')
-                            .then(() => setKioskNoteDrafts(d => { const { [r.id]: _drop, ...rest } = d; return rest }))}
+                          disabled={!kioskDraft.trim()}
+                          onClick={() => sendCaseMessage(r.id, kioskDraft,
+                            () => setKioskMsgDrafts(d => { const { [r.id]: _drop, ...rest } = d; return rest }))}
                         >
-                          儲存說明
+                          送出留言
                         </button>
                       </div>
                     </div>
