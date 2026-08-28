@@ -4,12 +4,20 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
 import { isDateStr } from '@/lib/overtime'
 
+/** 金額容錯：全形數字轉半形、去逗號與空白（前端已清過，這裡再保險一次） */
+function parseMoney(v: unknown): number {
+  const cleaned = String(v ?? 0)
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[,，\s]/g, '')
+  return Math.round(Number(cleaned || 0))
+}
+
 function parsePlan(body: Record<string, unknown>) {
   const name = String(body?.name ?? '').trim()
   const start_date = String(body?.start_date ?? '')
   const end_date = String(body?.end_date ?? '')
-  const rate = Math.round(Number(body?.rate ?? 0))
-  const budget = Math.round(Number(body?.budget ?? 0))
+  const rate = parseMoney(body?.rate)
+  const budget = parseMoney(body?.budget)
   if (!name) return { error: '請填寫計畫經費名稱' }
   if (!isDateStr(start_date) || !isDateStr(end_date)) return { error: '期程日期格式無效' }
   if (end_date < start_date) return { error: '期程結束日不可早於開始日' }

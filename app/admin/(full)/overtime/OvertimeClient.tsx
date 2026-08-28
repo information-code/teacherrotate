@@ -25,9 +25,26 @@ async function call(path: string, method: string, body?: unknown) {
   return data
 }
 
+/** 金額字串正規化：全形數字轉半形、去逗號與空白 */
+function cleanNumberText(text: string): string {
+  return text
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[,，\s]/g, '')
+}
+
 function parseIntOr(text: string, fallback: number): number {
-  const n = Number(text.trim())
+  const cleaned = cleanNumberText(text)
+  if (!cleaned) return fallback
+  const n = Number(cleaned)
   return Number.isFinite(n) ? Math.round(n) : fallback
+}
+
+/** 嚴格版：空字串＝0，內容無法解析回傳 null（呼叫端提示錯誤，不靜默歸零） */
+function parseIntStrict(text: string): number | null {
+  const cleaned = cleanNumberText(text)
+  if (!cleaned) return 0
+  const n = Number(cleaned)
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null
 }
 
 const todayStr = () => {
@@ -103,13 +120,17 @@ export default function OvertimeClient({
   const savePlan = async () => {
     if (!planDraft) return
     const isCreate = !planDraft.id
+    const rate = parseIntStrict(planDraft.rateText)
+    const budget = parseIntStrict(planDraft.budgetText)
+    if (rate === null) { flash('節薪請輸入數字'); return }
+    if (budget === null) { flash('總預算請輸入數字'); return }
     const payload = {
       id: planDraft.id || undefined,
       name: planDraft.name.trim(),
       start_date: planDraft.start_date,
       end_date: planDraft.end_date,
-      rate: parseIntOr(planDraft.rateText, 0),
-      budget: parseIntOr(planDraft.budgetText, 0),
+      rate,
+      budget,
     }
     await runBusy('儲存計畫中…', async () => {
       const data = await call('/api/admin/overtime/plans', isCreate ? 'POST' : 'PUT', payload)

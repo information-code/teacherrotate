@@ -5,7 +5,10 @@ import { requirePerms } from '@/lib/staff-server'
 import { OT_CATEGORIES, normalizeRanges } from '@/lib/overtime'
 
 const parseFee = (v: unknown) => {
-  const n = Math.round(Number(v ?? 0))
+  const cleaned = String(v ?? 0)
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[,，\s]/g, '')
+  const n = Math.round(Number(cleaned || 0))
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
