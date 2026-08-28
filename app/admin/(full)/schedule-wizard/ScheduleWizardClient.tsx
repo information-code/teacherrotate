@@ -854,7 +854,13 @@ ${head}確定撤回？`)) return
             🗂 版本紀錄{verBadge()}
           </button>
         )}
-        {planStatus === 'published' || planStatus === 'final' ? (
+        {planStatus === 'final' ? (
+          <span className="text-xs text-zinc-600">
+            <b className="text-zinc-800">全校課表已發布</b>——全校老師都看得到、也能下載（唯讀），導師填課階段已結束。
+            你仍然可以調課，<b className="text-amber-700">但改完全校立刻就是新的</b>（老師重新整理後看到），不再有緩衝期。
+            要回到導師填課階段，按「年級總覽」那一排的 <b>↩ 收回全校課表</b>。
+          </span>
+        ) : planStatus === 'published' ? (
           <span className="text-xs text-amber-600">
             已發布導師排課，科任課凍結——導師正在教師端填自己班的課；<b>此階段課表尚未對全校公開</b>。下面三顆按鈕是三個方向：<b>← 撤回發布</b>回草稿重排、<b>收回導師填課</b>暫停填課讓你調課、<b>發布全校課表 →</b>對全校公開。
           </span>
