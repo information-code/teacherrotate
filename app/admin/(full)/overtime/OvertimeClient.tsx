@@ -2,7 +2,7 @@
 
 // 超鐘簽到：儀表板／經費來源／教師清冊／不上課時段／生成簽到表 五個 TAB。
 // 減課節數＝計畫期程內符合星期的日子，扣掉國定假日（holidays）與特殊不上課日。
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
   OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
@@ -74,10 +74,13 @@ export default function OvertimeClient({
   const [tab, setTab] = useState<'dashboard' | 'plans' | 'roster' | 'skips' | 'export'>('dashboard')
   const [planId, setPlanId] = useState<string>(initialPlans[0]?.id ?? '')
 
-  const [message, setMessage] = useState('')
-  const flash = (text: string) => {
-    setMessage(text)
-    setTimeout(() => setMessage(''), 4000)
+  // 訊息：一般訊息 4 秒自動消失；錯誤改紅色橫幅常駐（手動關），避免存檔失敗沒被看到
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+  const flashSeq = useRef(0)
+  const flash = (text: string, error = false) => {
+    const id = ++flashSeq.current
+    setMessage({ text, error })
+    if (!error) setTimeout(() => { if (flashSeq.current === id) setMessage(null) }, 4000)
   }
   const [busy, setBusy] = useState('')
   const runBusy = async (msg: string, fn: () => Promise<void>) => {
@@ -85,7 +88,7 @@ export default function OvertimeClient({
     try {
       await fn()
     } catch (e) {
-      flash(e instanceof Error ? e.message : '操作失敗')
+      flash(`儲存失敗：${e instanceof Error ? e.message : '操作失敗'}`, true)
     } finally {
       setBusy('')
     }
@@ -122,8 +125,8 @@ export default function OvertimeClient({
     const isCreate = !planDraft.id
     const rate = parseIntStrict(planDraft.rateText)
     const budget = parseIntStrict(planDraft.budgetText)
-    if (rate === null) { flash('節薪請輸入數字'); return }
-    if (budget === null) { flash('總預算請輸入數字'); return }
+    if (rate === null) { flash('節薪請輸入數字', true); return }
+    if (budget === null) { flash('總預算請輸入數字', true); return }
     const payload = {
       id: planDraft.id || undefined,
       name: planDraft.name.trim(),
@@ -319,8 +322,16 @@ export default function OvertimeClient({
       {busy && <BusyOverlay text={busy} />}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-zinc-900">超鐘簽到</h1>
-        {message && <span className="text-sm text-zinc-600" aria-live="polite">{message}</span>}
+        {message && !message.error && (
+          <span className="text-sm text-zinc-600" aria-live="polite">{message.text}</span>
+        )}
       </div>
+      {message?.error && (
+        <div className="flex items-start justify-between gap-3 border border-red-300 bg-red-50 text-red-700 text-sm rounded px-3 py-2" role="alert">
+          <span>{message.text}</span>
+          <button className="text-red-400 hover:text-red-700 flex-shrink-0" onClick={() => setMessage(null)} aria-label="關閉">✕</button>
+        </div>
+      )}
 
       <div className="flex border-b border-zinc-200 overflow-x-auto">
         {([
