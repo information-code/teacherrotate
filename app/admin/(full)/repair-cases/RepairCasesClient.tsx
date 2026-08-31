@@ -235,14 +235,22 @@ export default function RepairCasesClient() {
     .filter(r => r.status !== 'closed')
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
+  /** 結案：報修結案(fixed) / 老師自行解決(self)——老師沒自己按時由管理端代記，統計才準 */
+  const closeCase = (r: ReportRow, kind: string) => {
+    if (kind !== 'fixed' && kind !== 'self') return
+    const label = kind === 'self' ? '老師自行解決' : '報修結案'
+    if (confirm(`確定以「${label}」結案？教師端會顯示已結案。`)) {
+      void act(r.id, { action: 'close', resolved_kind: kind }, '已結案')
+    }
+  }
+
   /** 看板的狀態下拉：選了就推進（單向；結案需確認） */
   const kioskChangeStatus = (r: ReportRow, next: string) => {
     if (next === r.status) return
     if (next === 'accepted') void act(r.id, { action: 'accept' }, '已接案')
     else if (next === 'processing') void act(r.id, { action: 'process' }, '已轉為處理中')
-    else if (next === 'closed') {
-      if (confirm('確定結案？教師端會顯示已結案。')) void act(r.id, { action: 'close' }, '已結案')
-    }
+    else if (next === 'closed:fixed') closeCase(r, 'fixed')
+    else if (next === 'closed:self') closeCase(r, 'self')
   }
 
   return (
@@ -436,10 +444,15 @@ export default function RepairCasesClient() {
                           開始處理
                         </button>
                       )}
-                      <button className="btn-primary"
-                        onClick={() => { if (confirm('確定結案？教師端會顯示已結案。')) void act(r.id, { action: 'close' }, '已結案') }}>
-                        結案
-                      </button>
+                      <select
+                        className="input !w-44"
+                        value=""
+                        onChange={e => closeCase(r, e.target.value)}
+                      >
+                        <option value="">結案…</option>
+                        <option value="fixed">報修結案（已修復）</option>
+                        <option value="self">老師自行解決</option>
+                      </select>
                     </div>
                   )}
                 </div>
@@ -503,7 +516,8 @@ export default function RepairCasesClient() {
                       <option value="pending" disabled={r.status !== 'pending'}>通報中</option>
                       <option value="accepted" disabled={r.status !== 'pending' && r.status !== 'accepted'}>已接案</option>
                       <option value="processing">處理中</option>
-                      <option value="closed">已結案</option>
+                      <option value="closed:fixed">已結案（已修復）</option>
+                      <option value="closed:self">已結案（老師自行解決）</option>
                     </select>
                     <div className="min-w-56 flex-1 space-y-1.5">
                       {r.messages.map(m => (

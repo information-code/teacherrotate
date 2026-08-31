@@ -78,7 +78,7 @@ export async function GET() {
  * 案件操作。body: { id, action, ... }
  * - accept：接案（通報中→已接案）
  * - process：開始處理（通報中/已接案→處理中，時間戳存 dispatched_at）
- * - close：結案（未結案→已結案，resolved_kind 補 'fixed'）
+ * - close：結案（未結案→已結案）{ resolved_kind?: 'fixed' | 'self' }，未指定補 'fixed'
  * - message：在案件留言（維護方）{ body }，未結案才能發言
  * - classify：歸類 { item_id, issue_id }（更新 id 與名稱快照，custom_issue 原文保留）
  * - new-issue：把自由描述升級成新標準問題 { item_id, name } 並歸類本案
@@ -113,7 +113,10 @@ export async function PUT(request: NextRequest) {
   } else if (action === 'close') {
     if (report.status === 'closed') return NextResponse.json({ error: '案件已結案' }, { status: 400 })
     patch.status = 'closed'
-    patch.resolved_kind = report.resolved_kind ?? 'fixed'
+    // 結案方式：報修結案(fixed) / 老師自行解決(self)；未指定沿用既有或 fixed
+    const kind = body?.resolved_kind
+    patch.resolved_kind = kind === 'fixed' || kind === 'self' || kind === 'vanished'
+      ? kind : (report.resolved_kind ?? 'fixed')
     patch.closed_at = now
     patch.closed_by = auth.user.id
   } else if (action === 'message') {
