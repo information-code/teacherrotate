@@ -107,7 +107,10 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       if (cur && rank[cur.kind] <= rank[kind]) return
       m.set(id, { id, name: name || teacherNames[id] || '？', kind, note: note || cur?.note || '' })
     }
-    for (const [ck, tid] of Object.entries(classTeacher)) add(tid, teacherNames[tid] ?? '', 'hr', labelOf(ck))
+    for (const [ck, tid] of Object.entries(classTeacher)) {
+      const [g2, i2] = ck.split('-').map(Number)
+      add(tid, teacherNames[tid] ?? '', 'hr', classLabel(g2, i2))
+    }
     for (const p of placed) add(p.teacherId, p.teacherName, 'subject')
     for (const c of nativeClassCells) add(c.teacherId, teacherNames[c.teacherId] ?? '', 'native', '本土語')
     for (const s2 of nativeSessions) add(s2.teacherId, s2.teacherName, 'native', s2.lang)
