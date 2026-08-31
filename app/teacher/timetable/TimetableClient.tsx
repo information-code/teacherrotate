@@ -18,6 +18,7 @@ interface Props {
   roomNames: Record<string, string>
   nativeSessions: NativeSessionView[]
   nativeClassCells: { classKey: string; slot: string; teacherId: string }[]
+  teacherNames: Record<string, string>   // 全校教師姓名（下拉要列導師與本土語老師，他們不在 placed 裡）
   planStatus: string
   // 下載整份課表用（匯出程式較重，按下才動態載入）
   exportArgs: {
@@ -35,7 +36,7 @@ interface Props {
 type View = 'class' | 'teacher' | 'room'
 
 /** 教師端課表：全員可看所有課表；預設進入看自己的（導師→自己班、科任→自己）。 */
-export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, planStatus, exportArgs, updatedAt }: Props) {
+export default function TimetableClient({ year, userId, myClassKey, placed, homeroomCells, classTeacher, bands, locks, roomNames, nativeSessions, nativeClassCells, teacherNames, planStatus, exportArgs, updatedAt }: Props) {
   // 導師還在填自己班的課：內容會變動，這裡看到的是進度而不是定案
   const filling = planStatus === 'published'
   const [dlOpen, setDlOpen] = useState(false)
@@ -92,11 +93,36 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
       return ag - bg || ai - bi
     })
   }, [placed, classTeacher])
+  // 教師清單原本只從 placed（課表上的科任課）來，於是導師一個都不在裡面——
+  // 導師自己的課存在 homeroomCells，本土語老師存在鎖課與推導場次，三者都不進 placed。
+  // 選得到之後畫得出來（下面的檢視本來就吃這三種來源），缺的只是名字進清單。
   const teachers = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const p of placed) m.set(p.teacherId, p.teacherName)
-    return Array.from(m.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
-  }, [placed])
+    type Kind = 'hr' | 'subject' | 'native'
+    const m = new Map<string, { id: string; name: string; kind: Kind; note: string }>()
+    const add = (id: string, name: string, kind: Kind, note = '') => {
+      if (!id) return
+      const cur = m.get(id)
+      // 一人多重身分時以「導師 → 科任 → 本土語」為準，只出現一次
+      const rank = { hr: 0, subject: 1, native: 2 }
+      if (cur && rank[cur.kind] <= rank[kind]) return
+      m.set(id, { id, name: name || teacherNames[id] || '？', kind, note: note || cur?.note || '' })
+    }
+    for (const [ck, tid] of Object.entries(classTeacher)) add(tid, teacherNames[tid] ?? '', 'hr', labelOf(ck))
+    for (const p of placed) add(p.teacherId, p.teacherName, 'subject')
+    for (const c of nativeClassCells) add(c.teacherId, teacherNames[c.teacherId] ?? '', 'native', '本土語')
+    for (const s2 of nativeSessions) add(s2.teacherId, s2.teacherName, 'native', s2.lang)
+    return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
+  }, [placed, classTeacher, nativeClassCells, nativeSessions, teacherNames])
+  const [teacherQ, setTeacherQ] = useState('')
+  const teacherGroups = useMemo(() => {
+    const q = teacherQ.trim()
+    const hit = (t: { name: string; note: string }) => !q || t.name.includes(q) || t.note.includes(q)
+    return [
+      { label: '導師', list: teachers.filter(t => t.kind === 'hr' && hit(t)) },
+      { label: '科任／行政', list: teachers.filter(t => t.kind === 'subject' && hit(t)) },
+      { label: '本土語', list: teachers.filter(t => t.kind === 'native' && hit(t)) },
+    ].filter(g => g.list.length > 0)
+  }, [teachers, teacherQ])
   // 外師（協同）：另列一群
   const foreignList = useMemo(() => {
     const m = new Map<string, string>()
@@ -266,15 +292,29 @@ export default function TimetableClient({ year, userId, myClassKey, placed, home
           </select>
         )}
         {view === 'teacher' && (
-          <select value={teacherSel} onChange={e => setTeacherSel(e.target.value)} className="input py-1 text-sm w-40 ml-auto">
-            <option value="">選擇教師…</option>
-            {teachers.map(t => <option key={t.id} value={t.id}>{t.name}{t.id === userId ? '（我）' : ''}</option>)}
-            {foreignList.length > 0 && (
-              <optgroup label="外師（協同）">
-                {foreignList.map(t => <option key={t.id} value={t.id}>★{t.name}{t.id === userId ? '（我）' : ''}</option>)}
-              </optgroup>
-            )}
-          </select>
+          <div className="flex items-center gap-1 ml-auto">
+            {/* 全校近 140 位老師，捲到底找人太慢——打兩個字先篩掉 */}
+            <input value={teacherQ} onChange={e => setTeacherQ(e.target.value)} placeholder="搜尋姓名"
+              className="input py-1 text-sm w-24" />
+            <select value={teacherSel} onChange={e => setTeacherSel(e.target.value)} className="input py-1 text-sm w-40">
+              <option value="">選擇教師…</option>
+              {teacherGroups.map(gp => (
+                <optgroup key={gp.label} label={gp.label}>
+                  {gp.list.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.id === userId ? '（我）' : t.note ? `（${t.note}）` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {foreignList.filter(t => !teacherQ.trim() || t.name.includes(teacherQ.trim())).length > 0 && (
+                <optgroup label="外師（協同）">
+                  {foreignList.filter(t => !teacherQ.trim() || t.name.includes(teacherQ.trim())).map(t =>
+                    <option key={t.id} value={t.id}>★{t.name}{t.id === userId ? '（我）' : ''}</option>)}
+                </optgroup>
+              )}
+            </select>
+          </div>
         )}
         {view === 'room' && (
           <select value={roomSel} onChange={e => setRoomSel(e.target.value)} className="input py-1 text-sm w-40 ml-auto">

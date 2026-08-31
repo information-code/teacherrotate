@@ -143,6 +143,7 @@ export default async function TimetablePage() {
       roomNames={roomNames}
       nativeSessions={nativeSessions}
       nativeClassCells={nativeClassCells}
+      teacherNames={nameOf}
       planStatus={plan.status}
       exportArgs={{ config, classCounts, homeroomLocks, rooms: roomsFromConfig(config), teacherNames: nameOf, nativeSessions: derived.sessions, nativeRoomNames: roomNames }}
       updatedAt={String((plan as { finalizedAt?: string }).finalizedAt ?? '') || null}
