@@ -128,6 +128,14 @@ export default function RepairCasesClient() {
 
   useEffect(() => { void load() }, [])
 
+  // 網址帶 ?filter=unclassified（統計頁的未歸類提醒連過來）→ 直接切到未歸類篩選
+  useEffect(() => {
+    try {
+      const f = new URLSearchParams(window.location.search).get('filter')
+      if (f === 'unclassified') setStatusFilter('unclassified')
+    } catch {}
+  }, [])
+
   // 重新整理後若看板密碼還在，直接回到鎖定狀態
   useEffect(() => {
     try { if (localStorage.getItem('repairKioskPw')) setKiosk(true) } catch {}
@@ -146,7 +154,9 @@ export default function RepairCasesClient() {
   const keyword = search.trim().toLowerCase()
   const filtered = data.reports.filter(r => {
     if (statusFilter === 'open' && r.status === 'closed') return false
-    if (statusFilter !== 'open' && statusFilter !== 'all' && r.status !== statusFilter) return false
+    // 未歸類：不分狀態（已結案的也要能歸類，統計才算得進去）
+    if (statusFilter === 'unclassified' && r.issue_id) return false
+    if (!['open', 'all', 'unclassified'].includes(statusFilter) && r.status !== statusFilter) return false
     if (itemFilter && r.item_id !== itemFilter) return false
     if (keyword) {
       const hay = [r.teacher_name, r.item_name, r.issue_name, r.custom_issue, r.location,
@@ -266,6 +276,7 @@ export default function RepairCasesClient() {
         <select className="input !w-36" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="open">未結案</option>
           <option value="all">全部</option>
+          <option value="unclassified">未歸類（含已結案）</option>
           {REPAIR_STATUSES.map(s => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}

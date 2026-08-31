@@ -63,7 +63,7 @@ export default function RepairStatsClient() {
           <p className="text-sm text-zinc-700">
             有 <span className="font-semibold">{stats.unclassified}</span> 件自由描述的案件尚未歸類，
             未歸類的案件不會計入問題排行——請到
-            <Link href="/admin/repair-cases" className="mx-1 underline">案件報表</Link>
+            <Link href="/admin/repair-cases?filter=unclassified" className="mx-1 underline">案件報表</Link>
             歸類。
           </p>
         </div>
