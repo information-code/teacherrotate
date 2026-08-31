@@ -5,6 +5,8 @@ import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
+  LOAN_STATUS_LABEL,
+  addDays,
   loanDueDate,
   loanTimeText,
   overdueDays,
@@ -46,15 +48,17 @@ export default function EquipmentManageClient({
   groups,
   teachers,
   overdueTemplate,
+  pickupTemplate,
   renewalWeeks,
 }: {
   equipment: EquipmentOption[]
   groups: GroupOption[]
   teachers: TeacherOption[]
   overdueTemplate: string
+  pickupTemplate: string
   renewalWeeks: number
 }) {
-  const [tab, setTab] = useState<'overview' | 'short' | 'long' | 'stats'>('overview')
+  const [tab, setTab] = useState<'dashboard' | 'overview' | 'short' | 'long' | 'stats'>('dashboard')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState('')
 
@@ -79,6 +83,12 @@ export default function EquipmentManageClient({
     flash('通知訊息已複製，可貼到 LINE。')
   }
 
+  const copyPickupMessage = async (vars: { teacher: string; equipment: string; date: string; periods: string }) => {
+    const text = renderOverdueMessage(pickupTemplate, vars)
+    await navigator.clipboard.writeText(text)
+    flash('提醒訊息已複製，可貼到 LINE。')
+  }
+
   return (
     <div className="space-y-4 max-w-5xl">
       <div className="flex items-center justify-between">
@@ -87,7 +97,7 @@ export default function EquipmentManageClient({
       </div>
 
       <div className="flex border-b border-zinc-200">
-        {([['overview', '設備總覽'], ['short', '短期借用'], ['long', '長期借用'], ['stats', '逾期統計']] as const).map(([key, label]) => (
+        {([['dashboard', '設備儀表板'], ['overview', '設備總覽'], ['short', '短期借用'], ['long', '長期借用'], ['stats', '逾期統計']] as const).map(([key, label]) => (
           <button
             key={key}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -104,6 +114,7 @@ export default function EquipmentManageClient({
 
       {busy && <BusyOverlay text={busy} />}
 
+      {tab === 'dashboard' && <DashboardTab onCopyOverdue={copyOverdueMessage} onCopyPickup={copyPickupMessage} />}
       {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} runBusy={runBusy} />}
       {tab === 'short' && <LogTab />}
       {tab === 'long' && (
@@ -1215,6 +1226,186 @@ function StatsTab() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ---------- 設備儀表板 ----------
+
+interface DashboardLoan {
+  id: string
+  status: string
+  teacher_name: string
+  equipment_label: string
+  loan_date: string
+  end_date: string | null
+  start_period: string | null
+  end_period: string | null
+  periods: string[]
+  borrowed_at: string | null
+  returned_at: string | null
+}
+
+interface DashboardData {
+  date: string
+  today: string
+  notPickedUp: DashboardLoan[]
+  notReturned: DashboardLoan[]
+  reservedOn: DashboardLoan[]
+  borrowedOn: DashboardLoan[]
+  returnedOn: DashboardLoan[]
+}
+
+type MessageVars = { teacher: string; equipment: string; date: string; periods: string }
+
+function clockText(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function daysDiff(from: string, to: string): number {
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86400000)
+}
+
+function DashboardLoanLine({ l, tag, right }: { l: DashboardLoan; tag?: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded border border-zinc-200 px-3 py-2 text-sm">
+      <span className="min-w-0">
+        <span className="font-medium text-zinc-800">{l.teacher_name}</span>
+        <span className="text-zinc-600">｜{l.equipment_label}</span>
+        <span className="text-zinc-500">｜{loanTimeText(l)}</span>
+        {tag}
+      </span>
+      {right && <span className="flex shrink-0 gap-2">{right}</span>}
+    </div>
+  )
+}
+
+/** 每日動態：誰預約／取用／歸還；預約沒按借用、借用沒歸還附 LINE 提醒 */
+function DashboardTab({ onCopyOverdue, onCopyPickup }: {
+  onCopyOverdue: (vars: MessageVars) => Promise<void>
+  onCopyPickup: (vars: MessageVars) => Promise<void>
+}) {
+  const [date, setDate] = useState(todayStr())
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setData(null)
+    setError('')
+    fetch(`/api/admin/equipment-dashboard?date=${date}`).then(async res => {
+      const json = await res.json()
+      if (cancelled) return
+      if (!res.ok) setError(json.error || '載入失敗')
+      else setData(json)
+    })
+    return () => { cancelled = true }
+  }, [date])
+
+  const msgVars = (l: DashboardLoan): MessageVars => ({
+    teacher: l.teacher_name,
+    equipment: l.equipment_label,
+    date: loanDueDate(l) === l.loan_date ? l.loan_date : `${l.loan_date}～${loanDueDate(l)}`,
+    periods: loanDueDate(l) === l.loan_date ? periodsText(l.periods) : '',
+  })
+
+  return (
+    <div className="space-y-4">
+      {/* 日期選擇 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn-secondary !px-3" onClick={() => setDate(d => addDays(d, -1))}>‹ 前一天</button>
+        <input type="date" className="input !w-44" value={date} onChange={e => e.target.value && setDate(e.target.value)} />
+        <button className="btn-secondary !px-3" onClick={() => setDate(d => addDays(d, 1))}>後一天 ›</button>
+        {date !== todayStr() && (
+          <button className="btn-secondary !px-3" onClick={() => setDate(todayStr())}>回到今天</button>
+        )}
+      </div>
+
+      {error && <div className="card"><p className="text-sm text-red-600">{error}</p></div>}
+      {!error && !data && <div className="card"><p className="text-sm text-zinc-500">載入中…</p></div>}
+
+      {data && (
+        <>
+          {/* 預約未按借用 */}
+          <div className="card space-y-2">
+            <h2 className="font-medium text-zinc-900">
+              預約未按借用
+              <span className={`ml-2 rounded px-2 py-0.5 text-xs ${data.notPickedUp.length ? 'bg-orange-100 text-orange-800' : 'bg-zinc-100 text-zinc-500'}`}>
+                {data.notPickedUp.length} 件
+              </span>
+            </h2>
+            <p className="text-sm text-zinc-500">
+              預約日已到但還停在「已預約」——多半是拿了沒按「開始借用」。當天時段還沒到的可先不理。
+            </p>
+            {data.notPickedUp.length === 0 && <p className="text-sm text-zinc-400">沒有。</p>}
+            {data.notPickedUp.map(l => {
+              const past = daysDiff(l.loan_date, data.date)
+              return (
+                <DashboardLoanLine key={l.id} l={l}
+                  tag={past > 0
+                    ? <span className="badge-warn ml-2">已過 {past} 天</span>
+                    : <span className="badge-default ml-2">當天</span>}
+                  right={<button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyPickup(msgVars(l))}>複製提醒</button>}
+                />
+              )
+            })}
+          </div>
+
+          {/* 借用未歸還 */}
+          <div className="card space-y-2">
+            <h2 className="font-medium text-zinc-900">
+              借用未歸還
+              <span className={`ml-2 rounded px-2 py-0.5 text-xs ${data.notReturned.length ? 'bg-red-100 text-red-800' : 'bg-zinc-100 text-zinc-500'}`}>
+                {data.notReturned.length} 件
+              </span>
+            </h2>
+            <p className="text-sm text-zinc-500">借用中且到期日已到：當天到期的提醒老師記得還，已逾期的複製通知催還。</p>
+            {data.notReturned.length === 0 && <p className="text-sm text-zinc-400">沒有。</p>}
+            {data.notReturned.map(l => {
+              const over = daysDiff(loanDueDate(l), data.date)
+              return (
+                <DashboardLoanLine key={l.id} l={l}
+                  tag={over > 0
+                    ? <span className="badge-warn ml-2">逾期 {over} 天</span>
+                    : <span className="badge-default ml-2">今天到期</span>}
+                  right={<button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyOverdue(msgVars(l))}>複製通知</button>}
+                />
+              )
+            })}
+          </div>
+
+          {/* 當天動態 */}
+          <div className="card space-y-3">
+            <h2 className="font-medium text-zinc-900">{data.date} 動態</h2>
+
+            <div className="space-y-1.5">
+              <p className="text-sm text-zinc-600">預約占用（{data.reservedOn.length}）</p>
+              {data.reservedOn.length === 0 && <p className="text-sm text-zinc-400">這天沒有預約。</p>}
+              {data.reservedOn.map(l => (
+                <DashboardLoanLine key={l.id} l={l}
+                  tag={<span className="badge-default ml-2">{LOAN_STATUS_LABEL[l.status] ?? l.status}</span>} />
+              ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-sm text-zinc-600">按了開始借用（{data.borrowedOn.length}）</p>
+              {data.borrowedOn.length === 0 && <p className="text-sm text-zinc-400">這天沒有人按借用。</p>}
+              {data.borrowedOn.map(l => (
+                <DashboardLoanLine key={l.id} l={l} tag={<span className="ml-2 text-xs text-zinc-500">{clockText(l.borrowed_at)} 取用</span>} />
+              ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-sm text-zinc-600">按了歸還（{data.returnedOn.length}）</p>
+              {data.returnedOn.length === 0 && <p className="text-sm text-zinc-400">這天沒有人按歸還。</p>}
+              {data.returnedOn.map(l => (
+                <DashboardLoanLine key={l.id} l={l} tag={<span className="ml-2 text-xs text-zinc-500">{clockText(l.returned_at)} 歸還</span>} />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

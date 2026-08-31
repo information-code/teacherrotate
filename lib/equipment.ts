@@ -54,6 +54,8 @@ export interface EquipmentConfig {
   }
   /** 逾期通知模板，支援 {老師} {設備} {日期} {時段} 變數 */
   overdueMessageTemplate: string
+  /** 預約未按借用的提醒模板（變數同上） */
+  pickupMessageTemplate: string
   /** 續借週期（週） */
   renewalWeeks: number
   /** 到期前幾天開始顯示續借回傳按鈕 */
@@ -81,6 +83,9 @@ export const DEFAULT_EQUIPMENT_CONFIG: EquipmentConfig = {
   overdueMessageTemplate:
     '{老師}老師您好，提醒您於{日期}{時段}借用的「{設備}」尚未完成歸還手續，' +
     '請儘速至系統辦理歸還並將設備歸回原位，謝謝您。',
+  pickupMessageTemplate:
+    '{老師}老師您好，您於{日期}{時段}預約的「{設備}」尚未在系統按下「開始借用」，' +
+    '若已取用請至系統補辦借用手續；若不需使用請取消預約釋出時段，謝謝您。',
   renewalWeeks: 20,
   renewalNoticeDays: 7,
   maxAdvanceDays: 14,

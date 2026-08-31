@@ -26,6 +26,7 @@ export default async function EquipmentManagePage() {
       groups={(groups ?? []).map(g => ({ ...g, member_count: memberCount.get(g.id) ?? 0 }))}
       teachers={(profiles ?? []).map(p => ({ id: p.id, name: p.name ?? p.email }))}
       overdueTemplate={config.overdueMessageTemplate}
+      pickupTemplate={config.pickupMessageTemplate}
       renewalWeeks={config.renewalWeeks}
     />
   )

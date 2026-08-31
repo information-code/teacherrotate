@@ -26,6 +26,7 @@ export default function DemoAdmin() {
         groups={groups}
         teachers={teachers}
         overdueTemplate="{老師}老師您好，提醒您歸還{設備}。"
+        pickupTemplate="{老師}老師您好，您於{日期}{時段}預約的「{設備}」尚未按下開始借用，請至系統補辦手續。"
         renewalWeeks={20}
       />
     </main>

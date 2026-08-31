@@ -483,6 +483,15 @@ export default function EquipmentConfigClient({
           value={config.overdueMessageTemplate}
           onChange={e => setConfig(c => ({ ...c, overdueMessageTemplate: e.target.value }))}
         />
+        <h2 className="font-medium text-zinc-900 pt-2">預約未取用提醒訊息模板</h2>
+        <p className="text-sm text-zinc-500">
+          設備儀表板的「預約未按借用」可一鍵複製此訊息，變數同上。
+        </p>
+        <textarea
+          className="input min-h-[80px]"
+          value={config.pickupMessageTemplate}
+          onChange={e => setConfig(c => ({ ...c, pickupMessageTemplate: e.target.value }))}
+        />
       </div>
       )}
 
