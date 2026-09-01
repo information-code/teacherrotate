@@ -1,8 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDropzone } from 'react-dropzone'
+import * as XLSX from 'xlsx'
 import { NumberInput } from '@/components/ui/NumberInput'
+import {
+  EMAIL_HEADER,
+  READONLY_HEADERS,
+  TEACHER_COLUMNS,
+  formatCell,
+} from '@/lib/teacher-io'
 import type { Profile, ExperienceItem } from '@/types/database'
 
 type SpecialtyKey = keyof Pick<Profile,
@@ -62,9 +70,29 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
   const [activeTag, setActiveTag] = useState<SpecialtyKey | null>(null)
   const [selected, setSelected] = useState<Profile | null>(null)
   const [localProfiles, setLocalProfiles] = useState<Profile[]>(profiles)
+  const [importOpen, setImportOpen] = useState(false)
 
   useEffect(() => { router.refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setLocalProfiles(profiles) }, [profiles])
+
+  function handleExport() {
+    const headers = [EMAIL_HEADER, ...TEACHER_COLUMNS.map(c => c.header), ...READONLY_HEADERS]
+    const rows = localProfiles.map(p => {
+      const row: Record<string, string | number> = { [EMAIL_HEADER]: p.email }
+      for (const col of TEACHER_COLUMNS) {
+        row[col.header] = formatCell(col, (p as unknown as Record<string, unknown>)[col.field])
+      }
+      row[READONLY_HEADERS[0]] = kanpuYearsMap[p.id] ?? 0
+      return row
+    })
+    const ws = XLSX.utils.json_to_sheet(rows, { header: headers })
+    ws['!cols'] = headers.map(h => ({ wch: h === EMAIL_HEADER ? 28 : Math.max(8, h.length * 2 + 2) }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '教師名單')
+    const d = new Date()
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+    XLSX.writeFile(wb, `教師名單_${stamp}.xlsx`)
+  }
 
   const filtered = localProfiles
     .filter(p => {
@@ -95,8 +123,13 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
     <div className="flex flex-col md:flex-row h-full -m-3 md:-m-6 overflow-hidden">
       {/* 左側：搜尋 + 名單（手機改為上方、限高可捲動） */}
       <div className="w-full md:w-72 flex-shrink-0 max-h-60 md:max-h-none border-b md:border-r border-zinc-200 flex flex-col bg-white print:hidden">
+        {/* 批次作業 */}
+        <div className="px-3 pt-3 flex gap-2">
+          <button onClick={handleExport} className="btn-secondary text-xs flex-1 py-1">⬇ 匯出名單</button>
+          <button onClick={() => setImportOpen(true)} className="btn-secondary text-xs flex-1 py-1">⬆ 批次匯入</button>
+        </div>
         {/* 搜尋 */}
-        <div className="px-3 pt-3 pb-2">
+        <div className="px-3 pt-2 pb-2">
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -204,6 +237,231 @@ export default function TeachersClient({ profiles, kanpuYearsMap }: Props) {
               return true
             }}
           />
+        )}
+      </div>
+
+      {importOpen && (
+        <ImportModal
+          onClose={() => setImportOpen(false)}
+          onDone={() => { setImportOpen(false); setSelected(null); router.refresh() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 批次匯入：解析 xlsx → 預覽差異 → 確認寫入
+// ─────────────────────────────────────────────────────────────
+
+interface ChangeRow { header: string; from: string; to: string }
+interface Preview {
+  recognizedColumns: string[]
+  ignoredColumns: string[]
+  updates: { id: string; email: string; name: string | null; changes: ChangeRow[] }[]
+  creates: { email: string; name: string | null }[]
+  unchanged: number
+  errors: string[]
+}
+
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [fileName, setFileName] = useState('')
+  const [preview, setPreview] = useState<Preview | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  const onDrop = useCallback(async (files: File[]) => {
+    const file = files[0]
+    if (!file) return
+    setError(''); setPreview(null); setResult(null); setBusy(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      // defval:'' → 空白格也會產生鍵，才分得出「這欄沒出現」和「這欄留白」
+      const parsed = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        wb.Sheets[wb.SheetNames[0]], { defval: '' }
+      )
+      if (parsed.length === 0) { setError('檔案沒有資料列'); return }
+      setRows(parsed)
+      setFileName(file.name)
+      const res = await fetch('/api/admin/teacher-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: parsed, commit: false }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? '解析失敗'); return }
+      setPreview(data)
+    } catch {
+      setError('檔案解析失敗，請確認為正確的 .xlsx 格式')
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+    maxFiles: 1,
+  })
+
+  async function handleCommit() {
+    if (!preview) return
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/admin/teacher-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows, commit: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? '匯入失敗'); return }
+      const parts = [`更新 ${data.updated} 位`, `新增 ${data.created} 位`, `未變更 ${data.unchanged} 位`]
+      setResult(parts.join('、'))
+      setPreview(null)
+      if ((data.failed ?? []).length > 0) setError((data.failed as string[]).join('\n'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nothingToDo = preview && preview.updates.length === 0 && preview.creates.length === 0
+  const blocked = !!preview && preview.errors.length > 0
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={() => !busy && onClose()}
+    >
+      <div className="card w-full max-w-3xl my-8 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold">批次匯入教師資料</h2>
+          <button onClick={onClose} disabled={busy} className="text-sm text-zinc-400 hover:text-zinc-700">關閉</button>
+        </div>
+
+        <div className="text-xs text-zinc-500 space-y-1 border border-zinc-200 bg-zinc-50 px-3 py-2">
+          <p>請先按「⬇ 匯出名單」下載現有資料，改完再上傳同一份檔案。</p>
+          <p><code>{EMAIL_HEADER}</code> 是比對鍵，<strong>請勿修改</strong>；要改 email 請到「白名單」頁。</p>
+          <p>標題列<strong>沒有</strong>的欄位一律不動；有這欄但格子<strong>留白</strong>＝清空（勾選欄變未勾、年資變 0）。所以只想改幾欄時，可以只留 <code>{EMAIL_HEADER}</code> 和那幾欄。</p>
+          <p>「在校狀態」填<strong>離校</strong>即可批次設定離校；系統裡沒有的 email 會列為新增，確認後才建立帳號。</p>
+          <p>從檔案裡<strong>刪掉某一列不會刪帳號</strong>，只是那個人這次不處理；要讓人消失請填「離校」。</p>
+        </div>
+
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded-sm p-6 text-center cursor-pointer transition-colors ${
+            isDragActive ? 'border-zinc-500 bg-zinc-50' : 'border-zinc-300 hover:border-zinc-400'
+          }`}
+        >
+          <input {...getInputProps()} />
+          <p className="text-sm text-zinc-500">
+            {fileName ? `已選擇：${fileName}（點擊可重新選擇）` : '拖放 .xlsx 檔案至此，或點擊選擇'}
+          </p>
+        </div>
+
+        {busy && <p className="text-sm text-zinc-400">處理中...</p>}
+
+        {error && (
+          <div className="px-3 py-2 border border-red-200 bg-red-50 text-sm text-red-700 whitespace-pre-wrap">
+            {error}
+          </div>
+        )}
+
+        {result && (
+          <div className="flex items-center justify-between px-3 py-2 border border-green-200 bg-green-50 text-sm text-green-800">
+            <span>匯入完成：{result}</span>
+            <button onClick={onDone} className="btn-primary text-sm">回到名單</button>
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-3">
+            {preview.ignoredColumns.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2">
+                以下欄位不認得，已忽略：{preview.ignoredColumns.join('、')}
+              </p>
+            )}
+
+            {preview.errors.length > 0 && (
+              <div className="border border-red-200 bg-red-50 px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
+                <p className="text-xs font-medium text-red-700">有 {preview.errors.length} 個問題，修正後才能匯入：</p>
+                {preview.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+              </div>
+            )}
+
+            <div className="flex gap-4 text-sm text-zinc-600">
+              <span>更新 <strong className="text-zinc-900">{preview.updates.length}</strong> 位</span>
+              <span>新增 <strong className="text-green-700">{preview.creates.length}</strong> 位</span>
+              <span className="text-zinc-400">未變更 {preview.unchanged} 位</span>
+            </div>
+
+            {preview.creates.length > 0 && (
+              <div className="border border-green-200">
+                <div className="px-3 py-1.5 bg-green-50 text-xs font-medium text-green-800">
+                  將新增帳號（{preview.creates.length}）
+                </div>
+                <div className="max-h-40 overflow-y-auto divide-y divide-zinc-100">
+                  {preview.creates.map(c => (
+                    <div key={c.email} className="px-3 py-1.5 text-sm">
+                      <span className="font-medium text-zinc-900">{c.name ?? '（未填姓名）'}</span>
+                      <span className="text-xs text-zinc-400 ml-2">{c.email}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {preview.updates.length > 0 && (
+              <div className="border border-zinc-200">
+                <div className="px-3 py-1.5 bg-zinc-50 text-xs font-medium text-zinc-700">
+                  將更新（{preview.updates.length}）— 點擊展開變更內容
+                </div>
+                <div className="max-h-64 overflow-y-auto divide-y divide-zinc-100">
+                  {preview.updates.map(u => (
+                    <div key={u.id}>
+                      <button
+                        onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-zinc-50 flex items-center justify-between"
+                      >
+                        <span className="text-sm">
+                          <span className="font-medium text-zinc-900">{u.name ?? '（未填姓名）'}</span>
+                          <span className="text-xs text-zinc-400 ml-2">{u.email}</span>
+                        </span>
+                        <span className="text-xs text-zinc-500">{u.changes.length} 項變更</span>
+                      </button>
+                      {expanded === u.id && (
+                        <div className="px-3 pb-2 space-y-0.5">
+                          {u.changes.map(c => (
+                            <div key={c.header} className="text-xs flex gap-2">
+                              <span className="text-zinc-500 w-28 flex-shrink-0">{c.header}</span>
+                              <span className="text-zinc-400 line-through">{c.from}</span>
+                              <span className="text-zinc-400">→</span>
+                              <span className="text-zinc-900 font-medium">{c.to}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              {nothingToDo && !blocked && <span className="text-sm text-zinc-400">沒有需要變更的資料</span>}
+              <button onClick={onClose} disabled={busy} className="btn-secondary">取消</button>
+              <button
+                onClick={handleCommit}
+                disabled={busy || blocked || !!nothingToDo}
+                className="btn-primary"
+              >
+                {busy ? '匯入中...' : `確認匯入（更新 ${preview.updates.length}、新增 ${preview.creates.length}）`}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
