@@ -54,6 +54,8 @@ export default async function AllocationStatisticsPage() {
 
   const teachers: TeacherStat[] = []
   for (const id of ids) {
+    // 特教：不進配課，名單完全不出現（外師靠沒有 rotation 紀錄隱性排除，這裡顯式擋）
+    if (empMap[id] === 'special_ed') continue
     // 鐘點教師：無基本節數/減課/超鐘/鎖定，配課由課務組直接填 subjectGradeHours
     if (empMap[id] === 'hourly') {
       teachers.push({

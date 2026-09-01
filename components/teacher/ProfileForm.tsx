@@ -62,6 +62,7 @@ const employmentLabels: Record<string, string> = {
   substitute: '代理',
   hourly: '鐘點',
   foreign: '外師',
+  special_ed: '特教',
 }
 
 export function ProfileForm({ profile }: ProfileFormProps) {

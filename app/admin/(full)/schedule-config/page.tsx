@@ -79,6 +79,8 @@ export default async function ScheduleConfigPage({ searchParams }: { searchParam
   const foreignProfiles = (profiles ?? []).filter(p => p.employment_type === 'foreign').map(p => ({ id: p.id, name: p.name ?? '' }))
 
   for (const id of ids) {
+    // 特教：不進配課／配班名單
+    if (empMap[id] === 'special_ed') continue
     const name = nameMap[id] ?? id
     const d = allocMap[id]
     // 角色與職務：鐘點/代理看配課資料，正式看工作紀錄

@@ -11,14 +11,16 @@ export const OT_CATEGORIES = [
   { value: 'substitute', label: '代理' },
   { value: 'hourly', label: '鐘點' },
   { value: 'foreign', label: '外師' },
+  { value: 'special_ed', label: '特教' },
 ] as const
 export type OtCategory = (typeof OT_CATEGORIES)[number]['value']
 export const otCategoryLabel = (v: string) =>
   OT_CATEGORIES.find(c => c.value === v)?.label ?? v
 
-/** 正式／代理教師每人（跨計畫合計）每週減課上限；鐘點／外師無上限 */
+/** 正式／代理／特教教師每人（跨計畫合計）每週減課上限；鐘點／外師無上限 */
 export const OT_WEEKLY_CAP = 6
-export const isCappedCategory = (v: string) => v === 'formal' || v === 'substitute'
+export const isCappedCategory = (v: string) =>
+  v === 'formal' || v === 'substitute' || v === 'special_ed'
 
 export interface OtPlan {
   id: string
@@ -39,7 +41,7 @@ export interface OtTeacher {
   plan_id: string
   teacher_id: string | null
   name: string
-  category: string     // formal | substitute | hourly | foreign
+  category: string     // formal | substitute | hourly | foreign | special_ed
   labor_fee: number
   health_fee: number
   lunch_fee: number

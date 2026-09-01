@@ -18,6 +18,7 @@ export default async function TeacherPreferencesPage() {
   ])
   if (profileResult.data?.employment_type === 'hourly') redirect('/teacher/equipment')
   if (profileResult.data?.employment_type === 'foreign') redirect('/teacher/timetable')
+  if (profileResult.data?.employment_type === 'special_ed') redirect('/teacher/timetable')
   if (profileResult.data?.employment_type === 'substitute') redirect('/teacher/allocation')
   const { data: rotations } = await admin.from('rotations').select('year, work, semester, grade').eq('teacher_id', user.id).order('year')
 

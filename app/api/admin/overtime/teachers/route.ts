@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const { data: profile } = await supabaseAdmin.from('profiles')
       .select('employment_type').eq('id', teacher_id).single()
     if (!profile) return NextResponse.json({ error: '找不到教師帳號' }, { status: 404 })
-    // 聘任別直接沿用（formal／substitute／hourly／foreign），未知值視為正式
+    // 聘任別直接沿用（見 OT_CATEGORIES：formal／substitute／hourly／foreign／special_ed），未知值視為正式
     category = OT_CATEGORIES.some(c => c.value === profile.employment_type)
       ? profile.employment_type : 'formal'
   }

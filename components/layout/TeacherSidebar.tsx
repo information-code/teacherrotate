@@ -65,6 +65,21 @@ const HOURLY_GROUPS: NavGroup[] = [
   },
 ]
 
+// 特教：不進配課／排課，但其餘功能齊全（全校課表、超鐘、設備借用／報修）
+const SPECIAL_ED_GROUPS: NavGroup[] = [
+  {
+    title: '常用功能',
+    items: [
+      { href: '/teacher',           label: '工作首頁' },
+      { href: '/teacher/profile',   label: '基本資料' },
+      { href: '/teacher/timetable', label: '我的課表' },
+      { href: '/teacher/overtime',  label: '超鐘簽到' },
+      { href: '/teacher/equipment', label: '設備借用' },
+      { href: '/teacher/repair',    label: '設備報修' },
+    ],
+  },
+]
+
 // 外師（協同英語）：只看課表（不配課、不選填、不借設備）
 const FOREIGN_GROUPS: NavGroup[] = [
   {
@@ -87,6 +102,7 @@ export function TeacherSidebar({
   const navGroups =
     employmentType === 'hourly' ? HOURLY_GROUPS
     : employmentType === 'foreign' ? FOREIGN_GROUPS
+    : employmentType === 'special_ed' ? SPECIAL_ED_GROUPS
     : employmentType === 'substitute' ? SUBSTITUTE_GROUPS
     : FORMAL_GROUPS
   const { open, setOpen } = useMobileNav()

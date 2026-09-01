@@ -6,13 +6,14 @@ import { isVirtualEmail } from '@/lib/utils'
 
 const GRADE_LABELS = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級']
 
-// 聘任別：正式（全功能）、代理（配課選填＋設備借用）、鐘點（僅設備借用）、外師（協同英語，僅看課表）
-type EmploymentType = 'formal' | 'substitute' | 'hourly' | 'foreign'
+// 聘任別：正式（全功能）、代理（配課選填＋設備借用）、鐘點（僅設備借用）、外師（協同英語，僅看課表）、特教（不配課不排課，其餘齊全）
+type EmploymentType = 'formal' | 'substitute' | 'hourly' | 'foreign' | 'special_ed'
 const EMPLOYMENT_LABELS: Record<string, string> = {
   formal: '正式',
   substitute: '代理',
   hourly: '鐘點',
   foreign: '外師',
+  special_ed: '特教',
 }
 
 interface TeacherEntry {
@@ -289,6 +290,9 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
               {entry.employment_type === 'foreign' && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-sm">外師</span>
               )}
+              {entry.employment_type === 'special_ed' && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-teal-100 text-teal-700 border border-teal-200 rounded-sm">特教</span>
+              )}
             </div>
             {isEditing ? (
               <div className="mt-1.5 flex items-center gap-2 flex-wrap">
@@ -344,6 +348,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                   <option value="substitute">代理</option>
                   <option value="hourly">鐘點</option>
                   <option value="foreign">外師</option>
+                  <option value="special_ed">特教</option>
                 </select>
               )}
               <button onClick={() => virtual
@@ -574,6 +579,7 @@ export default function WhitelistClient({ entries: initial, isSuperAdmin, year }
                   <option value="substitute">代理</option>
                   <option value="hourly">鐘點</option>
                   <option value="foreign">外師</option>
+                  <option value="special_ed">特教</option>
                 </select>
               </div>
             </>

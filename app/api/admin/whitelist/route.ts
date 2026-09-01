@@ -6,8 +6,8 @@ import { VIRTUAL_EMAIL_DOMAIN } from '@/lib/utils'
 import { defaultTeacherAllocation } from '@/lib/allocation'
 import { hasPerms } from '@/lib/staff-server'
 
-// 聘任別合法值：正式 / 代理 / 鐘點（僅設備借用）/ 外師（協同英語，僅看課表）
-const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly', 'foreign']
+// 聘任別合法值：正式 / 代理 / 鐘點（僅設備借用）/ 外師（協同英語，僅看課表）/ 特教（不配課不排課，其餘功能齊全）
+const EMPLOYMENT_TYPES = ['formal', 'substitute', 'hourly', 'foreign', 'special_ed']
 
 async function requireAdmin() {
   const supabase = await createClient()

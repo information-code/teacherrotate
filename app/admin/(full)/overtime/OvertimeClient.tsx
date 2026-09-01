@@ -5,7 +5,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
-  OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
+  OT_CATEGORIES, OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
   otCategoryLabel, buildSkipSet, weekdayCounts, expandSessions, monthRange, money,
   slotEffRange, rangesOverlap, maxConcurrentSlots,
   type OtPlan, type OtTeacher, type OtSlot, type OtSkipDate, type OtHoliday, type OtRange,
@@ -766,7 +766,7 @@ function TeacherPicker({ options, value, onSelect }: {
       {open && (
         <div className="absolute z-20 mt-1 w-56 max-h-64 overflow-y-auto border border-zinc-300 bg-white rounded shadow-md">
           <div className="flex flex-wrap gap-1 px-2 py-1.5 border-b border-zinc-100 sticky top-0 bg-white">
-            {([['all', '全部'], ['formal', '正式'], ['substitute', '代理'], ['hourly', '鐘點'], ['foreign', '外師']] as const).map(([key, label]) => (
+            {([['all', '全部'], ...OT_CATEGORIES.map(c => [c.value, c.label])] as [string, string][]).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
