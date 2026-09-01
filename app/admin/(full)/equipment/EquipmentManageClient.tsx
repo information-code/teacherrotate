@@ -114,7 +114,7 @@ export default function EquipmentManageClient({
 
       {busy && <BusyOverlay text={busy} />}
 
-      {tab === 'dashboard' && <DashboardTab onCopyOverdue={copyOverdueMessage} onCopyPickup={copyPickupMessage} />}
+      {tab === 'dashboard' && <DashboardTab onCopyOverdue={copyOverdueMessage} onCopyPickup={copyPickupMessage} runBusy={runBusy} onFlash={flash} />}
       {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} runBusy={runBusy} />}
       {tab === 'short' && <LogTab />}
       {tab === 'long' && (
@@ -1281,14 +1281,17 @@ function DashboardLoanLine({ l, tag, right }: { l: DashboardLoan; tag?: React.Re
   )
 }
 
-/** 每日動態：誰預約／取用／歸還；預約沒按借用、借用沒歸還附 LINE 提醒 */
-function DashboardTab({ onCopyOverdue, onCopyPickup }: {
+/** 每日動態：誰預約／取用／歸還；預約沒按借用、借用沒歸還附 LINE 提醒；管理者可直接取消預約／取消借用 */
+function DashboardTab({ onCopyOverdue, onCopyPickup, runBusy, onFlash }: {
   onCopyOverdue: (vars: MessageVars) => Promise<void>
   onCopyPickup: (vars: MessageVars) => Promise<void>
+  runBusy: (msg: string, fn: () => Promise<void>) => Promise<void>
+  onFlash: (text: string) => void
 }) {
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -1301,7 +1304,37 @@ function DashboardTab({ onCopyOverdue, onCopyPickup }: {
       else setData(json)
     })
     return () => { cancelled = true }
-  }, [date])
+  }, [date, reload])
+
+  // 與「設備總覽」同一支 API：release＝取消預約並釋出時段、close＝代為結案（視同歸還）並釋出時段
+  const cancelLoan = async (l: DashboardLoan) => {
+    const isReserved = l.status === 'reserved'
+    const confirmText = isReserved
+      ? `確定取消 ${l.teacher_name} 對「${l.equipment_label}」的預約？時段會立即釋出。`
+      : `確定取消 ${l.teacher_name} 對「${l.equipment_label}」的借用？會以「管理者結案」記錄（視同已歸還）並釋出時段。`
+    if (!confirm(confirmText)) return
+    await runBusy(isReserved ? '取消預約中…' : '取消借用中…', async () => {
+      const res = await fetch('/api/admin/equipment-loans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: l.id, action: isReserved ? 'release' : 'close' }),
+      })
+      const json = await res.json()
+      if (!res.ok) alert(json.error ?? '操作失敗')
+      else onFlash(isReserved ? '已取消預約，時段已釋出。' : '已取消借用（管理者結案），時段已釋出。')
+      setReload(n => n + 1)
+    })
+  }
+
+  /** 依狀態給對應的取消按鈕；已歸還／已取消的不顯示 */
+  const cancelButton = (l: DashboardLoan) => {
+    if (l.status !== 'reserved' && l.status !== 'borrowed') return null
+    return (
+      <button className="btn-secondary !px-2.5 !py-1 text-xs text-red-700" onClick={() => cancelLoan(l)}>
+        {l.status === 'reserved' ? '取消預約' : '取消借用'}
+      </button>
+    )
+  }
 
   const msgVars = (l: DashboardLoan): MessageVars => ({
     teacher: l.teacher_name,
@@ -1346,7 +1379,10 @@ function DashboardTab({ onCopyOverdue, onCopyPickup }: {
                   tag={past > 0
                     ? <span className="badge-warn ml-2">已過 {past} 天</span>
                     : <span className="badge-default ml-2">當天</span>}
-                  right={<button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyPickup(msgVars(l))}>複製提醒</button>}
+                  right={<>
+                    <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyPickup(msgVars(l))}>複製提醒</button>
+                    {cancelButton(l)}
+                  </>}
                 />
               )
             })}
@@ -1369,7 +1405,10 @@ function DashboardTab({ onCopyOverdue, onCopyPickup }: {
                   tag={over > 0
                     ? <span className="badge-warn ml-2">逾期 {over} 天</span>
                     : <span className="badge-default ml-2">今天到期</span>}
-                  right={<button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyOverdue(msgVars(l))}>複製通知</button>}
+                  right={<>
+                    <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => onCopyOverdue(msgVars(l))}>複製通知</button>
+                    {cancelButton(l)}
+                  </>}
                 />
               )
             })}
@@ -1384,7 +1423,8 @@ function DashboardTab({ onCopyOverdue, onCopyPickup }: {
               {data.reservedOn.length === 0 && <p className="text-sm text-zinc-400">這天沒有預約。</p>}
               {data.reservedOn.map(l => (
                 <DashboardLoanLine key={l.id} l={l}
-                  tag={<span className="badge-default ml-2">{LOAN_STATUS_LABEL[l.status] ?? l.status}</span>} />
+                  tag={<span className="badge-default ml-2">{LOAN_STATUS_LABEL[l.status] ?? l.status}</span>}
+                  right={cancelButton(l)} />
               ))}
             </div>
 
@@ -1392,7 +1432,8 @@ function DashboardTab({ onCopyOverdue, onCopyPickup }: {
               <p className="text-sm text-zinc-600">按了開始借用（{data.borrowedOn.length}）</p>
               {data.borrowedOn.length === 0 && <p className="text-sm text-zinc-400">這天沒有人按借用。</p>}
               {data.borrowedOn.map(l => (
-                <DashboardLoanLine key={l.id} l={l} tag={<span className="ml-2 text-xs text-zinc-500">{clockText(l.borrowed_at)} 取用</span>} />
+                <DashboardLoanLine key={l.id} l={l} tag={<span className="ml-2 text-xs text-zinc-500">{clockText(l.borrowed_at)} 取用</span>}
+                  right={cancelButton(l)} />
               ))}
             </div>
 
