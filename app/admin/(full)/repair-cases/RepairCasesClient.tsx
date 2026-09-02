@@ -116,8 +116,9 @@ export default function RepairCasesClient() {
     return () => clearInterval(t)
   }, [])
 
-  const load = async () => {
-    const res = await fetch('/api/admin/repair-cases')
+  // withPhotos=false 用於看板輪詢：看板不顯示照片，省掉整批簽名網址
+  const load = async (withPhotos = true) => {
+    const res = await fetch(`/api/admin/repair-cases${withPhotos ? '' : '?photos=0'}`)
     const json = await res.json()
     if (!res.ok) {
       setLoadError(json.error || '載入失敗')
@@ -144,7 +145,7 @@ export default function RepairCasesClient() {
   // 看板模式每分鐘自動抓最新案件
   useEffect(() => {
     if (!kiosk) return
-    const t = setInterval(() => { void load() }, 60_000)
+    const t = setInterval(() => { void load(false) }, 60_000)
     return () => clearInterval(t)
   }, [kiosk])
 
@@ -237,6 +238,7 @@ export default function RepairCasesClient() {
     setKioskPwDraft('')
     setKioskError('')
     setKiosk(false)
+    void load() // 看板輪詢不帶照片，回一般畫面要補回來
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
   }
 

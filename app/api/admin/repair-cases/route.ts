@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { hasPerms } from '@/lib/staff-server'
+import { signPhotoUrls } from '@/lib/equipment-server'
 import { parseRepairConfig } from '@/lib/repair'
+
+export const maxDuration = 60
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -13,8 +16,11 @@ async function requireAdmin() {
   return { user }
 }
 
-/** 案件報表初始資料：全部案件（含報修人姓名、照片簽名網址）、項目/問題字典、SLA 設定 */
-export async function GET() {
+/**
+ * 案件報表初始資料：全部案件（含報修人姓名、照片簽名網址）、項目/問題字典、SLA 設定
+ * ?photos=0：跳過照片簽名（看板模式每分鐘輪詢用，看板不顯示照片）
+ */
+export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
@@ -51,20 +57,22 @@ export async function GET() {
     }
   }
 
-  const rows = await Promise.all((reports ?? []).map(async r => {
+  // 照片簽名網址：全部案件的 path 收齊後一次簽完
+  // （逐張簽 = 每張一次 Storage 往返，案件累積後會撐爆函式時限）
+  const withPhotos = request.nextUrl.searchParams.get('photos') !== '0'
+  const urlByPath = withPhotos
+    ? await signPhotoUrls((reports ?? []).flatMap(r => (Array.isArray(r.photos) ? (r.photos as string[]) : [])))
+    : {}
+
+  const rows = (reports ?? []).map(r => {
     const paths = Array.isArray(r.photos) ? (r.photos as string[]) : []
-    const photoUrls: string[] = []
-    for (const p of paths) {
-      const { data: signed } = await supabaseAdmin.storage
-        .from('equipment-photos').createSignedUrl(p, 60 * 60)
-      if (signed?.signedUrl) photoUrls.push(signed.signedUrl)
-    }
     return {
-      ...r, photos: undefined, photoUrls,
+      ...r, photos: undefined,
+      photoUrls: paths.map(p => urlByPath[p]).filter(Boolean),
       teacher_name: names[r.teacher_id] ?? '（不明）',
       messages: messagesByReport[r.id] ?? [],
     }
-  }))
+  })
 
   return NextResponse.json({
     reports: rows,

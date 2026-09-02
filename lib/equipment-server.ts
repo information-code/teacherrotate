@@ -18,12 +18,17 @@ export async function loadEquipmentConfig(): Promise<EquipmentConfig> {
 export async function signPhotoUrls(paths: string[]): Promise<Record<string, string>> {
   const unique = Array.from(new Set(paths)).filter(Boolean)
   if (unique.length === 0) return {}
-  const { data } = await supabaseAdmin.storage
-    .from(EQUIPMENT_PHOTO_BUCKET)
-    .createSignedUrls(unique, 60 * 60)
+  // 案件報表會一次簽全校歷史照片，切段送出避免單一請求過大
+  const chunks: string[][] = []
+  for (let i = 0; i < unique.length; i += 500) chunks.push(unique.slice(i, i + 500))
+  const results = await Promise.all(chunks.map(chunk =>
+    supabaseAdmin.storage.from(EQUIPMENT_PHOTO_BUCKET).createSignedUrls(chunk, 60 * 60)
+  ))
   const map: Record<string, string> = {}
-  for (const item of data ?? []) {
-    if (item.signedUrl && item.path) map[item.path] = item.signedUrl
+  for (const { data } of results) {
+    for (const item of data ?? []) {
+      if (item.signedUrl && item.path) map[item.path] = item.signedUrl
+    }
   }
   return map
 }

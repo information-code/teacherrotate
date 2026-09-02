@@ -2,6 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { signPhotoUrls } from '@/lib/equipment-server'
 
 async function requireUser() {
   const supabase = await createClient()
@@ -51,17 +52,18 @@ export async function GET() {
     }
   }
 
-  // 我的案件照片轉簽名網址（1 小時）
-  const myReports = await Promise.all((reports ?? []).map(async r => {
+  // 我的案件照片轉簽名網址（1 小時），一次簽完
+  const urlByPath = await signPhotoUrls(
+    (reports ?? []).flatMap(r => (Array.isArray(r.photos) ? (r.photos as string[]) : []))
+  )
+  const myReports = (reports ?? []).map(r => {
     const paths = Array.isArray(r.photos) ? (r.photos as string[]) : []
-    const photoUrls: string[] = []
-    for (const p of paths) {
-      const { data: signed } = await supabaseAdmin.storage
-        .from('equipment-photos').createSignedUrl(p, 60 * 60)
-      if (signed?.signedUrl) photoUrls.push(signed.signedUrl)
+    return {
+      ...r, photos: undefined,
+      photoUrls: paths.map(p => urlByPath[p]).filter(Boolean),
+      messages: messagesByReport[r.id] ?? [],
     }
-    return { ...r, photos: undefined, photoUrls, messages: messagesByReport[r.id] ?? [] }
-  }))
+  })
 
   return NextResponse.json({
     items: items ?? [],
