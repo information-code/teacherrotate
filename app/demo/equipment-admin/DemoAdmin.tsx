@@ -1,5 +1,6 @@
 'use client'
 
+import { DEFAULT_EQUIPMENT_CONFIG } from '@/lib/equipment'
 import { installDemoFetch } from '../demo-fetch'
 import EquipmentManageClient from '@/app/admin/(full)/equipment/EquipmentManageClient'
 
@@ -28,6 +29,7 @@ export default function DemoAdmin() {
         overdueTemplate="{老師}老師您好，提醒您歸還{設備}。"
         pickupTemplate="{老師}老師您好，您於{日期}{時段}預約的「{設備}」尚未按下開始借用，請至系統補辦手續。"
         renewalWeeks={20}
+        openPeriods={DEFAULT_EQUIPMENT_CONFIG.openPeriods}
       />
     </main>
   )

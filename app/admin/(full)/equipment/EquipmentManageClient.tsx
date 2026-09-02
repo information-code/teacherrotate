@@ -5,11 +5,15 @@ import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import {
+  EQUIPMENT_PERIODS,
   LOAN_STATUS_LABEL,
   addDays,
+  dateRangeList,
+  daySlotPeriods,
   loanDueDate,
   loanTimeText,
   overdueDays,
+  periodLabel,
   periodsText,
   renderOverdueMessage,
   todayStr,
@@ -50,6 +54,7 @@ export default function EquipmentManageClient({
   overdueTemplate,
   pickupTemplate,
   renewalWeeks,
+  openPeriods,
 }: {
   equipment: EquipmentOption[]
   groups: GroupOption[]
@@ -57,6 +62,7 @@ export default function EquipmentManageClient({
   overdueTemplate: string
   pickupTemplate: string
   renewalWeeks: number
+  openPeriods: string[]
 }) {
   const [tab, setTab] = useState<'dashboard' | 'overview' | 'short' | 'long' | 'stats'>('dashboard')
   const [message, setMessage] = useState('')
@@ -116,7 +122,10 @@ export default function EquipmentManageClient({
 
       {tab === 'dashboard' && <DashboardTab onCopyOverdue={copyOverdueMessage} onCopyPickup={copyPickupMessage} runBusy={runBusy} onFlash={flash} />}
       {tab === 'overview' && <OverviewTab onCopy={copyOverdueMessage} onFlash={flash} runBusy={runBusy} />}
-      {tab === 'short' && <LogTab />}
+      {tab === 'short' && (
+        <ShortAdminTab equipment={equipment} groups={groups} teachers={teachers}
+          openPeriods={openPeriods} runBusy={runBusy} onFlash={flash} />
+      )}
       {tab === 'long' && (
         <LongLoansTab
           equipment={equipment}
@@ -1447,6 +1456,298 @@ function DashboardTab({ onCopyOverdue, onCopyPickup, runBusy, onFlash }: {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// ---------- 管理端建立短期借用 ----------
+
+/**
+ * 建立短期借用（管理者代老師安排）＋短期借用日誌。
+ * 流程仿教師端訂房式：選起訖日期時段、老師、設備 → 查詢 → 從可借編號中建立。
+ * 建立後為「已預約」，老師照常完成借用/歸還手續；不受教師端可預借天數限制。
+ */
+function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFlash }: {
+  equipment: EquipmentOption[]
+  groups: GroupOption[]
+  teachers: TeacherOption[]
+  openPeriods: string[]
+  runBusy: (msg: string, fn: () => Promise<void>) => Promise<void>
+  onFlash: (text: string) => void
+}) {
+  const periods = EQUIPMENT_PERIODS.filter(p => openPeriods.includes(p.key))
+  const [form, setForm] = useState({
+    from: todayStr(), to: todayStr(), startPeriod: '', endPeriod: '', teacherId: '', equipName: '',
+  })
+  /** 查詢結果（按查詢當下的條件）：短借占用格與長借中的設備/群組 */
+  const [avail, setAvail] = useState<{
+    occupied: Record<string, Record<string, string[]>>
+    longIds: Set<string>
+    longGroupIds: Set<string>
+  } | null>(null)
+  const [creating, setCreating] = useState('')
+  const [logKey, setLogKey] = useState(0)
+
+  /** 改任何條件都清掉查詢結果，避免拿舊結果建立 */
+  const patch = (part: Partial<typeof form>) => {
+    setForm(f => ({ ...f, ...part }))
+    setAvail(null)
+  }
+
+  const sameDay = form.from === form.to
+  const startIndex = periods.findIndex(p => p.key === form.startPeriod)
+  const endIndex = periods.findIndex(p => p.key === form.endPeriod)
+  const periodsValid = startIndex >= 0 && endIndex >= 0 && (!sameDay || endIndex >= startIndex)
+  const canQuery = Boolean(form.from && form.to && form.to >= form.from && form.teacherId && form.equipName) && periodsValid
+
+  const selectedGroup = form.equipName.startsWith('group:')
+    ? groups.find(g => g.id === form.equipName.slice(6)) ?? null
+    : null
+  const selectedName = form.equipName.startsWith('name:') ? form.equipName.slice(5) : ''
+
+  /** 查占用：短借紀錄往前多抓 62 天（跨日借用上限）才涵蓋跨進區間的借用；長借另查 */
+  const query = async () => {
+    await runBusy('查詢可借狀態中…', async () => {
+      const [loanRes, longRes] = await Promise.all([
+        fetch(`/api/admin/equipment-loans?from=${addDays(form.from, -62)}&to=${form.to}`),
+        fetch('/api/admin/equipment-long-loans'),
+      ])
+      if (!loanRes.ok || !longRes.ok) {
+        alert('查詢失敗，請再試一次')
+        return
+      }
+      const loans: {
+        status: string; equipment_id: string | null; group_id: string | null
+        loan_date: string; end_date: string | null; periods: string[]
+        start_period: string | null; end_period: string | null
+      }[] = (await loanRes.json()).loans
+      const longLoans: {
+        status: string; start_date: string; equipment_id: string | null; group_id: string | null
+      }[] = (await longRes.json()).loans
+
+      const occupied: Record<string, Record<string, string[]>> = {}
+      for (const l of loans) {
+        if (l.status !== 'reserved' && l.status !== 'borrowed') continue
+        const end = loanDueDate(l)
+        const first = l.loan_date > form.from ? l.loan_date : form.from
+        const last = end < form.to ? end : form.to
+        if (first > last) continue
+        // 整組借用占用全部成員
+        const ids = l.group_id
+          ? equipment.filter(e => e.group_id === l.group_id).map(e => e.id)
+          : l.equipment_id ? [l.equipment_id] : []
+        for (const date of dateRangeList(first, last)) {
+          const dayPeriods = end === l.loan_date
+            ? l.periods
+            : daySlotPeriods(openPeriods, date, l.loan_date, end, l.start_period ?? '', l.end_period ?? '')
+          const day = (occupied[date] ??= {})
+          for (const id of ids) (day[id] ??= []).push(...dayPeriods)
+        }
+      }
+      const longIds = new Set<string>()
+      const longGroupIds = new Set<string>()
+      for (const l of longLoans) {
+        if (l.status !== 'active' || l.start_date > form.to) continue
+        if (l.equipment_id) longIds.add(l.equipment_id)
+        if (l.group_id) longGroupIds.add(l.group_id)
+      }
+      setAvail({ occupied, longIds, longGroupIds })
+    })
+  }
+
+  const rangeDates = canQuery ? dateRangeList(form.from, form.to) : []
+  const unitFree = (id: string) =>
+    rangeDates.every(date => {
+      const need = daySlotPeriods(openPeriods, date, form.from, form.to, form.startPeriod, form.endPeriod)
+      const taken = avail?.occupied[date]?.[id] ?? []
+      return need.every(p => !taken.includes(p))
+    })
+  const unitLongLoaned = (e: EquipmentOption) =>
+    Boolean(avail && (avail.longIds.has(e.id) || (e.group_id && avail.longGroupIds.has(e.group_id))))
+
+  const timeSummary = sameDay
+    ? `${form.from}｜${periodLabel(form.startPeriod)}${form.startPeriod !== form.endPeriod ? `～${periodLabel(form.endPeriod)}` : ''}`
+    : `${form.from} ${periodLabel(form.startPeriod)} ～ ${form.to} ${periodLabel(form.endPeriod)}`
+  const teacherName = teachers.find(t => t.id === form.teacherId)?.name ?? ''
+
+  const create = async (target: { equipment_id?: string; group_id?: string }) => {
+    setCreating(target.equipment_id ?? target.group_id ?? '')
+    try {
+      await runBusy('建立短期借用中…', async () => {
+        const res = await fetch('/api/admin/equipment-loans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...target,
+            teacher_id: form.teacherId,
+            start_date: form.from,
+            end_date: form.to,
+            start_period: form.startPeriod,
+            end_period: form.endPeriod,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          alert(data.error ?? '建立失敗')
+          return
+        }
+        onFlash(`已為 ${teacherName} 建立預約，請老師屆時完成借用手續。`)
+        setAvail(null)
+        setLogKey(k => k + 1)
+      })
+    } finally {
+      setCreating('')
+    }
+  }
+
+  const availableNames = Array.from(new Set(
+    equipment.filter(e => e.status === 'available').map(e => e.name)
+  ))
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <div>
+          <h2 className="font-medium text-zinc-900">建立短期借用</h2>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            由管理者代老師安排短期借用。建立後為「已預約」，老師到自己的設備借用頁完成借用／歸還手續；
+            日期不受教師端可預借天數限制。
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div>
+            <span className="label">開始日期</span>
+            <input type="date" className="input" value={form.from} min={todayStr()}
+              onChange={e => {
+                const from = e.target.value
+                patch({ from, to: form.to && form.to >= from ? form.to : from })
+              }} />
+          </div>
+          <div>
+            <span className="label">結束日期</span>
+            <input type="date" className="input" value={form.to} min={form.from || todayStr()}
+              onChange={e => patch({ to: e.target.value })} />
+          </div>
+          <div>
+            <span className="label">開始時段</span>
+            <select className="input" value={form.startPeriod}
+              onChange={e => {
+                const key = e.target.value
+                const newStart = periods.findIndex(p => p.key === key)
+                // 同日借用時結束時段自動跟上，避免結束早於開始
+                patch({
+                  startPeriod: key,
+                  endPeriod: sameDay && endIndex >= 0 && endIndex < newStart ? key : form.endPeriod,
+                })
+              }}>
+              <option value="">請選擇</option>
+              {periods.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <span className="label">結束時段</span>
+            <select className="input" value={form.endPeriod} disabled={!form.startPeriod}
+              onChange={e => patch({ endPeriod: e.target.value })}>
+              <option value="">請選擇</option>
+              {(sameDay ? periods.slice(Math.max(startIndex, 0)) : periods).map(p => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className="label">借用老師</span>
+            <select className="input" value={form.teacherId}
+              onChange={e => patch({ teacherId: e.target.value })}>
+              <option value="">請選擇</option>
+              {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <span className="label">借用設備</span>
+            <select className="input" value={form.equipName}
+              onChange={e => patch({ equipName: e.target.value })}>
+              <option value="">請選擇</option>
+              {availableNames.map(name => <option key={name} value={`name:${name}`}>{name}</option>)}
+              {groups.filter(g => g.status === 'available').map(g => (
+                <option key={g.id} value={`group:${g.id}`}>{g.name}〔整組 {g.member_count} 台〕</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button className="btn-primary" disabled={!canQuery} onClick={query}>查詢可借</button>
+          {!canQuery && (
+            <p className="text-sm text-zinc-400">請選齊起訖日期、時段、老師與設備後查詢。</p>
+          )}
+        </div>
+
+        {avail && canQuery && (
+          selectedGroup ? (() => {
+            const members = equipment.filter(e => e.group_id === selectedGroup.id)
+            const badStatus = members.some(m => m.status !== 'available')
+            const longBlocked = avail.longGroupIds.has(selectedGroup.id) || members.some(m => avail.longIds.has(m.id))
+            const busy = members.filter(m => !unitFree(m.id))
+            const blockedText = badStatus
+              ? '群組內有設備維修中或停用，暫不開放整組借用。'
+              : longBlocked
+                ? '此群組或其中設備為長期借用中，無法整組借用。'
+                : busy.length > 0
+                  ? `${busy.map(m => m.asset_number ? `#${m.asset_number}` : m.name).join('、')} 共 ${busy.length} 台在此時段已被借用/預約。`
+                  : ''
+            return blockedText ? (
+              <p className="text-sm text-zinc-500">{timeSummary}｜「{selectedGroup.name}」整組不可借：{blockedText}</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-zinc-600">{timeSummary}｜{teacherName}｜整組可借：</p>
+                <div className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                  <div className="flex-1 min-w-[180px] text-sm">
+                    <span className="font-medium text-zinc-900">{selectedGroup.name}</span>
+                    <span className="ml-1 text-xs text-zinc-400">整組 {selectedGroup.member_count} 台</span>
+                  </div>
+                  <button className="btn-primary !px-3 !py-1.5"
+                    disabled={creating === selectedGroup.id}
+                    onClick={() => create({ group_id: selectedGroup.id })}>
+                    {creating === selectedGroup.id ? '建立中…' : '整組建立預約'}
+                  </button>
+                </div>
+              </div>
+            )
+          })() : (
+            <div className="space-y-2">
+              <p className="text-sm text-zinc-600">
+                {timeSummary}｜{teacherName}｜{selectedName}：
+              </p>
+              {equipment
+                .filter(e => e.status === 'available' && e.name === selectedName)
+                .map(e => {
+                  const long = unitLongLoaned(e)
+                  const free = !long && unitFree(e.id)
+                  return (
+                    <div key={e.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                      <div className="flex-1 min-w-[180px] text-sm">
+                        <span className="font-medium text-zinc-900">{e.name}</span>
+                        {e.asset_number && <span className="ml-1 text-xs text-zinc-400">#{e.asset_number}</span>}
+                      </div>
+                      {free ? (
+                        <button className="btn-primary !px-3 !py-1.5"
+                          disabled={creating === e.id}
+                          onClick={() => create({ equipment_id: e.id })}>
+                          {creating === e.id ? '建立中…' : '建立預約'}
+                        </button>
+                      ) : (
+                        <span className="badge-warn">{long ? '長期借用中' : '該時段已被借用/預約'}</span>
+                      )}
+                    </div>
+                  )
+                })}
+            </div>
+          )
+        )}
+      </div>
+
+      <LogTab key={logKey} />
     </div>
   )
 }

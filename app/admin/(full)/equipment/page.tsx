@@ -28,6 +28,7 @@ export default async function EquipmentManagePage() {
       overdueTemplate={config.overdueMessageTemplate}
       pickupTemplate={config.pickupMessageTemplate}
       renewalWeeks={config.renewalWeeks}
+      openPeriods={config.openPeriods}
     />
   )
 }

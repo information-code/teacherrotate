@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { collectChecklistPhotos, logLoanEvent, signPhotoUrls } from '@/lib/equipment-server'
+import { collectChecklistPhotos, logLoanEvent, reserveShortLoan, signPhotoUrls } from '@/lib/equipment-server'
 import { loanTimeText } from '@/lib/equipment'
 import { hasPerms } from '@/lib/staff-server'
 
@@ -119,4 +119,36 @@ export async function PATCH(request: NextRequest) {
     action: 'closed', detail: loanTimeText(loan), actorId: auth.user.id,
   })
   return NextResponse.json({ ok: true })
+}
+
+/**
+ * 建立短期借用（管理者代老師安排）。
+ * body: { equipment_id? | group_id?, teacher_id, start_date, end_date, start_period, end_period }
+ * 建立後狀態為「已預約」，老師照常到自己的借用頁完成借用/歸還手續；
+ * 不受教師端「可預借天數」上限（但不可早於今天）；日誌 actor 記管理者。
+ */
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  const { equipment_id, group_id, teacher_id, start_date, end_date, start_period, end_period } =
+    await request.json()
+  if (!teacher_id) return NextResponse.json({ error: '請選擇借用老師' }, { status: 400 })
+  const { data: teacher } = await supabaseAdmin
+    .from('profiles').select('id').eq('id', teacher_id).maybeSingle()
+  if (!teacher) return NextResponse.json({ error: '找不到這位老師' }, { status: 404 })
+
+  const result = await reserveShortLoan({
+    teacherId: teacher_id,
+    equipmentId: equipment_id,
+    groupId: group_id,
+    startDate: start_date,
+    endDate: end_date,
+    startPeriod: start_period,
+    endPeriod: end_period,
+    actorId: auth.user.id,
+    enforceMaxAdvance: false,
+  })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  return NextResponse.json({ ok: true, id: result.id })
 }
