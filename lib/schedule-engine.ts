@@ -263,6 +263,7 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
   // ── 自動配班：未手動指派的班，依配課節數（supplyByTeacher）自動分給尚有容量的老師 ──
   // 手動配班優先（先扣容量、必綁定該師）。本土語同其他科自動配——
   // 配到假師/虛擬帳號的班，之後由管理者視情況改直播共學即可。
+  const spreadTypeIds = new Set(config.lockTypes.filter(t => t.spread).map(t => t.id))   // 「配班分散」鎖課類型（種子班判定）
   const assign: Record<string, string> = { ...config.subjectClassTeacher }
   const autoAgg = new Map<string, number>()   // `${grade}|${subject}` → 自動配班班數
   const autoKeys = new Set<string>()          // 自動配班的 subjectClassKey（排課時可對調）
@@ -326,24 +327,49 @@ export function assembleEngineInput(a: AssembleArgs): { input: EngineInput; pref
               if (r > 0) todo.push({ i, k, r })
             }
             if (!todo.length) continue
-            // 需求大的班先放（first-fit-decreasing 的回溯版）；老師依剩餘容量大到小嘗試
-            todo.sort((x, y) => y.r - x.r || x.i - y.i)
+            // 班依班號序、老師「前一班同師優先、其次剩餘容量大到小」嘗試：
+            // 純看容量會在追平後兩師逐班交錯（甲 1,3,5／乙 2,4,6 班），連號黏性讓每位老師拿到連號區段。
+            // 回溯性質不變——連號解不存在時自動換路，完整解永遠優先（115 沙盒實測可行性與軟分皆不退步）。
+            todo.sort((x, y) => x.i - y.i)
+            // 配班分散（仿人工）：有「配班分散」鎖課的班（種子班）平均分給不同科任——
+            // 每師種子上限＝該年級該科種子班總數 × 她的配課容量占比（手動指定的種子班一併計入、吃掉配額）。
+            // 配額是剪枝不是排序：連號黏性照舊，只擋「再多吃一顆種子就超額」；帶配額無解時自動放寬重解，完整解永遠優先。
+            const seedish = (i: number) => Object.values(config.lockCells[ck(g, i)] ?? {}).some(tid => spreadTypeIds.has(tid))
+            const seedCnt = new Map<string, number>()
+            let nManualSeed = 0
+            for (let i = 0; i < (classCounts[g] ?? 0); i++) {
+              const cur = assign[subjectClassKey(g, i, s.name)]
+              if (cur && cur !== HOMEROOM_SELF && seedish(i)) { seedCnt.set(cur, (seedCnt.get(cur) ?? 0) + 1); nManualSeed++ }
+            }
+            const nSeedTotal = nManualSeed + todo.filter(x => seedish(x.i)).length
+            const spreadOn = spreadTypeIds.size > 0 && nSeedTotal > 0
+            const cap0 = (tid: string) => Math.max(0, Number(a.supplyByTeacher?.[tid]?.[s.name]?.[String(g)] ?? 0))
+            const totalCap0 = Array.from(map.keys()).reduce((sum, tid) => sum + cap0(tid), 0)
+            const quotaOf = new Map(Array.from(map.keys(), tid => [tid, Math.ceil(nSeedTotal * cap0(tid) / Math.max(1, totalCap0))]))
             const cap = new Map(map)
             const pick: string[] = new Array(todo.length)
             let nodes = 0
-            const dfs = (idx: number): boolean => {
+            const dfs = (idx: number, useQuota: boolean): boolean => {
               if (idx >= todo.length) return true
               if (++nodes > 50000) return false
               const need = todo[idx].r
-              const tids = Array.from(cap.entries()).filter(([, l]) => l >= need).sort((x, y) => y[1] - x[1]).map(([t]) => t)
+              const isSeed = spreadOn && seedish(todo[idx].i)
+              const prevT = idx > 0 ? pick[idx - 1] : null
+              let ents = Array.from(cap.entries()).filter(([, l]) => l >= need)
+              if (useQuota && isSeed) ents = ents.filter(([t]) => (seedCnt.get(t) ?? 0) < (quotaOf.get(t) ?? 99))
+              const tids = ents
+                .sort((x, y) => ((x[0] === prevT ? 0 : 1) - (y[0] === prevT ? 0 : 1)) || y[1] - x[1]).map(([t]) => t)
               for (const t of tids) {
                 cap.set(t, cap.get(t)! - need); pick[idx] = t
-                if (dfs(idx + 1)) return true
+                if (isSeed) seedCnt.set(t, (seedCnt.get(t) ?? 0) + 1)
+                if (dfs(idx + 1, useQuota)) return true
                 cap.set(t, cap.get(t)! + need)
+                if (isSeed) seedCnt.set(t, seedCnt.get(t)! - 1)
               }
               return false
             }
-            if (dfs(0)) {
+            const solved = spreadOn ? (dfs(0, true) || (nodes = 0, dfs(0, false))) : dfs(0, false)
+            if (solved) {
               todo.forEach((x, idx) => { assign[x.k] = pick[idx]; autoKeys.add(x.k); map.set(pick[idx], map.get(pick[idx])! - x.r) })
               autoAgg.set(`${g}|${s.name}`, (autoAgg.get(`${g}|${s.name}`) ?? 0) + todo.length)
             }
@@ -2550,6 +2576,7 @@ export class EngineRun {
     this.bestTotal = s0.total
     this.bestSoft = s0.soft
     this.bestPos = new Map(this.st.pos)
+    this.bestBind = new Map(this.input.lessons.filter(l => l.autoAssigned).map(l => [l.id, [l.teacherId, l.teacherName] as [string, string]]))
 
     // 建構後先做幾輪定向補洞
     for (let k = 0; k < this.mustTargets.length * 2; k++) this.tryCoverMustFill()
@@ -2576,11 +2603,13 @@ export class EngineRun {
     this.snapshotIfBest(sc.total, sc.soft)
   }
 
+  private bestBind = new Map<string, [string, string]>()   // 最佳快照當下的老師綁定（自動配班課）：卡住換班會中途換綁，快照必須成對記
   private snapshotIfBest(total: number, soft: number) {
     if (total < this.bestTotal) {
       this.bestTotal = total
       this.bestSoft = soft
       this.bestPos = new Map(this.st.pos)
+      this.bestBind = new Map(this.input.lessons.filter(l => l.autoAssigned).map(l => [l.id, [l.teacherId, l.teacherName] as [string, string]]))
       this.lastImprove = Date.now()
     }
   }
@@ -3606,6 +3635,8 @@ export class EngineRun {
         else this.tryFixHomeroomRun()
         continue
       }
+      // 卡住才換班：必須排在下面 %4===1 未排課安插分支之前，否則有未排課時永遠輪不到它
+      if (this.iterations % 64 === 45 && this.st.pos.size < this.input.lessons.length) { this.trySwapClassAssign(); continue }
       // 還有課沒排進去時，把「安插未排課」的力氣加重：原本只有 %8===4（逐出）與 %16===11（逐出鏈）約 1/5 的步數，
       // 前端實測會看到迭代一直跑、已排卻停在 636/638——最後那一兩堂要連鎖搬好幾堂才騰得出位子，機會太少就一直卡著
       if (this.st.pos.size < this.input.lessons.length && this.iterations % 4 === 1) {
@@ -3673,6 +3704,57 @@ export class EngineRun {
       if (!done) this.st.remove(l1)
     }
     if (!done) { this.st.place(l1, p1); this.st.place(l2, p2) }
+  }
+
+  /** 卡住才換班（仿人工排法）：有課排不進去且是自動配班時，把整班該科跟同科同年級
+   *  另一位老師的自動配班對調（對方已排的課先拿起來、換完雙方重新落位）。
+   *  只比硬分（未排＋必須級不變差就換）：換班的目的是解開死結，軟分損傷交給後續優化修回。
+   *  錨定不擋換班——排不進去的常常正是錨定（滿載）老師的課；凍結（教室優先定案）仍不可動。
+   *  綁定一致性由 bestBind 快照保證（finalize 還原成最佳快照當下的綁定）。 */
+  private trySwapClassAssign() {
+    const unplacedAuto = this.input.lessons.filter(l => !this.st.pos.has(l.id) && l.autoAssigned && !this.frozen.has(l.id))
+    if (!unplacedAuto.length) return
+    const l = unplacedAuto[Math.floor(this.rnd() * unplacedAuto.length)]
+    const grp = (x: EngineLesson) => this.input.lessons.filter(y => y.classKey === x.classKey && y.subject === x.subject)
+    const shape = (ls: EngineLesson[]) => ls.map(y => `${y.size}${y.parity}`).sort().join(',')
+    const mine = grp(l)
+    if (mine.some(y => this.frozen.has(y.id))) return
+    const myShape = shape(mine)
+    const seenCk = new Set<string>()
+    const partners: EngineLesson[] = []
+    for (const y of this.input.lessons) {
+      if (y.subject !== l.subject || y.grade !== l.grade || y.teacherId === l.teacherId || !y.autoAssigned || y.classKey === l.classKey || seenCk.has(y.classKey)) continue
+      seenCk.add(y.classKey)
+      const theirs0 = grp(y)
+      if (theirs0.some(z => this.frozen.has(z.id))) continue
+      if (shape(theirs0) !== myShape) continue
+      partners.push(y)
+    }
+    if (!partners.length) return
+    const partner = partners[Math.floor(this.rnd() * partners.length)]
+    const theirs = grp(partner)
+    const A = { id: l.teacherId, name: l.teacherName }, B = { id: partner.teacherId, name: partner.teacherName }
+    const saved = new Map<string, Placement>()
+    for (const y of [...mine, ...theirs]) { const p = this.st.pos.get(y.id); if (p) { saved.set(y.id, p); this.st.remove(y) } }
+    const rebind = (ls: EngineLesson[], t: { id: string; name: string }) => { for (const y of ls) this.st.rebindTeacher(y, t.id, t.name) }
+    rebind(mine, B); rebind(theirs, A)
+    // 重新落位：原格能放就放回（班級格形狀沒變、只換老師），不行再挑可行格；沒位子就照樣算未排
+    const placedNow: EngineLesson[] = []
+    for (const y of [...theirs, ...mine]) {
+      const p0 = saved.get(y.id)
+      if (p0 && this.st.canPlace(y, p0)) { this.st.place(y, p0); placedNow.push(y); continue }
+      const cands = this.st.candidates(y)
+      if (cands.length) { this.st.place(y, cands[Math.floor(this.rnd() * cands.length)]); placedNow.push(y) }
+    }
+    const sc = scoreState(this.st)
+    if ((sc.total - sc.soft) <= (this.cur - this.curSoft)) {
+      this.take(sc)
+      this.notes.push(`卡住換班：${l.classLabel} ${l.subject} ${A.name}↔${B.name}（${partner.classLabel}）`)
+      return
+    }
+    for (const y of placedNow) this.st.remove(y)
+    rebind(mine, A); rebind(theirs, B)
+    for (const [id, p] of saved) this.st.place(this.st.lessonById.get(id)!, p)
   }
 
   /** 未排課逐出安插：把擋住老師的別班課搬走後放入未排課。 */
@@ -3905,6 +3987,11 @@ export class EngineRun {
 
   /** 還原歷來最佳解並產出結果（教室分配、罰分明細、未排原因）。 */
   finalize(): EngineResult {
+    // 卡住換班可能在最佳快照之後又換過綁定：先把老師綁定還原成快照當下的狀態再產出
+    for (const l of this.input.lessons) {
+      const b = this.bestBind.get(l.id)
+      if (b) { l.teacherId = b[0]; l.teacherName = b[1] }
+    }
     return buildResult(this.input, this.bestPos, { iterations: this.iterations, elapsedMs: this.elapsed, notes: this.notes })
   }
 }
