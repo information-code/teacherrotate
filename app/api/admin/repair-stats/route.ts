@@ -26,10 +26,10 @@ export async function GET() {
   const rows = reports ?? []
   const total = rows.length
   const open = rows.filter(r => r.status !== 'closed').length
-  const unclassified = rows.filter(r => !r.issue_id).length
+  const unclassified = rows.filter(r => !r.issue_id && r.resolved_kind !== 'referred').length
 
   // 解決方式占比
-  const resolved = { self: 0, vanished: 0, fixed: 0 }
+  const resolved = { self: 0, vanished: 0, fixed: 0, referred: 0 }
   for (const r of rows) {
     if (r.status === 'closed' && r.resolved_kind && r.resolved_kind in resolved) {
       resolved[r.resolved_kind as keyof typeof resolved]++

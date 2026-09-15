@@ -86,7 +86,8 @@ export async function GET(request: NextRequest) {
  * 案件操作。body: { id, action, ... }
  * - accept：接案（通報中→已接案）
  * - process：開始處理（通報中/已接案→處理中，時間戳存 dispatched_at）
- * - close：結案（未結案→已結案）{ resolved_kind?: 'fixed' | 'self' }，未指定補 'fixed'
+ * - close：結案（未結案→已結案）{ resolved_kind?: 'fixed' | 'self' | 'referred' }，未指定補 'fixed'
+ * - refer：標記為非資訊組業務、已轉知負責單位——未結案直接以 referred 結案，已結案僅改標記
  * - message：在案件留言（維護方）{ body }，未結案才能發言
  * - classify：歸類 { item_id, issue_id }（更新 id 與名稱快照，custom_issue 原文保留）
  * - new-issue：把自由描述升級成新標準問題 { item_id, name } 並歸類本案
@@ -123,10 +124,17 @@ export async function PUT(request: NextRequest) {
     patch.status = 'closed'
     // 結案方式：報修結案(fixed) / 老師自行解決(self)；未指定沿用既有或 fixed
     const kind = body?.resolved_kind
-    patch.resolved_kind = kind === 'fixed' || kind === 'self' || kind === 'vanished'
+    patch.resolved_kind = kind === 'fixed' || kind === 'self' || kind === 'vanished' || kind === 'referred'
       ? kind : (report.resolved_kind ?? 'fixed')
     patch.closed_at = now
     patch.closed_by = auth.user.id
+  } else if (action === 'refer') {
+    patch.resolved_kind = 'referred'
+    if (report.status !== 'closed') {
+      patch.status = 'closed'
+      patch.closed_at = now
+      patch.closed_by = auth.user.id
+    }
   } else if (action === 'message') {
     const text = String(body?.body ?? '').trim()
     if (!text) return NextResponse.json({ error: '留言不可為空' }, { status: 400 })

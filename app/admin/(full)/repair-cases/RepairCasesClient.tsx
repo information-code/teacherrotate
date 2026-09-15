@@ -155,8 +155,8 @@ export default function RepairCasesClient() {
   const keyword = search.trim().toLowerCase()
   const filtered = data.reports.filter(r => {
     if (statusFilter === 'open' && r.status === 'closed') return false
-    // 未歸類：不分狀態（已結案的也要能歸類，統計才算得進去）
-    if (statusFilter === 'unclassified' && r.issue_id) return false
+    // 未歸類：不分狀態（已結案的也要能歸類，統計才算得進去）；已轉知業務單位的不算未歸類
+    if (statusFilter === 'unclassified' && (r.issue_id || r.resolved_kind === 'referred')) return false
     if (!['open', 'all', 'unclassified'].includes(statusFilter) && r.status !== statusFilter) return false
     if (itemFilter && r.item_id !== itemFilter) return false
     if (keyword) {
@@ -247,10 +247,10 @@ export default function RepairCasesClient() {
     .filter(r => r.status !== 'closed')
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
-  /** 結案：報修結案(fixed) / 老師自行解決(self)——老師沒自己按時由管理端代記，統計才準 */
+  /** 結案：報修結案(fixed) / 老師自行解決(self) / 轉知業務單位(referred) */
   const closeCase = (r: ReportRow, kind: string) => {
-    if (kind !== 'fixed' && kind !== 'self') return
-    const label = kind === 'self' ? '老師自行解決' : '報修結案'
+    if (kind !== 'fixed' && kind !== 'self' && kind !== 'referred') return
+    const label = kind === 'self' ? '老師自行解決' : kind === 'referred' ? '轉知業務單位' : '報修結案'
     if (confirm(`確定以「${label}」結案？教師端會顯示已結案。`)) {
       void act(r.id, { action: 'close', resolved_kind: kind }, '已結案')
     }
@@ -340,14 +340,16 @@ export default function RepairCasesClient() {
                   <span className="min-w-0 text-sm">
                     <span className="font-medium text-zinc-800">{r.item_name}</span>
                     <span className="text-zinc-600">｜{issueText(r)}</span>
-                    {!r.issue_id && (
+                    {!r.issue_id && r.resolved_kind !== 'referred' && (
                       <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">未歸類</span>
                     )}
                   </span>
                   <span className={`shrink-0 rounded px-2 py-0.5 text-xs ${
                     r.status === 'closed' ? 'bg-zinc-100 text-zinc-500' : SLA_BADGE[level]
                   }`}>
-                    {r.status === 'closed' && (r.resolved_kind === 'self' || r.resolved_kind === 'vanished')
+                    {r.status === 'closed' && r.resolved_kind === 'referred'
+                      ? '已轉知業務單位'
+                      : r.status === 'closed' && (r.resolved_kind === 'self' || r.resolved_kind === 'vanished')
                       ? `已解決（${resolvedKindLabel(r.resolved_kind)}）`
                       : repairStatusLabel(r.status)}
                   </span>
@@ -383,8 +385,8 @@ export default function RepairCasesClient() {
                     </div>
                   )}
 
-                  {/* 歸類（未歸類案件） */}
-                  {!r.issue_id && (
+                  {/* 歸類（未歸類案件；已轉知業務單位的不用歸） */}
+                  {!r.issue_id && r.resolved_kind !== 'referred' && (
                     <div className="space-y-2 rounded border border-violet-200 bg-violet-50/50 p-3">
                       <p className="text-sm font-medium text-zinc-700">歸類到標準問題（統計才算得進去）</p>
                       <div className="flex flex-wrap items-center gap-2">
@@ -409,6 +411,18 @@ export default function RepairCasesClient() {
                         <button className="btn-secondary" disabled={!classifyItemId || !newIssueName.trim()}
                           onClick={() => act(r.id, { action: 'new-issue', item_id: classifyItemId, name: newIssueName }, '已升級為標準問題並歸類')}>
                           升級為標準問題
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-200 pt-2">
+                        <p className="text-sm text-zinc-500">或這不是資訊組的維修業務（例如廣播、總務設備）：</p>
+                        <button className="btn-secondary"
+                          onClick={() => {
+                            const hint = r.status === 'closed' ? '' : '案件會直接結案，'
+                            if (confirm(`標記為「轉知業務單位」？${hint}不再列入未歸類與問題統計。`)) {
+                              void act(r.id, { action: 'refer' }, '已標記為轉知業務單位')
+                            }
+                          }}>
+                          標記為轉知業務單位
                         </button>
                       </div>
                     </div>
@@ -465,6 +479,7 @@ export default function RepairCasesClient() {
                         <option value="">結案…</option>
                         <option value="fixed">報修結案（已修復）</option>
                         <option value="self">老師自行解決</option>
+                        <option value="referred">非資訊組業務（轉知結案）</option>
                       </select>
                     </div>
                   )}

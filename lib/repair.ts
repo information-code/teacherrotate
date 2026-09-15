@@ -24,6 +24,7 @@ export const RESOLVED_KINDS = [
   { key: 'self',     label: '自行排除' },
   { key: 'vanished', label: '問題自行消失' },
   { key: 'fixed',    label: '已修復' },
+  { key: 'referred', label: '轉知業務單位' },  // 非資訊組業務，已轉知負責單位（不需歸類）
 ] as const
 
 export type ResolvedKind = (typeof RESOLVED_KINDS)[number]['key']

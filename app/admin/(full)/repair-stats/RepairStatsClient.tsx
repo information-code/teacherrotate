@@ -8,7 +8,7 @@ interface Stats {
   total: number
   open: number
   unclassified: number
-  resolved: { self: number; vanished: number; fixed: number }
+  resolved: { self: number; vanished: number; fixed: number; referred: number }
   avgAcceptHours: number | null
   avgCloseHours: number | null
   issueStats: { name: string; item_name: string; total: number; open: number; selfSolved: number }[]
@@ -36,8 +36,10 @@ export default function RepairStatsClient() {
   if (loadError) return <div className="card"><p className="text-sm text-red-600">{loadError}</p></div>
   if (!stats) return <PageLoading />
 
-  const closedTotal = stats.resolved.self + stats.resolved.vanished + stats.resolved.fixed
+  const closedTotal = stats.resolved.self + stats.resolved.vanished + stats.resolved.fixed + stats.resolved.referred
   const selfSolved = stats.resolved.self + stats.resolved.vanished
+  // 自行解決率分母不含「轉知業務單位」——那些本來就不是資訊組能解的
+  const repairClosed = closedTotal - stats.resolved.referred
 
   return (
     <div className="space-y-4">
@@ -48,7 +50,7 @@ export default function RepairStatsClient() {
         {[
           ['累計報修', `${stats.total} 件`],
           ['未結案', `${stats.open} 件`],
-          ['自行解決率', pct(selfSolved, closedTotal)],
+          ['自行解決率', pct(selfSolved, repairClosed)],
           ['平均修復時間', stats.avgCloseHours === null ? '—' : `${stats.avgCloseHours} 小時`],
         ].map(([label, value]) => (
           <div key={label} className="card !p-4">
@@ -84,6 +86,7 @@ export default function RepairStatsClient() {
                 <tr><td>老師自行排除</td><td>{stats.resolved.self}</td><td>{pct(stats.resolved.self, closedTotal)}</td></tr>
                 <tr><td>問題自行消失</td><td>{stats.resolved.vanished}</td><td>{pct(stats.resolved.vanished, closedTotal)}</td></tr>
                 <tr><td>維護處理修復</td><td>{stats.resolved.fixed}</td><td>{pct(stats.resolved.fixed, closedTotal)}</td></tr>
+                <tr><td>轉知業務單位（非資訊組業務）</td><td>{stats.resolved.referred}</td><td>{pct(stats.resolved.referred, closedTotal)}</td></tr>
               </tbody>
             </table>
           </div>

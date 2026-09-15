@@ -69,6 +69,7 @@ function timeText(iso: string): string {
 
 /** 案件狀態顯示文字：結案時帶解決方式 */
 function statusText(r: ReportRow): string {
+  if (r.status === 'closed' && r.resolved_kind === 'referred') return '已轉知業務單位'
   if (r.status === 'closed' && (r.resolved_kind === 'self' || r.resolved_kind === 'vanished')) {
     return `已解決（${resolvedKindLabel(r.resolved_kind)}）`
   }
@@ -478,7 +479,11 @@ export function RepairPage() {
             )}
 
             {/* 狀態進度 */}
-            {detailReport.status === 'closed' &&
+            {detailReport.status === 'closed' && detailReport.resolved_kind === 'referred' ? (
+              <p className="text-sm text-zinc-700">
+                本案非資訊組維修範圍，已轉知負責單位處理，案件結案。
+              </p>
+            ) : detailReport.status === 'closed' &&
              (detailReport.resolved_kind === 'self' || detailReport.resolved_kind === 'vanished') ? (
               <p className="text-sm text-green-700">
                 ✓ 已解決（{resolvedKindLabel(detailReport.resolved_kind)}），案件已結案。
