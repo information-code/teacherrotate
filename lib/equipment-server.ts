@@ -55,6 +55,8 @@ export async function logLoanEvent(opts: {
   action: 'reserved' | 'borrowed' | 'returned' | 'cancelled' | 'released' | 'closed'
   detail: string
   actorId?: string
+  /** 群組借 N 台：快照名稱顯示「（N 台）」而非「（整組）」 */
+  unitCount?: number
 }): Promise<void> {
   try {
     const [equipRes, groupRes, teacherRes, actorRes] = await Promise.all([
@@ -71,7 +73,7 @@ export async function logLoanEvent(opts: {
     ])
     const teacherName = teacherRes.data?.name ?? teacherRes.data?.email ?? ''
     const equipmentName = opts.groupId
-      ? `${groupRes.data?.name ?? '（已刪除群組）'}（整組）`
+      ? `${groupRes.data?.name ?? '（已刪除群組）'}（${opts.unitCount ? `${opts.unitCount} 台` : '整組'}）`
       : (equipRes.data as { name?: string } | null)?.name ?? '（已刪除設備）'
     await supabaseAdmin.from('equipment_loan_events').insert({
       loan_id: opts.loanId,
@@ -140,6 +142,8 @@ export async function reserveShortLoan(opts: {
   startPeriod: string
   endPeriod: string
   actorId?: string
+  /** 群組借用台數（1～可借數）；未指定＝整組全部成員（舊語意，全員可用才可借） */
+  quantity?: number
   enforceMaxAdvance: boolean
 }): Promise<{ ok: true; id: string } | { ok: false; error: string; status: number }> {
   const { teacherId, equipmentId, groupId, startDate, endDate, startPeriod, endPeriod } = opts
@@ -178,49 +182,76 @@ export async function reserveShortLoan(opts: {
   })
 
   if (groupId) {
-    // ---- 整組借用 ----
+    // ---- 群組借用（借 N 台）----
+    // quantity 未指定＝整組全部成員（舊語意：全員可用才可借）；
+    // 指定 N＝從可借池（可用狀態、未長借、該時段全程有空）挑編號最小的 N 台。
     const { data: group, error: groupError } = await supabaseAdmin
       .from('equipment_groups').select('id, status').eq('id', groupId).maybeSingle()
     if (groupError) return fail(`系統查詢失敗，請聯絡管理員：${groupError.message}`, 500)
-    if (!group || group.status !== 'available') return fail('此群組目前無法整組借用')
+    if (!group || group.status !== 'available') return fail('此群組目前無法借用')
     const { data: members } = await supabaseAdmin
-      .from('equipment').select('id, status').eq('group_id', groupId)
+      .from('equipment').select('id, status, asset_number').eq('group_id', groupId)
+      .order('asset_number').order('id')
     if (!members || members.length === 0) return fail('此群組沒有成員設備')
-    if (members.some(m => m.status !== 'available')) {
-      return fail('群組內有設備維修中或停用，暫不開放整組借用。')
-    }
-    // 整組或任一成員被長期借用 → 不可整組借
-    const memberIds = members.map(m => m.id)
+
+    // 整組被長借 → 全部不可借；個別成員被長借 → 只排除該成員
     const [{ data: groupLong }, { data: memberLong }] = await Promise.all([
       supabaseAdmin.from('equipment_long_loans').select('id')
         .eq('group_id', groupId).eq('status', 'active').lte('start_date', endDate).limit(1),
-      supabaseAdmin.from('equipment_long_loans').select('id')
-        .in('equipment_id', memberIds).eq('status', 'active').lte('start_date', endDate).limit(1),
+      supabaseAdmin.from('equipment_long_loans').select('equipment_id')
+        .in('equipment_id', members.map(m => m.id)).eq('status', 'active').lte('start_date', endDate),
     ])
-    if ((groupLong?.length ?? 0) > 0 || (memberLong?.length ?? 0) > 0) {
-      return fail('此群組或其中設備為長期借用中，無法整組借用。')
-    }
+    if ((groupLong?.length ?? 0) > 0) return fail('此群組為整組長期借用中，無法借用。')
+    const longLoanedIds = new Set((memberLong ?? []).map(l => l.equipment_id as string))
 
-    const { data: loanId, error } = await supabaseAdmin.rpc('reserve_equipment_group_loan', {
-      p_group_id: groupId,
-      p_teacher_id: teacherId,
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_start_period: startPeriod,
-      p_end_period: endPeriod,
-      p_slots: slots as never,
-    })
-    if (error) {
-      if (error.message.includes('slot_taken')) {
-        return fail('群組內部分設備該時段已被借走，整組不可借，請換其他時段。', 409)
-      }
-      return fail(error.message, 500)
+    const quantity = opts.quantity
+    if (quantity !== undefined && (!Number.isInteger(quantity) || quantity < 1)) {
+      return fail('借用台數無效')
     }
-    await logLoanEvent({
-      loanId: String(loanId), groupId, teacherId,
-      action: 'reserved', detail, actorId: opts.actorId,
-    })
-    return { ok: true, id: String(loanId) }
+    if (quantity === undefined && (members.some(m => m.status !== 'available') || longLoanedIds.size > 0)) {
+      return fail('群組內有設備維修中、停用或長期借用中，暫不開放整組借用。')
+    }
+    const pool = members.filter(m => m.status === 'available' && !longLoanedIds.has(m.id))
+    const want = quantity ?? members.length
+    if (pool.length < want) return fail(`此群組目前僅 ${pool.length} 台可供借用。`)
+
+    // 從可借池挑編號最小的 N 台；剛好被搶（slot_taken）就重挑一次再試
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data: takenRows, error: slotError } = await supabaseAdmin
+        .from('equipment_loan_slots').select('equipment_id, loan_date, period')
+        .in('equipment_id', pool.map(m => m.id))
+        .gte('loan_date', startDate).lte('loan_date', endDate)
+      if (slotError) return fail(`系統查詢失敗，請聯絡管理員：${slotError.message}`, 500)
+      const taken = new Set((takenRows ?? []).map(r => `${r.equipment_id}|${r.loan_date}|${r.period}`))
+      const free = pool.filter(m =>
+        slots.every(s => s.periods.every(p => !taken.has(`${m.id}|${s.date}|${p}`)))
+      )
+      if (free.length < want) {
+        return fail(`此時段僅剩 ${free.length} 台可借，請減少台數或換其他時段。`, 409)
+      }
+      const picked = free.slice(0, want).map(m => m.id)
+
+      const { data: loanId, error } = await supabaseAdmin.rpc('reserve_equipment_group_loan', {
+        p_group_id: groupId,
+        p_teacher_id: teacherId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_start_period: startPeriod,
+        p_end_period: endPeriod,
+        p_slots: slots as never,
+        p_unit_ids: picked,
+      })
+      if (error) {
+        if (error.message.includes('slot_taken')) continue
+        return fail(error.message, 500)
+      }
+      await logLoanEvent({
+        loanId: String(loanId), groupId, teacherId,
+        action: 'reserved', detail, actorId: opts.actorId, unitCount: picked.length,
+      })
+      return { ok: true, id: String(loanId) }
+    }
+    return fail('該時段的設備剛被其他老師借走，請重新查詢。', 409)
   }
 
   // ---- 單台借用 ----

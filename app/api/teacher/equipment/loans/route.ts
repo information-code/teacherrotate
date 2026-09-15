@@ -15,11 +15,12 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { equipment_id, group_id, start_date, end_date, start_period, end_period } = await request.json()
+  const { equipment_id, group_id, quantity, start_date, end_date, start_period, end_period } = await request.json()
   const result = await reserveShortLoan({
     teacherId: user.id,
     equipmentId: equipment_id,
     groupId: group_id,
+    quantity: typeof quantity === 'number' ? quantity : undefined,
     startDate: start_date,
     endDate: end_date,
     startPeriod: start_period,

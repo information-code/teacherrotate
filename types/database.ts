@@ -221,7 +221,7 @@ export type Database = {
           end_date: string | null; start_period: string | null; end_period: string | null
           borrow_agreed_at: string | null; borrow_checklist: Json | null; borrowed_at: string | null
           return_agreed_at: string | null; return_checklist: Json | null; returned_at: string | null
-          closed_by: string | null; created_at: string; updated_at: string
+          closed_by: string | null; created_at: string; updated_at: string; unit_ids: Json
         }
         Insert: {
           id?: string; equipment_id?: string | null; group_id?: string | null; teacher_id: string
@@ -229,7 +229,7 @@ export type Database = {
           end_date?: string | null; start_period?: string | null; end_period?: string | null
           borrow_agreed_at?: string | null; borrow_checklist?: Json | null; borrowed_at?: string | null
           return_agreed_at?: string | null; return_checklist?: Json | null; returned_at?: string | null
-          closed_by?: string | null; created_at?: string; updated_at?: string
+          closed_by?: string | null; created_at?: string; updated_at?: string; unit_ids?: Json
         }
         Update: Partial<Database['public']['Tables']['equipment_loans']['Insert']>
         Relationships: []

@@ -21,6 +21,7 @@ import {
 interface EquipmentRow {
   id: string
   name: string
+  group_id: string | null
   asset_number: string
   location: string
   peripherals: string[]
@@ -43,6 +44,8 @@ interface LoanRow {
   equipment_name: string
   equipment_asset_number: string
   equipment_location: string
+  /** 群組借 N 台配到的編號（如「#01、#03」），單台借用為空字串 */
+  equipment_units?: string
   loan_date: string
   end_date: string | null
   start_period: string | null
@@ -264,6 +267,7 @@ function ShortTab({
   const [endPeriod, setEndPeriod] = useState('')
   const [equipName, setEquipName] = useState('')
   const [showResults, setShowResults] = useState(false)
+  const [quantity, setQuantity] = useState(1)
   const [submitting, setSubmitting] = useState('')
 
   const sameDay = from === to
@@ -272,7 +276,8 @@ function ShortTab({
   // 同日借用結束時段須不早於開始；跨日則各自獨立
   const periodsValid = startIndex >= 0 && endIndex >= 0 && (!sameDay ? true : endIndex >= startIndex)
 
-  const equipmentNames = Array.from(new Set(data.equipment.map(e => e.name)))
+  // 已編入群組的設備不列單台名稱，一律從群組入口以「借 N 台」借用
+  const equipmentNames = Array.from(new Set(data.equipment.filter(e => !e.group_id).map(e => e.name)))
   // 選項值：單台名稱「name:xxx」、整組「group:群組id」
   const selectedGroup = equipName.startsWith('group:')
     ? data.groups.find(g => g.id === equipName.slice(6)) ?? null
@@ -294,19 +299,16 @@ function ShortTab({
     ? []
     : data.equipment.filter(equip => equip.name === selectedName && unitFree(equip.id))
 
-  // 整組：全部成員都有空才可借；列出被占用的編號
-  const groupBlockedUnits = !canQuery || !selectedGroup
+  // 群組借 N 台：可借池＝該時段全程有空的成員（依 API 排序＝編號序），系統自動配前 N 台
+  const groupFreeUnits = !canQuery || !selectedGroup
     ? []
-    : selectedGroup.member_ids
-        .filter(id => !unitFree(id))
-        .map(id => data.equipment.find(e => e.id === id))
-        .filter((e): e is EquipmentRow => Boolean(e))
+    : data.equipment.filter(e => selectedGroup.member_ids.includes(e.id) && unitFree(e.id))
 
   const timeSummary = sameDay
     ? `${from}｜${periodLabel(startPeriod)}${startPeriod !== endPeriod ? `～${periodLabel(endPeriod)}` : ''}`
     : `${from} ${periodLabel(startPeriod)} ～ ${to} ${periodLabel(endPeriod)}`
 
-  const reserve = async (target: { equipment_id?: string; group_id?: string }) => {
+  const reserve = async (target: { equipment_id?: string; group_id?: string; quantity?: number }) => {
     if (!canQuery) return
     setSubmitting(target.equipment_id ?? target.group_id ?? '')
     try {
@@ -330,6 +332,7 @@ function ShortTab({
           setStartPeriod('')
           setEndPeriod('')
           setEquipName('')
+          setQuantity(1)
           setShowResults(false)
           document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
           window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -378,6 +381,9 @@ function ShortTab({
                   <div className="text-xs text-zinc-600 mt-0.5">
                     取用地點：<span className="font-medium">{loan.equipment_location}</span>
                   </div>
+                )}
+                {loan.equipment_units && (
+                  <div className="text-xs text-zinc-600 mt-0.5">編號：{loan.equipment_units}</div>
                 )}
               </div>
               <span className={loan.status === 'borrowed' ? 'badge-warn' : 'badge-default'}>
@@ -495,7 +501,7 @@ function ShortTab({
               {equipmentNames.map(name => <option key={name} value={`name:${name}`}>{name}</option>)}
               {data.groups.map(g => (
                 <option key={g.id} value={`group:${g.id}`}>
-                  {g.name}〔整組 {g.member_ids.length} 台〕
+                  {g.name}〔{g.member_ids.length} 台〕
                 </option>
               ))}
             </select>
@@ -511,32 +517,46 @@ function ShortTab({
             跨日借用時，首日從開始時段起、末日到結束時段止，期間整段保留。
           </p>
         ) : selectedGroup ? (
-          /* 整組借用：全部成員都有空才可借 */
-          groupBlockedUnits.length > 0 ? (
+          /* 群組借 N 台：從可借池自動配編號（編號小的優先），一筆借用單、一次手續 */
+          groupFreeUnits.length === 0 ? (
             <p className="text-sm text-zinc-500">
-              {timeSummary}｜「{selectedGroup.name}」整組不可借：
-              {groupBlockedUnits.map(e => e.asset_number ? `#${e.asset_number}` : e.name).join('、')}
-              {` 共 ${groupBlockedUnits.length} 台在此時段已被借用/預約，請換其他時段或日期。`}
+              {timeSummary}｜「{selectedGroup.name}」這個時段已無可借設備，請換其他時段或日期。
             </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-sm text-zinc-600">{timeSummary}｜整組可借：</p>
-              <div className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
-                <div className="flex-1 min-w-[180px]">
-                  <div className="text-sm font-medium text-zinc-900">
-                    {selectedGroup.name}
-                    <span className="ml-1 text-xs text-zinc-400 font-normal">整組 {selectedGroup.member_ids.length} 台</span>
-                  </div>
-                  <div className="text-xs text-zinc-500 mt-0.5">
-                    借用期間群組內所有設備一併保留，歸還時請整組清點。
-                  </div>
+              <p className="text-sm text-zinc-600">
+                {timeSummary}｜「{selectedGroup.name}」可借 {groupFreeUnits.length}／{selectedGroup.member_ids.length} 台：
+              </p>
+              <div className="flex flex-wrap items-end gap-3 border border-zinc-200 rounded p-3">
+                <div>
+                  <span className="label">借用台數</span>
+                  <select
+                    className="input !w-28"
+                    value={Math.min(quantity, groupFreeUnits.length)}
+                    onChange={e => setQuantity(Number(e.target.value))}
+                  >
+                    {groupFreeUnits.map((_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {i + 1} 台{i + 1 === selectedGroup.member_ids.length ? '（整組）' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[180px] text-xs text-zinc-500">
+                  將配置編號：
+                  {groupFreeUnits.slice(0, Math.min(quantity, groupFreeUnits.length))
+                    .map(e => e.asset_number ? `#${e.asset_number}` : e.name).join('、')}
+                  <div className="mt-0.5">借用期間一併保留，歸還時請整批清點歸位。</div>
                 </div>
                 <button
                   className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
                   disabled={submitting === selectedGroup.id}
-                  onClick={() => reserve({ group_id: selectedGroup.id })}
+                  onClick={() => reserve({
+                    group_id: selectedGroup.id,
+                    quantity: Math.min(quantity, groupFreeUnits.length),
+                  })}
                 >
-                  {submitting === selectedGroup.id ? '預約中…' : '整組預約借用'}
+                  {submitting === selectedGroup.id ? '預約中…' : '預約借用'}
                 </button>
               </div>
             </div>

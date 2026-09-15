@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
-  const { equipment_id, group_id, teacher_id, start_date, end_date, start_period, end_period } =
+  const { equipment_id, group_id, teacher_id, quantity, start_date, end_date, start_period, end_period } =
     await request.json()
   if (!teacher_id) return NextResponse.json({ error: '請選擇借用老師' }, { status: 400 })
   const { data: teacher } = await supabaseAdmin
@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
     teacherId: teacher_id,
     equipmentId: equipment_id,
     groupId: group_id,
+    quantity: typeof quantity === 'number' ? quantity : undefined,
     startDate: start_date,
     endDate: end_date,
     startPeriod: start_period,

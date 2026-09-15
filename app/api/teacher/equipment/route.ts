@@ -136,12 +136,17 @@ export async function GET(request: NextRequest) {
     typeTotals,
     myLoans: (myLoans ?? []).map(l => {
       const equip = l.equipment_id ? equipMap.get(l.equipment_id) : undefined
+      // 群組借 N 台：顯示台數與配到的編號（unit_ids 空＝舊整組資料）
+      const unitIds: string[] = Array.isArray(l.unit_ids) ? (l.unit_ids as string[]) : []
       return {
         ...l,
         equipment_name: l.group_id
-          ? `${groupMap.get(l.group_id) ?? '（已刪除群組）'}（整組）`
+          ? `${groupMap.get(l.group_id) ?? '（已刪除群組）'}（${unitIds.length > 0 ? `${unitIds.length} 台` : '整組'}）`
           : equip?.name ?? '（已刪除設備）',
         equipment_asset_number: equip?.asset_number ?? '',
+        equipment_units: l.group_id
+          ? unitIds.map(id => equipMap.get(id)?.asset_number).filter(Boolean).map(n => `#${n}`).join('、')
+          : '',
         equipment_location: l.group_id
           ? groupLocation.get(l.group_id) ?? ''
           : equip?.location ?? '',

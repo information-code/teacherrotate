@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   // 以台灣時間切當天（Vercel 伺服器是 UTC）
   const dayStart = `${date}T00:00:00+08:00`
   const dayEnd = `${addDays(date, 1)}T00:00:00+08:00`
-  const select = 'id, equipment_id, group_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods, borrowed_at, returned_at'
+  const select = 'id, equipment_id, group_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods, borrowed_at, returned_at, unit_ids'
 
   const [{ data: active, error: e1 }, { data: borrowedOn, error: e2 }, { data: returnedOn, error: e3 }, { data: around, error: e4 },
     { data: equipment }, { data: groups }, { data: profiles }] = await Promise.all([
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const e = l.equipment_id ? equipMap.get(l.equipment_id) : null
     const label = e
       ? `${e.name}${e.asset_number ? ` ${e.asset_number}` : ''}`
-      : `${(l.group_id && groupMap.get(l.group_id)) || '群組'}（整組）`
+      : `${(l.group_id && groupMap.get(l.group_id)) || '群組'}（${Array.isArray(l.unit_ids) && l.unit_ids.length > 0 ? `${l.unit_ids.length} 台` : '整組'}）`
     return {
       id: l.id,
       status: l.status,

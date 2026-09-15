@@ -1487,6 +1487,7 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
   } | null>(null)
   const [creating, setCreating] = useState('')
   const [logKey, setLogKey] = useState(0)
+  const [quantity, setQuantity] = useState(1)
 
   /** 改任何條件都清掉查詢結果，避免拿舊結果建立 */
   const patch = (part: Partial<typeof form>) => {
@@ -1520,6 +1521,7 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
         status: string; equipment_id: string | null; group_id: string | null
         loan_date: string; end_date: string | null; periods: string[]
         start_period: string | null; end_period: string | null
+        unit_ids?: string[]
       }[] = (await loanRes.json()).loans
       const longLoans: {
         status: string; start_date: string; equipment_id: string | null; group_id: string | null
@@ -1532,9 +1534,11 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
         const first = l.loan_date > form.from ? l.loan_date : form.from
         const last = end < form.to ? end : form.to
         if (first > last) continue
-        // 整組借用占用全部成員
+        // 群組借用占用實際配到的成員（unit_ids 空＝舊整組資料，占全部成員）
         const ids = l.group_id
-          ? equipment.filter(e => e.group_id === l.group_id).map(e => e.id)
+          ? (Array.isArray(l.unit_ids) && l.unit_ids.length > 0
+              ? l.unit_ids
+              : equipment.filter(e => e.group_id === l.group_id).map(e => e.id))
           : l.equipment_id ? [l.equipment_id] : []
         for (const date of dateRangeList(first, last)) {
           const dayPeriods = end === l.loan_date
@@ -1570,7 +1574,7 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
     : `${form.from} ${periodLabel(form.startPeriod)} ～ ${form.to} ${periodLabel(form.endPeriod)}`
   const teacherName = teachers.find(t => t.id === form.teacherId)?.name ?? ''
 
-  const create = async (target: { equipment_id?: string; group_id?: string }) => {
+  const create = async (target: { equipment_id?: string; group_id?: string; quantity?: number }) => {
     setCreating(target.equipment_id ?? target.group_id ?? '')
     try {
       await runBusy('建立短期借用中…', async () => {
@@ -1600,8 +1604,9 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
     }
   }
 
+  // 已編入群組的設備不列單台名稱，一律從群組入口以「借 N 台」建立
   const availableNames = Array.from(new Set(
-    equipment.filter(e => e.status === 'available').map(e => e.name)
+    equipment.filter(e => e.status === 'available' && !e.group_id).map(e => e.name)
   ))
 
   return (
@@ -1670,7 +1675,7 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
               <option value="">請選擇</option>
               {availableNames.map(name => <option key={name} value={`name:${name}`}>{name}</option>)}
               {groups.filter(g => g.status === 'available').map(g => (
-                <option key={g.id} value={`group:${g.id}`}>{g.name}〔整組 {g.member_count} 台〕</option>
+                <option key={g.id} value={`group:${g.id}`}>{g.name}〔{g.member_count} 台〕</option>
               ))}
             </select>
           </div>
@@ -1685,36 +1690,54 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
 
         {avail && canQuery && (
           selectedGroup ? (() => {
+            /* 群組借 N 台：整組長借→全擋；個別成員長借/維修→僅排除該台 */
             const members = equipment.filter(e => e.group_id === selectedGroup.id)
-            const badStatus = members.some(m => m.status !== 'available')
-            const longBlocked = avail.longGroupIds.has(selectedGroup.id) || members.some(m => avail.longIds.has(m.id))
-            const busy = members.filter(m => !unitFree(m.id))
-            const blockedText = badStatus
-              ? '群組內有設備維修中或停用，暫不開放整組借用。'
-              : longBlocked
-                ? '此群組或其中設備為長期借用中，無法整組借用。'
-                : busy.length > 0
-                  ? `${busy.map(m => m.asset_number ? `#${m.asset_number}` : m.name).join('、')} 共 ${busy.length} 台在此時段已被借用/預約。`
-                  : ''
-            return blockedText ? (
-              <p className="text-sm text-zinc-500">{timeSummary}｜「{selectedGroup.name}」整組不可借：{blockedText}</p>
-            ) : (
+            if (avail.longGroupIds.has(selectedGroup.id)) {
+              return (
+                <p className="text-sm text-zinc-500">
+                  {timeSummary}｜「{selectedGroup.name}」整組長期借用中，無法借用。
+                </p>
+              )
+            }
+            const free = members.filter(m =>
+              m.status === 'available' && !avail.longIds.has(m.id) && unitFree(m.id)
+            )
+            if (free.length === 0) {
+              return (
+                <p className="text-sm text-zinc-500">
+                  {timeSummary}｜「{selectedGroup.name}」這個時段已無可借設備，請換其他時段或日期。
+                </p>
+              )
+            }
+            const q = Math.min(quantity, free.length)
+            return (
               <div className="space-y-2">
-                <p className="text-sm text-zinc-600">{timeSummary}｜{teacherName}｜整組可借：</p>
-                <div className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
-                  <div className="flex-1 min-w-[180px] text-sm">
-                    <span className="font-medium text-zinc-900">{selectedGroup.name}</span>
-                    <span className="ml-1 text-xs text-zinc-400">整組 {selectedGroup.member_count} 台</span>
+                <p className="text-sm text-zinc-600">
+                  {timeSummary}｜{teacherName}｜「{selectedGroup.name}」可借 {free.length}／{members.length} 台：
+                </p>
+                <div className="flex flex-wrap items-end gap-3 border border-zinc-200 rounded p-3">
+                  <div>
+                    <span className="label">借用台數</span>
+                    <select className="input !w-28" value={q} onChange={e => setQuantity(Number(e.target.value))}>
+                      {free.map((_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1} 台{i + 1 === members.length ? '（整組）' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[180px] text-xs text-zinc-500">
+                    將配置編號：{free.slice(0, q).map(m => m.asset_number ? `#${m.asset_number}` : m.name).join('、')}
                   </div>
                   <button className="btn-primary !px-3 !py-1.5"
                     disabled={creating === selectedGroup.id}
-                    onClick={() => create({ group_id: selectedGroup.id })}>
-                    {creating === selectedGroup.id ? '建立中…' : '整組建立預約'}
+                    onClick={() => create({ group_id: selectedGroup.id, quantity: q })}>
+                    {creating === selectedGroup.id ? '建立中…' : '建立預約'}
                   </button>
                 </div>
               </div>
             )
-          })() : (
+                    })() : (
             <div className="space-y-2">
               <p className="text-sm text-zinc-600">
                 {timeSummary}｜{teacherName}｜{selectedName}：

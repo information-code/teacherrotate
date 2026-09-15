@@ -24,7 +24,7 @@ export async function GET() {
       .order('name').order('asset_number'),
     supabaseAdmin.from('equipment_groups').select('id, name'),
     supabaseAdmin.from('equipment_loans')
-      .select('id, equipment_id, group_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods')
+      .select('id, equipment_id, group_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods, unit_ids')
       .in('status', ['reserved', 'borrowed'])
       .order('loan_date'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
@@ -73,7 +73,12 @@ export async function GET() {
       ...e,
       shortLoans: [
         ...(shortByEquipment.get(e.id) ?? []).map(l => shortEntry(l, false)),
-        ...(e.group_id ? (shortByGroup.get(e.group_id) ?? []).map(l => shortEntry(l, true)) : []),
+        ...(e.group_id
+          ? (shortByGroup.get(e.group_id) ?? [])
+              // 群組借 N 台：只掛在實際被借的成員上（unit_ids 空＝舊整組資料，全員都算）
+              .filter(l => !Array.isArray(l.unit_ids) || l.unit_ids.length === 0 || (l.unit_ids as string[]).includes(e.id))
+              .map(l => shortEntry(l, true))
+          : []),
       ],
       longLoan: long ? {
         borrower_name: long.teacher_id
