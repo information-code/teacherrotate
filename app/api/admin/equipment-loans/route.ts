@@ -6,6 +6,9 @@ import { collectChecklistPhotos, logLoanEvent, markNoShowOnRelease, reserveShort
 import { loanTimeText } from '@/lib/equipment'
 import { hasPerms } from '@/lib/staff-server'
 
+// 每週重複批次建立需要較長執行時間
+export const maxDuration = 60
+
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -148,10 +151,9 @@ export async function POST(request: NextRequest) {
       : [{ start_date: body?.start_date, end_date: body?.end_date }]
   const seriesId = occurrences.length > 1 ? crypto.randomUUID() : undefined
 
-  let created = 0
-  const failed: { start_date: string; error: string }[] = []
-  for (const occ of occurrences) {
-    const result = await reserveShortLoan({
+  // 各場日期互不重疊，可並行建立（逐場序列 18 場要百餘次 DB 來回，會拖到數十秒）
+  const results = await Promise.all(occurrences.map(occ =>
+    reserveShortLoan({
       teacherId: teacher_id,
       equipmentId: equipment_id,
       groupId: group_id,
@@ -164,9 +166,13 @@ export async function POST(request: NextRequest) {
       seriesId,
       enforceMaxAdvance: false,
     })
+  ))
+  let created = 0
+  const failed: { start_date: string; error: string }[] = []
+  results.forEach((result, i) => {
     if (result.ok) created++
-    else failed.push({ start_date: occ.start_date, error: result.error })
-  }
+    else failed.push({ start_date: occurrences[i].start_date, error: result.error })
+  })
   if (created === 0) {
     return NextResponse.json({ error: failed[0]?.error ?? '建立失敗', failed }, { status: 409 })
   }
