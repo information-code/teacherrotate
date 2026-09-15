@@ -77,7 +77,7 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
     const usedColors = new Set(config.lockTypes.map(t => t.color))
     const color = LOCK_COLOR_KEYS.find(k => !usedColors.has(k)) ?? LOCK_COLOR_KEYS[config.lockTypes.length % LOCK_COLOR_KEYS.length]
     const id = crypto.randomUUID()
-    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color, isNative: false, byHomeroom: null, spread: false }] }))
+    setConfig(c => ({ ...c, lockTypes: [...c.lockTypes, { id, label: '', subject: '', color, isNative: false, byHomeroom: null }] }))
     setActive(id)
   }
   function removeType(t: LockType) {
@@ -237,11 +237,6 @@ export default function LockTab({ config, setConfig, classCounts, gradeSubjects,
                     <option value="yes">是</option>
                     <option value="no">否</option>
                   </select>
-                </label>
-                {/* 配班分散：有此類鎖課的班（種子班等）自動配班時平均分散給不同科任，避免全集中在一位老師身上 */}
-                <label className="flex items-center gap-1 text-xs text-zinc-500 flex-shrink-0" title="勾選後，有此類鎖課的班在自動配班時會平均分散給同年級同科的不同科任老師（含手動指定的一併計算），避免鎖課密的班全部集中在同一位老師身上。全部不勾＝不做分散">
-                  <input type="checkbox" checked={t.spread} onChange={e => updateType(t.id, { spread: e.target.checked })} />
-                  配班分散
                 </label>
                 <button onClick={() => removeType(t)} className="btn btn-danger text-xs py-0.5 flex-shrink-0">刪除</button>
               </div>
