@@ -64,6 +64,8 @@ export interface EquipmentConfig {
   maxAdvanceDays: number
   /** 每次上傳照片上限（張） */
   maxPhotos: number
+  /** 「預約未借」上限次數（0＝不限制）：達上限暫停自行預約，管理端可歸零恢復 */
+  noShowLimit: number
 }
 
 export const DEFAULT_EQUIPMENT_CONFIG: EquipmentConfig = {
@@ -90,6 +92,7 @@ export const DEFAULT_EQUIPMENT_CONFIG: EquipmentConfig = {
   renewalNoticeDays: 7,
   maxAdvanceDays: 14,
   maxPhotos: 5,
+  noShowLimit: 3,
 }
 
 /** 合併儲存值與預設值（設定新增欄位時舊資料自動補齊） */

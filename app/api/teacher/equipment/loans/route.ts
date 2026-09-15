@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { loadEquipmentConfig, logLoanEvent, reserveShortLoan, validateChecklistResult } from '@/lib/equipment-server'
+import { loadEquipmentConfig, logLoanEvent, reserveShortLoan, sweepNoShowCount, validateChecklistResult } from '@/lib/equipment-server'
 import { loanTimeText, type ChecklistItem } from '@/lib/equipment'
 
 /**
@@ -16,6 +16,18 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { equipment_id, group_id, quantity, start_date, end_date, start_period, end_period } = await request.json()
+
+  // 「預約未借」達上限 → 暫停預約（管理端可歸零恢復）
+  const limitConfig = await loadEquipmentConfig()
+  if (limitConfig.noShowLimit > 0) {
+    const noShowCount = await sweepNoShowCount(user.id)
+    if (noShowCount >= limitConfig.noShowLimit) {
+      return NextResponse.json(
+        { error: `您的「預約未借用」已達 ${limitConfig.noShowLimit} 次上限，暫時無法預約，請洽設備管理人員恢復。` },
+        { status: 403 }
+      )
+    }
+  }
   const result = await reserveShortLoan({
     teacherId: user.id,
     equipmentId: equipment_id,

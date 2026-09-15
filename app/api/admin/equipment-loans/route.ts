@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { collectChecklistPhotos, logLoanEvent, reserveShortLoan, signPhotoUrls } from '@/lib/equipment-server'
+import { collectChecklistPhotos, logLoanEvent, markNoShowOnRelease, reserveShortLoan, signPhotoUrls } from '@/lib/equipment-server'
 import { loanTimeText } from '@/lib/equipment'
 import { hasPerms } from '@/lib/staff-server'
 
@@ -95,6 +95,8 @@ export async function PATCH(request: NextRequest) {
     }).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     await supabaseAdmin.from('equipment_loan_slots').delete().eq('loan_id', id)
+    // 釋出「已到期」的預約＝預約未借，計次（未到期的提前釋出不算）
+    await markNoShowOnRelease(loan)
     await logLoanEvent({
       loanId: id, equipmentId: loan.equipment_id, groupId: loan.group_id, teacherId: loan.teacher_id,
       action: 'released', detail: loanTimeText(loan), actorId: auth.user.id,
@@ -122,34 +124,51 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * 建立短期借用（管理者代老師安排）。
- * body: { equipment_id? | group_id?, teacher_id, start_date, end_date, start_period, end_period }
- * 建立後狀態為「已預約」，老師照常到自己的借用頁完成借用/歸還手續；
- * 不受教師端「可預借天數」上限（但不可早於今天）；日誌 actor 記管理者。
+ * 建立短期借用（管理者代老師安排；支援每週重複＝多場次批次建立）。
+ * body: { equipment_id? | group_id?, teacher_id, start_period, end_period, quantity?,
+ *         start_date?, end_date?,                    // 單場
+ *         occurrences?: [{ start_date, end_date }] } // 多場（每週重複），同一 series_id 串起
+ * 每一場都是普通借用，逐場驗證與防撞；部分失敗回報 failed 清單。
+ * 建立後為「已預約」，老師照常完成借用/歸還手續；不受教師端「可預借天數」上限。
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
-  const { equipment_id, group_id, teacher_id, quantity, start_date, end_date, start_period, end_period } =
-    await request.json()
+  const body = await request.json()
+  const { equipment_id, group_id, teacher_id, quantity, start_period, end_period } = body ?? {}
   if (!teacher_id) return NextResponse.json({ error: '請選擇借用老師' }, { status: 400 })
   const { data: teacher } = await supabaseAdmin
     .from('profiles').select('id').eq('id', teacher_id).maybeSingle()
   if (!teacher) return NextResponse.json({ error: '找不到這位老師' }, { status: 404 })
 
-  const result = await reserveShortLoan({
-    teacherId: teacher_id,
-    equipmentId: equipment_id,
-    groupId: group_id,
-    quantity: typeof quantity === 'number' ? quantity : undefined,
-    startDate: start_date,
-    endDate: end_date,
-    startPeriod: start_period,
-    endPeriod: end_period,
-    actorId: auth.user.id,
-    enforceMaxAdvance: false,
-  })
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
-  return NextResponse.json({ ok: true, id: result.id })
+  const occurrences: { start_date: string; end_date: string }[] =
+    Array.isArray(body?.occurrences) && body.occurrences.length > 0
+      ? body.occurrences.slice(0, 30)
+      : [{ start_date: body?.start_date, end_date: body?.end_date }]
+  const seriesId = occurrences.length > 1 ? crypto.randomUUID() : undefined
+
+  let created = 0
+  const failed: { start_date: string; error: string }[] = []
+  for (const occ of occurrences) {
+    const result = await reserveShortLoan({
+      teacherId: teacher_id,
+      equipmentId: equipment_id,
+      groupId: group_id,
+      quantity: typeof quantity === 'number' ? quantity : undefined,
+      startDate: occ.start_date,
+      endDate: occ.end_date,
+      startPeriod: start_period,
+      endPeriod: end_period,
+      actorId: auth.user.id,
+      seriesId,
+      enforceMaxAdvance: false,
+    })
+    if (result.ok) created++
+    else failed.push({ start_date: occ.start_date, error: result.error })
+  }
+  if (created === 0) {
+    return NextResponse.json({ error: failed[0]?.error ?? '建立失敗', failed }, { status: 409 })
+  }
+  return NextResponse.json({ ok: true, created, failed, series_id: seriesId ?? null })
 }

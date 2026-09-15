@@ -144,6 +144,8 @@ export async function reserveShortLoan(opts: {
   actorId?: string
   /** 群組借用台數（1～可借數）；未指定＝整組全部成員（舊語意，全員可用才可借） */
   quantity?: number
+  /** 每週重複建立時串起多筆借用的系列 id */
+  seriesId?: string
   enforceMaxAdvance: boolean
 }): Promise<{ ok: true; id: string } | { ok: false; error: string; status: number }> {
   const { teacherId, equipmentId, groupId, startDate, endDate, startPeriod, endPeriod } = opts
@@ -245,6 +247,9 @@ export async function reserveShortLoan(opts: {
         if (error.message.includes('slot_taken')) continue
         return fail(error.message, 500)
       }
+      if (opts.seriesId) {
+        await supabaseAdmin.from('equipment_loans').update({ series_id: opts.seriesId }).eq('id', String(loanId))
+      }
       await logLoanEvent({
         loanId: String(loanId), groupId, teacherId,
         action: 'reserved', detail, actorId: opts.actorId, unitCount: picked.length,
@@ -292,9 +297,59 @@ export async function reserveShortLoan(opts: {
     }
     return fail(error.message, 500)
   }
+  if (opts.seriesId) {
+    await supabaseAdmin.from('equipment_loans').update({ series_id: opts.seriesId }).eq('id', String(loanId))
+  }
   await logLoanEvent({
     loanId: String(loanId), equipmentId: equip.id, teacherId,
     action: 'reserved', detail, actorId: opts.actorId,
   })
   return { ok: true, id: String(loanId) }
+}
+
+// ---------- 「預約未借」計次 ----------
+
+async function addNoShow(teacherId: string, n: number): Promise<void> {
+  const { data: cur } = await supabaseAdmin.from('equipment_teacher_stats')
+    .select('no_show_count').eq('teacher_id', teacherId).maybeSingle()
+  await supabaseAdmin.from('equipment_teacher_stats').upsert({
+    teacher_id: teacherId,
+    no_show_count: (cur?.no_show_count ?? 0) + n,
+    updated_at: new Date().toISOString(),
+  })
+}
+
+/**
+ * 掃描某老師的「預約未借」：到期日已過仍停在「已預約」且未計次的借用 → 標記計次並累加，
+ * 回傳目前累計次數。老師載入借用頁與送出預約時各掃一次（無排程，惰性計算）。
+ * 管理端歸零只清累計數，已標記的借用不會被重算。
+ */
+export async function sweepNoShowCount(teacherId: string): Promise<number> {
+  const today = todayStr()
+  const { data: stale } = await supabaseAdmin.from('equipment_loans')
+    .select('id, loan_date, end_date')
+    .eq('teacher_id', teacherId).eq('status', 'reserved').eq('no_show_counted', false)
+  const expired = (stale ?? []).filter(l => (l.end_date ?? l.loan_date) < today)
+  if (expired.length > 0) {
+    await supabaseAdmin.from('equipment_loans')
+      .update({ no_show_counted: true }).in('id', expired.map(l => l.id))
+    await addNoShow(teacherId, expired.length)
+  }
+  const { data: stat } = await supabaseAdmin.from('equipment_teacher_stats')
+    .select('no_show_count').eq('teacher_id', teacherId).maybeSingle()
+  return stat?.no_show_count ?? 0
+}
+
+/** 管理端釋出「已到期」的預約＝預約未借，計次；未到期的提前釋出不算。 */
+export async function markNoShowOnRelease(loan: {
+  id: string
+  teacher_id: string
+  loan_date: string
+  end_date: string | null
+  no_show_counted?: boolean
+}): Promise<void> {
+  if (loan.no_show_counted) return
+  if ((loan.end_date ?? loan.loan_date) >= todayStr()) return
+  await supabaseAdmin.from('equipment_loans').update({ no_show_counted: true }).eq('id', loan.id)
+  await addNoShow(loan.teacher_id, 1)
 }

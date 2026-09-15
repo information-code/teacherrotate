@@ -1301,6 +1301,24 @@ function DashboardTab({ onCopyOverdue, onCopyPickup, runBusy, onFlash }: {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
+  const [noShowRows, setNoShowRows] = useState<{ teacher_id: string; name: string; no_show_count: number }[] | null>(null)
+
+  const loadNoShow = useCallback(async () => {
+    const res = await fetch('/api/admin/equipment-no-show')
+    if (res.ok) setNoShowRows((await res.json()).rows)
+  }, [])
+  useEffect(() => { loadNoShow() }, [loadNoShow])
+
+  const resetNoShow = async (t: { teacher_id: string; name: string }) => {
+    if (!confirm(`確定將 ${t.name} 的「預約未借」次數歸零？歸零後老師即可恢復自行預約。`)) return
+    const res = await fetch('/api/admin/equipment-no-show', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_id: t.teacher_id }),
+    })
+    if (!res.ok) alert((await res.json()).error ?? '重置失敗')
+    await loadNoShow()
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -1423,6 +1441,30 @@ function DashboardTab({ onCopyOverdue, onCopyPickup, runBusy, onFlash }: {
             })}
           </div>
 
+          {/* 預約未借次數 */}
+          <div className="card space-y-2">
+            <h2 className="font-medium text-zinc-900">
+              預約未借次數
+              <span className={`ml-2 rounded px-2 py-0.5 text-xs ${(noShowRows?.length ?? 0) > 0 ? 'bg-orange-100 text-orange-800' : 'bg-zinc-100 text-zinc-500'}`}>
+                {noShowRows?.length ?? 0} 人
+              </span>
+            </h2>
+            <p className="text-sm text-zinc-500">
+              預約到期仍未辦借用手續會自動計次；達上限（「設備設定」可調）的老師無法自行預約，須由此歸零恢復。
+            </p>
+            {noShowRows === null && <p className="text-sm text-zinc-400">載入中…</p>}
+            {noShowRows !== null && noShowRows.length === 0 && <p className="text-sm text-zinc-400">沒有。</p>}
+            {(noShowRows ?? []).map(t => (
+              <div key={t.teacher_id} className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2 text-sm">
+                <span>
+                  <span className="font-medium text-zinc-800">{t.name}</span>
+                  <span className="ml-2 text-zinc-500">{t.no_show_count} 次</span>
+                </span>
+                <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => resetNoShow(t)}>歸零</button>
+              </div>
+            ))}
+          </div>
+
           {/* 當天動態 */}
           <div className="card space-y-3">
             <h2 className="font-medium text-zinc-900">{data.date} 動態</h2>
@@ -1462,10 +1504,17 @@ function DashboardTab({ onCopyOverdue, onCopyPickup, runBusy, onFlash }: {
 
 // ---------- 管理端建立短期借用 ----------
 
+const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六']
+function weekdayZh(date: string): string {
+  return `週${WEEKDAY_ZH[new Date(date + 'T00:00:00').getDay()]}`
+}
+
 /**
  * 建立短期借用（管理者代老師安排）＋短期借用日誌。
- * 流程仿教師端訂房式：選起訖日期時段、老師、設備 → 查詢 → 從可借編號中建立。
- * 建立後為「已預約」，老師照常完成借用/歸還手續；不受教師端可預借天數限制。
+ * 單次：仿教師端訂房式（群組借 N 台自動配號、單台逐台建立）。
+ * 每週重複：同週幾同時段重複到指定日期（如「每週四中午到學期末」），一次建立多筆
+ * 普通單日借用（同一 series_id 串起），逐週預覽可借狀況、衝突週自動不勾；
+ * 每一場老師都照常辦借用/歸還手續。建立後為「已預約」，不受教師端可預借天數限制。
  */
 function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFlash }: {
   equipment: EquipmentOption[]
@@ -1479,12 +1528,18 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
   const [form, setForm] = useState({
     from: todayStr(), to: todayStr(), startPeriod: '', endPeriod: '', teacherId: '', equipName: '',
   })
+  const [repeat, setRepeat] = useState<'once' | 'weekly'>('once')
+  const [repeatUntil, setRepeatUntil] = useState('')
+  /** 每週重複＋單台名稱時，指定借哪一台 */
+  const [weeklyUnitId, setWeeklyUnitId] = useState('')
   /** 查詢結果（按查詢當下的條件）：短借占用格與長借中的設備/群組 */
   const [avail, setAvail] = useState<{
     occupied: Record<string, Record<string, string[]>>
     longIds: Set<string>
     longGroupIds: Set<string>
   } | null>(null)
+  /** 使用者手動取消勾選的場次 index */
+  const [excluded, setExcluded] = useState<number[]>([])
   const [creating, setCreating] = useState('')
   const [logKey, setLogKey] = useState(0)
   const [quantity, setQuantity] = useState(1)
@@ -1499,18 +1554,41 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
   const startIndex = periods.findIndex(p => p.key === form.startPeriod)
   const endIndex = periods.findIndex(p => p.key === form.endPeriod)
   const periodsValid = startIndex >= 0 && endIndex >= 0 && (!sameDay || endIndex >= startIndex)
-  const canQuery = Boolean(form.from && form.to && form.to >= form.from && form.teacherId && form.equipName) && periodsValid
+  const spanDays = form.from && form.to
+    ? Math.round((Date.parse(form.to) - Date.parse(form.from)) / 86400000)
+    : 0
+  // 每週重複：需有截止日；單場跨日不可達 7 天，否則場次會互相重疊
+  const weeklyValid = repeat === 'once' || (Boolean(repeatUntil) && repeatUntil >= form.to && spanDays <= 6)
+  const canQuery =
+    Boolean(form.from && form.to && form.to >= form.from && form.teacherId && form.equipName) &&
+    periodsValid && weeklyValid
 
   const selectedGroup = form.equipName.startsWith('group:')
     ? groups.find(g => g.id === form.equipName.slice(6)) ?? null
     : null
   const selectedName = form.equipName.startsWith('name:') ? form.equipName.slice(5) : ''
 
-  /** 查占用：短借紀錄往前多抓 62 天（跨日借用上限）才涵蓋跨進區間的借用；長借另查 */
+  // 場次清單（單次＝1 場；每週＝同週幾直到截止日，最多 30 場）
+  const occurrences: { from: string; to: string }[] = []
+  if (canQuery) {
+    if (repeat === 'once') {
+      occurrences.push({ from: form.from, to: form.to })
+    } else {
+      for (let k = 0; k < 30; k++) {
+        const f = addDays(form.from, 7 * k)
+        if (f > repeatUntil) break
+        occurrences.push({ from: f, to: addDays(form.to, 7 * k) })
+      }
+    }
+  }
+  const lastTo = occurrences.length > 0 ? occurrences[occurrences.length - 1].to : form.to
+
+  /** 查占用：短借紀錄往前多抓 62 天（跨日借用上限）才涵蓋跨進區間的借用；長借另查。
+   *  長借判定以最後一場的迄日為準（保守），伺服器建立時逐場精確檢查。 */
   const query = async () => {
     await runBusy('查詢可借狀態中…', async () => {
       const [loanRes, longRes] = await Promise.all([
-        fetch(`/api/admin/equipment-loans?from=${addDays(form.from, -62)}&to=${form.to}`),
+        fetch(`/api/admin/equipment-loans?from=${addDays(form.from, -62)}&to=${lastTo}`),
         fetch('/api/admin/equipment-long-loans'),
       ])
       if (!loanRes.ok || !longRes.ok) {
@@ -1532,7 +1610,7 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
         if (l.status !== 'reserved' && l.status !== 'borrowed') continue
         const end = loanDueDate(l)
         const first = l.loan_date > form.from ? l.loan_date : form.from
-        const last = end < form.to ? end : form.to
+        const last = end < lastTo ? end : lastTo
         if (first > last) continue
         // 群組借用占用實際配到的成員（unit_ids 空＝舊整組資料，占全部成員）
         const ids = l.group_id
@@ -1551,30 +1629,35 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
       const longIds = new Set<string>()
       const longGroupIds = new Set<string>()
       for (const l of longLoans) {
-        if (l.status !== 'active' || l.start_date > form.to) continue
+        if (l.status !== 'active' || l.start_date > lastTo) continue
         if (l.equipment_id) longIds.add(l.equipment_id)
         if (l.group_id) longGroupIds.add(l.group_id)
       }
       setAvail({ occupied, longIds, longGroupIds })
+      setExcluded([])
     })
   }
 
-  const rangeDates = canQuery ? dateRangeList(form.from, form.to) : []
-  const unitFree = (id: string) =>
-    rangeDates.every(date => {
-      const need = daySlotPeriods(openPeriods, date, form.from, form.to, form.startPeriod, form.endPeriod)
+  /** 某台設備在某一場的期間內是否全程有空 */
+  const unitFreeIn = (id: string, occ: { from: string; to: string }) =>
+    dateRangeList(occ.from, occ.to).every(date => {
+      const need = daySlotPeriods(openPeriods, date, occ.from, occ.to, form.startPeriod, form.endPeriod)
       const taken = avail?.occupied[date]?.[id] ?? []
       return need.every(p => !taken.includes(p))
     })
-  const unitLongLoaned = (e: EquipmentOption) =>
-    Boolean(avail && (avail.longIds.has(e.id) || (e.group_id && avail.longGroupIds.has(e.group_id))))
 
-  const timeSummary = sameDay
+  const timeSummary = (sameDay
     ? `${form.from}｜${periodLabel(form.startPeriod)}${form.startPeriod !== form.endPeriod ? `～${periodLabel(form.endPeriod)}` : ''}`
-    : `${form.from} ${periodLabel(form.startPeriod)} ～ ${form.to} ${periodLabel(form.endPeriod)}`
+    : `${form.from} ${periodLabel(form.startPeriod)} ～ ${form.to} ${periodLabel(form.endPeriod)}`)
+    + (repeat === 'weekly' ? `｜每週${weekdayZh(form.from).slice(1)}重複到 ${repeatUntil}` : '')
   const teacherName = teachers.find(t => t.id === form.teacherId)?.name ?? ''
 
-  const create = async (target: { equipment_id?: string; group_id?: string; quantity?: number }) => {
+  /** 批次建立（單次＝1 場）；部分場次失敗會逐場回報 */
+  const createBatch = async (
+    target: { equipment_id?: string; group_id?: string; quantity?: number },
+    occs: { from: string; to: string }[],
+  ) => {
+    if (occs.length === 0) return
     setCreating(target.equipment_id ?? target.group_id ?? '')
     try {
       await runBusy('建立短期借用中…', async () => {
@@ -1584,10 +1667,9 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
           body: JSON.stringify({
             ...target,
             teacher_id: form.teacherId,
-            start_date: form.from,
-            end_date: form.to,
             start_period: form.startPeriod,
             end_period: form.endPeriod,
+            occurrences: occs.map(o => ({ start_date: o.from, end_date: o.to })),
           }),
         })
         const data = await res.json()
@@ -1595,7 +1677,11 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
           alert(data.error ?? '建立失敗')
           return
         }
-        onFlash(`已為 ${teacherName} 建立預約，請老師屆時完成借用手續。`)
+        const failed: { start_date: string; error: string }[] = data.failed ?? []
+        onFlash(`已為 ${teacherName} 建立 ${data.created} 場預約，請老師屆時完成借用手續。`)
+        if (failed.length > 0) {
+          alert(`有 ${failed.length} 場未成立：\n` + failed.map(f => `${f.start_date}：${f.error}`).join('\n'))
+        }
         setAvail(null)
         setLogKey(k => k + 1)
       })
@@ -1608,6 +1694,42 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
   const availableNames = Array.from(new Set(
     equipment.filter(e => e.status === 'available' && !e.group_id).map(e => e.name)
   ))
+  const nameUnits = selectedName
+    ? equipment.filter(e => e.status === 'available' && e.name === selectedName)
+    : []
+
+  /** 場次預覽清單（群組＝台數是否足夠；單台＝該台是否有空） */
+  const occRows = (occOk: (occ: { from: string; to: string }) => boolean, info: (occ: { from: string; to: string }) => string) => (
+    <div className="space-y-1">
+      {occurrences.map((occ, i) => {
+        const ok = occOk(occ)
+        const checked = ok && !excluded.includes(i)
+        const label = occ.from === occ.to
+          ? `${occ.from}（${weekdayZh(occ.from)}）`
+          : `${occ.from}（${weekdayZh(occ.from)}）～ ${occ.to}`
+        return (
+          <label
+            key={occ.from}
+            className={`flex items-center gap-2 text-sm rounded border px-3 py-1.5 ${
+              ok ? 'border-zinc-200 cursor-pointer' : 'border-red-200 bg-red-50 text-red-700'
+            }`}
+          >
+            <input
+              type="checkbox"
+              disabled={!ok}
+              checked={checked}
+              onChange={() => setExcluded(x => x.includes(i) ? x.filter(j => j !== i) : [...x, i])}
+            />
+            <span className="flex-1">{label}</span>
+            <span className={`text-xs ${ok ? 'text-zinc-500' : ''}`}>{info(occ)}</span>
+          </label>
+        )
+      })}
+    </div>
+  )
+
+  const pickedOccs = (occOk: (occ: { from: string; to: string }) => boolean) =>
+    occurrences.filter((occ, i) => occOk(occ) && !excluded.includes(i))
 
   return (
     <div className="space-y-4">
@@ -1615,12 +1737,12 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
         <div>
           <h2 className="font-medium text-zinc-900">建立短期借用</h2>
           <p className="text-sm text-zinc-500 mt-0.5">
-            由管理者代老師安排短期借用。建立後為「已預約」，老師到自己的設備借用頁完成借用／歸還手續；
-            日期不受教師端可預借天數限制。
+            由管理者代老師安排短期借用；可每週重複（如「每週四中午到學期末」），每一場老師都照常辦
+            借用／歸還手續。建立後為「已預約」，日期不受教師端可預借天數限制。
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <span className="label">開始日期</span>
             <input type="date" className="input" value={form.from} min={todayStr()}
@@ -1671,7 +1793,10 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
           <div>
             <span className="label">借用設備</span>
             <select className="input" value={form.equipName}
-              onChange={e => patch({ equipName: e.target.value })}>
+              onChange={e => {
+                setWeeklyUnitId('')
+                patch({ equipName: e.target.value })
+              }}>
               <option value="">請選擇</option>
               {availableNames.map(name => <option key={name} value={`name:${name}`}>{name}</option>)}
               {groups.filter(g => g.status === 'available').map(g => (
@@ -1679,19 +1804,43 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
               ))}
             </select>
           </div>
+          <div>
+            <span className="label">重複</span>
+            <select className="input" value={repeat}
+              onChange={e => {
+                setRepeat(e.target.value as 'once' | 'weekly')
+                setAvail(null)
+              }}>
+              <option value="once">單次</option>
+              <option value="weekly">每週（同週幾同時段）</option>
+            </select>
+          </div>
+          {repeat === 'weekly' && (
+            <div>
+              <span className="label">重複到（含當週）</span>
+              <input type="date" className="input" value={repeatUntil} min={form.to || todayStr()}
+                onChange={e => {
+                  setRepeatUntil(e.target.value)
+                  setAvail(null)
+                }} />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
           <button className="btn-primary" disabled={!canQuery} onClick={query}>查詢可借</button>
           {!canQuery && (
-            <p className="text-sm text-zinc-400">請選齊起訖日期、時段、老師與設備後查詢。</p>
+            <p className="text-sm text-zinc-400">
+              {repeat === 'weekly' && spanDays > 6
+                ? '每週重複的單場借用不可跨 7 天以上（場次會互相重疊）。'
+                : `請選齊起訖日期、時段、老師與設備${repeat === 'weekly' ? '、重複截止日' : ''}後查詢。`}
+            </p>
           )}
         </div>
 
         {avail && canQuery && (
           selectedGroup ? (() => {
             /* 群組借 N 台：整組長借→全擋；個別成員長借/維修→僅排除該台 */
-            const members = equipment.filter(e => e.group_id === selectedGroup.id)
             if (avail.longGroupIds.has(selectedGroup.id)) {
               return (
                 <p className="text-sm text-zinc-500">
@@ -1699,72 +1848,116 @@ function ShortAdminTab({ equipment, groups, teachers, openPeriods, runBusy, onFl
                 </p>
               )
             }
-            const free = members.filter(m =>
-              m.status === 'available' && !avail.longIds.has(m.id) && unitFree(m.id)
-            )
-            if (free.length === 0) {
+            const members = equipment.filter(e => e.group_id === selectedGroup.id)
+            const pool = members.filter(m => m.status === 'available' && !avail.longIds.has(m.id))
+            if (pool.length === 0) {
               return (
                 <p className="text-sm text-zinc-500">
-                  {timeSummary}｜「{selectedGroup.name}」這個時段已無可借設備，請換其他時段或日期。
+                  {timeSummary}｜「{selectedGroup.name}」目前沒有可供借用的設備。
                 </p>
               )
             }
-            const q = Math.min(quantity, free.length)
+            const q = Math.min(quantity, pool.length)
+            const occFree = (occ: { from: string; to: string }) =>
+              pool.filter(m => unitFreeIn(m.id, occ)).length
+            const occOk = (occ: { from: string; to: string }) => occFree(occ) >= q
+            const picked = pickedOccs(occOk)
+            const singleOcc = occurrences.length === 1 ? occurrences[0] : null
             return (
               <div className="space-y-2">
                 <p className="text-sm text-zinc-600">
-                  {timeSummary}｜{teacherName}｜「{selectedGroup.name}」可借 {free.length}／{members.length} 台：
+                  {timeSummary}｜{teacherName}｜「{selectedGroup.name}」共 {members.length} 台：
                 </p>
-                <div className="flex flex-wrap items-end gap-3 border border-zinc-200 rounded p-3">
+                <div className="flex flex-wrap items-end gap-3">
                   <div>
-                    <span className="label">借用台數</span>
+                    <span className="label">借用台數（每場）</span>
                     <select className="input !w-28" value={q} onChange={e => setQuantity(Number(e.target.value))}>
-                      {free.map((_, i) => (
+                      {pool.map((_, i) => (
                         <option key={i + 1} value={i + 1}>
                           {i + 1} 台{i + 1 === members.length ? '（整組）' : ''}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="flex-1 min-w-[180px] text-xs text-zinc-500">
-                    將配置編號：{free.slice(0, q).map(m => m.asset_number ? `#${m.asset_number}` : m.name).join('、')}
-                  </div>
+                  {singleOcc && occOk(singleOcc) && (
+                    <div className="flex-1 min-w-[180px] text-xs text-zinc-500 pb-1">
+                      將配置編號：
+                      {pool.filter(m => unitFreeIn(m.id, singleOcc)).slice(0, q)
+                        .map(m => m.asset_number ? `#${m.asset_number}` : m.name).join('、')}
+                    </div>
+                  )}
+                </div>
+                {occRows(occOk, occ => `剩 ${occFree(occ)} 台`)}
+                <div className="flex items-center gap-3">
                   <button className="btn-primary !px-3 !py-1.5"
-                    disabled={creating === selectedGroup.id}
-                    onClick={() => create({ group_id: selectedGroup.id, quantity: q })}>
-                    {creating === selectedGroup.id ? '建立中…' : '建立預約'}
+                    disabled={picked.length === 0 || creating === selectedGroup.id}
+                    onClick={() => createBatch({ group_id: selectedGroup.id, quantity: q }, picked)}>
+                    {creating === selectedGroup.id ? '建立中…' : `建立 ${picked.length} 場預約`}
                   </button>
+                  <span className="text-xs text-zinc-400">系統每場自動配編號最小的 {q} 台。</span>
                 </div>
               </div>
             )
-                    })() : (
+          })() : repeat === 'weekly' ? (() => {
+            /* 每週重複＋單台：先指定編號，再逐週預覽該台可借狀況 */
+            const unit = nameUnits.find(u => u.id === weeklyUnitId)
+            const unitLong = unit ? avail.longIds.has(unit.id) || (unit.group_id ? avail.longGroupIds.has(unit.group_id) : false) : false
+            const occOk = (occ: { from: string; to: string }) => Boolean(unit) && !unitLong && unitFreeIn(unit!.id, occ)
+            const picked = pickedOccs(occOk)
+            return (
+              <div className="space-y-2">
+                <p className="text-sm text-zinc-600">{timeSummary}｜{teacherName}｜{selectedName}：</p>
+                <div>
+                  <span className="label">指定編號</span>
+                  <select className="input !w-64" value={weeklyUnitId} onChange={e => setWeeklyUnitId(e.target.value)}>
+                    <option value="">請選擇</option>
+                    {nameUnits.map(u => (
+                      <option key={u.id} value={u.id}>{u.asset_number ? `#${u.asset_number}` : u.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {unit && unitLong && (
+                  <p className="text-sm text-zinc-500">這一台長期借用中，請改選其他編號。</p>
+                )}
+                {unit && !unitLong && (
+                  <>
+                    {occRows(occOk, occ => occOk(occ) ? '可借' : '該時段已被借用/預約')}
+                    <button className="btn-primary !px-3 !py-1.5"
+                      disabled={picked.length === 0 || creating === unit.id}
+                      onClick={() => createBatch({ equipment_id: unit.id }, picked)}>
+                      {creating === unit.id ? '建立中…' : `建立 ${picked.length} 場預約`}
+                    </button>
+                  </>
+                )}
+              </div>
+            )
+          })() : (
+            /* 單次＋單台：逐台列出建立 */
             <div className="space-y-2">
               <p className="text-sm text-zinc-600">
                 {timeSummary}｜{teacherName}｜{selectedName}：
               </p>
-              {equipment
-                .filter(e => e.status === 'available' && e.name === selectedName)
-                .map(e => {
-                  const long = unitLongLoaned(e)
-                  const free = !long && unitFree(e.id)
-                  return (
-                    <div key={e.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
-                      <div className="flex-1 min-w-[180px] text-sm">
-                        <span className="font-medium text-zinc-900">{e.name}</span>
-                        {e.asset_number && <span className="ml-1 text-xs text-zinc-400">#{e.asset_number}</span>}
-                      </div>
-                      {free ? (
-                        <button className="btn-primary !px-3 !py-1.5"
-                          disabled={creating === e.id}
-                          onClick={() => create({ equipment_id: e.id })}>
-                          {creating === e.id ? '建立中…' : '建立預約'}
-                        </button>
-                      ) : (
-                        <span className="badge-warn">{long ? '長期借用中' : '該時段已被借用/預約'}</span>
-                      )}
+              {nameUnits.map(e => {
+                const long = avail.longIds.has(e.id) || (e.group_id ? avail.longGroupIds.has(e.group_id) : false)
+                const free = !long && unitFreeIn(e.id, occurrences[0])
+                return (
+                  <div key={e.id} className="flex flex-wrap items-center gap-2 border border-zinc-200 rounded p-3">
+                    <div className="flex-1 min-w-[180px] text-sm">
+                      <span className="font-medium text-zinc-900">{e.name}</span>
+                      {e.asset_number && <span className="ml-1 text-xs text-zinc-400">#{e.asset_number}</span>}
                     </div>
-                  )
-                })}
+                    {free ? (
+                      <button className="btn-primary !px-3 !py-1.5"
+                        disabled={creating === e.id}
+                        onClick={() => createBatch({ equipment_id: e.id }, occurrences)}>
+                        {creating === e.id ? '建立中…' : '建立預約'}
+                      </button>
+                    ) : (
+                      <span className="badge-warn">{long ? '長期借用中' : '該時段已被借用/預約'}</span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )
         )}

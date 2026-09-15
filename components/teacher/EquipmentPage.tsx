@@ -68,6 +68,8 @@ interface ShortData {
   groups: GroupRow[]
   /** 日期 → 設備 id → 已占用節次 */
   occupied: Record<string, Record<string, string[]>>
+  /** 預約未借狀態：count 累計、limit 上限（0＝不限）、blocked 已達上限 */
+  noShow?: { count: number; limit: number; blocked: boolean }
   myLoans: LoanRow[]
 }
 
@@ -268,6 +270,7 @@ function ShortTab({
   const [equipName, setEquipName] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [quantity, setQuantity] = useState(1)
+  const noShowBlocked = Boolean(data.noShow?.blocked)
   const [submitting, setSubmitting] = useState('')
 
   const sameDay = from === to
@@ -419,6 +422,18 @@ function ShortTab({
       <div className="card space-y-4">
         <h2 className="font-medium text-zinc-900">預約借用</h2>
 
+        {/* 預約未借警告：有紀錄先提醒，達上限暫停預約 */}
+        {noShowBlocked ? (
+          <p className="text-sm text-red-700 border border-red-200 bg-red-50 rounded p-3">
+            您的「預約未借用」已達 {data.noShow?.limit} 次上限，暫時無法自行預約，請洽設備管理人員恢復。
+          </p>
+        ) : (data.noShow?.limit ?? 0) > 0 && (data.noShow?.count ?? 0) > 0 ? (
+          <p className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+            提醒：您已有 {data.noShow?.count} 次「預約未借用」紀錄，累計 {data.noShow?.limit} 次將暫停預約
+            （再 {(data.noShow?.limit ?? 0) - (data.noShow?.count ?? 0)} 次）。預約後請記得當天完成借用手續。
+          </p>
+        ) : null}
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <span className="label">開始日期</span>
@@ -550,7 +565,7 @@ function ShortTab({
                 </div>
                 <button
                   className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
-                  disabled={submitting === selectedGroup.id}
+                  disabled={submitting === selectedGroup.id || noShowBlocked}
                   onClick={() => reserve({
                     group_id: selectedGroup.id,
                     quantity: Math.min(quantity, groupFreeUnits.length),
@@ -588,7 +603,7 @@ function ShortTab({
                     </div>
                     <button
                       className="btn-primary w-full sm:w-auto sm:!px-3 sm:!py-1.5"
-                      disabled={submitting === equip.id}
+                      disabled={submitting === equip.id || noShowBlocked}
                       onClick={() => reserve({ equipment_id: equip.id })}
                     >
                       {submitting === equip.id ? '預約中…' : '預約借用'}

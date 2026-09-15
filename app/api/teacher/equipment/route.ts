@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { loadEquipmentConfig } from '@/lib/equipment-server'
+import { loadEquipmentConfig, sweepNoShowCount } from '@/lib/equipment-server'
 import { addDays, todayStr } from '@/lib/equipment'
 
 /**
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       .in('status', ['reserved', 'borrowed', 'returned', 'closed'])
       .order('loan_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(30),
+      .limit(80),
   ])
 
   // 長期借用（單台或整組）中的設備不開放短期借用
@@ -126,8 +126,16 @@ export async function GET(request: NextRequest) {
     if (e.group_id && e.location && !groupLocation.has(e.group_id)) groupLocation.set(e.group_id, e.location)
   }
 
+  // 「預約未借」計次（載入頁面時掃描過期預約）與上限狀態
+  const noShowCount = await sweepNoShowCount(user.id)
+
   return NextResponse.json({
     config: { ...config, today, maxDate },
+    noShow: {
+      count: noShowCount,
+      limit: config.noShowLimit,
+      blocked: config.noShowLimit > 0 && noShowCount >= config.noShowLimit,
+    },
     from,
     to,
     equipment,

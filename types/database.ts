@@ -222,6 +222,7 @@ export type Database = {
           borrow_agreed_at: string | null; borrow_checklist: Json | null; borrowed_at: string | null
           return_agreed_at: string | null; return_checklist: Json | null; returned_at: string | null
           closed_by: string | null; created_at: string; updated_at: string; unit_ids: Json
+          series_id: string | null; no_show_counted: boolean
         }
         Insert: {
           id?: string; equipment_id?: string | null; group_id?: string | null; teacher_id: string
@@ -230,6 +231,7 @@ export type Database = {
           borrow_agreed_at?: string | null; borrow_checklist?: Json | null; borrowed_at?: string | null
           return_agreed_at?: string | null; return_checklist?: Json | null; returned_at?: string | null
           closed_by?: string | null; created_at?: string; updated_at?: string; unit_ids?: Json
+          series_id?: string | null; no_show_counted?: boolean
         }
         Update: Partial<Database['public']['Tables']['equipment_loans']['Insert']>
         Relationships: []
@@ -238,6 +240,12 @@ export type Database = {
         Row: { loan_id: string; equipment_id: string; loan_date: string; period: string }
         Insert: { loan_id: string; equipment_id: string; loan_date: string; period: string }
         Update: Partial<Database['public']['Tables']['equipment_loan_slots']['Insert']>
+        Relationships: []
+      }
+      equipment_teacher_stats: {
+        Row: { teacher_id: string; no_show_count: number; updated_at: string }
+        Insert: { teacher_id: string; no_show_count?: number; updated_at?: string }
+        Update: Partial<Database['public']['Tables']['equipment_teacher_stats']['Insert']>
         Relationships: []
       }
       equipment_loan_events: {

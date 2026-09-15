@@ -416,6 +416,14 @@ export default function EquipmentConfigClient({
             />
           </div>
           <div>
+            <span className="label">預約未借上限（次，0＝不限）</span>
+            <input
+              type="number" min={0} className="input"
+              value={config.noShowLimit}
+              onChange={e => setConfig(c => ({ ...c, noShowLimit: Math.max(0, Number(e.target.value) || 0) }))}
+            />
+          </div>
+          <div>
             <span className="label">續借週期（週）</span>
             <input
               type="number" min={1} className="input"
