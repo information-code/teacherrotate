@@ -29,6 +29,7 @@ async function newDoc(orientation: 'portrait' | 'landscape', onStatus?: (s: stri
 export interface SigninSheet {
   teacher: OtTeacher
   sessions: OtSessionRow[]
+  month?: string   // 這頁的月份（YYYY-MM）；未給＝用 exportSigninPdf 的 month（多月份合併成一份時用）
 }
 
 /** 個人簽到表：一位教師一頁（該月無節次者也出一頁空白列，方便手寫補登） */
@@ -36,11 +37,12 @@ export async function exportSigninPdf(
   plan: OtPlan, month: string, sheets: SigninSheet[], onStatus?: (s: string) => void,
 ): Promise<Blob> {
   const { doc, autoTable } = await newDoc('portrait', onStatus)
-  const monthNum = Number(month.slice(5, 7))
-  const roc = rocYear(`${month}-01`)
 
   sheets.forEach((sh, idx) => {
     if (idx > 0) doc.addPage('a4', 'portrait')
+    const sheetMonth = sh.month ?? month
+    const monthNum = Number(sheetMonth.slice(5, 7))
+    const roc = rocYear(`${sheetMonth}-01`)
     // 標題框
     doc.setFont('NotoSansTC', 'bold'); doc.setFontSize(14)
     const titleLines = doc.splitTextToSize(`${SIGNIN_SCHOOL} ${roc}年 ${plan.name}`, 168) as string[]

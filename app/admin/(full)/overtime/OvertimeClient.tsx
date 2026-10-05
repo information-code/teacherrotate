@@ -4,6 +4,7 @@
 // 減課節數＝計畫期程內符合星期的日子，扣掉國定假日（holidays）與特殊不上課日。
 import { useMemo, useRef, useState } from 'react'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
+import { MonthPicker, monthsBetween } from '@/components/ui/MonthPicker'
 import {
   OT_CATEGORIES, OT_WEEKDAYS, OT_DAY_ZH, OT_PERIOD_ZH, OT_WEEKLY_CAP, isCappedCategory,
   otCategoryLabel, buildSkipSet, weekdayCounts, expandSessions, monthRange, money,
@@ -667,10 +668,14 @@ export default function OvertimeClient({
                 <span className="text-xs text-zinc-500">計畫</span>
                 <div>{planSelector}</div>
               </label>
-              <label className="block">
+              <div className="block">
                 <span className="text-xs text-zinc-500">月份</span>
-                <input type="month" className="input block" value={exportMonth} onChange={e => setExportMonth(e.target.value)} />
-              </label>
+                <MonthPicker
+                  value={exportMonth}
+                  onChange={setExportMonth}
+                  months={selectedPlan ? monthsBetween(selectedPlan.start_date, selectedPlan.end_date) : []}
+                />
+              </div>
               <button className="btn-primary" onClick={downloadSignin}>⬇ 個人簽到表 PDF</button>
               <button className="btn-secondary" onClick={downloadRoster}>⬇ 鐘點費清冊 PDF</button>
             </div>
