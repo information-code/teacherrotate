@@ -907,13 +907,16 @@ function TeacherCard({
           <span className="text-xs text-zinc-500 border border-zinc-200 rounded px-1.5 py-0.5">
             本計畫 {slots.length} 節
           </span>
-          {capped && (
-            <span className={`text-xs rounded px-1.5 py-0.5 border ${
-              maxWeekly > OT_WEEKLY_CAP ? 'border-red-300 text-red-600'
-              : maxWeekly === OT_WEEKLY_CAP ? 'border-amber-300 text-amber-700'
-              : 'border-zinc-200 text-zinc-500'
-            }`}>
-              同週最多 {maxWeekly} / {OT_WEEKLY_CAP} 節
+          {capped && maxWeekly > 0 && (
+            <span
+              className={`text-xs rounded px-1.5 py-0.5 border ${
+                maxWeekly > OT_WEEKLY_CAP ? 'border-red-300 text-red-600'
+                : maxWeekly === OT_WEEKLY_CAP ? 'border-amber-300 text-amber-700'
+                : 'border-zinc-200 text-zinc-500'
+              }`}
+              title="跨計畫合計，取同一週同時生效最多的節數；試辦期間超過上限只提醒、不擋"
+            >
+              每週 {maxWeekly} 節（上限 {OT_WEEKLY_CAP}）
             </span>
           )}
           <span className="text-xs text-zinc-400">區段：{summary}</span>
