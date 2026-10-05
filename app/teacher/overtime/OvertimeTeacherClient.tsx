@@ -15,6 +15,18 @@ import { exportSigninPdf, saveBlob } from '@/lib/overtime-export'
 
 interface MonthStat { month: string; sessions: OtSessionRow[] }
 
+/** 每週時段整理成文字：同星期、同班、同領域、同區段的節次合併成一行（週二 第六、七節） */
+function slotLines(slots: OtSlot[]) {
+  const map = new Map<string, { slot: OtSlot; periods: number[] }>()
+  for (const s of slots) {
+    const key = [s.weekday, s.class_name, s.domain, s.start_date ?? '', s.end_date ?? ''].join('|')
+    const g = map.get(key)
+    if (g) g.periods.push(s.period)
+    else map.set(key, { slot: s, periods: [s.period] })
+  }
+  return Array.from(map, ([key, g]) => ({ key, slot: g.slot, periods: g.periods.sort((a, b) => a - b) }))
+}
+
 const currentMonth = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -106,21 +118,25 @@ export default function OvertimeTeacherClient({
                 </div>
                 <div>
                   <div className="text-xs text-zinc-500 mb-1">每週減課時段（{mySlots.length} 節）</div>
-                  <div className="flex flex-wrap gap-2">
-                    {mySlots.length === 0 && <span className="text-sm text-zinc-400">尚未設定，請洽行政人員</span>}
-                    {mySlots.map(s => (
-                      <span key={s.id} className="border border-zinc-300 rounded px-2 py-1 text-sm">
-                        週{OT_DAY_ZH[s.weekday]} {OT_PERIOD_ZH[s.period]}
-                        {s.class_name && `　${s.class_name}`}
-                        {s.domain && `　${s.domain}`}
-                        {s.start_date && (
-                          <span className="text-xs text-zinc-400">
-                            （{s.start_date.slice(5)}～{(s.end_date ?? '').slice(5)}）
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
+                  {/* 純文字（不加框）：這裡只是顯示，避免看起來像按鈕 */}
+                  {mySlots.length === 0 ? (
+                    <span className="text-sm text-zinc-400">尚未設定，請洽行政人員</span>
+                  ) : (
+                    <ul className="space-y-0.5 text-sm text-zinc-700">
+                      {slotLines(mySlots).map(({ key, slot: s, periods }) => (
+                        <li key={key}>
+                          週{OT_DAY_ZH[s.weekday]} 第{periods.map(p => OT_PERIOD_ZH[p].slice(1, -1)).join('、')}節
+                          {s.class_name && `　${s.class_name}`}
+                          {s.domain && `　${s.domain}`}
+                          {s.start_date && (
+                            <span className="text-xs text-zinc-400">
+                              （{s.start_date.slice(5)}～{(s.end_date ?? '').slice(5)}）
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="border-t border-zinc-100 pt-3 space-y-2">
                   <div className="text-xs text-zinc-500">下載簽到表 PDF（點月份下載該月）</div>
