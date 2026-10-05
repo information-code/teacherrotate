@@ -261,6 +261,35 @@ export default function OvertimeClient({
     })
   }
 
+  /** 改區段日期：整組時段搬到新日期（與計畫期程相同時後端存成全期程）。成功回傳 true */
+  const moveSection = async (
+    rowId: string, fromStart: string | null, fromEnd: string | null, start: string, end: string,
+  ) => {
+    let ok = false
+    await runBusy('修改區段中…', async () => {
+      const data = await call('/api/admin/overtime/sections', 'PUT', {
+        teacher_row_id: rowId, from_start: fromStart, from_end: fromEnd, start_date: start, end_date: end,
+      })
+      const moved = new Set<string>(data.ids)
+      setSlots(list => list.map(s => (moved.has(s.id)
+        ? { ...s, start_date: data.start_date, end_date: data.end_date } : s)))
+      flash(data.warning ? `區段日期已修改；${data.warning}` : '區段日期已修改')
+      ok = true
+    })
+    return ok
+  }
+
+  /** 刪除整個區段（連同其中所有時段） */
+  const deleteSection = async (rowId: string, start: string | null, end: string | null) => {
+    await runBusy('刪除區段中…', async () => {
+      const qs = new URLSearchParams({ teacher_row_id: rowId, start: start ?? '', end: end ?? '' })
+      await call(`/api/admin/overtime/sections?${qs}`, 'DELETE')
+      setSlots(list => list.filter(s =>
+        !(s.teacher_row_id === rowId && s.start_date === start && s.end_date === end)))
+      flash('區段已刪除')
+    })
+  }
+
   // ───────────── 不上課時段 ─────────────
   const [skipDate, setSkipDate] = useState('')
   const [skipName, setSkipName] = useState('')
@@ -595,6 +624,8 @@ export default function OvertimeClient({
               onDelete={() => deleteTeacher(t)}
               onAddSlot={addSlot}
               onDeleteSlot={deleteSlot}
+              onMoveSection={moveSection}
+              onDeleteSection={deleteSection}
             />
           ))}
         </div>
@@ -830,6 +861,7 @@ interface CardSection { start: string | null; end: string | null }
  */
 function TeacherCard({
   teacher, plan, slots, personSlots, courses, onSave, onDelete, onAddSlot, onDeleteSlot,
+  onMoveSection, onDeleteSection,
 }: {
   teacher: OtTeacher
   plan: OtPlan
@@ -845,9 +877,14 @@ function TeacherCard({
     start: string | null, end: string | null,
   ) => Promise<void>
   onDeleteSlot: (id: string) => void
+  onMoveSection: (
+    rowId: string, fromStart: string | null, fromEnd: string | null, start: string, end: string,
+  ) => Promise<boolean>
+  onDeleteSection: (rowId: string, start: string | null, end: string | null) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState<OtRange[]>([])   // 本次新增、還沒勾任何時段的區段
+  const [editing, setEditing] = useState<{ key: string; start: string; end: string } | null>(null)   // 改日期中的區段
   const [rangeStart, setRangeStart] = useState('')
   const [rangeEnd, setRangeEnd] = useState('')
   const [laborText, setLaborText] = useState(String(teacher.labor_fee))
@@ -894,6 +931,47 @@ function TeacherCard({
     if (!rangeStart || !rangeEnd || rangeStart > rangeEnd) return
     setPending(list => [...list, { start: rangeStart, end: rangeEnd }])
     setRangeStart(''); setRangeEnd('')
+  }
+
+  const pendingKeys = new Set(pending.map(r => secKey(r.start, r.end)))
+  const dropPending = (key: string) => setPending(list => list.filter(r => secKey(r.start, r.end) !== key))
+
+  /** 刪除區段：有時段的先確認再整批刪；還沒勾時段的只從前端移除 */
+  const removeSection = async (sec: CardSection, sSlots: OtSlot[]) => {
+    const key = secKey(sec.start, sec.end)
+    if (sSlots.length > 0) {
+      if (!confirm(`確定刪除「${secLabel(sec)}」區段？其中 ${sSlots.length} 個減課時段會一併刪除。`)) return
+      await onDeleteSection(teacher.id, sec.start, sec.end)
+    }
+    dropPending(key)
+    if (editing?.key === key) setEditing(null)
+  }
+
+  /** 改區段日期：已勾的時段整組搬到新日期，不必重勾 */
+  const saveEdit = async (sec: CardSection, sSlots: OtSlot[]) => {
+    if (!editing || !editing.start || !editing.end || editing.start > editing.end) return
+    const key = secKey(sec.start, sec.end)
+    const { start, end } = editing
+    if (sSlots.length === 0) {
+      // 還沒勾時段的區段只存在前端：直接換日期
+      setPending(list => [...list.filter(r => secKey(r.start, r.end) !== key), { start, end }])
+      setEditing(null)
+      return
+    }
+    // 搬過去後同一週超過 6 節：先提醒（軟上限）
+    if (capped) {
+      const ids = new Set(sSlots.map(s => s.id))
+      const peak = maxConcurrentSlots([
+        ...personSlots.filter(p => !ids.has(p.id)).map(p => p.eff),
+        ...sSlots.map((): [string, string] => [start, end]),
+      ])
+      if (peak > OT_WEEKLY_CAP && !confirm(
+        `改日期後${teacher.name}同一週將達 ${peak} 節，超過每週 ${OT_WEEKLY_CAP} 節上限（含其他計畫）。\n\n試辦期間特殊情況可超過，確定要修改嗎？`)) return
+    }
+    if (await onMoveSection(teacher.id, sec.start, sec.end, start, end)) {
+      dropPending(key)
+      setEditing(null)
+    }
   }
 
   return (
@@ -951,23 +1029,50 @@ function TeacherCard({
         {sections.map(sec => {
           const sSlots = sectionSlots(sec)
           const secEff: [string, string] = [sec.start ?? plan.start_date, sec.end ?? plan.end_date]
-          const removable = sSlots.length === 0 && sections.length > 1
+          const key = secKey(sec.start, sec.end)
+          // 有時段、或本次新增的區段可改日期／刪除（沒時段的全期程預設區段不需要）
+          const editable = sSlots.length > 0 || pendingKeys.has(key)
           const peakIfAdd = maxConcurrentSlots([...personEffs, secEff])
           const wouldExceed = capped && peakIfAdd > OT_WEEKLY_CAP
           // 6 節是軟上限（試辦特殊情況可超過）：超過時跳確認，按確定照樣加入
           const confirmOverCap = () => !wouldExceed || confirm(
             `${teacher.name}加入這節後，同一週將達 ${peakIfAdd} 節，超過每週 ${OT_WEEKLY_CAP} 節上限（含其他計畫）。\n\n試辦期間特殊情況可超過，確定要加入嗎？`)
           return (
-            <div key={secKey(sec.start, sec.end)} className="border border-zinc-200 rounded p-3 space-y-2">
+            <div key={key} className="border border-zinc-200 rounded p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-zinc-700">{secLabel(sec)}</span>
-                {removable && (
-                  <button
-                    className="text-xs text-zinc-400 hover:text-red-600"
-                    onClick={() => setPending(list => list.filter(r => secKey(r.start, r.end) !== secKey(sec.start, sec.end)))}
-                  >
-                    移除區段
-                  </button>
+                {editing && editing.key === key ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input type="date" className="input !w-auto" aria-label="區段開始"
+                      min={plan.start_date} max={plan.end_date} value={editing.start}
+                      onChange={e => setEditing({ ...editing, start: e.target.value })} />
+                    <span className="text-sm text-zinc-400">～</span>
+                    <input type="date" className="input !w-auto" aria-label="區段結束"
+                      min={plan.start_date} max={plan.end_date} value={editing.end}
+                      onChange={e => setEditing({ ...editing, end: e.target.value })} />
+                    <button
+                      className="btn-primary !px-3 !py-1"
+                      disabled={!editing.start || !editing.end || editing.start > editing.end}
+                      onClick={() => saveEdit(sec, sSlots)}
+                    >
+                      儲存
+                    </button>
+                    <button className="btn-secondary !px-3 !py-1" onClick={() => setEditing(null)}>取消</button>
+                  </div>
+                ) : (
+                  <span className="text-sm font-medium text-zinc-700">{secLabel(sec)}</span>
+                )}
+                {editable && editing?.key !== key && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="text-xs text-zinc-500 hover:text-zinc-800"
+                      onClick={() => setEditing({ key, start: sec.start ?? plan.start_date, end: sec.end ?? plan.end_date })}
+                    >
+                      改日期
+                    </button>
+                    <button className="text-xs text-zinc-400 hover:text-red-600" onClick={() => removeSection(sec, sSlots)}>
+                      刪除區段
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1080,7 +1185,7 @@ function TeacherCard({
           >
             新增時間區段
           </button>
-          <span className="text-xs text-zinc-400">先加區段、再到區段裡勾時段；沒勾任何時段的區段重新整理後會消失</span>
+          <span className="text-xs text-zinc-400">先加區段、再到區段裡勾時段；選錯可按區段右上角「改日期」或「刪除區段」；沒勾任何時段的區段重新整理後會消失</span>
         </div>
       </div>
 

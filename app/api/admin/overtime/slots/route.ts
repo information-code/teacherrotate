@@ -2,11 +2,8 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requirePerms } from '@/lib/staff-server'
-import {
-  OT_WEEKLY_CAP, otCategoryLabel, isCappedCategory, isDateStr,
-  rangesOverlap, maxConcurrentSlots,
-} from '@/lib/overtime'
-import { forbidIfNotPlanOwner, planIdOfSlot } from '@/lib/overtime-server'
+import { isDateStr, rangesOverlap } from '@/lib/overtime'
+import { forbidIfNotPlanOwner, planIdOfSlot, loadPersonSlots, overCapWarning } from '@/lib/overtime-server'
 
 /**
  * 新增減課時段。body: { teacher_row_id, weekday, period, class_name, domain, start_date?, end_date? }
@@ -45,34 +42,10 @@ export async function POST(request: NextRequest) {
   const forbidden = await forbidIfNotPlanOwner(auth.access, row.plan_id)
   if (forbidden) return forbidden
 
-  // 同一人所有清冊列（跨計畫）＋各列所屬計畫期程
-  let q = supabaseAdmin.from('overtime_teachers').select('id, plan_id')
-  q = row.teacher_id ? q.eq('teacher_id', row.teacher_id) : q.eq('name', row.name).is('teacher_id', null)
-  const { data: sameTeacher } = await q
-  const rows = sameTeacher ?? []
-  const rowIds = rows.map(r => r.id)
-  const planIds = Array.from(new Set(rows.map(r => r.plan_id)))
-
-  const [{ data: slots }, { data: plans }] = await Promise.all([
-    supabaseAdmin.from('overtime_slots')
-      .select('teacher_row_id, weekday, period, start_date, end_date').in('teacher_row_id', rowIds),
-    supabaseAdmin.from('overtime_plans').select('id, start_date, end_date').in('id', planIds),
-  ])
-  const planOf = Object.fromEntries((plans ?? []).map(p => [p.id, p]))
-  const planOfRow = Object.fromEntries(rows.map(r => [r.id, planOf[r.plan_id]]))
-
-  const eff = (s: { teacher_row_id: string; start_date: string | null; end_date: string | null }): [string, string] | null => {
-    const p = planOfRow[s.teacher_row_id]
-    if (!p) return null
-    return [s.start_date ?? p.start_date, s.end_date ?? p.end_date]
-  }
-  const myPlan = planOf[row.plan_id]
+  // 同一人所有清冊列（跨計畫）的時段＋各自生效區間
+  const { myPlan, personSlots: existing } = await loadPersonSlots(row)
   if (!myPlan) return NextResponse.json({ error: '找不到計畫' }, { status: 404 })
   const newEff: [string, string] = [start_date ?? myPlan.start_date, end_date ?? myPlan.end_date]
-
-  const existing = (slots ?? [])
-    .map(s => ({ ...s, eff: eff(s) }))
-    .filter((s): s is typeof s & { eff: [string, string] } => s.eff !== null)
 
   const clash = existing.find(s =>
     s.weekday === weekday && s.period === period
@@ -85,12 +58,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 每週 6 節是軟上限：超過只提醒、不拒絕（前端加入前已跳確認；這裡以跨計畫的實際資料再算一次）
-  const peak = isCappedCategory(row.category)
-    ? maxConcurrentSlots([...existing.map(s => s.eff), newEff])
-    : 0
-  const warning = peak > OT_WEEKLY_CAP
-    ? `${row.name}（${otCategoryLabel(row.category)}）同一週已達 ${peak} 節，超過 ${OT_WEEKLY_CAP} 節上限（含其他計畫）`
-    : null
+  const warning = overCapWarning(row, [...existing.map(s => s.eff), newEff])
 
   const { data, error } = await supabaseAdmin.from('overtime_slots')
     .insert({ teacher_row_id, weekday, period, class_name, domain, start_date, end_date })

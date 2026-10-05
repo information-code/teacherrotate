@@ -5,6 +5,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from './supabase/admin'
 import type { AdminAccess } from './staff-server'
+import { OT_WEEKLY_CAP, isCappedCategory, maxConcurrentSlots, otCategoryLabel } from './overtime'
 
 export function canManagePlanRow(access: AdminAccess, createdBy: string | null): boolean {
   return access.role === 'superadmin' || !createdBy || createdBy === access.userId
@@ -32,4 +33,52 @@ export async function planIdOfSlot(slotId: string): Promise<string | null> {
     .select('teacher_row_id').eq('id', slotId).maybeSingle()
   if (!data) return null
   return planIdOfTeacherRow(data.teacher_row_id)
+}
+
+/** 同一人（跨計畫）的一筆減課時段＋實際生效區間（NULL 區段＝所屬計畫期程） */
+export interface PersonSlotRow {
+  id: string
+  teacher_row_id: string
+  weekday: number
+  period: number
+  start_date: string | null
+  end_date: string | null
+  eff: [string, string]
+}
+
+/**
+ * 載入同一人所有清冊列（跨計畫）的減課時段；系統帳號比對 teacher_id、手動列比對姓名。
+ * myPlan＝這筆清冊列所屬計畫的期程（找不到為 null）。
+ */
+export async function loadPersonSlots(row: { teacher_id: string | null; name: string; plan_id: string }) {
+  let q = supabaseAdmin.from('overtime_teachers').select('id, plan_id')
+  q = row.teacher_id ? q.eq('teacher_id', row.teacher_id) : q.eq('name', row.name).is('teacher_id', null)
+  const { data: sameTeacher } = await q
+  const rows = sameTeacher ?? []
+  const rowIds = rows.map(r => r.id)
+  const planIds = Array.from(new Set(rows.map(r => r.plan_id)))
+
+  const [{ data: slots }, { data: plans }] = await Promise.all([
+    supabaseAdmin.from('overtime_slots')
+      .select('id, teacher_row_id, weekday, period, start_date, end_date').in('teacher_row_id', rowIds),
+    supabaseAdmin.from('overtime_plans').select('id, start_date, end_date').in('id', planIds),
+  ])
+  const planOf = Object.fromEntries((plans ?? []).map(p => [p.id, p]))
+  const planOfRow = Object.fromEntries(rows.map(r => [r.id, planOf[r.plan_id]]))
+
+  const personSlots: PersonSlotRow[] = []
+  for (const s of slots ?? []) {
+    const p = planOfRow[s.teacher_row_id]
+    if (p) personSlots.push({ ...s, eff: [s.start_date ?? p.start_date, s.end_date ?? p.end_date] })
+  }
+  return { myPlan: planOf[row.plan_id] ?? null, personSlots }
+}
+
+/** 每週 6 節是軟上限（試辦特殊情況可超過）：超過回傳提醒文字，未超過／不受限身分回傳 null */
+export function overCapWarning(row: { name: string; category: string }, effs: [string, string][]): string | null {
+  if (!isCappedCategory(row.category)) return null
+  const peak = maxConcurrentSlots(effs)
+  return peak > OT_WEEKLY_CAP
+    ? `${row.name}（${otCategoryLabel(row.category)}）同一週已達 ${peak} 節，超過 ${OT_WEEKLY_CAP} 節上限（含其他計畫）`
+    : null
 }
