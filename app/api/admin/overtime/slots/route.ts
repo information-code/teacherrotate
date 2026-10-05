@@ -13,7 +13,8 @@ import { forbidIfNotPlanOwner, planIdOfSlot } from '@/lib/overtime-server'
  * start/end_date＝這個時段生效的時間區段（NULL＝整個計畫期程）。
  * 檢查（同一人跨計畫合計，系統帳號比對 teacher_id、手動比對姓名）：
  *  - 同星期節次僅在「生效區段重疊」時衝突（不重疊的區段可各自成立）
- *  - 正式／代理：同時生效的減課節數（掃描線最大值）不得超過每週 6 節
+ *  - 正式／代理：同時生效的減課節數（掃描線最大值）超過每週 6 節不拒絕（試辦特殊情況），
+ *    照樣寫入並回傳 warning 讓前端提醒
  */
 export async function POST(request: NextRequest) {
   const auth = await requirePerms(['overtime'])
@@ -83,21 +84,19 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (isCappedCategory(row.category)) {
-    const peak = maxConcurrentSlots([...existing.map(s => s.eff), newEff])
-    if (peak > OT_WEEKLY_CAP) {
-      return NextResponse.json(
-        { error: `${otCategoryLabel(row.category)}教師同一週最多 ${OT_WEEKLY_CAP} 節（加入後同時生效將達 ${peak} 節，含其他計畫）` },
-        { status: 400 },
-      )
-    }
-  }
+  // 每週 6 節是軟上限：超過只提醒、不拒絕（前端加入前已跳確認；這裡以跨計畫的實際資料再算一次）
+  const peak = isCappedCategory(row.category)
+    ? maxConcurrentSlots([...existing.map(s => s.eff), newEff])
+    : 0
+  const warning = peak > OT_WEEKLY_CAP
+    ? `${row.name}（${otCategoryLabel(row.category)}）同一週已達 ${peak} 節，超過 ${OT_WEEKLY_CAP} 節上限（含其他計畫）`
+    : null
 
   const { data, error } = await supabaseAdmin.from('overtime_slots')
     .insert({ teacher_row_id, weekday, period, class_name, domain, start_date, end_date })
     .select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  return NextResponse.json({ ...data, warning })
 }
 
 /** 刪除減課時段。query: id */

@@ -248,7 +248,7 @@ export default function OvertimeClient({
         period: data.period, class_name: data.class_name, domain: data.domain,
         start_date: data.start_date, end_date: data.end_date,
       }].sort((a, b) => a.weekday - b.weekday || a.period - b.period))
-      flash('時段已新增')
+      flash(data.warning ? `時段已新增；${data.warning}` : '時段已新增')
     })
   }
 
@@ -573,7 +573,7 @@ export default function OvertimeClient({
                 )}
                 <button className="btn-primary" onClick={addTeacher}>加入清冊</button>
                 <span className="text-xs text-zinc-400 pb-2">
-                  身分依帳號資料聘任別自動帶入；正式／代理每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計），鐘點／外師與手動輸入無上限。
+                  身分依帳號資料聘任別自動帶入；正式／代理每人每週上限 {OT_WEEKLY_CAP} 節（跨計畫合計，試辦期間超過只提醒、不擋），鐘點／外師與手動輸入無上限。
                 </span>
               </div>
             )}
@@ -820,7 +820,7 @@ interface CardSection { start: string | null; end: string | null }
  * (1) 超鐘點時間區段——一個區段一組減課時段（時段掛在區段上，各區段可不同）
  * (2) 其他費用 (3) 備註。
  * 課務點選勾選；同一人「重疊區段」已勾的星期節次鎖定（含其他計畫）；
- * 正式／代理同一週同時生效最多 6 節（不重疊的區段可各自用滿）。
+ * 正式／代理同一週同時生效超過 6 節時先跳確認、仍可加入（試辦特殊情況；不重疊的區段各自計算）。
  * 無課務資料（手動人員／課表未發布）退回手動輸入。
  */
 function TeacherCard({
@@ -936,7 +936,7 @@ function TeacherCard({
             {courses.length > 0
               ? '點選課務勾選、再點一次取消；灰色＝重疊區段已勾選（含其他計畫）'
               : (teacher.teacher_id ? '課表尚未發布，暫以手動輸入' : '手動人員無課表，手動輸入')}
-            {capped ? `；同一週最多 ${OT_WEEKLY_CAP} 節` : ''}
+            {capped ? `；同一週超過 ${OT_WEEKLY_CAP} 節會先提醒、仍可加入` : ''}
           </span>
         </div>
 
@@ -944,7 +944,11 @@ function TeacherCard({
           const sSlots = sectionSlots(sec)
           const secEff: [string, string] = [sec.start ?? plan.start_date, sec.end ?? plan.end_date]
           const removable = sSlots.length === 0 && sections.length > 1
-          const wouldExceed = capped && maxConcurrentSlots([...personEffs, secEff]) > OT_WEEKLY_CAP
+          const peakIfAdd = maxConcurrentSlots([...personEffs, secEff])
+          const wouldExceed = capped && peakIfAdd > OT_WEEKLY_CAP
+          // 6 節是軟上限（試辦特殊情況可超過）：超過時跳確認，按確定照樣加入
+          const confirmOverCap = () => !wouldExceed || confirm(
+            `${teacher.name}加入這節後，同一週將達 ${peakIfAdd} 節，超過每週 ${OT_WEEKLY_CAP} 節上限（含其他計畫）。\n\n試辦期間特殊情況可超過，確定要加入嗎？`)
           return (
             <div key={secKey(sec.start, sec.end)} className="border border-zinc-200 rounded p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -966,25 +970,26 @@ function TeacherCard({
                     const conflict = !chosen && personSlots.some(ps =>
                       ps.weekday === c.weekday && ps.period === c.period
                       && rangesOverlap(ps.eff[0], ps.eff[1], secEff[0], secEff[1]))
-                    const capLock = !chosen && !conflict && wouldExceed
-                    const disabled = conflict || capLock
+                    const overCap = !chosen && !conflict && wouldExceed
                     return (
                       <button
                         key={`${c.weekday}-${c.period}`}
                         type="button"
-                        disabled={disabled}
+                        disabled={conflict}
                         title={conflict ? '重疊的時間區段已勾選這個星期節次（含其他計畫）'
-                          : capLock ? `加入後同一週會超過 ${OT_WEEKLY_CAP} 節` : undefined}
+                          : overCap ? `加入後同一週會超過 ${OT_WEEKLY_CAP} 節（會先提醒，仍可加入）` : undefined}
                         className={`border rounded px-2 py-1 text-sm transition-colors ${
                           chosen
                             ? 'border-zinc-800 bg-zinc-800 text-white'
-                            : disabled
+                            : conflict
                               ? 'border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed'
-                              : 'border-zinc-300 text-zinc-700 hover:border-zinc-500'
+                              : overCap
+                                ? 'border-amber-300 text-amber-700 hover:border-amber-500'
+                                : 'border-zinc-300 text-zinc-700 hover:border-zinc-500'
                         }`}
                         onClick={() => {
                           if (chosen) onDeleteSlot(chosen.id)
-                          else onAddSlot(teacher.id, c.weekday, c.period, c.class_name, c.domain, sec.start, sec.end)
+                          else if (confirmOverCap()) onAddSlot(teacher.id, c.weekday, c.period, c.class_name, c.domain, sec.start, sec.end)
                         }}
                       >
                         週{OT_DAY_ZH[c.weekday]} {OT_PERIOD_ZH[c.period]}　{c.class_name}　{c.domain}
@@ -1038,6 +1043,7 @@ function TeacherCard({
                     <button
                       className="btn-secondary"
                       onClick={async () => {
+                        if (!confirmOverCap()) return
                         await onAddSlot(teacher.id, slotWeekday, slotPeriod, slotClass.trim(), slotDomain.trim(), sec.start, sec.end)
                         setSlotClass(''); setSlotDomain('')
                       }}

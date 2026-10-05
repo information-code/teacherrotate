@@ -17,7 +17,10 @@ export type OtCategory = (typeof OT_CATEGORIES)[number]['value']
 export const otCategoryLabel = (v: string) =>
   OT_CATEGORIES.find(c => c.value === v)?.label ?? v
 
-/** 正式／代理／特教教師每人（跨計畫合計）每週減課上限；鐘點／外師無上限 */
+/**
+ * 正式／代理／特教教師每人（跨計畫合計）每週減課上限；鐘點／外師無上限。
+ * 試辦期間為軟上限：超過只跳提醒、仍可加入（slots API 不拒絕，回傳 warning）。
+ */
 export const OT_WEEKLY_CAP = 6
 export const isCappedCategory = (v: string) =>
   v === 'formal' || v === 'substitute' || v === 'special_ed'
