@@ -36,10 +36,16 @@ const FULL: React.CSSProperties = { position: 'absolute', left: 0, top: 0, width
 
 // ---------- 畫材 ----------
 
-/** 手繪線條：位移濾鏡讓線條歪歪的，每 5 格換一次種子＝手繪動畫的線條顫動 */
+/**
+ * 線條顫動（手繪動畫的 line boil）：每幾格換一次濾鏡種子，線條就會微微抖。
+ * 0＝線條固定不動（整個畫面一直晃會干擾看截圖，預設關）；想要手繪動感可設 10～12。
+ */
+const BOIL_EVERY = 0
+
+/** 手繪線條：位移濾鏡讓線條歪歪的 */
 export const SketchDefs: React.FC = () => {
   const frame = useCurrentFrame()
-  const seed = 1 + (Math.floor(frame / 5) % 3)
+  const seed = BOIL_EVERY > 0 ? 1 + (Math.floor(frame / BOIL_EVERY) % 3) : 1
   return (
     <svg width={0} height={0} style={{ position: 'absolute' }} aria-hidden>
       <defs>
