@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { BusyOverlay } from '@/components/ui/BusyOverlay'
 import { AvailabilityTab } from '@/components/teacher/EquipmentAvailability'
@@ -746,7 +746,7 @@ function LongTab({
   )
 }
 
-// ---------- 借用/歸還手續 Modal（同意書 → 檢查拍照） ----------
+// ---------- 借用/歸還手續 Modal（一頁完成：檢查拍照 → 同意 → 完成） ----------
 
 function ProcedureModal({
   kind,
@@ -765,23 +765,37 @@ function ProcedureModal({
   onDone: () => void
   onClose: () => void
 }) {
-  const title = kind === 'borrow' ? '借用手續' : '歸還手續'
-  const [step, setStep] = useState<1 | 2>(1)
-  const [agreed, setAgreed] = useState(false)
+  const verb = kind === 'borrow' ? '借用' : '歸還'
   const [checks, setChecks] = useState<boolean[]>(checklist.map(() => false))
   const [photos, setPhotos] = useState<UploadedPhoto[][]>(checklist.map(() => []))
+  const [uploading, setUploading] = useState(0)
+  const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  const canSubmit =
-    checks.every(Boolean) &&
-    checklist.every((item, i) => !item.requiresPhoto || photos[i].length > 0)
+  // 需拍照的項目有照片就算完成；其餘項目點一下確認
+  const done = checklist.map((item, i) => (item.requiresPhoto ? photos[i].length > 0 : checks[i]))
+  const missing = [
+    ...checklist.flatMap((item, i) => (done[i] ? [] : [item.requiresPhoto ? `拍照（${item.label}）` : item.label])),
+    ...(agreed ? [] : ['勾選同意']),
+  ]
+  const canSubmit = missing.length === 0 && uploading === 0 && !submitting
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting && uploading === 0) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, submitting, uploading])
 
   const submit = async () => {
     setSubmitting(true)
+    setError('')
     try {
       const result: ChecklistResult[] = checklist.map((item, i) => ({
         ...item,
-        checked: checks[i],
+        checked: done[i],
         photos: photos[i].map(p => p.path),
       }))
       const res = await fetch('/api/teacher/equipment/loans', {
@@ -789,88 +803,150 @@ function ProcedureModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: loan.id, action: kind, agree: true, checklist: result }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(data.error ?? '送出失敗')
+        setError(data.error ?? `送出失敗（${res.status}），請再試一次。`)
         return
       }
       onDone()
+    } catch {
+      setError('網路中斷，請確認連線後再按一次。')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-md shadow-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div>
-          <h3 className="font-semibold text-zinc-900">
-            {title}（{step}/2）：{loan.equipment_name}
-            {loan.equipment_asset_number && (
-              <span className="ml-1.5 text-sm font-normal text-zinc-500">#{loan.equipment_asset_number}</span>
-            )}
-          </h3>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {loanTimeText(loan)}
-            {loan.equipment_location && <>｜取用地點：{loan.equipment_location}</>}
-          </p>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="procedure-title"
+    >
+      <div className="flex max-h-[92vh] w-full flex-col rounded-t-xl bg-white shadow-xl sm:max-w-lg sm:rounded-md">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-5 py-4">
+          <div className="min-w-0 space-y-0.5">
+            <h3 id="procedure-title" className="font-semibold text-zinc-900">{verb}手續</h3>
+            <p className="text-sm text-zinc-800">
+              {loan.equipment_name}
+              {loan.equipment_asset_number && <span className="ml-1.5 text-zinc-500">#{loan.equipment_asset_number}</span>}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {loanTimeText(loan)}
+              {loan.equipment_location && <> · 存放地點：{loan.equipment_location}</>}
+            </p>
+            {loan.equipment_units && <p className="text-xs text-zinc-500">編號：{loan.equipment_units}</p>}
+          </div>
+          <button
+            type="button"
+            aria-label="關閉"
+            className="-mr-1 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-40"
+            disabled={submitting || uploading > 0}
+            onClick={onClose}
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
-        {step === 1 ? (
-          <>
-            <div className="border border-zinc-200 rounded p-3 text-sm text-zinc-700 whitespace-pre-wrap bg-zinc-50">
-              {agreement || '（管理者尚未設定同意書內容）'}
-            </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
-              <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} />
-              我已閱讀並同意上述內容
-            </label>
-            <div className="flex justify-end gap-2">
-              <button className="btn-secondary flex-1 sm:flex-none" onClick={onClose}>取消</button>
-              <button className="btn-primary flex-1 sm:flex-none" disabled={!agreed} onClick={() => setStep(2)}>下一步</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-zinc-600">
-              {kind === 'borrow' ? '請確認設備位置與週邊配件並完成檢查：' : '請將設備歸回原位並完成檢查：'}
-            </p>
-            {checklist.length === 0 && <p className="text-sm text-zinc-400">（無檢查項目，直接送出即可）</p>}
-            <div className="space-y-3">
-              {checklist.map((item, i) => (
-                <div key={i} className="border border-zinc-200 rounded p-3 space-y-2">
-                  <label className="flex items-start gap-2 text-sm text-zinc-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={checks[i]}
-                      onChange={e => setChecks(cs => cs.map((c, j) => (j === i ? e.target.checked : c)))}
-                    />
-                    <span>
-                      {item.label}
-                      {item.requiresPhoto && <span className="ml-1 text-xs text-amber-600">（需拍照）</span>}
-                    </span>
-                  </label>
-                  {item.requiresPhoto && (
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs leading-relaxed text-zinc-600">
+            {kind === 'borrow' ? (
+              <>自己去拿：在存放地點清點拍照後按「完成借用」。<br />派學生代取：車送到教室後，再清點拍照、按完成。</>
+            ) : (
+              <>自己歸還：放回原位後拍照、按「完成歸還」。<br />派學生代還：交給學生之前先拍照、按完成，並交代學生推回原位、接上電源。</>
+            )}
+          </p>
+
+          {checklist.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm font-medium text-zinc-900">檢查項目</span>
+                <span className="text-xs tabular-nums text-zinc-500">
+                  已完成 {done.filter(Boolean).length} / {checklist.length}
+                </span>
+              </div>
+              {checklist.map((item, i) =>
+                item.requiresPhoto ? (
+                  <div
+                    key={i}
+                    className={`space-y-2.5 rounded-md border p-3 ${done[i] ? 'border-green-300 bg-green-50/50' : 'border-zinc-200'}`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <StepMark done={done[i]} n={i + 1} />
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-900">{item.label}</p>
+                        <p className="text-xs text-zinc-500">{done[i] ? '已拍照' : '拍照上傳後就算完成'}</p>
+                      </div>
+                    </div>
                     <PhotoUploader
                       photos={photos[i]}
                       max={maxPhotos}
                       onChange={list => setPhotos(ps => ps.map((p, j) => (j === i ? list : p)))}
+                      onPending={delta => setUploading(n => n + delta)}
                     />
-                  )}
-                </div>
-              ))}
+                  </div>
+                ) : (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-pressed={done[i]}
+                    className={`flex w-full items-center gap-2.5 rounded-md border p-3 text-left transition-colors ${
+                      done[i] ? 'border-green-300 bg-green-50/50' : 'border-zinc-200 hover:border-zinc-400'
+                    }`}
+                    onClick={() => setChecks(cs => cs.map((c, j) => (j === i ? !c : c)))}
+                  >
+                    <StepMark done={done[i]} n={i + 1} />
+                    <span className="min-w-0 flex-1 text-sm text-zinc-900">{item.label}</span>
+                    <span className="whitespace-nowrap text-xs text-zinc-500">{done[i] ? '已確認' : '點一下確認'}</span>
+                  </button>
+                )
+              )}
             </div>
-            <div className="flex justify-between gap-2">
-              <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setStep(1)}>上一步</button>
-              <button className="btn-primary flex-1 sm:flex-none" disabled={!canSubmit || submitting} onClick={submit}>
-                {submitting ? '送出中…' : kind === 'borrow' ? '完成借用' : '完成歸還'}
-              </button>
-            </div>
-          </>
-        )}
+          )}
+
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-zinc-900">{verb}規定</span>
+            <p className="whitespace-pre-wrap rounded border border-zinc-200 bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-600">
+              {agreement || '（管理者尚未設定同意書內容）'}
+            </p>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-800">
+              <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreed} onChange={e => setAgreed(e.target.checked)} />
+              我已確認以上項目，並同意{verb}規定
+            </label>
+          </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+
+        <div className="space-y-2 border-t border-zinc-200 px-5 py-3">
+          {missing.length > 0 && <p className="text-xs text-zinc-500">還差：{missing.join('、')}</p>}
+          <div className="flex gap-2 sm:justify-end">
+            <button className="btn-secondary flex-1 sm:flex-none" disabled={submitting} onClick={onClose}>取消</button>
+            <button className="btn-primary flex-[2] sm:flex-none" disabled={!canSubmit} onClick={submit}>
+              {submitting ? '送出中…' : uploading > 0 ? '照片上傳中…' : `完成${verb}`}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
+  )
+}
+
+/** 檢查項目的序號圈：完成後變綠色勾 */
+function StepMark({ done, n }: { done: boolean; n: number }) {
+  return (
+    <span
+      className={`mt-px inline-flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-medium ${
+        done ? 'bg-green-600 text-white' : 'border border-zinc-300 text-zinc-500'
+      }`}
+    >
+      {done ? (
+        <svg viewBox="0 0 16 16" className="h-3 w-3" aria-label="已完成">
+          <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : n}
+    </span>
   )
 }
 
@@ -951,65 +1027,111 @@ function RenewalModal({
 
 // ---------- 拍照上傳 ----------
 
+/**
+ * 手機照片常有 3～8MB，超過伺服器單次上限（4.5MB）會整個上傳失敗：
+ * 先縮成長邊 1600px 的 JPEG（約 0.3～0.6MB）。瀏覽器解不開的格式就原檔上傳。
+ */
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg' })
+  } catch {
+    return file
+  }
+}
+
 function PhotoUploader({
   photos,
   max,
   onChange,
+  onPending,
 }: {
   photos: UploadedPhoto[]
   max: number
   onChange: (photos: UploadedPhoto[]) => void
+  /** 上傳中張數的增減（送出前要等照片傳完） */
+  onPending?: (delta: number) => void
 }) {
-  const [uploading, setUploading] = useState(false)
+  const [pending, setPending] = useState(0)
+  const [error, setError] = useState('')
+  // 多張同時上傳，各自完成時要接在最新的清單後面
+  const latest = useRef(photos)
+  latest.current = photos
 
   const upload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    setUploading(true)
-    try {
-      const uploaded: UploadedPhoto[] = []
-      for (const file of Array.from(files).slice(0, max - photos.length)) {
+    const list = Array.from(files ?? []).slice(0, Math.max(0, max - photos.length - pending))
+    if (list.length === 0) return
+    setError('')
+    setPending(n => n + list.length)
+    onPending?.(list.length)
+    const failed: string[] = []
+    await Promise.all(list.map(async file => {
+      try {
         const form = new FormData()
-        form.append('file', file)
+        form.append('file', await compressImage(file))
         const res = await fetch('/api/teacher/equipment/photo', { method: 'POST', body: form })
-        const data = await res.json()
-        if (!res.ok) {
-          alert(data.error ?? '照片上傳失敗')
-          continue
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.path) {
+          failed.push(data.error ?? (res.status === 413 ? '照片檔案太大' : `上傳失敗（${res.status}）`))
+          return
         }
-        uploaded.push({ path: data.path, url: data.url })
+        latest.current = [...latest.current, { path: data.path, url: data.url }]
+        onChange(latest.current)
+      } catch {
+        failed.push('網路中斷')
+      } finally {
+        setPending(n => n - 1)
+        onPending?.(-1)
       }
-      onChange([...photos, ...uploaded])
-    } finally {
-      setUploading(false)
-    }
+    }))
+    if (failed.length > 0) setError(`${failed.length} 張沒有上傳成功（${failed[0]}），請再拍一次。`)
   }
 
+  const full = photos.length + pending >= max
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex flex-wrap gap-2">
         {photos.map(photo => (
           <div key={photo.path} className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo.url} alt="上傳照片" className="w-24 h-24 sm:w-20 sm:h-20 object-cover rounded border border-zinc-200" />
+            <img src={photo.url} alt="已上傳的照片" className="h-20 w-20 rounded border border-zinc-200 object-cover" />
             <button
               type="button"
-              className="absolute -top-2 -right-2 w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-zinc-700 text-white text-xs leading-none"
+              aria-label="刪除這張照片"
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-700 text-xs leading-none text-white"
               onClick={() => onChange(photos.filter(p => p.path !== photo.path))}
             >
               ×
             </button>
           </div>
         ))}
-        {photos.length < max && (
-          <label className="w-24 h-24 sm:w-20 sm:h-20 border border-dashed border-zinc-300 rounded flex flex-col items-center justify-center text-zinc-400 text-xs cursor-pointer hover:bg-zinc-50 active:bg-zinc-100">
-            {uploading ? '上傳中…' : <>📷<span className="mt-0.5">拍照/選圖</span></>}
+        {Array.from({ length: pending }, (_, i) => (
+          <div key={`p${i}`} className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded border border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
+            上傳中
+          </div>
+        ))}
+        {!full && (
+          <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded border border-dashed border-zinc-400 text-xs text-zinc-600 hover:bg-zinc-50 active:bg-zinc-100">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+              <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+              <circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+            {photos.length === 0 ? '拍照' : '再拍一張'}
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               className="hidden"
-              disabled={uploading}
               onChange={e => {
                 upload(e.target.files)
                 e.target.value = ''
@@ -1018,7 +1140,11 @@ function PhotoUploader({
           </label>
         )}
       </div>
-      <p className="text-xs text-zinc-400">最多 {max} 張</p>
+      {error ? (
+        <p className="text-xs text-red-600">{error}</p>
+      ) : (
+        <p className="text-xs text-zinc-400">可直接拍照或從相簿選，最多 {max} 張</p>
+      )}
     </div>
   )
 }
