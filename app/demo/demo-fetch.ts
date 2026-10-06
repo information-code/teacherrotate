@@ -246,7 +246,7 @@ export function installDemoFetch() {
       })
     }
 
-    if (path === '/api/admin/equipment-board' && method === 'GET') {
+    if ((path === '/api/admin/equipment-board' || path === '/api/teacher/equipment-board') && method === 'GET') {
       const date = url.searchParams.get('date') || today
       const order = orderedOpenPeriods(DEFAULT_EQUIPMENT_CONFIG.openPeriods)
       const vars = (teacher: string, equipment: string, d: string) => ({ teacher, equipment, date: d, periods: '第1節、第2節' })

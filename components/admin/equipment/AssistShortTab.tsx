@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { EQUIPMENT_PERIODS, addDays, currentPeriod, periodLabel, todayStr } from '@/lib/equipment'
 import type { TeacherOption } from './LendingTabs'
-import { PeriodPicker, ResourceCard, dateLabel, dateRangeLabel, unitRangeText, type Resource } from './lend-ui'
+import { PeriodPicker, ResourceCard, dateLabel, dateRangeLabel, unitRangeText, type Resource } from '@/components/equipment/lend-ui'
 
 interface Occurrence { start: string; end: string }
 interface Created { id: string; text: string; cancelled?: boolean }

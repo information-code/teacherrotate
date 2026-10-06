@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { todayStr } from '@/lib/equipment'
-import { ResourceCard, dateRangeLabel, type Resource } from './lend-ui'
+import { ResourceCard, dateRangeLabel, type Resource } from '@/components/equipment/lend-ui'
 
 interface Activity {
   id: string
