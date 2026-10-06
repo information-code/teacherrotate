@@ -2,7 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { loadEquipmentConfig, logLoanEvent, reserveShortLoan, sweepNoShowCount, validateChecklistResult } from '@/lib/equipment-server'
+import { loadEquipmentConfig, logLoanEvent, reserveShortLoan, sweepNoShowCount, teacherOverdueLoans, validateChecklistResult } from '@/lib/equipment-server'
 import { loanTimeText, type ChecklistItem } from '@/lib/equipment'
 
 /**
@@ -16,6 +16,14 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { equipment_id, group_id, quantity, start_date, end_date, start_period, end_period } = await request.json()
+
+  // 有逾期未還的借用 → 暫停預約，完成歸還手續後自動恢復
+  if ((await teacherOverdueLoans(user.id)).length > 0) {
+    return NextResponse.json(
+      { error: '您有逾期未歸還的設備，請先完成歸還手續才能再預約。' },
+      { status: 403 }
+    )
+  }
 
   // 「預約未借」達上限 → 暫停預約（管理端可歸零恢復）
   const limitConfig = await loadEquipmentConfig()

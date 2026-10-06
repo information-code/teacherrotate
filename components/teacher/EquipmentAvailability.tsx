@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageLoading } from '@/components/ui/PageLoading'
-import { EQUIPMENT_PERIODS, periodLabel } from '@/lib/equipment'
+import { EQUIPMENT_PERIODS, currentPeriod, orderedOpenPeriods, periodLabel } from '@/lib/equipment'
 
 interface BoardData {
   config: { openPeriods: string[]; today: string; maxDate: string }
@@ -20,22 +20,9 @@ interface BoardData {
   typeTotals: { name: string; total: number; longLoaned: number; maintenance: number }[]
 }
 
-/** 各節次開始時間（本校作息，與 lib/schedule-export PERIOD_TIMES 同源；儀表板預設節次用） */
-const PERIOD_START: Record<string, string> = {
-  morning: '07:30', p1: '08:40', p2: '09:30', p3: '10:30', p4: '11:20',
-  noon: '12:00', p5: '13:30', p6: '14:20', p7: '15:15', p8: '16:00', after: '16:45',
-}
-
-/** 現在時間落在（或最接近）哪一節：取已開始的最後一節，都還沒開始就取第一節 */
+/** 現在（或最接近）的節次：取已開始的最後一節，都還沒開始就取第一節 */
 function currentPeriodKey(openPeriods: string[]): string {
-  const now = new Date()
-  const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  const order = EQUIPMENT_PERIODS.map(p => p.key as string).filter(k => openPeriods.includes(k))
-  let pick = order[0] ?? ''
-  for (const key of order) {
-    if ((PERIOD_START[key] ?? '99:99') <= hm) pick = key
-  }
-  return pick
+  return currentPeriod(openPeriods) ?? orderedOpenPeriods(openPeriods)[0] ?? ''
 }
 
 // ---------- treemap 排版（squarified） ----------

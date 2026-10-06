@@ -4,7 +4,7 @@
 // 讓真實 UI 元件在 /demo/* 頁面上不需登入、不碰資料庫就能完整互動。
 // 僅供 Remotion 介紹影片截圖使用；正式環境的 /demo 頁面回 404。
 
-import { DEFAULT_EQUIPMENT_CONFIG, addDays, daySlotPeriods, todayStr } from '@/lib/equipment'
+import { DEFAULT_EQUIPMENT_CONFIG, addDays, daySlotPeriods, orderedOpenPeriods, todayStr } from '@/lib/equipment'
 
 /** 示範照片（資料 URL，模擬老師拍的設備照） */
 const SAMPLE_PHOTO =
@@ -244,6 +244,87 @@ export function installDemoFetch() {
         loanDetails: {},
         photoUrls: {},
       })
+    }
+
+    if (path === '/api/admin/equipment-board' && method === 'GET') {
+      const date = url.searchParams.get('date') || today
+      const order = orderedOpenPeriods(DEFAULT_EQUIPMENT_CONFIG.openPeriods)
+      const vars = (teacher: string, equipment: string, d: string) => ({ teacher, equipment, date: d, periods: '第1節、第2節' })
+      return json({
+        date,
+        today,
+        nowPeriod: 'p3',
+        openPeriods: order,
+        kpi: {
+          today: { total: 3, out: 1, resv: 1, done: 0, noshow: 1 },
+          outNow: 4,
+          overdueNow: 1,
+          heldNow: 1,
+          long: { total: 1, internal: 1, external: 0, overdue: 0 },
+        },
+        alerts: [
+          { kind: 'overdue', loanId: 's4', who: '李芳如', label: '筆記型電腦(教師機) #NB-02', time: `${addDays(today, -2)}｜第1節、第2節`, days: 2, affected: 1, vars: vars('李芳如', '筆記型電腦(教師機) #NB-02', addDays(today, -2)) },
+          { kind: 'noshow', loanId: 's5', who: '林美惠', label: '攝影機 #3000063', time: `${today}｜第1節、第2節`, days: 0, vars: vars('林美惠', '攝影機 #3000063', today) },
+          { kind: 'blocked', teacherId: 'p3', who: '張志成', count: 3, limit: 3 },
+        ],
+        board: {
+          rows: [
+            { key: 'g:g1', kind: 'group', name: '平板充電車 A 車', sub: '資訊組充電車 · 4 台', total: 4 },
+            { key: 't:筆記型電腦(教師機)', kind: 'type', name: '筆記型電腦(教師機)', sub: '3 台', total: 3 },
+            { key: 't:攝影機', kind: 'type', name: '攝影機', sub: '1 台', total: 1 },
+          ],
+          items: date === today ? [
+            { id: 's1', row: 'g:g1', who: '王小明', activity: false, qty: 2, unit: '', s: 1, e: 3, status: 'out', note: '09:25 取用', time: '' },
+            { id: 's2', row: 'g:g1', who: '陳怡君', activity: false, qty: 2, unit: '', s: 2, e: 2, status: 'done', note: '11:05 歸還', time: '' },
+            { id: 's3', row: 'g:g1', who: '張志成', activity: false, qty: 4, unit: '', s: 5, e: 6, status: 'resv', note: '', time: '' },
+            { id: 's4', row: 't:筆記型電腦(教師機)', who: '李芳如', activity: false, qty: 1, unit: 'NB-02', s: 0, e: order.length - 1, status: 'overdue', note: `${addDays(today, -2)} 借出，已逾期 2 天`, time: '' },
+            { id: 'h1', row: 't:筆記型電腦(教師機)', who: '校慶攝影', activity: true, qty: 1, unit: 'NB-03', s: 0, e: order.length - 1, status: 'held', note: '', time: '' },
+            { id: 's5', row: 't:攝影機', who: '林美惠', activity: false, qty: 1, unit: '3000063', s: 0, e: 1, status: 'noshow', note: '', time: '' },
+          ] : [],
+          idleTypes: [],
+        },
+        dist: [
+          { name: '平板電腦(教師機)', total: 4, long: 0, short: 2, maint: 0, overdue: 0, held: 0, carts: [{ id: 'g1', name: '平板充電車 A 車', total: 4, long: 0, short: 2, maint: 0, overdue: 0 }] },
+          { name: '筆記型電腦(教師機)', total: 3, long: 1, short: 2, maint: 0, overdue: 1, held: 1, carts: [] },
+          { name: '攝影機', total: 1, long: 0, short: 0, maint: 0, overdue: 0, held: 0, carts: [] },
+        ],
+        long: {
+          byType: [{ name: '筆記型電腦(教師機)', count: 1, typeTotal: 3 }],
+          wave: { due: addDays(today, 80), pending: 1, renewed: 0, opensOn: addDays(today, 73), daysToOpen: 73, daysToDue: 80 },
+        },
+      })
+    }
+
+    if (path === '/api/admin/equipment-availability' && method === 'POST') {
+      const occurrences: { start_date: string; end_date: string }[] = body.occurrences ?? []
+      return json({
+        results: occurrences.map((o, i) => ({
+          start: o.start_date,
+          end: o.end_date,
+          resources: [
+            { key: 'g:g1', kind: 'group', groupId: 'g1', name: '平板充電車 A 車', place: '資訊組充電車', total: 4, free: (i % 3 === 2 ? ['t4'] : ['t3', 't4']).map(id => ({ id, asset: `gpps-114-0${id.slice(1)}` })), overdue: 0, long: 0, maint: 0 },
+            { key: 't:筆記型電腦(教師機)', kind: 'type', groupId: null, name: '筆記型電腦(教師機)', place: '資訊組防潮櫃', total: 3, free: [], overdue: 1, long: 1, maint: 0 },
+            { key: 't:攝影機', kind: 'type', groupId: null, name: '攝影機', place: '資訊組防潮櫃', total: 1, free: [{ id: 'c1', asset: '3000063' }], overdue: 0, long: 0, maint: 0 },
+          ],
+        })),
+      })
+    }
+
+    if (path === '/api/admin/equipment-activities') {
+      if (method === 'GET') {
+        return json({
+          activities: [
+            { id: 'a1', name: '校慶攝影', start: today, end: addDays(today, 1), state: 'ongoing', items: [{ label: '筆記型電腦(教師機)', qty: 1 }] },
+            { id: 'a2', name: '五年級戶外教學', start: addDays(today, 9), end: addDays(today, 9), state: 'upcoming', items: [{ label: '平板充電車 A 車', qty: 4 }, { label: '攝影機', qty: 1 }] },
+          ],
+        })
+      }
+      return json({ ok: true, id: 'a3', created: 1 })
+    }
+
+    if (path === '/api/admin/equipment-loans' && method === 'POST') {
+      const n = Array.isArray(body.occurrences) && body.occurrences.length > 0 ? body.occurrences.length : 1
+      return json({ ok: true, created: n, failed: [], series_id: null, ids: Array.from({ length: n }, (_, i) => `demo-${Date.now()}-${i}`) })
     }
 
     // 其餘（統計等）給空回應避免噴錯

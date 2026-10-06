@@ -54,7 +54,8 @@ const navSections = [
     title: '設備管理',
     items: [
       { href: '/admin/equipment-config', label: '設備設定' },
-      { href: '/admin/equipment',        label: '借用管理' },
+      { href: '/admin/equipment',        label: '借用總覽' },
+      { href: '/admin/equipment-lend',   label: '協助借用' },
     ],
   },
   {
@@ -93,6 +94,8 @@ export function AdminSidebar({
         if (key === 'system') return isSuper
         // 行事曆頁：有行事曆或假日維護任一權限即可見
         if (key === 'calendar') return permSet.has('calendar') || permSet.has('holidays')
+        // 協助借用與借用總覽同屬「借用管理」權限
+        if (key === 'equipment-lend') return permSet.has('equipment')
         return permSet.has(key)
       }),
     }))

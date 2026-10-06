@@ -17,6 +17,26 @@ export const EQUIPMENT_PERIODS = [
 
 export type PeriodKey = (typeof EQUIPMENT_PERIODS)[number]['key']
 
+/** 各節次開始時間（本校作息，與 lib/schedule-export PERIOD_TIMES 同源；判斷「現在第幾節」用） */
+export const PERIOD_START: Record<string, string> = {
+  morning: '07:30', p1: '08:40', p2: '09:30', p3: '10:30', p4: '11:20',
+  noon: '12:00', p5: '13:30', p6: '14:20', p7: '15:15', p8: '16:00', after: '16:45',
+}
+
+/** 依固定順序排好的開放節次 key */
+export function orderedOpenPeriods(openPeriods: string[]): string[] {
+  return EQUIPMENT_PERIODS.map(p => p.key as string).filter(k => openPeriods.includes(k))
+}
+
+/** 現在（台灣時間）已開始的最後一個開放節次；第一個開放節次還沒開始回 null */
+export function currentPeriod(openPeriods: string[], hhmm: string = nowHHMM()): string | null {
+  let pick: string | null = null
+  for (const key of orderedOpenPeriods(openPeriods)) {
+    if ((PERIOD_START[key] ?? '99:99') <= hhmm) pick = key
+  }
+  return pick
+}
+
 export function periodLabel(key: string): string {
   return EQUIPMENT_PERIODS.find(p => p.key === key)?.label ?? key
 }
@@ -118,6 +138,7 @@ export const LOAN_STATUS_LABEL: Record<string, string> = {
   returned: '已歸還',
   cancelled: '已取消',
   closed: '管理者結案',
+  held: '活動保留',
 }
 
 /** 借用期間（跨日用）：loan_date～end_date、start_period～end_period */
@@ -196,10 +217,19 @@ export function renderOverdueMessage(
     .replaceAll('{時段}', vars.periods)
 }
 
-/** 今天（本地時區）的 YYYY-MM-DD */
+/** 台灣時間（UTC+8）的現在，以 UTC 欄位讀取；伺服器跑在 UTC 也不會在凌晨算成前一天 */
+function taipeiNow(): Date {
+  return new Date(Date.now() + 8 * 3600000)
+}
+
+/** 今天（台灣時間）的 YYYY-MM-DD */
 export function todayStr(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return taipeiNow().toISOString().slice(0, 10)
+}
+
+/** 現在（台灣時間）的 HH:MM */
+export function nowHHMM(): string {
+  return taipeiNow().toISOString().slice(11, 16)
 }
 
 /** date 加上 n 天 */

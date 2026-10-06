@@ -190,3 +190,50 @@
   #book-print tr, #book-print .book-group { break-inside: avoid; page-break-inside: avoid; }
   @page { margin: 12mm; }
 }
+
+/* ── 設備借用：資料色與狀態色 ──
+   資料色是單一色階（長期借出最深、短期借出、預約最淺），可借＝空軌，色盲也看得出深淺；
+   狀態色只用在需要處理的事（逾期、未取用…），一律搭配圖示與文字。 */
+:root {
+  --lend-long: #104281;
+  --lend-short: #256abf;
+  --lend-resv: #86b6ef;
+  --lend-track: #f4f4f5;
+  --lend-done: #e4e4e7;
+  --lend-held: #52525b;
+  --st-critical: #d03b3b;
+  --st-serious: #ec835a;
+  --st-warning: #fab219;
+  --st-good: #0ca30c;
+}
+
+@layer components {
+  /* 狀態標籤（圖示＋文字，不只靠顏色） */
+  .st {
+    @apply inline-flex items-center gap-1 border text-xs font-medium whitespace-nowrap;
+    padding: 1px 7px;
+    line-height: 18px;
+    border-radius: 2px;
+  }
+  .st svg { width: 13px; height: 13px; flex: none; }
+  .st-critical { @apply border-red-200 bg-red-50 text-red-800; }
+  .st-critical svg { color: var(--st-critical); }
+  .st-serious { @apply border-orange-200 bg-orange-50 text-orange-800; }
+  .st-serious svg { color: var(--st-serious); }
+  .st-warning { @apply border-amber-200 bg-amber-50 text-amber-800; }
+  .st-warning svg { color: var(--st-warning); }
+  .st-good { @apply border-green-200 bg-green-50 text-green-800; }
+  .st-good svg { color: var(--st-good); }
+  .st-neutral { @apply border-zinc-300 bg-zinc-100 text-zinc-700; }
+  .st-neutral svg { color: #52525b; }
+
+  /* 小型選擇鈕（節次、週幾） */
+  .chip {
+    @apply inline-flex items-center justify-center px-2.5 py-1.5 text-xs border border-zinc-300 bg-white text-zinc-700
+           hover:border-zinc-500 transition-colors whitespace-nowrap;
+    border-radius: 4px;
+  }
+  .chip.on { @apply bg-zinc-800 border-zinc-800 text-white; }
+  .chip.mid { @apply bg-zinc-200 border-zinc-200 text-zinc-900; }
+  .chip:disabled { @apply opacity-40 cursor-not-allowed hover:border-zinc-300; }
+}

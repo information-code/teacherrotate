@@ -65,7 +65,7 @@ export async function GET() {
     const days = l.status === 'borrowed'
       ? overdueDays(due, null, today)
       : overdueDays(due, l.returned_at, today)
-    bump(byTeacher, l.teacher_id, days)
+    if (l.teacher_id) bump(byTeacher, l.teacher_id, days)
     bump(byEquipment, targetKey(l), days)
 
     const month = l.loan_date.slice(0, 7)

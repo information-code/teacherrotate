@@ -24,8 +24,8 @@ export async function GET() {
       .order('name').order('asset_number'),
     supabaseAdmin.from('equipment_groups').select('id, name'),
     supabaseAdmin.from('equipment_loans')
-      .select('id, equipment_id, group_id, teacher_id, status, loan_date, end_date, start_period, end_period, periods, unit_ids')
-      .in('status', ['reserved', 'borrowed'])
+      .select('id, equipment_id, group_id, teacher_id, activity_name, status, loan_date, end_date, start_period, end_period, periods, unit_ids')
+      .in('status', ['reserved', 'borrowed', 'held'])
       .order('loan_date'),
     supabaseAdmin.from('equipment_long_loans').select('*').eq('status', 'active'),
     supabaseAdmin.from('profiles').select('id, name, email'),
@@ -38,6 +38,8 @@ export async function GET() {
   const shortByEquipment = new Map<string, ShortLoan[]>()
   const shortByGroup = new Map<string, ShortLoan[]>()
   for (const l of shortLoans ?? []) {
+    // 活動保留只列還沒結束的
+    if (l.status === 'held' && (l.end_date ?? l.loan_date) < today) continue
     if (l.equipment_id) {
       const list = shortByEquipment.get(l.equipment_id) ?? []
       list.push(l)
@@ -54,7 +56,7 @@ export async function GET() {
   const shortEntry = (l: ShortLoan, isGroup: boolean) => ({
     id: l.id,
     status: l.status,
-    teacher_name: profileMap.get(l.teacher_id) ?? '（未知）',
+    teacher_name: l.teacher_id ? profileMap.get(l.teacher_id) ?? '（未知）' : `【活動】${l.activity_name}`,
     loan_date: l.loan_date,
     end_date: l.end_date,
     start_period: l.start_period,

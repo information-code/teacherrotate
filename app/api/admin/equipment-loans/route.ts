@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
     ...l,
     equipment_name: equipMap.get(l.equipment_id ?? '')?.name ?? '（已刪除設備）',
     equipment_asset_number: equipMap.get(l.equipment_id ?? '')?.asset_number ?? '',
-    teacher_name: profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）',
+    teacher_name: l.teacher_id
+      ? profileMap.get(l.teacher_id)?.name ?? profileMap.get(l.teacher_id)?.email ?? '（未知）'
+      : `【活動】${l.activity_name}`,
   }))
 
   const photoPaths = rows.flatMap(l => [
@@ -176,5 +178,11 @@ export async function POST(request: NextRequest) {
   if (created === 0) {
     return NextResponse.json({ error: failed[0]?.error ?? '建立失敗', failed }, { status: 409 })
   }
-  return NextResponse.json({ ok: true, created, failed, series_id: seriesId ?? null })
+  return NextResponse.json({
+    ok: true,
+    created,
+    failed,
+    series_id: seriesId ?? null,
+    ids: results.flatMap(r => (r.ok ? [r.id] : [])),
+  })
 }

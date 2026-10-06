@@ -70,6 +70,8 @@ interface ShortData {
   occupied: Record<string, Record<string, string[]>>
   /** 預約未借狀態：count 累計、limit 上限（0＝不限）、blocked 已達上限 */
   noShow?: { count: number; limit: number; blocked: boolean }
+  /** 本人逾期未還的借用：有的話暫停預約，歸還後恢復 */
+  overdueBlock?: { id: string; name: string; due: string }[]
   myLoans: LoanRow[]
 }
 
@@ -270,7 +272,8 @@ function ShortTab({
   const [equipName, setEquipName] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [quantity, setQuantity] = useState(1)
-  const noShowBlocked = Boolean(data.noShow?.blocked)
+  const overdueBlock = data.overdueBlock ?? []
+  const noShowBlocked = Boolean(data.noShow?.blocked) || overdueBlock.length > 0
   const [submitting, setSubmitting] = useState('')
 
   const sameDay = from === to
@@ -422,8 +425,13 @@ function ShortTab({
       <div className="card space-y-4">
         <h2 className="font-medium text-zinc-900">預約借用</h2>
 
-        {/* 預約未借警告：有紀錄先提醒，達上限暫停預約 */}
-        {noShowBlocked ? (
+        {/* 逾期未還優先提醒：歸還後才能再預約；其次是預約未借次數 */}
+        {overdueBlock.length > 0 ? (
+          <p className="text-sm text-red-700 border border-red-200 bg-red-50 rounded p-3">
+            您借用的{overdueBlock.map(o => `「${o.name}」（到期 ${o.due}）`).join('、')}已逾期未歸還，
+            請先在上方「我的借用」完成歸還手續，才能再預約。
+          </p>
+        ) : noShowBlocked ? (
           <p className="text-sm text-red-700 border border-red-200 bg-red-50 rounded p-3">
             您的「預約未借用」已達 {data.noShow?.limit} 次上限，暫時無法自行預約，請洽設備管理人員恢復。
           </p>

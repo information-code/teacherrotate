@@ -216,8 +216,8 @@ export type Database = {
       }
       equipment_loans: {
         Row: {
-          id: string; equipment_id: string | null; group_id: string | null; teacher_id: string
-          loan_date: string; periods: string[]; status: string
+          id: string; equipment_id: string | null; group_id: string | null; teacher_id: string | null
+          loan_date: string; periods: string[]; status: string; activity_name: string
           end_date: string | null; start_period: string | null; end_period: string | null
           borrow_agreed_at: string | null; borrow_checklist: Json | null; borrowed_at: string | null
           return_agreed_at: string | null; return_checklist: Json | null; returned_at: string | null
@@ -225,8 +225,8 @@ export type Database = {
           series_id: string | null; no_show_counted: boolean
         }
         Insert: {
-          id?: string; equipment_id?: string | null; group_id?: string | null; teacher_id: string
-          loan_date: string; periods: string[]; status?: string
+          id?: string; equipment_id?: string | null; group_id?: string | null; teacher_id?: string | null
+          loan_date: string; periods: string[]; status?: string; activity_name?: string
           end_date?: string | null; start_period?: string | null; end_period?: string | null
           borrow_agreed_at?: string | null; borrow_checklist?: Json | null; borrowed_at?: string | null
           return_agreed_at?: string | null; return_checklist?: Json | null; returned_at?: string | null
@@ -521,7 +521,7 @@ export type Database = {
       }
       reserve_equipment_loan_range: {
         Args: {
-          p_equipment_id: string; p_teacher_id: string
+          p_equipment_id: string; p_teacher_id: string | null
           p_start_date: string; p_end_date: string
           p_start_period: string; p_end_period: string
           p_slots: Json
@@ -530,10 +530,10 @@ export type Database = {
       }
       reserve_equipment_group_loan: {
         Args: {
-          p_group_id: string; p_teacher_id: string
+          p_group_id: string; p_teacher_id: string | null
           p_start_date: string; p_end_date: string
           p_start_period: string; p_end_period: string
-          p_slots: Json
+          p_slots: Json; p_unit_ids?: string[] | null
         }
         Returns: string
       }
